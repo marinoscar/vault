@@ -1,8 +1,7 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Container, Typography, Snackbar, Alert } from '@mui/material';
+import { Container, Typography, Alert } from '@mui/material';
 import { SecretsList } from '../components/secrets/SecretsList';
-import { SecretFormDialog } from '../components/secrets/SecretFormDialog';
 import { useSecrets } from '../hooks/useSecrets';
 import { useSecretTypes } from '../hooks/useSecretTypes';
 
@@ -17,12 +16,9 @@ export default function SecretsPage() {
     isLoading,
     error,
     fetchSecrets,
-    createSecret,
     deleteSecret,
   } = useSecrets();
   const { types, fetchTypes } = useSecretTypes();
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
     fetchSecrets();
@@ -46,23 +42,8 @@ export default function SecretsPage() {
   const handleDelete = useCallback(
     async (id: string) => {
       await deleteSecret(id);
-      setSuccessMessage('Secret deleted successfully');
     },
     [deleteSecret],
-  );
-
-  const handleCreate = useCallback(
-    async (data: {
-      name: string;
-      description?: string;
-      typeId: string;
-      data: Record<string, unknown>;
-    }) => {
-      await createSecret(data);
-      setCreateDialogOpen(false);
-      setSuccessMessage('Secret created successfully');
-    },
-    [createSecret],
   );
 
   return (
@@ -87,24 +68,9 @@ export default function SecretsPage() {
         secretTypes={types}
         onFetch={handleFetch}
         onRowClick={handleRowClick}
-        onCreateClick={() => setCreateDialogOpen(true)}
+        onCreateClick={() => navigate('/secrets/new')}
         onDeleteClick={handleDelete}
       />
-
-      <SecretFormDialog
-        open={createDialogOpen}
-        onClose={() => setCreateDialogOpen(false)}
-        onSave={handleCreate}
-        secretTypes={types}
-      />
-
-      <Snackbar
-        open={!!successMessage}
-        autoHideDuration={3000}
-        onClose={() => setSuccessMessage(null)}
-      >
-        <Alert severity="success">{successMessage}</Alert>
-      </Snackbar>
     </Container>
   );
 }
