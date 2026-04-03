@@ -38,6 +38,9 @@ model User {
   deviceCodes               DeviceCode[]     @relation("UserDeviceCodes")
   storageObjects            StorageObject[]  @relation("UserStorageObjects")
   personalAccessTokens      PersonalAccessToken[] @relation("UserPersonalAccessTokens")
+  secretTypes               SecretType[]     @relation("UserSecretTypes")
+  secrets                   Secret[]         @relation("UserSecrets")
+  secretVersions            SecretVersion[]  @relation("UserSecretVersions")
 
   @@map("users")
 }
@@ -293,8 +296,9 @@ model StorageObject {
   updatedAt       DateTime            @updatedAt @map("updated_at") @db.Timestamptz
 
   // Relations
-  uploadedBy User?                @relation("UserStorageObjects", fields: [uploadedById], references: [id], onDelete: SetNull)
-  chunks     StorageObjectChunk[]
+  uploadedBy        User?                @relation("UserStorageObjects", fields: [uploadedById], references: [id], onDelete: SetNull)
+  chunks            StorageObjectChunk[]
+  secretAttachments SecretAttachment[]
 
   @@index([uploadedById])
   @@index([status])
@@ -316,4 +320,83 @@ model StorageObjectChunk {
   @@unique([objectId, partNumber])
   @@index([objectId])
   @@map("storage_object_chunks")
+}
+
+// =============================================================================
+// Secrets (Vault)
+// =============================================================================
+
+model SecretType {
+  id               String   @id @default(uuid()) @db.Uuid
+  name             String
+  description      String?
+  icon             String?
+  fields           Json     @db.JsonB
+  allowAttachments Boolean  @default(false) @map("allow_attachments")
+  isSystem         Boolean  @default(false) @map("is_system")
+  createdById      String?  @map("created_by_id") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  createdBy User?    @relation("UserSecretTypes", fields: [createdById], references: [id], onDelete: SetNull)
+  secrets   Secret[]
+
+  @@index([createdById])
+  @@map("secret_types")
+}
+
+model Secret {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  description String?
+  typeId      String   @map("type_id") @db.Uuid
+  createdById String?  @map("created_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  type        SecretType         @relation(fields: [typeId], references: [id])
+  createdBy   User?              @relation("UserSecrets", fields: [createdById], references: [id], onDelete: SetNull)
+  versions    SecretVersion[]
+  attachments SecretAttachment[]
+
+  @@index([createdById])
+  @@index([typeId])
+  @@map("secrets")
+}
+
+model SecretVersion {
+  id            String   @id @default(uuid()) @db.Uuid
+  secretId      String   @map("secret_id") @db.Uuid
+  version       Int
+  encryptedData String   @map("encrypted_data")
+  iv            String
+  authTag       String   @map("auth_tag")
+  createdById   String?  @map("created_by_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+  isCurrent     Boolean  @default(false) @map("is_current")
+
+  // Relations
+  secret    Secret @relation(fields: [secretId], references: [id], onDelete: Cascade)
+  createdBy User?  @relation("UserSecretVersions", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([secretId, version])
+  @@index([secretId, isCurrent])
+  @@map("secret_versions")
+}
+
+model SecretAttachment {
+  id              String   @id @default(uuid()) @db.Uuid
+  secretId        String   @map("secret_id") @db.Uuid
+  storageObjectId String   @map("storage_object_id") @db.Uuid
+  label           String?
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  secret        Secret        @relation(fields: [secretId], references: [id], onDelete: Cascade)
+  storageObject StorageObject @relation(fields: [storageObjectId], references: [id], onDelete: Cascade)
+
+  @@unique([secretId, storageObjectId])
+  @@map("secret_attachments")
 }
