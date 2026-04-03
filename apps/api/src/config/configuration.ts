@@ -79,5 +79,10 @@ export default () => {
   },
 
   logLevel: process.env.LOG_LEVEL || 'info',
+
+  // Vault Encryption
+  vault: {
+    encryptionKey: process.env.VAULT_ENCRYPTION_KEY || '',
+  },
   };
 };
