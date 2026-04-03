@@ -361,6 +361,7 @@ model Secret {
   versions    SecretVersion[]
   attachments SecretAttachment[]
 
+  @@unique([name, createdById])
   @@index([createdById])
   @@index([typeId])
   @@map("secrets")
