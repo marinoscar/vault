@@ -19,6 +19,7 @@ const UserSettingsPage = lazy(() => import('./pages/UserSettingsPage'));
 const SystemSettingsPage = lazy(() => import('./pages/SystemSettingsPage'));
 const UserManagementPage = lazy(() => import('./pages/UserManagementPage'));
 const SecretsPage = lazy(() => import('./pages/SecretsPage'));
+const CreateSecretPage = lazy(() => import('./pages/CreateSecretPage'));
 const SecretDetailPage = lazy(() => import('./pages/SecretDetailPage'));
 const SecretTypesPage = lazy(() => import('./pages/SecretTypesPage'));
 
@@ -53,6 +54,7 @@ function AppRoutes() {
               <Route element={<Layout />}>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/secrets" element={<SecretsPage />} />
+                <Route path="/secrets/new" element={<CreateSecretPage />} />
                 <Route path="/secrets/:id" element={<SecretDetailPage />} />
                 <Route path="/secret-types" element={<SecretTypesPage />} />
                 <Route path="/settings" element={<UserSettingsPage />} />
