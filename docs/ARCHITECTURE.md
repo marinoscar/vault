@@ -1,10 +1,10 @@
 # System Architecture
 
-**Enterprise Application Foundation**
+**Vault**
 **Version:** 1.0
 **Last Updated:** January 2026
 
-This document provides a comprehensive architectural overview of the Enterprise Application Foundation designed for AI-assisted development with specialized coding agents.
+This document provides a comprehensive architectural overview of Vault designed for AI-assisted development with specialized coding agents.
 
 ---
 
@@ -32,7 +32,7 @@ This document provides a comprehensive architectural overview of the Enterprise 
 
 ### Purpose
 
-The Enterprise Application Foundation is a production-grade web application template that establishes:
+Vault is a production-grade web application template that establishes:
 
 - **Secure Authentication**: OAuth 2.0 with Google (extensible to other providers)
 - **Fine-Grained Authorization**: Role-Based Access Control (RBAC) with permissions

@@ -625,7 +625,7 @@ INITIAL_ADMIN_EMAIL=admin@example.com
 # ===================
 OTEL_ENABLED=true
 OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
-OTEL_SERVICE_NAME=enterprise-app-api
+OTEL_SERVICE_NAME=vault-api
 LOG_LEVEL=info
 
 # ===================

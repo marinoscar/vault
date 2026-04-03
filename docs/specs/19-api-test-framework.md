@@ -825,7 +825,7 @@ Create `apps/api/.env.test`:
 NODE_ENV=test
 
 # Test Database (use separate test database!)
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/enterprise_app_test
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/vault_test
 
 # JWT Configuration
 JWT_SECRET=test-secret-key-minimum-32-characters-long
@@ -899,11 +899,11 @@ version: '3.8'
 services:
   db-test:
     image: postgres:16-alpine
-    container_name: enterprise-app-db-test
+    container_name: vault-db-test
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: enterprise_app_test
+      POSTGRES_DB: vault_test
     ports:
       - "5433:5432"
     volumes:

@@ -17,7 +17,7 @@ export default () => {
     // Application
     nodeEnv: process.env.NODE_ENV || 'development',
     port: parseInt(process.env.PORT || '3000', 10),
-    appUrl: process.env.APP_URL || 'http://localhost:3535',
+    appUrl: process.env.APP_URL || 'https://vault.dev.marin.cr',
 
     // Database
     database: {
@@ -57,7 +57,7 @@ export default () => {
   otel: {
     enabled: process.env.OTEL_ENABLED === 'true',
     endpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
-    serviceName: process.env.OTEL_SERVICE_NAME || 'enterprise-app-api',
+    serviceName: process.env.OTEL_SERVICE_NAME || 'vault-api',
   },
 
   // Storage Configuration

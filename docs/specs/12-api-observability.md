@@ -61,7 +61,7 @@ export function initializeOtel(): NodeSDK | null {
   }
 
   const endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318';
-  const serviceName = process.env.OTEL_SERVICE_NAME || 'enterprise-app-api';
+  const serviceName = process.env.OTEL_SERVICE_NAME || 'vault-api';
 
   const resource = new Resource({
     [ATTR_SERVICE_NAME]: serviceName,
@@ -187,7 +187,7 @@ export const pinoConfig: pino.LoggerOptions = {
     bindings: (bindings) => ({
       pid: bindings.pid,
       host: bindings.hostname,
-      service: process.env.OTEL_SERVICE_NAME || 'enterprise-app-api',
+      service: process.env.OTEL_SERVICE_NAME || 'vault-api',
     }),
   },
   timestamp: pino.stdTimeFunctions.isoTime,
@@ -326,7 +326,7 @@ Create `apps/api/src/common/decorators/trace.decorator.ts`:
 ```typescript
 import { trace, SpanKind, SpanStatusCode } from '@opentelemetry/api';
 
-const tracer = trace.getTracer('enterprise-app-api');
+const tracer = trace.getTracer('vault-api');
 
 /**
  * Decorator to add tracing to a method
@@ -419,7 +419,7 @@ OTEL_ENABLED=true
 OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
 
 # Service identification
-OTEL_SERVICE_NAME=enterprise-app-api
+OTEL_SERVICE_NAME=vault-api
 
 # Log level
 LOG_LEVEL=info
@@ -448,7 +448,7 @@ Production (JSON):
   "requestId": "abc-123",
   "traceId": "1234567890abcdef",
   "spanId": "fedcba0987654321",
-  "service": "enterprise-app-api",
+  "service": "vault-api",
   "msg": "User login successful",
   "userId": "user-456"
 }

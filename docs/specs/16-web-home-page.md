@@ -337,7 +337,7 @@ export function AppBar() {
           }}
           onClick={() => navigate('/')}
         >
-          Enterprise App
+          Vault
         </Typography>
 
         {/* Spacer */}

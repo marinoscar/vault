@@ -1,4 +1,4 @@
-# Enterprise Application Foundation
+# Vault
 
 [![CI](https://github.com/marinoscar/EnterpriseAppBase/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/marinoscar/EnterpriseAppBase/actions/workflows/ci.yml)
 

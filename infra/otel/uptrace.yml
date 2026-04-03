@@ -17,7 +17,7 @@ pg:
 
 projects:
   - id: 1
-    name: Enterprise App
+    name: Vault
     token: project1_secret_token
     pinned_attrs:
       - service.name

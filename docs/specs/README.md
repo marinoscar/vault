@@ -1,6 +1,6 @@
 # Implementation Specifications
 
-This folder contains detailed specifications for building the Enterprise App Foundation. Each spec is designed to be self-contained and sized appropriately for an AI coding agent to implement.
+This folder contains detailed specifications for building Vault. Each spec is designed to be self-contained and sized appropriately for an AI coding agent to implement.
 
 ## Spec Organization
 

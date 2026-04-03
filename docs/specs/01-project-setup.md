@@ -75,7 +75,7 @@ apps/web/
 
 ```json
 {
-  "name": "enterprise-app",
+  "name": "vault",
   "private": true,
   "workspaces": ["apps/*"],
   "scripts": {

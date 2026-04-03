@@ -90,7 +90,7 @@ async function runE2ETests(): Promise<number> {
     POSTGRES_PORT: '5433',
     POSTGRES_USER: 'postgres',
     POSTGRES_PASSWORD: 'postgres',
-    POSTGRES_DB: 'enterprise_app_test',
+    POSTGRES_DB: 'vault_test',
     POSTGRES_SSL: 'false',
   };
 

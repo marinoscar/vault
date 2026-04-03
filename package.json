@@ -1,5 +1,5 @@
 {
-  "name": "enterprise-app",
+  "name": "vault",
   "private": true,
   "workspaces": ["apps/*", "tools/*"],
   "scripts": {

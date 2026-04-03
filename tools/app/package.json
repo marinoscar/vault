@@ -1,5 +1,5 @@
 {
-  "name": "@enterprise/app-cli",
+  "name": "@vault/cli",
   "version": "1.0.0",
   "description": "CLI for managing EnterpriseAppBase development environment and API",
   "type": "module",

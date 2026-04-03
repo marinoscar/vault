@@ -21,7 +21,7 @@ Create `apps/api/prisma/schema.prisma`:
 
 ```prisma
 // =============================================================================
-// Prisma Schema - Enterprise App Foundation
+// Prisma Schema - Vault
 // =============================================================================
 
 generator client {

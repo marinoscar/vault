@@ -48,8 +48,8 @@ async function bootstrap() {
 
   // Swagger/OpenAPI setup
   const config = new DocumentBuilder()
-    .setTitle('Enterprise App API')
-    .setDescription('API documentation for the Enterprise App Foundation')
+    .setTitle('Vault API')
+    .setDescription('API documentation for Vault')
     .setVersion('1.0')
     .addBearerAuth(
       {

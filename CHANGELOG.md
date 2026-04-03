@@ -47,7 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Initial Release
 
-Enterprise Application Foundation - A production-grade full-stack application foundation built with React, NestJS, and PostgreSQL.
+Vault - A production-grade full-stack application for secure secrets management built with React, NestJS, and PostgreSQL.
 
 ### Features
 
