@@ -1,0 +1,38 @@
+{
+  "name": "@vault/vaultcli",
+  "version": "1.0.0",
+  "description": "CLI tool for the Vault secrets management application — designed for humans and AI agents",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "vaultcli": "./bin/vaultcli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node bin/vaultcli.js",
+    "clean": "rimraf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "cli",
+    "vault",
+    "secrets",
+    "ai-agent",
+    "automation"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "rimraf": "^5.0.7",
+    "typescript": "^5.4.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
