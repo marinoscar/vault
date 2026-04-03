@@ -21,6 +21,7 @@ const UserManagementPage = lazy(() => import('./pages/UserManagementPage'));
 const SecretsPage = lazy(() => import('./pages/SecretsPage'));
 const CreateSecretPage = lazy(() => import('./pages/CreateSecretPage'));
 const SecretDetailPage = lazy(() => import('./pages/SecretDetailPage'));
+const EditSecretPage = lazy(() => import('./pages/EditSecretPage'));
 const SecretTypesPage = lazy(() => import('./pages/SecretTypesPage'));
 
 // Test login page (development only)
@@ -56,6 +57,7 @@ function AppRoutes() {
                 <Route path="/secrets" element={<SecretsPage />} />
                 <Route path="/secrets/new" element={<CreateSecretPage />} />
                 <Route path="/secrets/:id" element={<SecretDetailPage />} />
+                <Route path="/secrets/:id/edit" element={<EditSecretPage />} />
                 <Route path="/secret-types" element={<SecretTypesPage />} />
                 <Route path="/settings" element={<UserSettingsPage />} />
                 <Route path="/admin/users" element={<UserManagementPage />} />

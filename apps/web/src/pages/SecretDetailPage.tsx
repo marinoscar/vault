@@ -18,12 +18,10 @@ import {
   Button,
 } from '@mui/material';
 import { SecretDetail } from '../components/secrets/SecretDetail';
-import { SecretFormDialog } from '../components/secrets/SecretFormDialog';
 import { SecretVersionHistory } from '../components/secrets/SecretVersionHistory';
 import { SecretAttachments } from '../components/secrets/SecretAttachments';
 import { DynamicSecretFields } from '../components/secrets/DynamicSecretFields';
 import { useSecretDetail } from '../hooks/useSecretDetail';
-import { useSecretTypes } from '../hooks/useSecretTypes';
 import { deleteSecret } from '../services/api';
 import type { SecretVersionDetail } from '../types';
 
@@ -36,14 +34,11 @@ export default function SecretDetailPage() {
     isLoading,
     error,
     fetchSecret,
-    updateSecret,
     fetchVersions,
     fetchVersion,
     rollback,
   } = useSecretDetail();
-  const { types, fetchTypes } = useSecretTypes();
   const [activeTab, setActiveTab] = useState(0);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [versionDetailOpen, setVersionDetailOpen] = useState(false);
   const [selectedVersion, setSelectedVersion] = useState<SecretVersionDetail | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -52,29 +47,8 @@ export default function SecretDetailPage() {
     if (id) {
       fetchSecret(id);
       fetchVersions(id);
-      fetchTypes();
     }
-  }, [id, fetchSecret, fetchVersions, fetchTypes]);
-
-  const handleEdit = useCallback(
-    async (data: {
-      name: string;
-      description?: string;
-      typeId: string;
-      data: Record<string, unknown>;
-    }) => {
-      if (!id) return;
-      await updateSecret(id, {
-        name: data.name,
-        description: data.description,
-        data: data.data,
-      });
-      setEditDialogOpen(false);
-      setSuccessMessage('Secret updated');
-      fetchVersions(id);
-    },
-    [id, updateSecret, fetchVersions],
-  );
+  }, [id, fetchSecret, fetchVersions]);
 
   const handleDelete = useCallback(async () => {
     if (!id) return;
@@ -165,7 +139,7 @@ export default function SecretDetailPage() {
       {activeTab === 0 && (
         <SecretDetail
           secret={secret}
-          onEdit={() => setEditDialogOpen(true)}
+          onEdit={() => navigate(`/secrets/${id}/edit`)}
           onDelete={handleDelete}
         />
       )}
@@ -187,14 +161,6 @@ export default function SecretDetailPage() {
           onDelete={handleDeleteAttachment}
         />
       )}
-
-      <SecretFormDialog
-        open={editDialogOpen}
-        onClose={() => setEditDialogOpen(false)}
-        onSave={handleEdit}
-        secretTypes={types}
-        editSecret={secret}
-      />
 
       {/* Version detail dialog */}
       <Dialog
