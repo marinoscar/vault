@@ -23,6 +23,8 @@ const CreateSecretPage = lazy(() => import('./pages/CreateSecretPage'));
 const SecretDetailPage = lazy(() => import('./pages/SecretDetailPage'));
 const EditSecretPage = lazy(() => import('./pages/EditSecretPage'));
 const SecretTypesPage = lazy(() => import('./pages/SecretTypesPage'));
+const CreateSecretTypePage = lazy(() => import('./pages/CreateSecretTypePage'));
+const EditSecretTypePage = lazy(() => import('./pages/EditSecretTypePage'));
 
 // Test login page (development only)
 const TestLoginPage = import.meta.env.PROD
@@ -59,6 +61,8 @@ function AppRoutes() {
                 <Route path="/secrets/:id" element={<SecretDetailPage />} />
                 <Route path="/secrets/:id/edit" element={<EditSecretPage />} />
                 <Route path="/secret-types" element={<SecretTypesPage />} />
+                <Route path="/secret-types/new" element={<CreateSecretTypePage />} />
+                <Route path="/secret-types/:id/edit" element={<EditSecretTypePage />} />
                 <Route path="/settings" element={<UserSettingsPage />} />
                 <Route path="/admin/users" element={<UserManagementPage />} />
                 <Route path="/admin/settings" element={<SystemSettingsPage />} />
