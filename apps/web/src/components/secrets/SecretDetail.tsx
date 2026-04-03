@@ -16,6 +16,7 @@ import {
 import {
   Edit as EditIcon,
   Delete as DeleteIcon,
+  Download as DownloadIcon,
 } from '@mui/icons-material';
 import { DynamicSecretFields } from './DynamicSecretFields';
 import { SecretTypeIcon } from './SecretTypeIcon';
@@ -33,6 +34,21 @@ export function SecretDetail({ secret, onEdit, onDelete }: SecretDetailProps) {
   const handleDeleteConfirm = () => {
     setDeleteDialogOpen(false);
     onDelete();
+  };
+
+  const handleDownloadJson = () => {
+    const payload = {
+      name: secret.name,
+      type: secret.type?.name ?? 'unknown',
+      ...secret.values,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${secret.name.replace(/[^a-zA-Z0-9_-]/g, '_')}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -112,6 +128,13 @@ export function SecretDetail({ secret, onEdit, onDelete }: SecretDetailProps) {
         </CardContent>
 
         <CardActions sx={{ justifyContent: 'flex-end', px: 2, pb: 2 }}>
+          <Button
+            variant="outlined"
+            startIcon={<DownloadIcon />}
+            onClick={handleDownloadJson}
+          >
+            Download JSON
+          </Button>
           <Button
             variant="outlined"
             startIcon={<EditIcon />}

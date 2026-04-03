@@ -10,7 +10,10 @@ import {
 import {
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
+  ContentCopy as CopyIcon,
+  Check as CheckIcon,
 } from '@mui/icons-material';
+import { Tooltip } from '@mui/material';
 import type { FieldDefinition } from '../../types';
 
 interface DynamicSecretFieldsProps {
@@ -23,6 +26,22 @@ interface DynamicSecretFieldsProps {
 
 interface SensitiveDisplayProps {
   value: string;
+}
+
+function CopyButton({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    navigator.clipboard.writeText(value);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <Tooltip title={copied ? 'Copied' : 'Copy'}>
+      <IconButton size="small" onClick={handleCopy} aria-label="Copy to clipboard">
+        {copied ? <CheckIcon fontSize="small" color="success" /> : <CopyIcon fontSize="small" />}
+      </IconButton>
+    </Tooltip>
+  );
 }
 
 function SensitiveDisplay({ value }: SensitiveDisplayProps) {
@@ -46,6 +65,7 @@ function SensitiveDisplay({ value }: SensitiveDisplayProps) {
           <VisibilityOffIcon fontSize="small" />
         </IconButton>
       )}
+      <CopyButton value={value} />
     </Box>
   );
 }
@@ -94,9 +114,12 @@ export function DynamicSecretFields({
               ) : field.sensitive ? (
                 <SensitiveDisplay value={value} />
               ) : (
-                <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                  {value}
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                    {value}
+                  </Typography>
+                  <CopyButton value={value} />
+                </Box>
               )}
             </Box>
           );
