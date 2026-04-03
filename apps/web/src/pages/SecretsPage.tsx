@@ -1,6 +1,6 @@
 import { useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Container, Typography, Alert } from '@mui/material';
+import { Container, Typography, Alert, Breadcrumbs, Link } from '@mui/material';
 import { SecretsList } from '../components/secrets/SecretsList';
 import { useSecrets } from '../hooks/useSecrets';
 import { useSecretTypes } from '../hooks/useSecretTypes';
@@ -48,6 +48,13 @@ export default function SecretsPage() {
 
   return (
     <Container maxWidth="lg" sx={{ py: 3 }}>
+      <Breadcrumbs sx={{ mb: 2 }}>
+        <Link color="inherit" href="/" onClick={(e) => { e.preventDefault(); navigate('/'); }}>
+          Home
+        </Link>
+        <Typography color="text.primary">Secrets</Typography>
+      </Breadcrumbs>
+
       <Typography variant="h4" gutterBottom>
         Secrets
       </Typography>

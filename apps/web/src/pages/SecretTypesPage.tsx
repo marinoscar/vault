@@ -1,11 +1,13 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Container, Typography, Alert, Snackbar } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
+import { Container, Typography, Alert, Snackbar, Breadcrumbs, Link } from '@mui/material';
 import { SecretTypesList } from '../components/secret-types/SecretTypesList';
 import { SecretTypeFormDialog } from '../components/secret-types/SecretTypeFormDialog';
 import { useSecretTypes } from '../hooks/useSecretTypes';
 import type { SecretType, FieldDefinition } from '../types';
 
 export default function SecretTypesPage() {
+  const navigate = useNavigate();
   const { types, isLoading, error, fetchTypes, createType, updateType, deleteType } =
     useSecretTypes();
   const [formOpen, setFormOpen] = useState(false);
@@ -70,6 +72,13 @@ export default function SecretTypesPage() {
 
   return (
     <Container maxWidth="lg" sx={{ py: 3 }}>
+      <Breadcrumbs sx={{ mb: 2 }}>
+        <Link color="inherit" href="/" onClick={(e) => { e.preventDefault(); navigate('/'); }}>
+          Home
+        </Link>
+        <Typography color="text.primary">Secret Types</Typography>
+      </Breadcrumbs>
+
       <Typography variant="h4" gutterBottom>
         Secret Types
       </Typography>

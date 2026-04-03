@@ -117,24 +117,13 @@ export default function EditSecretPage() {
   return (
     <Container maxWidth="md" sx={{ py: 3 }}>
       <Breadcrumbs sx={{ mb: 2 }}>
-        <Link
-          color="inherit"
-          href="/secrets"
-          onClick={(e) => {
-            e.preventDefault();
-            navigate('/secrets');
-          }}
-        >
+        <Link color="inherit" href="/" onClick={(e) => { e.preventDefault(); navigate('/'); }}>
+          Home
+        </Link>
+        <Link color="inherit" href="/secrets" onClick={(e) => { e.preventDefault(); navigate('/secrets'); }}>
           Secrets
         </Link>
-        <Link
-          color="inherit"
-          href={`/secrets/${id}`}
-          onClick={(e) => {
-            e.preventDefault();
-            navigate(`/secrets/${id}`);
-          }}
-        >
+        <Link color="inherit" href={`/secrets/${id}`} onClick={(e) => { e.preventDefault(); navigate(`/secrets/${id}`); }}>
           {secret.name}
         </Link>
         <Typography color="text.primary">Edit</Typography>

@@ -105,14 +105,10 @@ export default function SecretDetailPage() {
   return (
     <Container maxWidth="lg" sx={{ py: 3 }}>
       <Breadcrumbs sx={{ mb: 2 }}>
-        <Link
-          color="inherit"
-          href="/secrets"
-          onClick={(e) => {
-            e.preventDefault();
-            navigate('/secrets');
-          }}
-        >
+        <Link color="inherit" href="/" onClick={(e) => { e.preventDefault(); navigate('/'); }}>
+          Home
+        </Link>
+        <Link color="inherit" href="/secrets" onClick={(e) => { e.preventDefault(); navigate('/secrets'); }}>
           Secrets
         </Link>
         <Typography color="text.primary">{secret.name}</Typography>
