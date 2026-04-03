@@ -49,12 +49,14 @@ export function SecretDetail({ secret, onEdit, onDelete }: SecretDetailProps) {
                 </Typography>
               )}
             </Box>
-            <Chip
-              icon={<SecretTypeIcon icon={secret.type.icon} fontSize="small" />}
-              label={secret.type.name}
-              size="small"
-              variant="outlined"
-            />
+            {secret.type && (
+              <Chip
+                icon={<SecretTypeIcon icon={secret.type.icon} fontSize="small" />}
+                label={secret.type.name}
+                size="small"
+                variant="outlined"
+              />
+            )}
           </Box>
 
           <Box sx={{ display: 'flex', gap: 3, mb: 3, flexWrap: 'wrap' }}>
@@ -93,7 +95,7 @@ export function SecretDetail({ secret, onEdit, onDelete }: SecretDetailProps) {
           <Divider sx={{ mb: 3 }} />
 
           {/* Secret field data */}
-          {secret.type.fields.length > 0 ? (
+          {(secret.type?.fields?.length ?? 0) > 0 ? (
             <DynamicSecretFields
               fields={secret.type.fields}
               data={secret.data}

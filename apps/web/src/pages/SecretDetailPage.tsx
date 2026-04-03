@@ -126,7 +126,7 @@ export default function SecretDetailPage() {
     );
   }
 
-  const showAttachments = secret.type.allowAttachments;
+  const showAttachments = secret.type?.allowAttachments ?? false;
 
   return (
     <Container maxWidth="lg" sx={{ py: 3 }}>
@@ -212,7 +212,7 @@ export default function SecretDetailPage() {
                 {selectedVersion.createdBy && ` by ${selectedVersion.createdBy.email}`}
               </Typography>
               <DynamicSecretFields
-                fields={secret.type.fields}
+                fields={secret.type?.fields ?? []}
                 data={selectedVersion.data}
                 onChange={() => {}}
                 readOnly
