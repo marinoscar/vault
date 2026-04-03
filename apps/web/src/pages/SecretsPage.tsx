@@ -1,6 +1,17 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Container, Typography, Alert, Breadcrumbs, Link } from '@mui/material';
+import {
+  Container,
+  Typography,
+  Alert,
+  Breadcrumbs,
+  Link,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+} from '@mui/material';
 import { SecretsList } from '../components/secrets/SecretsList';
 import { useSecrets } from '../hooks/useSecrets';
 import { useSecretTypes } from '../hooks/useSecretTypes';
@@ -19,6 +30,11 @@ export default function SecretsPage() {
     deleteSecret,
   } = useSecrets();
   const { types, fetchTypes } = useSecretTypes();
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+
+  const deleteTargetName = deleteTargetId
+    ? secrets.find((s) => s.id === deleteTargetId)?.name ?? 'this secret'
+    : '';
 
   useEffect(() => {
     fetchSecrets();
@@ -39,12 +55,11 @@ export default function SecretsPage() {
     [navigate],
   );
 
-  const handleDelete = useCallback(
-    async (id: string) => {
-      await deleteSecret(id);
-    },
-    [deleteSecret],
-  );
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!deleteTargetId) return;
+    await deleteSecret(deleteTargetId);
+    setDeleteTargetId(null);
+  }, [deleteTargetId, deleteSecret]);
 
   return (
     <Container maxWidth="lg" sx={{ py: 3 }}>
@@ -76,8 +91,28 @@ export default function SecretsPage() {
         onFetch={handleFetch}
         onRowClick={handleRowClick}
         onCreateClick={() => navigate('/secrets/new')}
-        onDeleteClick={handleDelete}
+        onDeleteClick={(id) => setDeleteTargetId(id)}
       />
+
+      <Dialog
+        open={!!deleteTargetId}
+        onClose={() => setDeleteTargetId(null)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Delete Secret</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to delete <strong>{deleteTargetName}</strong>? This action cannot be undone and all versions will be permanently lost.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteTargetId(null)}>Cancel</Button>
+          <Button color="error" variant="contained" onClick={handleDeleteConfirm}>
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 }
