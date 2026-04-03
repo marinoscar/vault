@@ -45,6 +45,19 @@ const PERMISSIONS = [
   { name: 'storage:read', description: 'Read object metadata, get download URLs' },
   { name: 'storage:write', description: 'Upload, update metadata' },
   { name: 'storage:delete_any', description: 'Admin: delete any object' },
+
+  // Secret types management
+  { name: 'secret_types:read', description: 'View secret types' },
+  { name: 'secret_types:write', description: 'Create and update secret types' },
+  { name: 'secret_types:delete', description: 'Delete secret types' },
+
+  // Secrets management
+  { name: 'secrets:read', description: 'Read own secrets' },
+  { name: 'secrets:write', description: 'Create and update own secrets' },
+  { name: 'secrets:delete', description: 'Delete own secrets' },
+  { name: 'secrets:read_any', description: 'Admin: read any secret' },
+  { name: 'secrets:write_any', description: 'Admin: update any secret' },
+  { name: 'secrets:delete_any', description: 'Admin: delete any secret' },
 ] as const;
 
 // Role to permissions mapping
@@ -62,17 +75,34 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'storage:read',
     'storage:write',
     'storage:delete_any',
+    'secret_types:read',
+    'secret_types:write',
+    'secret_types:delete',
+    'secrets:read',
+    'secrets:write',
+    'secrets:delete',
+    'secrets:read_any',
+    'secrets:write_any',
+    'secrets:delete_any',
   ],
   contributor: [
     'user_settings:read',
     'user_settings:write',
     'storage:read',
     'storage:write',
+    'secret_types:read',
+    'secret_types:write',
+    'secret_types:delete',
+    'secrets:read',
+    'secrets:write',
+    'secrets:delete',
   ],
   viewer: [
     'user_settings:read',
     'user_settings:write',
     'storage:read',
+    'secret_types:read',
+    'secrets:read',
   ],
 };
 
@@ -186,6 +216,98 @@ async function seedInitialAdminAllowlist() {
   }
 }
 
+async function seedSecretTypes() {
+  console.log('Seeding system secret types...');
+
+  const systemTypes = [
+    {
+      name: 'Credential',
+      description: 'Username and password credentials',
+      icon: 'Key',
+      fields: [
+        { name: 'username', label: 'Username', type: 'string', required: true, sensitive: false },
+        { name: 'password', label: 'Password', type: 'string', required: true, sensitive: true },
+        { name: 'url', label: 'URL', type: 'string', required: false, sensitive: false },
+        { name: 'notes', label: 'Notes', type: 'string', required: false, sensitive: false },
+      ],
+      allowAttachments: false,
+    },
+    {
+      name: 'API Key',
+      description: 'API keys and access tokens',
+      icon: 'VpnKey',
+      fields: [
+        { name: 'key', label: 'API Key', type: 'string', required: true, sensitive: true },
+        { name: 'provider', label: 'Provider', type: 'string', required: false, sensitive: false },
+        { name: 'notes', label: 'Notes', type: 'string', required: false, sensitive: false },
+      ],
+      allowAttachments: false,
+    },
+    {
+      name: 'Card',
+      description: 'Credit or debit card information',
+      icon: 'CreditCard',
+      fields: [
+        { name: 'cardholder_name', label: 'Cardholder Name', type: 'string', required: true, sensitive: false },
+        { name: 'number', label: 'Card Number', type: 'string', required: true, sensitive: true },
+        { name: 'exp_month', label: 'Expiration Month', type: 'string', required: true, sensitive: false },
+        { name: 'exp_year', label: 'Expiration Year', type: 'string', required: true, sensitive: false },
+        { name: 'cvv', label: 'CVV', type: 'string', required: true, sensitive: true },
+        { name: 'notes', label: 'Notes', type: 'string', required: false, sensitive: false },
+      ],
+      allowAttachments: false,
+    },
+    {
+      name: 'Token',
+      description: 'Authentication tokens',
+      icon: 'Token',
+      fields: [
+        { name: 'token', label: 'Token', type: 'string', required: true, sensitive: true },
+        { name: 'provider', label: 'Provider', type: 'string', required: false, sensitive: false },
+        { name: 'notes', label: 'Notes', type: 'string', required: false, sensitive: false },
+      ],
+      allowAttachments: false,
+    },
+    {
+      name: 'Note',
+      description: 'Secure notes',
+      icon: 'Description',
+      fields: [
+        { name: 'content', label: 'Content', type: 'string', required: true, sensitive: false },
+      ],
+      allowAttachments: false,
+    },
+    {
+      name: 'Document',
+      description: 'Documents with file attachments',
+      icon: 'AttachFile',
+      fields: [
+        { name: 'title', label: 'Title', type: 'string', required: true, sensitive: false },
+        { name: 'notes', label: 'Notes', type: 'string', required: false, sensitive: false },
+      ],
+      allowAttachments: true,
+    },
+  ];
+
+  let count = 0;
+  for (const typeData of systemTypes) {
+    const existing = await prisma.secretType.findFirst({
+      where: { name: typeData.name, isSystem: true },
+    });
+    if (!existing) {
+      await prisma.secretType.create({
+        data: {
+          ...typeData,
+          isSystem: true,
+        },
+      });
+      count++;
+    }
+  }
+
+  console.log(`✓ Seeded ${count} system secret types (${systemTypes.length - count} already existed)`);
+}
+
 // =============================================================================
 // Main Seed Function
 // =============================================================================
@@ -198,6 +320,7 @@ async function main() {
   await seedRolePermissions();
   await seedSystemSettings();
   await seedInitialAdminAllowlist();
+  await seedSecretTypes();
 
   console.log('\n✓ Database seeding completed successfully');
 }

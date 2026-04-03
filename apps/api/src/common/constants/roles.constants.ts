@@ -38,6 +38,19 @@ export const PERMISSIONS = {
   STORAGE_READ: 'storage:read',
   STORAGE_WRITE: 'storage:write',
   STORAGE_DELETE_ANY: 'storage:delete_any',
+
+  // Secret Types
+  SECRET_TYPES_READ: 'secret_types:read',
+  SECRET_TYPES_WRITE: 'secret_types:write',
+  SECRET_TYPES_DELETE: 'secret_types:delete',
+
+  // Secrets
+  SECRETS_READ: 'secrets:read',
+  SECRETS_WRITE: 'secrets:write',
+  SECRETS_DELETE: 'secrets:delete',
+  SECRETS_READ_ANY: 'secrets:read_any',
+  SECRETS_WRITE_ANY: 'secrets:write_any',
+  SECRETS_DELETE_ANY: 'secrets:delete_any',
 } as const;
 
 export type PermissionName = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
