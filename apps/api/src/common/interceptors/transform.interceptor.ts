@@ -24,19 +24,12 @@ export class TransformInterceptor<T>
     next: CallHandler,
   ): Observable<ApiResponse<T>> {
     return next.handle().pipe(
-      map((data) => {
-        // If already wrapped, return as-is
-        if (data && typeof data === 'object' && 'data' in data) {
-          return data;
-        }
-
-        return {
-          data,
-          meta: {
-            timestamp: new Date().toISOString(),
-          },
-        };
-      }),
+      map((data) => ({
+        data,
+        meta: {
+          timestamp: new Date().toISOString(),
+        },
+      })),
     );
   }
 }
