@@ -51,6 +51,14 @@ export const PERMISSIONS = {
   SECRETS_READ_ANY: 'secrets:read_any',
   SECRETS_WRITE_ANY: 'secrets:write_any',
   SECRETS_DELETE_ANY: 'secrets:delete_any',
+
+  // Media
+  MEDIA_READ: 'media:read',
+  MEDIA_WRITE: 'media:write',
+  MEDIA_DELETE: 'media:delete',
+  MEDIA_READ_ANY: 'media:read_any',
+  MEDIA_WRITE_ANY: 'media:write_any',
+  MEDIA_DELETE_ANY: 'media:delete_any',
 } as const;
 
 export type PermissionName = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
