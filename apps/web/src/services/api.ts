@@ -204,7 +204,6 @@ import type {
   PatDurationUnit,
   SecretType,
   SecretDetail,
-  SecretListItem,
   SecretVersion,
   SecretVersionDetail,
   SecretAttachment,

@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Container, Typography, Box, Snackbar, Alert } from '@mui/material';
+import { Container, Typography, Snackbar, Alert } from '@mui/material';
 import { SecretsList } from '../components/secrets/SecretsList';
 import { SecretFormDialog } from '../components/secrets/SecretFormDialog';
 import { useSecrets } from '../hooks/useSecrets';
