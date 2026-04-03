@@ -108,7 +108,7 @@ export class SecretsService {
     }
 
     if (secret.createdById !== userId) {
-      const anyPermission = requiredPermission.replace(/(:[^:]+)$/, '_any');
+      const anyPermission = requiredPermission.replace(/:([^:]+)$/, ':$1_any');
       if (!userPermissions.includes(anyPermission)) {
         throw new ForbiddenException('You do not have access to this secret');
       }
@@ -307,7 +307,7 @@ export class SecretsService {
         type: true,
         versions: {
           where: { isCurrent: true },
-          include: { createdBy: { select: { id: true, email: true, name: true } } },
+          include: { createdBy: { select: { id: true, email: true, displayName: true } } },
         },
         attachments: {
           include: {
@@ -476,7 +476,7 @@ export class SecretsService {
         isCurrent: true,
         createdAt: true,
         createdBy: {
-          select: { id: true, email: true, name: true },
+          select: { id: true, email: true, displayName: true },
         },
       },
     });
@@ -503,7 +503,7 @@ export class SecretsService {
     const version = await this.prisma.secretVersion.findUnique({
       where: { id: versionId },
       include: {
-        createdBy: { select: { id: true, email: true, name: true } },
+        createdBy: { select: { id: true, email: true, displayName: true } },
       },
     });
 
