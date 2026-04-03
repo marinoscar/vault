@@ -11,7 +11,7 @@ interface EncryptedData {
 @Injectable()
 export class CryptoService implements OnModuleInit {
   private readonly logger = new Logger(CryptoService.name);
-  private encryptionKey: Buffer;
+  private encryptionKey!: Buffer;
 
   constructor(private readonly config: ConfigService) {}
 
