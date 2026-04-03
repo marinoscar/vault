@@ -19,6 +19,7 @@ import {
 import {
   Add as AddIcon,
   Delete as DeleteIcon,
+  Edit as EditIcon,
 } from '@mui/icons-material';
 import { SecretTypeIcon } from './SecretTypeIcon';
 import type { SecretListItem, SecretType } from '../../types';
@@ -219,15 +220,26 @@ export function SecretsList({
                       </Tooltip>
                     </TableCell>
                     <TableCell align="right" onClick={(e) => e.stopPropagation()}>
-                      {onDeleteClick && (
+                      <Tooltip title="View / Edit">
                         <IconButton
                           size="small"
-                          color="error"
-                          onClick={() => onDeleteClick(secret.id)}
-                          aria-label="Delete secret"
+                          onClick={() => onRowClick(secret.id)}
+                          aria-label="Edit secret"
                         >
-                          <DeleteIcon fontSize="small" />
+                          <EditIcon fontSize="small" />
                         </IconButton>
+                      </Tooltip>
+                      {onDeleteClick && (
+                        <Tooltip title="Delete">
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => onDeleteClick(secret.id)}
+                            aria-label="Delete secret"
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
                       )}
                     </TableCell>
                   </TableRow>

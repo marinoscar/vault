@@ -18,6 +18,7 @@ export default function SecretsPage() {
     error,
     fetchSecrets,
     createSecret,
+    deleteSecret,
   } = useSecrets();
   const { types, fetchTypes } = useSecretTypes();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -40,6 +41,14 @@ export default function SecretsPage() {
       navigate(`/secrets/${id}`);
     },
     [navigate],
+  );
+
+  const handleDelete = useCallback(
+    async (id: string) => {
+      await deleteSecret(id);
+      setSuccessMessage('Secret deleted successfully');
+    },
+    [deleteSecret],
   );
 
   const handleCreate = useCallback(
@@ -79,6 +88,7 @@ export default function SecretsPage() {
         onFetch={handleFetch}
         onRowClick={handleRowClick}
         onCreateClick={() => setCreateDialogOpen(true)}
+        onDeleteClick={handleDelete}
       />
 
       <SecretFormDialog
