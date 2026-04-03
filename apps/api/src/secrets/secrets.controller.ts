@@ -74,6 +74,20 @@ export class SecretsController {
     return { data: result };
   }
 
+  @Get('by-name/:name')
+  @Auth({ permissions: [PERMISSIONS.SECRETS_READ] })
+  @ApiOperation({ summary: 'Get secret by name (with decrypted current version data)' })
+  @ApiParam({ name: 'name', type: String, description: 'Secret name' })
+  @ApiResponse({ status: 200, description: 'Secret with decrypted data' })
+  @ApiResponse({ status: 404, description: 'Secret not found' })
+  async findByName(
+    @Param('name') name: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    const result = await this.secretsService.findByName(name, user.id, user.permissions);
+    return { data: result };
+  }
+
   @Get(':id')
   @Auth({ permissions: [PERMISSIONS.SECRETS_READ] })
   @ApiOperation({ summary: 'Get secret with decrypted current version data' })

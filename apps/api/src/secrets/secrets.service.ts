@@ -4,6 +4,7 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
@@ -180,6 +181,14 @@ export class SecretsService {
     const fields = secretType.fields as unknown as FieldDefinition[];
     this.validateDataAgainstType(dto.data as Record<string, unknown>, fields);
 
+    // Check name uniqueness per user
+    const existing = await this.prisma.secret.findUnique({
+      where: { name_createdById: { name: dto.name, createdById: userId } },
+    });
+    if (existing) {
+      throw new ConflictException(`A secret named "${dto.name}" already exists`);
+    }
+
     // Encrypt the data
     const plaintext = JSON.stringify(dto.data);
     const { ciphertext, iv, authTag } = this.crypto.encrypt(plaintext);
@@ -287,6 +296,32 @@ export class SecretsService {
   }
 
   /**
+   * Look up a secret by name for the calling user (or any user for admins with secrets:read_any).
+   * Returns full detail with decrypted current version data.
+   */
+  async findByName(
+    name: string,
+    userId: string,
+    userPermissions: string[],
+  ) {
+    const canReadAny = userPermissions.includes(PERMISSIONS.SECRETS_READ_ANY);
+
+    const secret = await this.prisma.secret.findFirst({
+      where: {
+        name,
+        ...(canReadAny ? {} : { createdById: userId }),
+      },
+    });
+
+    if (!secret) {
+      throw new NotFoundException(`Secret "${name}" not found`);
+    }
+
+    // Reuse findOne for full detail with decryption
+    return this.findOne(secret.id, userId, userPermissions);
+  }
+
+  /**
    * Get full secret detail including decrypted current version data.
    */
   async findOne(
@@ -357,6 +392,15 @@ export class SecretsService {
 
     if (!existingSecret) {
       throw new NotFoundException('Secret not found');
+    }
+
+    if (dto.name !== undefined && dto.name !== existingSecret.name) {
+      const conflict = await this.prisma.secret.findUnique({
+        where: { name_createdById: { name: dto.name, createdById: existingSecret.createdById! } },
+      });
+      if (conflict) {
+        throw new ConflictException(`A secret named "${dto.name}" already exists`);
+      }
     }
 
     let newEncrypted: { ciphertext: string; iv: string; authTag: string } | null = null;
