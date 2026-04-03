@@ -52,7 +52,8 @@ export class SecretsController {
     @Body() dto: CreateSecretDto,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.secretsService.create(dto, user.id, user.permissions);
+    const result = await this.secretsService.create(dto, user.id, user.permissions);
+    return { data: result };
   }
 
   @Get()
@@ -69,7 +70,8 @@ export class SecretsController {
     @Query(new ZodValidationPipe(secretListQuerySchema)) query: SecretListQueryDto,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.secretsService.findAll(query, user.id, user.permissions);
+    const result = await this.secretsService.findAll(query, user.id, user.permissions);
+    return { data: result };
   }
 
   @Get(':id')
@@ -83,7 +85,8 @@ export class SecretsController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.secretsService.findOne(id, user.id, user.permissions);
+    const result = await this.secretsService.findOne(id, user.id, user.permissions);
+    return { data: result };
   }
 
   @Put(':id')
@@ -101,7 +104,8 @@ export class SecretsController {
     @Body() dto: UpdateSecretDto,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.secretsService.update(id, dto, user.id, user.permissions);
+    const result = await this.secretsService.update(id, dto, user.id, user.permissions);
+    return { data: result };
   }
 
   @Delete(':id')
@@ -132,7 +136,8 @@ export class SecretsController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.secretsService.findVersions(id, user.id, user.permissions);
+    const result = await this.secretsService.findVersions(id, user.id, user.permissions);
+    return { data: result };
   }
 
   @Get(':id/versions/:versionId')
@@ -147,7 +152,8 @@ export class SecretsController {
     @Param('versionId', ParseUUIDPipe) versionId: string,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.secretsService.findVersion(id, versionId, user.id, user.permissions);
+    const result = await this.secretsService.findVersion(id, versionId, user.id, user.permissions);
+    return { data: result };
   }
 
   @Post(':id/versions/:versionId/rollback')
@@ -164,7 +170,8 @@ export class SecretsController {
     @Param('versionId', ParseUUIDPipe) versionId: string,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.secretsService.rollback(id, versionId, user.id, user.permissions);
+    const result = await this.secretsService.rollback(id, versionId, user.id, user.permissions);
+    return { data: result };
   }
 
   // ---------------------------------------------------------------------------
@@ -182,7 +189,8 @@ export class SecretsController {
     @Body() dto: LinkAttachmentDto,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.secretsService.linkAttachment(id, dto, user.id, user.permissions);
+    const result = await this.secretsService.linkAttachment(id, dto, user.id, user.permissions);
+    return { data: result };
   }
 
   @Get(':id/attachments')
@@ -195,7 +203,7 @@ export class SecretsController {
     @CurrentUser() user: RequestUser,
   ) {
     const secret = await this.secretsService.findOne(id, user.id, user.permissions);
-    return secret.attachments ?? [];
+    return { data: secret.attachments ?? [] };
   }
 
   @Delete(':id/attachments/:attachmentId')

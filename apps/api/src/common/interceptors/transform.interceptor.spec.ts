@@ -251,21 +251,35 @@ describe('TransformInterceptor', () => {
     });
   });
 
-  describe('Responses with data property', () => {
-    it('should wrap responses that have a data property like any other response', (done) => {
+  describe('Already wrapped responses', () => {
+    it('should not double-wrap responses that already have data property', (done) => {
       const context = createMockContext();
-      const secretResponse = {
-        id: '123',
-        name: 'my-secret',
-        data: { key: 'abc123' },
+      const alreadyWrapped = {
+        data: { id: 1, name: 'test' },
+        meta: { timestamp: new Date().toISOString() },
       };
-      const callHandler = createMockCallHandler(secretResponse);
+      const callHandler = createMockCallHandler(alreadyWrapped);
 
       interceptor.intercept(context, callHandler).subscribe((result: ApiResponse<any>) => {
-        expect(result.data).toEqual(secretResponse);
-        expect(result.data.id).toBe('123');
-        expect(result.data.data.key).toBe('abc123');
-        expect(result.meta).toBeDefined();
+        expect(result).toEqual(alreadyWrapped);
+        done();
+      });
+    });
+
+    it('should return as-is when response has data property', (done) => {
+      const context = createMockContext();
+      const customResponse = {
+        data: [1, 2, 3],
+        meta: {
+          timestamp: '2024-01-01T00:00:00.000Z',
+          total: 3,
+        },
+      };
+      const callHandler = createMockCallHandler(customResponse);
+
+      interceptor.intercept(context, callHandler).subscribe((result: ApiResponse<any>) => {
+        expect(result).toBe(customResponse);
+        expect(result.data).toEqual([1, 2, 3]);
         done();
       });
     });

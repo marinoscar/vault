@@ -213,7 +213,7 @@ export default function SecretDetailPage() {
               </Typography>
               <DynamicSecretFields
                 fields={secret.type?.fields ?? []}
-                data={selectedVersion.data}
+                data={selectedVersion.values}
                 onChange={() => {}}
                 readOnly
               />

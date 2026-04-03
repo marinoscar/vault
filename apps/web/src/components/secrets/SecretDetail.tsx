@@ -98,7 +98,7 @@ export function SecretDetail({ secret, onEdit, onDelete }: SecretDetailProps) {
           {(secret.type?.fields?.length ?? 0) > 0 ? (
             <DynamicSecretFields
               fields={secret.type.fields}
-              data={secret.data}
+              data={secret.values}
               onChange={() => {
                 // read-only — no-op
               }}

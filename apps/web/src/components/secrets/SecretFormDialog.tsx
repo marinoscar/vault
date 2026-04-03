@@ -68,7 +68,7 @@ export function SecretFormDialog({
       setName(editSecret.name);
       setDescription(editSecret.description ?? '');
       setSelectedTypeId(editSecret.type?.id ?? '');
-      setFieldData(editSecret.data ?? {});
+      setFieldData(editSecret.values ?? {});
       setFieldErrors({});
       setFormError(null);
     } else if (open && !editSecret) {

@@ -219,10 +219,10 @@ export class SecretsService {
 
     this.logger.log(`Secret created: ${secret.id}`);
 
-    // Return with decrypted data attached
+    // Return with decrypted values attached
     return {
       ...secret,
-      data: dto.data,
+      values: dto.data,
     };
   }
 
@@ -322,11 +322,11 @@ export class SecretsService {
     }
 
     const currentVersion = secret.versions[0];
-    const data = currentVersion ? this.decryptVersionData(currentVersion) : null;
+    const values = currentVersion ? this.decryptVersionData(currentVersion) : null;
 
     return {
       ...secret,
-      data,
+      values,
       currentVersion: currentVersion?.version ?? null,
     };
   }
@@ -519,7 +519,7 @@ export class SecretsService {
       isCurrent: version.isCurrent,
       createdAt: version.createdAt,
       createdBy: version.createdBy,
-      data,
+      values: data,
     };
   }
 

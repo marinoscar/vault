@@ -167,7 +167,7 @@ export interface SecretAttachment {
 }
 
 export interface SecretDetail extends SecretListItem {
-  data: Record<string, unknown>;
+  values: Record<string, unknown>;
   createdBy: { id: string; email: string } | null;
   attachments: SecretAttachment[];
 }
@@ -181,7 +181,7 @@ export interface SecretVersion {
 }
 
 export interface SecretVersionDetail extends SecretVersion {
-  data: Record<string, unknown>;
+  values: Record<string, unknown>;
 }
 
 export interface SecretsResponse {
