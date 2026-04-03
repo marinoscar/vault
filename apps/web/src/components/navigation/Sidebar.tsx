@@ -16,6 +16,8 @@ import {
   Settings as SettingsIcon,
   AdminPanelSettings as AdminIcon,
   People as PeopleIcon,
+  VpnKey as VpnKeyIcon,
+  Category as CategoryIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -38,6 +40,18 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       label: 'Home',
       icon: <HomeIcon />,
       path: '/',
+      visible: true,
+    },
+    {
+      label: 'Secrets',
+      icon: <VpnKeyIcon />,
+      path: '/secrets',
+      visible: true,
+    },
+    {
+      label: 'Secret Types',
+      icon: <CategoryIcon />,
+      path: '/secret-types',
       visible: true,
     },
     {
