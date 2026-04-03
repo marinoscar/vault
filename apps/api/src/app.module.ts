@@ -15,6 +15,8 @@ import { AllowlistModule } from './allowlist/allowlist.module';
 import { DeviceAuthModule } from './device-auth/device-auth.module';
 import { StorageModule } from './storage/storage.module';
 import { PatModule } from './pat/pat.module';
+import { SecretTypesModule } from './secret-types/secret-types.module';
+import { SecretsModule } from './secrets/secrets.module';
 import { LoggerModule } from './common/logger/logger.module';
 import { TestAuthModule } from './test-auth/test-auth.module';
 
@@ -55,6 +57,8 @@ import configuration from './config/configuration';
     DeviceAuthModule,
     StorageModule,
     PatModule,
+    SecretTypesModule,
+    SecretsModule,
 
     // Test modules (non-production only)
     ...(process.env.NODE_ENV !== 'production' ? [TestAuthModule] : []),
