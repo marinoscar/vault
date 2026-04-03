@@ -202,6 +202,13 @@ import type {
   PersonalAccessToken,
   PatCreatedResponse,
   PatDurationUnit,
+  SecretType,
+  SecretDetail,
+  SecretListItem,
+  SecretVersion,
+  SecretVersionDetail,
+  SecretAttachment,
+  SecretsResponse,
 } from '../types';
 
 // Allowlist API
@@ -296,4 +303,142 @@ export async function createPersonalAccessToken(data: {
 
 export async function revokePersonalAccessToken(id: string): Promise<void> {
   await api.delete<void>(`/pat/${id}`);
+}
+
+// Secret Types API
+export async function getSecretTypes(params?: {
+  search?: string;
+  includeSystem?: boolean;
+}): Promise<SecretType[]> {
+  const searchParams = new URLSearchParams();
+  if (params?.search) searchParams.set('search', params.search);
+  if (params?.includeSystem !== undefined) searchParams.set('includeSystem', String(params.includeSystem));
+  const query = searchParams.toString();
+  return api.get<SecretType[]>(`/secret-types${query ? `?${query}` : ''}`);
+}
+
+export async function getSecretType(id: string): Promise<SecretType> {
+  return api.get<SecretType>(`/secret-types/${id}`);
+}
+
+export async function createSecretType(data: {
+  name: string;
+  description?: string;
+  icon?: string;
+  fields: Array<{
+    name: string;
+    label: string;
+    type: 'string' | 'number' | 'date';
+    required: boolean;
+    sensitive: boolean;
+  }>;
+  allowAttachments: boolean;
+}): Promise<SecretType> {
+  return api.post<SecretType>('/secret-types', data);
+}
+
+export async function updateSecretType(
+  id: string,
+  data: {
+    name?: string;
+    description?: string | null;
+    icon?: string | null;
+    fields?: Array<{
+      name: string;
+      label: string;
+      type: 'string' | 'number' | 'date';
+      required: boolean;
+      sensitive: boolean;
+    }>;
+    allowAttachments?: boolean;
+  },
+): Promise<SecretType> {
+  return api.put<SecretType>(`/secret-types/${id}`, data);
+}
+
+export async function deleteSecretType(id: string): Promise<void> {
+  await api.delete<void>(`/secret-types/${id}`);
+}
+
+// Secrets API
+export async function getSecrets(params?: {
+  page?: number;
+  pageSize?: number;
+  typeId?: string;
+  search?: string;
+  sortBy?: string;
+  sortOrder?: string;
+}): Promise<SecretsResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.page) searchParams.set('page', String(params.page));
+  if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
+  if (params?.typeId) searchParams.set('typeId', params.typeId);
+  if (params?.search) searchParams.set('search', params.search);
+  if (params?.sortBy) searchParams.set('sortBy', params.sortBy);
+  if (params?.sortOrder) searchParams.set('sortOrder', params.sortOrder);
+  return api.get<SecretsResponse>(`/secrets?${searchParams}`);
+}
+
+export async function getSecret(id: string): Promise<SecretDetail> {
+  return api.get<SecretDetail>(`/secrets/${id}`);
+}
+
+export async function createSecret(data: {
+  name: string;
+  description?: string;
+  typeId: string;
+  data: Record<string, unknown>;
+}): Promise<SecretDetail> {
+  return api.post<SecretDetail>('/secrets', data);
+}
+
+export async function updateSecret(
+  id: string,
+  data: {
+    name?: string;
+    description?: string | null;
+    data?: Record<string, unknown>;
+  },
+): Promise<SecretDetail> {
+  return api.put<SecretDetail>(`/secrets/${id}`, data);
+}
+
+export async function deleteSecret(id: string): Promise<void> {
+  await api.delete<void>(`/secrets/${id}`);
+}
+
+export async function getSecretVersions(secretId: string): Promise<SecretVersion[]> {
+  return api.get<SecretVersion[]>(`/secrets/${secretId}/versions`);
+}
+
+export async function getSecretVersion(
+  secretId: string,
+  versionId: string,
+): Promise<SecretVersionDetail> {
+  return api.get<SecretVersionDetail>(`/secrets/${secretId}/versions/${versionId}`);
+}
+
+export async function rollbackSecretVersion(
+  secretId: string,
+  versionId: string,
+): Promise<SecretDetail> {
+  return api.post<SecretDetail>(`/secrets/${secretId}/versions/${versionId}/rollback`);
+}
+
+export async function linkSecretAttachment(
+  secretId: string,
+  storageObjectId: string,
+  label?: string,
+): Promise<SecretAttachment> {
+  return api.post<SecretAttachment>(`/secrets/${secretId}/attachments`, {
+    storageObjectId,
+    label,
+  });
+}
+
+export async function unlinkSecretAttachment(
+  secretId: string,
+  attachmentId: string,
+): Promise<void> {
+  await api.delete<void>(`/secrets/${secretId}/attachments/${attachmentId}`);
 }

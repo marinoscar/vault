@@ -116,3 +116,80 @@ export interface PatCreatedResponse {
   expiresAt: string;
   createdAt: string;
 }
+
+// =============================================================================
+// Secret Types
+// =============================================================================
+
+export interface FieldDefinition {
+  name: string;
+  label: string;
+  type: 'string' | 'number' | 'date';
+  required: boolean;
+  sensitive: boolean;
+}
+
+export interface SecretType {
+  id: string;
+  name: string;
+  description: string | null;
+  icon: string | null;
+  fields: FieldDefinition[];
+  allowAttachments: boolean;
+  isSystem: boolean;
+  createdAt: string;
+}
+
+// =============================================================================
+// Secrets
+// =============================================================================
+
+export interface SecretListItem {
+  id: string;
+  name: string;
+  description: string | null;
+  type: SecretType;
+  currentVersion: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SecretAttachment {
+  id: string;
+  label: string | null;
+  storageObject: {
+    id: string;
+    name: string;
+    mimeType: string;
+    size: number;
+  };
+  createdAt: string;
+}
+
+export interface SecretDetail extends SecretListItem {
+  data: Record<string, unknown>;
+  createdBy: { id: string; email: string } | null;
+  attachments: SecretAttachment[];
+}
+
+export interface SecretVersion {
+  id: string;
+  version: number;
+  createdAt: string;
+  createdBy: { id: string; email: string } | null;
+  isCurrent: boolean;
+}
+
+export interface SecretVersionDetail extends SecretVersion {
+  data: Record<string, unknown>;
+}
+
+export interface SecretsResponse {
+  items: SecretListItem[];
+  meta: {
+    page: number;
+    pageSize: number;
+    totalItems: number;
+    totalPages: number;
+  };
+}
