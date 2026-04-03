@@ -1,20 +1,23 @@
 # Vault
 
-[![CI](https://github.com/marinoscar/EnterpriseAppBase/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/marinoscar/EnterpriseAppBase/actions/workflows/ci.yml)
+[![CI](https://github.com/marinoscar/vault/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/marinoscar/vault/actions/workflows/ci.yml)
 
-A production-grade full-stack application foundation built with React, NestJS, and PostgreSQL. Features OAuth authentication, role-based access control, and comprehensive observability.
+Vault is a self-hosted secrets manager. It stores credentials, API keys, credit cards, tokens, notes, and documents with AES-256-GCM encryption at rest, full version history, and role-based access control.
 
 ## Features
 
-- **Authentication**: Google OAuth 2.0 with JWT access tokens and refresh token rotation
-- **Device Authorization**: RFC 8628 Device Authorization Flow for CLI tools, mobile apps, and IoT devices
-- **Authorization**: Role-Based Access Control (RBAC) with three roles (Admin, Contributor, Viewer)
-- **Access Control**: Email allowlist restricts application access to pre-authorized users
-- **User Management**: Admin interface for managing users, role assignments, and allowlist
-- **Settings Framework**: System-wide and per-user settings with type-safe schemas
-- **Observability**: OpenTelemetry instrumentation with traces, metrics, and structured logging
-- **API Documentation**: Swagger/OpenAPI documentation at `/api/docs`
-- **Same-Origin Architecture**: Frontend and API served from same host via Nginx reverse proxy
+- **Encrypted Secrets Storage**: AES-256-GCM encryption for all secret values. Six built-in secret types (Credential, API Key, Card, Token, Note, Document) plus user-defined custom types with flexible field schemas.
+- **Version History and Rollback**: Every update creates an immutable version. View any historical version in decrypted form and roll back, which creates a new version from the historical data.
+- **File Attachments**: Secrets can carry file attachments via S3-compatible storage. The Document type has attachments enabled by default.
+- **Custom Secret Types**: Define your own secret types with custom field schemas (field name, label, data type, required flag, sensitive flag).
+- **Authentication**: Google OAuth 2.0 with JWT access tokens, refresh token rotation, and Device Authorization Flow (RFC 8628) for CLI and IoT devices.
+- **Authorization**: Role-based access control (RBAC) with Admin, Contributor, and Viewer roles. Admins can view secrets across all users.
+- **Access Control**: Email allowlist restricts access to pre-authorized users only.
+- **Personal Access Tokens**: Long-lived tokens for programmatic API and CLI access.
+- **Audit Logging**: All secret operations are logged to the audit event store.
+- **Observability**: OpenTelemetry instrumentation with traces, metrics, and structured logging via Uptrace.
+- **API Documentation**: Swagger/OpenAPI documentation at `/api/docs`.
+- **Same-Origin Architecture**: Frontend and API served from the same host via Nginx reverse proxy.
 
 ## Technology Stack
 
@@ -48,15 +51,30 @@ A production-grade full-stack application foundation built with React, NestJS, a
 ### 1. Clone and Configure
 
 ```bash
-git clone <repository-url>
-cd EnterpriseAppBase
+git clone https://github.com/marinoscar/vault.git
+cd vault
 
 # Set up environment variables
 cd infra/compose
 cp .env.example .env
 ```
 
-### 2. Configure Google OAuth
+### 2. Generate the Encryption Key
+
+Vault requires a 256-bit encryption key for AES-256-GCM. Generate one and add it to `.env`:
+
+```bash
+openssl rand -hex 32
+```
+
+```bash
+# In infra/compose/.env
+VAULT_ENCRYPTION_KEY=<64-char hex string from above>
+```
+
+This key is required. The API will refuse to start without it.
+
+### 3. Configure Google OAuth
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com)
 2. Create a new project (or select existing)
@@ -70,14 +88,14 @@ GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-client-secret
 ```
 
-### 3. Start Application
+### 4. Start Application
 
 ```bash
 # From infra/compose directory
 docker compose -f base.compose.yml -f dev.compose.yml up
 ```
 
-### 4. Seed Database (CRITICAL - Must run before first login)
+### 5. Seed Database (Required before first login)
 
 ```bash
 # In a new terminal
@@ -89,20 +107,20 @@ exit
 
 **Why seeding is required:**
 - Creates RBAC roles (admin, contributor, viewer)
-- Creates permissions (users:read, users:write, etc.)
+- Creates permissions and built-in secret types
 - Without seeds, first login will fail with "Default role not found"
 
-### 5. Access Application
+### 6. Access Application
 
 - **Frontend**: http://localhost:3535
 - **API**: http://localhost:3535/api
 - **Swagger Docs**: http://localhost:3535/api/docs
 
-### 6. First Login
+### 7. First Login
 
-The first user to login with email matching `INITIAL_ADMIN_EMAIL` (from `.env`) will automatically be granted the **admin** role. All subsequent users get **viewer** role by default.
+The first user to log in with the email matching `INITIAL_ADMIN_EMAIL` (from `.env`) is automatically granted the **admin** role. All subsequent users receive the **viewer** role by default.
 
-**Important:** Only email addresses in the **allowlist** can login. The `INITIAL_ADMIN_EMAIL` is automatically added to the allowlist during seeding. After your first login as admin, use the Admin Panel to manage the allowlist.
+Only email addresses in the **allowlist** can log in. `INITIAL_ADMIN_EMAIL` is automatically added to the allowlist during seeding. After your first login as admin, use the Admin Panel to manage the allowlist and grant other users Contributor or Admin roles.
 
 ## Development
 
@@ -153,14 +171,16 @@ Note: E2E tests use a test authentication bypass (`/testing/login`) that is only
 cd apps/api
 
 # Create a new migration
-npx prisma migrate dev --name migration_name
+npm run prisma:migrate:dev -- --name migration_name
 
-# Apply migrations
-npx prisma migrate deploy
+# Apply migrations (production)
+npm run prisma:migrate
 
-# Generate Prisma Client
-npx prisma generate
+# Generate Prisma Client after schema changes
+npm run prisma:generate
 ```
+
+Use the `prisma:*` npm scripts rather than direct `npx prisma` commands. The scripts construct `DATABASE_URL` automatically from the individual `POSTGRES_*` environment variables.
 
 ### Hot Reload
 
@@ -189,7 +209,7 @@ app --help
 
 ```bash
 # Configure CLI to connect to a server
-app config set-url https://myapp.com
+app config set-url https://vault.example.com
 
 # Start development environment
 app start
@@ -202,7 +222,7 @@ app test
 
 # Manage users (admin only)
 app users list
-app allowlist add newuser@company.com
+app allowlist add newuser@example.com
 
 # Database operations
 app prisma migrate
@@ -214,16 +234,14 @@ app
 
 ### Working with Remote Servers
 
-The CLI can manage any deployed instance:
-
 ```bash
 # Configure for production
-app config set-url https://prod.myapp.com
+app config set-url https://vault.example.com
 app auth login
 app users list
 
-# Switch to staging
-app config set-url https://staging.myapp.com
+# Switch to another instance
+app config set-url https://vault-staging.example.com
 
 # View current configuration
 app config show
@@ -234,54 +252,64 @@ For complete CLI documentation, see [tools/app/README.md](tools/app/README.md).
 ## Project Structure
 
 ```
-EnterpriseAppBase/
+vault/
 ├── apps/
 │   ├── api/                    # Backend API (NestJS + Fastify)
 │   │   ├── src/
-│   │   │   ├── auth/          # Authentication & authorization
-│   │   │   ├── users/         # User management
-│   │   │   ├── settings/      # Settings endpoints
-│   │   │   └── prisma/        # Database service
+│   │   │   ├── auth/           # Authentication and authorization
+│   │   │   ├── users/          # User management
+│   │   │   ├── secrets/        # Secrets CRUD, versioning, attachments
+│   │   │   ├── secret-types/   # Built-in and custom secret type definitions
+│   │   │   ├── settings/       # Settings endpoints
+│   │   │   ├── common/
+│   │   │   │   └── services/
+│   │   │   │       └── crypto.service.ts  # AES-256-GCM encryption
+│   │   │   └── prisma/         # Database service
 │   │   ├── prisma/
-│   │   │   ├── schema.prisma  # Database schema
-│   │   │   ├── seed.ts        # Database seeds
-│   │   │   └── migrations/    # Migration history
-│   │   └── test/              # Integration tests
+│   │   │   ├── schema.prisma   # Database schema
+│   │   │   ├── seed.ts         # Database seeds
+│   │   │   └── migrations/     # Migration history
+│   │   └── test/               # Integration tests
 │   └── web/                    # Frontend (React + MUI)
 │       ├── src/
-│       │   ├── components/    # Reusable components
-│       │   ├── contexts/      # React contexts (Auth, Theme)
-│       │   ├── pages/         # Page components
-│       │   └── services/      # API client
-│       └── src/__tests__/     # Component tests
+│       │   ├── components/
+│       │   │   ├── secrets/    # Secret list, detail, form, version history
+│       │   │   └── secret-types/  # Secret type management UI
+│       │   ├── pages/
+│       │   │   ├── SecretsPage.tsx
+│       │   │   ├── SecretDetailPage.tsx
+│       │   │   └── SecretTypesPage.tsx
+│       │   ├── contexts/       # React contexts (Auth, Theme)
+│       │   └── services/       # API client
+│       └── src/__tests__/      # Component tests
 ├── tools/
 │   └── app/                    # CLI tool for development and API management
 ├── docs/                       # Documentation
-│   ├── DEVELOPMENT.md         # Development guide (start here!)
-│   ├── SECURITY-ARCHITECTURE.md  # Security design
-│   ├── TESTING.md             # Testing guide
-│   └── specs/                 # Feature specifications
+│   ├── DEVELOPMENT.md          # Development guide (start here)
+│   ├── SECURITY.md             # Security design and practices
+│   ├── OBSERVABILITY.md        # Monitoring, logging, and tracing
+│   ├── TESTING.md              # Testing guide
+│   └── API.md                  # Complete API reference
 ├── infra/
-│   ├── compose/               # Docker Compose configs
-│   │   ├── base.compose.yml   # Core services
-│   │   ├── dev.compose.yml    # Development overrides
-│   │   ├── prod.compose.yml   # Production overrides
-│   │   └── otel.compose.yml   # Observability stack
-│   ├── nginx/                 # Nginx config
-│   └── otel/                  # OpenTelemetry config
-└── CLAUDE.md                  # AI assistant guidance
+│   ├── compose/                # Docker Compose configs
+│   │   ├── base.compose.yml    # Core services
+│   │   ├── dev.compose.yml     # Development overrides
+│   │   ├── prod.compose.yml    # Production overrides
+│   │   └── otel.compose.yml    # Observability stack
+│   ├── nginx/                  # Nginx config
+│   └── otel/                   # OpenTelemetry config
+└── CLAUDE.md                   # AI assistant guidance
 ```
 
 ## Documentation
 
 - **[CLI Tool](tools/app/README.md)** - CLI for development, testing, and API management
 - **[DEVELOPMENT.md](docs/DEVELOPMENT.md)** - Development setup, common patterns, and troubleshooting
-- **[SECURITY-ARCHITECTURE.md](docs/SECURITY-ARCHITECTURE.md)** - Security design and implementation
+- **[SECURITY.md](docs/SECURITY.md)** - Security design and implementation
+- **[OBSERVABILITY.md](docs/OBSERVABILITY.md)** - Monitoring, logging, and tracing
 - **[TESTING.md](docs/TESTING.md)** - Testing strategy and best practices
 - **[DEVICE-AUTH.md](docs/DEVICE-AUTH.md)** - Device Authorization Flow guide and integration examples
 - **[API.md](docs/API.md)** - Complete API reference
-- **[System Specification](docs/System_Specification_Document.md)** - Complete project specification
-- **[Feature Specs](docs/specs/)** - Individual feature specifications
 
 ## API Documentation
 
@@ -302,6 +330,26 @@ Interactive API documentation is available at `/api/docs` when running the appli
 - `GET /api/auth/device/sessions` - List authorized devices
 - `DELETE /api/auth/device/sessions/:id` - Revoke device access
 
+**Secrets:**
+- `POST /api/secrets` - Create a secret
+- `GET /api/secrets` - List secrets (paginated)
+- `GET /api/secrets/:id` - Get secret (decrypted)
+- `PUT /api/secrets/:id` - Update secret (creates new version)
+- `DELETE /api/secrets/:id` - Delete secret
+- `GET /api/secrets/:id/versions` - List version history
+- `GET /api/secrets/:id/versions/:versionId` - Get a specific version (decrypted)
+- `POST /api/secrets/:id/rollback/:versionId` - Roll back to a previous version
+- `POST /api/secrets/:id/attachments` - Upload file attachment
+- `GET /api/secrets/:id/attachments/:attachmentId/download` - Get signed download URL
+- `DELETE /api/secrets/:id/attachments/:attachmentId` - Delete attachment
+
+**Secret Types:**
+- `POST /api/secret-types` - Create a custom secret type
+- `GET /api/secret-types` - List all secret types (built-in and custom)
+- `GET /api/secret-types/:id` - Get a secret type
+- `PUT /api/secret-types/:id` - Update a custom secret type
+- `DELETE /api/secret-types/:id` - Delete a custom secret type
+
 **Users (Admin only):**
 - `GET /api/users` - List users
 - `GET /api/users/:id` - Get user by ID
@@ -312,11 +360,10 @@ Interactive API documentation is available at `/api/docs` when running the appli
 - `POST /api/allowlist` - Add email to allowlist
 - `DELETE /api/allowlist/:id` - Remove email from allowlist
 
-**Settings:**
-- `GET /api/user-settings` - Get user settings
-- `PUT /api/user-settings` - Update user settings
-- `GET /api/system-settings` - Get system settings (Admin)
-- `PUT /api/system-settings` - Update system settings (Admin)
+**Personal Access Tokens:**
+- `POST /api/pat` - Create a personal access token
+- `GET /api/pat` - List current user's tokens
+- `DELETE /api/pat/:id` - Revoke a token
 
 **Health:**
 - `GET /api/health/live` - Liveness probe
@@ -332,8 +379,16 @@ NODE_ENV=development
 PORT=3000
 APP_URL=http://localhost:3535
 
-# Database
-DATABASE_URL=postgresql://postgres:postgres@db:5432/appdb
+# Database (constructed into DATABASE_URL at runtime)
+POSTGRES_HOST=db
+POSTGRES_PORT=5432
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_DB=appdb
+
+# Secrets encryption — REQUIRED
+# Generate with: openssl rand -hex 32
+VAULT_ENCRYPTION_KEY=your-64-char-hex-string
 
 # JWT
 JWT_SECRET=your-secret-min-32-chars
@@ -355,21 +410,29 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
 
 ## Important Notes for Developers
 
+### Encryption Key Management
+
+`VAULT_ENCRYPTION_KEY` is a 64-character hex string (32 bytes). It is used as the AES-256-GCM key for all secret field encryption. Keep this key safe:
+
+- Never commit it to source control
+- Back it up securely — losing the key means losing access to all stored secrets
+- Rotating the key requires re-encrypting all existing secrets
+- Generate with `openssl rand -hex 32`
+
 ### NestJS with Fastify (Not Express)
 
 This application uses **Fastify** as the HTTP adapter, not Express. Key differences:
 
-**Response methods:**
-- ✅ Fastify: `res.code(200).send(data)`
-- ❌ Express: `res.status(200).json(data)`
+- Fastify: `res.code(200).send(data)`
+- Express: `res.status(200).json(data)` (do not use)
 
-**Best practice:** Let NestJS handle responses automatically (don't use `@Res()` decorator).
+Best practice: let NestJS handle responses automatically by not using the `@Res()` decorator.
 
 See [DEVELOPMENT.md](docs/DEVELOPMENT.md) for detailed guidance.
 
 ### Database Seeding is Required
 
-Before your first login, you MUST seed the database:
+Before your first login, you must seed the database:
 
 ```bash
 docker compose exec api sh
@@ -377,24 +440,27 @@ cd /app/apps/api
 npx tsx prisma/seed.ts
 ```
 
-This creates roles, permissions, and default settings. Without seeding, OAuth login will fail.
+This creates roles, permissions, built-in secret types, and default settings. Without seeding, OAuth login will fail.
 
 ### OAuth with Fastify
 
-Passport OAuth strategies expect Express-style objects. The `GoogleOAuthGuard` handles compatibility by returning raw Node.js request/response objects to Passport. See [SECURITY-ARCHITECTURE.md](docs/SECURITY-ARCHITECTURE.md) for details.
+Passport OAuth strategies expect Express-style objects. The `GoogleOAuthGuard` handles compatibility by returning raw Node.js request/response objects to Passport. See [SECURITY.md](docs/SECURITY.md) for details.
 
 ## Troubleshooting
 
 ### "Default role not found" error
-**Solution:** Run database seeds (see step 4 in Quick Start)
+**Solution:** Run database seeds (see step 5 in Quick Start).
 
 ### "Email not authorized" error during login
-**Solution:** The email must be in the allowlist. If you're the first admin:
+**Solution:** The email must be in the allowlist. If you are the first admin:
 1. Ensure your email matches `INITIAL_ADMIN_EMAIL` in `.env` exactly
 2. Restart containers to apply environment variable changes
 3. Re-run database seeds if needed
 
-If you're not the first admin, ask an existing admin to add your email to the allowlist at `/admin/users` (Allowlist tab).
+If you are not the first admin, ask an existing admin to add your email at `/admin/users` (Allowlist tab).
+
+### Secrets cannot be decrypted
+**Solution:** The `VAULT_ENCRYPTION_KEY` in `.env` does not match the key used when the secrets were written. Restore the original key. If the key is lost, the encrypted data cannot be recovered.
 
 ### OAuth redirect fails
 **Solution:**
@@ -404,47 +470,40 @@ If you're not the first admin, ask an existing admin to add your email to the al
 ### Database connection error
 **Solution:**
 1. Ensure containers are running: `docker compose ps`
-2. Check `DATABASE_URL` in `.env`
+2. Check `POSTGRES_*` variables in `.env`
 3. Restart: `docker compose restart db`
 
 ### Port already in use
-**Solution:** Change `PORT` in `.env` or stop conflicting service
+**Solution:** Change `PORT` in `.env` or stop the conflicting service.
 
 For more troubleshooting, see [DEVELOPMENT.md](docs/DEVELOPMENT.md#debugging-tips).
 
 ## Production Deployment
 
-For production deployment:
-
 1. Use `prod.compose.yml` overrides
 2. Set `NODE_ENV=production`
-3. Use strong secrets (generate with `openssl rand -base64 32`)
+3. Generate strong secrets:
+   - `openssl rand -hex 32` for `VAULT_ENCRYPTION_KEY`
+   - `openssl rand -base64 32` for `JWT_SECRET`
 4. Enable HTTPS with valid certificates
 5. Set `secure: true` on cookies
 6. Configure proper OAuth callback URLs
-7. Set up database backups
+7. Set up database backups — back up both the database and the encryption key together
 8. Configure monitoring and alerting
 
-See [SECURITY-ARCHITECTURE.md](docs/SECURITY-ARCHITECTURE.md) for production security checklist.
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Write tests for new features
-4. Ensure all tests pass
-5. Update documentation
-6. Submit pull request
+See [SECURITY.md](docs/SECURITY.md) for the production security checklist.
 
 ## Architecture Decisions
 
-- **Fastify over Express**: 2-3x better performance, better TypeScript support
-- **Prisma**: Type-safe ORM with excellent migration tooling
-- **Same-origin hosting**: Simplifies security, no CORS complexity
-- **JWT + Refresh tokens**: Short-lived access tokens with secure refresh rotation
-- **RBAC**: Flexible permission system for future feature expansion
-- **OpenTelemetry**: Vendor-neutral observability
-- **Docker Compose**: Reproducible local development environment
+- **AES-256-GCM encryption**: Authenticated encryption — protects both confidentiality and integrity of stored secrets. Each encrypted value uses a unique random IV.
+- **Immutable version history**: Updates never overwrite data; a new version row is always written. Rollback creates a new version rather than modifying history, preserving a complete audit trail.
+- **Fastify over Express**: 2-3x better performance, better TypeScript support.
+- **Prisma**: Type-safe ORM with excellent migration tooling.
+- **Same-origin hosting**: Simplifies security, eliminates CORS complexity.
+- **JWT + Refresh tokens**: Short-lived access tokens with secure refresh rotation.
+- **RBAC**: Role-based permissions with Admin visibility into all users' secrets.
+- **OpenTelemetry**: Vendor-neutral observability.
+- **Docker Compose**: Reproducible local development environment.
 
 ## License
 
@@ -455,8 +514,7 @@ See [SECURITY-ARCHITECTURE.md](docs/SECURITY-ARCHITECTURE.md) for production sec
 For issues, questions, or contributions:
 - Review [DEVELOPMENT.md](docs/DEVELOPMENT.md) for common issues
 - Check [documentation](docs/) for detailed guides
-- Submit issues via GitHub Issues
-- Contact the team
+- Submit issues via [GitHub Issues](https://github.com/marinoscar/vault/issues)
 
 ---
 
