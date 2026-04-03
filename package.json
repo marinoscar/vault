@@ -10,7 +10,9 @@
     "api:test": "npm -w apps/api test",
     "web:test": "npm -w apps/web test",
     "app": "node tools/app/bin/app.js",
-    "app:build": "npm -w tools/app run build"
+    "app:build": "npm -w tools/app run build",
+    "vaultcli": "node tools/vaultcli/bin/vaultcli.js",
+    "vaultcli:build": "npm -w tools/vaultcli run build"
   },
   "overrides": {
     "@nestjs/common": "^11.1.12",
