@@ -33,7 +33,7 @@ async function bootstrap() {
   // Register multipart plugin for file uploads
   await app.register(multipart, {
     limits: {
-      fileSize: 100 * 1024 * 1024, // 100MB for simple upload
+      fileSize: 10 * 1024 * 1024 * 1024, // 10GB for large media files
       files: 1,
     },
   });

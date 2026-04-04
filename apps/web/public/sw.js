@@ -28,8 +28,9 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Skip API calls and auth — always go to network
+  // Skip API calls and non-GET requests — always go to network
   if (url.pathname.startsWith('/api')) return;
+  if (request.method !== 'GET') return;
 
   event.respondWith(
     fetch(request)
