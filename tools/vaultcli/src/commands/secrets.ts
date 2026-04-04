@@ -62,11 +62,12 @@ export function registerSecretCommands(program: Command): void {
       const output = getOutput(cmd);
       try {
         const secret = await resolveSecret(idOrName);
+        const slim = { id: secret.id, name: secret.name, updatedAt: secret.updatedAt, values: secret.values ?? {} };
 
-        output.result<Secret>(
-          secret,
-          (s) => formatSecretDetail(s),
-          (s) => console.log(s.id),
+        output.result(
+          slim,
+          () => formatSecretDetail(secret),
+          () => console.log(secret.id),
         );
       } catch (err) {
         output.fail(err instanceof Error ? err.message : String(err));
@@ -99,13 +100,12 @@ export function registerSecretCommands(program: Command): void {
           description: opts.description,
           data,
         });
+        const slim = { id: secret.id, name: secret.name, updatedAt: secret.updatedAt, values: secret.values ?? {} };
 
-        output.result<Secret>(
-          secret,
-          (s) => {
-            formatSecretDetail(s);
-          },
-          (s) => console.log(s.id),
+        output.result(
+          slim,
+          () => formatSecretDetail(secret),
+          () => console.log(secret.id),
         );
       } catch (err) {
         output.fail(err instanceof Error ? err.message : String(err));
@@ -146,13 +146,12 @@ export function registerSecretCommands(program: Command): void {
         }
 
         const secret = await updateSecret(existing.id, updateDto);
+        const slim = { id: secret.id, name: secret.name, updatedAt: secret.updatedAt, values: secret.values ?? {} };
 
-        output.result<Secret>(
-          secret,
-          (s) => {
-            formatSecretDetail(s);
-          },
-          (s) => console.log(s.id),
+        output.result(
+          slim,
+          () => formatSecretDetail(secret),
+          () => console.log(secret.id),
         );
       } catch (err) {
         output.fail(err instanceof Error ? err.message : String(err));
