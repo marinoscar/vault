@@ -208,6 +208,10 @@ import type {
   SecretVersionDetail,
   SecretAttachment,
   SecretsResponse,
+  MediaFolder,
+  MediaFoldersResponse,
+  MediaFile,
+  MediaFilesResponse,
 } from '../types';
 
 // Allowlist API
@@ -440,4 +444,100 @@ export async function unlinkSecretAttachment(
   attachmentId: string,
 ): Promise<void> {
   await api.delete<void>(`/secrets/${secretId}/attachments/${attachmentId}`);
+}
+
+// =============================================================================
+// Media API
+// =============================================================================
+
+export async function getMediaFolders(params?: {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  sortBy?: string;
+  sortOrder?: string;
+}): Promise<MediaFoldersResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.page) searchParams.set('page', String(params.page));
+  if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
+  if (params?.search) searchParams.set('search', params.search);
+  if (params?.sortBy) searchParams.set('sortBy', params.sortBy);
+  if (params?.sortOrder) searchParams.set('sortOrder', params.sortOrder);
+  return api.get<MediaFoldersResponse>(`/media/folders?${searchParams}`);
+}
+
+export async function getMediaFolder(folderId: string): Promise<MediaFolder> {
+  return api.get<MediaFolder>(`/media/folders/${folderId}`);
+}
+
+export async function createMediaFolder(name: string): Promise<MediaFolder> {
+  return api.post<MediaFolder>('/media/folders', { name });
+}
+
+export async function updateMediaFolder(folderId: string, name: string): Promise<MediaFolder> {
+  return api.patch<MediaFolder>(`/media/folders/${folderId}`, { name });
+}
+
+export async function deleteMediaFolder(folderId: string): Promise<void> {
+  await api.delete<void>(`/media/folders/${folderId}`);
+}
+
+export async function getMediaFiles(
+  folderId: string,
+  params?: { page?: number; pageSize?: number; search?: string },
+): Promise<MediaFilesResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.page) searchParams.set('page', String(params.page));
+  if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
+  if (params?.search) searchParams.set('search', params.search);
+  return api.get<MediaFilesResponse>(`/media/folders/${folderId}/files?${searchParams}`);
+}
+
+export async function getMediaFile(folderId: string, fileId: string): Promise<MediaFile> {
+  return api.get<MediaFile>(`/media/folders/${folderId}/files/${fileId}`);
+}
+
+export async function linkMediaFile(folderId: string, storageObjectId: string): Promise<MediaFile> {
+  return api.post<MediaFile>(`/media/folders/${folderId}/files`, { storageObjectId });
+}
+
+export async function renameMediaFile(
+  folderId: string,
+  fileId: string,
+  name: string,
+): Promise<MediaFile> {
+  return api.patch<MediaFile>(`/media/folders/${folderId}/files/${fileId}`, { name });
+}
+
+export async function deleteMediaFile(folderId: string, fileId: string): Promise<void> {
+  await api.delete<void>(`/media/folders/${folderId}/files/${fileId}`);
+}
+
+export async function getMediaFileDownloadUrl(
+  folderId: string,
+  fileId: string,
+): Promise<{ url: string; expiresIn: number }> {
+  return api.get<{ url: string; expiresIn: number }>(
+    `/media/folders/${folderId}/files/${fileId}/download`,
+  );
+}
+
+export async function simpleStorageUpload(
+  file: File,
+): Promise<{ id: string; name: string; mimeType: string; size: number }> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const token = api.getAccessToken();
+  const response = await fetch('/api/storage/objects', {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    credentials: 'include',
+    body: formData,
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.message || 'Upload failed');
+  }
+  const data = await response.json();
+  return data.data ?? data;
 }

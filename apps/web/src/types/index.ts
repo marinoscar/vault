@@ -193,3 +193,37 @@ export interface SecretsResponse {
     totalPages: number;
   };
 }
+
+// =============================================================================
+// Media Types
+// =============================================================================
+
+export interface MediaFolder {
+  id: string;
+  name: string;
+  userId: string;
+  fileCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MediaFoldersResponse {
+  items: MediaFolder[];
+  meta: { page: number; pageSize: number; totalItems: number; totalPages: number };
+}
+
+export interface MediaFile {
+  id: string;
+  name: string;
+  size: number;
+  mimeType: string;
+  status: string;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MediaFilesResponse {
+  items: MediaFile[];
+  meta: { page: number; pageSize: number; totalItems: number; totalPages: number };
+}
