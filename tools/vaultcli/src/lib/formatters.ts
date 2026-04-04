@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import { header, keyValue, tableHeader, tableRow, blank, statusBadge, section } from '../utils/output.js';
 import type {
-  FieldDefinition,
+
   HealthResponse,
   PaginatedResponse,
   Secret,
@@ -89,14 +89,9 @@ export function formatSecretDetail(secret: Secret): void {
   }
 
   if (secret.values) {
-    const fields: FieldDefinition[] = secret.type?.fields ?? [];
-    const sensitiveFields = new Set(fields.filter((f) => f.sensitive).map((f) => f.name));
-
     section('Data Fields');
     for (const [key, value] of Object.entries(secret.values)) {
-      const display = sensitiveFields.has(key)
-        ? chalk.dim('********  (sensitive)')
-        : String(value ?? '');
+      const display = String(value ?? '');
       keyValue(`  ${key}`, display);
     }
   }
