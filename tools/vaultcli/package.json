@@ -1,6 +1,6 @@
 {
   "name": "@vault/vaultcli",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "CLI tool for the Vault secrets management application — designed for humans and AI agents",
   "type": "module",
   "main": "dist/index.js",
