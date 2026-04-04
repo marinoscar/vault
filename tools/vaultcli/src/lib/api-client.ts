@@ -198,18 +198,14 @@ export async function rollbackVersion(secretId: string, versionId: string): Prom
 
 export async function listSecretTypes(params?: {
   search?: string;
-  page?: number;
-  pageSize?: number;
-}): Promise<PaginatedResponse<SecretType>> {
+}): Promise<SecretType[]> {
   const query = new URLSearchParams();
-  if (params?.page) query.set('page', String(params.page));
-  if (params?.pageSize) query.set('pageSize', String(params.pageSize));
   if (params?.search) query.set('search', params.search);
 
   const qs = query.toString();
   const res = await apiRequest(`/secret-types${qs ? '?' + qs : ''}`);
   if (!res.ok) throw new Error(`Failed to list secret types: ${res.status}`);
-  const json = (await res.json()) as { data: PaginatedResponse<SecretType> };
+  const json = (await res.json()) as { data: SecretType[] };
   return json.data;
 }
 

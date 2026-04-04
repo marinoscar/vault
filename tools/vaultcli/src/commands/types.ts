@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import { OutputManager } from '../utils/output.js';
 import { listSecretTypes, getSecretType } from '../lib/api-client.js';
 import { formatSecretTypeTable, formatSecretTypeDetail } from '../lib/formatters.js';
-import type { OutputMode, SecretType, PaginatedResponse } from '../utils/types.js';
+import type { OutputMode, SecretType } from '../utils/types.js';
 
 function getOutput(cmd: Command): OutputManager {
   const root = cmd.optsWithGlobals();
@@ -20,21 +20,17 @@ export function registerTypeCommands(program: Command): void {
     .command('list')
     .description('List available secret types')
     .option('--search <term>', 'Filter by name')
-    .option('--page <n>', 'Page number', '1')
-    .option('--page-size <n>', 'Items per page', '50')
     .action(async (opts, cmd) => {
       const output = getOutput(cmd);
       try {
         const result = await listSecretTypes({
           search: opts.search,
-          page: parseInt(opts.page, 10),
-          pageSize: parseInt(opts.pageSize, 10),
         });
 
-        output.result<PaginatedResponse<SecretType>>(
+        output.result<SecretType[]>(
           result,
           (r) => formatSecretTypeTable(r),
-          (r) => r.items.forEach((t) => console.log(t.id)),
+          (r) => r.forEach((t) => console.log(t.id)),
         );
       } catch (err) {
         output.fail(err instanceof Error ? err.message : String(err));

@@ -166,12 +166,12 @@ export function formatVersionDetail(version: SecretVersion): void {
 // Secret Types
 // ---------------------------------------------------------------------------
 
-export function formatSecretTypeTable(result: PaginatedResponse<SecretType>): void {
+export function formatSecretTypeTable(types: SecretType[]): void {
   const widths = [10, 22, 8, 12, 8];
-  header(`Secret Types (${result.meta.totalItems} total, page ${result.meta.page}/${result.meta.totalPages})`);
+  header(`Secret Types (${types.length} total)`);
   tableHeader(['ID', 'Name', 'Fields', 'Attachments', 'System'], widths);
 
-  for (const t of result.items) {
+  for (const t of types) {
     tableRow(
       [
         shortId(t.id),
