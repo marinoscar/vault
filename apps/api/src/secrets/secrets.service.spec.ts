@@ -184,7 +184,7 @@ describe('SecretsService', () => {
     it('should return the secret with the original data attached', async () => {
       const result = await service.create(createDto, userId, ownerPerms);
 
-      expect(result.data).toEqual(rawData);
+      expect(result.values).toEqual(rawData);
       expect(result.id).toBe(secretId);
     });
 
@@ -332,7 +332,7 @@ describe('SecretsService', () => {
         encryptedPayload.iv,
         encryptedPayload.authTag,
       );
-      expect(result.data).toEqual(rawData);
+      expect(result.values).toEqual(rawData);
     });
 
     it('should throw NotFoundException when the secret does not exist', async () => {
@@ -735,7 +735,7 @@ describe('SecretsService', () => {
         mockVersion.iv,
         mockVersion.authTag,
       );
-      expect(result.data).toEqual(rawData);
+      expect(result.values).toEqual(rawData);
     });
 
     it('should throw NotFoundException when the version does not exist', async () => {
