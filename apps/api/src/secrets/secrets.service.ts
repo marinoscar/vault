@@ -182,8 +182,8 @@ export class SecretsService {
     this.validateDataAgainstType(dto.data as Record<string, unknown>, fields);
 
     // Check name uniqueness per user
-    const existing = await this.prisma.secret.findUnique({
-      where: { name_createdById: { name: dto.name, createdById: userId } },
+    const existing = await this.prisma.secret.findFirst({
+      where: { name: dto.name, createdById: userId },
     });
     if (existing) {
       throw new ConflictException(`A secret named "${dto.name}" already exists`);
@@ -395,8 +395,8 @@ export class SecretsService {
     }
 
     if (dto.name !== undefined && dto.name !== existingSecret.name) {
-      const conflict = await this.prisma.secret.findUnique({
-        where: { name_createdById: { name: dto.name, createdById: existingSecret.createdById! } },
+      const conflict = await this.prisma.secret.findFirst({
+        where: { name: dto.name, createdById: existingSecret.createdById! },
       });
       if (conflict) {
         throw new ConflictException(`A secret named "${dto.name}" already exists`);
