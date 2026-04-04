@@ -225,8 +225,8 @@ server {
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
-    # Allow large request bodies (file uploads)
-    client_max_body_size 50m;
+    # Disable body size limit (multi-GB file uploads via S3 multipart)
+    client_max_body_size 0;
 
     # API routes
     location /api {
