@@ -52,7 +52,7 @@ program
   );
 
 // Apply global options before any command action runs
-program.hook('preAction', (thisCommand) => {
+program.hook('preAction', (thisCommand: Command) => {
   const opts = thisCommand.opts();
 
   if (opts.server) {
@@ -131,4 +131,4 @@ process.on('unhandledRejection', (reason) => {
   process.exit(1);
 });
 
-program.parse();
+program.parse(process.argv);
