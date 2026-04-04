@@ -41,6 +41,7 @@ model User {
   secretTypes               SecretType[]     @relation("UserSecretTypes")
   secrets                   Secret[]         @relation("UserSecrets")
   secretVersions            SecretVersion[]  @relation("UserSecretVersions")
+  mediaFolders              MediaFolder[]    @relation("UserMediaFolders")
 
   @@map("users")
 }
@@ -292,17 +293,20 @@ model StorageObject {
   s3UploadId      String?             @map("s3_upload_id") // S3 multipart upload ID
   metadata        Json?               // JSONB for flexible metadata
   uploadedById    String?             @map("uploaded_by_id") @db.Uuid
+  mediaFolderId   String?             @map("media_folder_id") @db.Uuid
   createdAt       DateTime            @default(now()) @map("created_at") @db.Timestamptz
   updatedAt       DateTime            @updatedAt @map("updated_at") @db.Timestamptz
 
   // Relations
   uploadedBy        User?                @relation("UserStorageObjects", fields: [uploadedById], references: [id], onDelete: SetNull)
+  mediaFolder       MediaFolder?         @relation("MediaFolderFiles", fields: [mediaFolderId], references: [id], onDelete: SetNull)
   chunks            StorageObjectChunk[]
   secretAttachments SecretAttachment[]
 
   @@index([uploadedById])
   @@index([status])
   @@index([createdAt])
+  @@index([mediaFolderId])
   @@map("storage_objects")
 }
 
@@ -320,6 +324,25 @@ model StorageObjectChunk {
   @@unique([objectId, partNumber])
   @@index([objectId])
   @@map("storage_object_chunks")
+}
+
+// =============================================================================
+// Media Folders
+// =============================================================================
+
+model MediaFolder {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @db.VarChar(255)
+  userId    String   @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  user  User            @relation("UserMediaFolders", fields: [userId], references: [id], onDelete: Cascade)
+  files StorageObject[] @relation("MediaFolderFiles")
+
+  @@index([userId])
+  @@map("media_folders")
 }
 
 // =============================================================================

@@ -25,6 +25,13 @@ const EditSecretPage = lazy(() => import('./pages/EditSecretPage'));
 const SecretTypesPage = lazy(() => import('./pages/SecretTypesPage'));
 const CreateSecretTypePage = lazy(() => import('./pages/CreateSecretTypePage'));
 const EditSecretTypePage = lazy(() => import('./pages/EditSecretTypePage'));
+const MediaFoldersPage = lazy(() => import('./pages/MediaFoldersPage'));
+const CreateFolderPage = lazy(() => import('./pages/CreateFolderPage'));
+const EditFolderPage = lazy(() => import('./pages/EditFolderPage'));
+const MediaFolderPage = lazy(() => import('./pages/MediaFolderPage'));
+const MediaUploadPage = lazy(() => import('./pages/MediaUploadPage'));
+const RenameMediaFilePage = lazy(() => import('./pages/RenameMediaFilePage'));
+const MediaPlayerPage = lazy(() => import('./pages/MediaPlayerPage'));
 
 // Test login page (development only)
 const TestLoginPage = import.meta.env.PROD
@@ -66,6 +73,13 @@ function AppRoutes() {
                 <Route path="/settings" element={<UserSettingsPage />} />
                 <Route path="/admin/users" element={<UserManagementPage />} />
                 <Route path="/admin/settings" element={<SystemSettingsPage />} />
+                <Route path="/media" element={<MediaFoldersPage />} />
+                <Route path="/media/new-folder" element={<CreateFolderPage />} />
+                <Route path="/media/:folderId/edit" element={<EditFolderPage />} />
+                <Route path="/media/:folderId/upload" element={<MediaUploadPage />} />
+                <Route path="/media/:folderId/:fileId/rename" element={<RenameMediaFilePage />} />
+                <Route path="/media/:folderId/:fileId" element={<MediaPlayerPage />} />
+                <Route path="/media/:folderId" element={<MediaFolderPage />} />
               </Route>
             </Route>
 

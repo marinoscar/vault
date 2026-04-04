@@ -58,6 +58,14 @@ const PERMISSIONS = [
   { name: 'secrets:read_any', description: 'Admin: read any secret' },
   { name: 'secrets:write_any', description: 'Admin: update any secret' },
   { name: 'secrets:delete_any', description: 'Admin: delete any secret' },
+
+  // Media management
+  { name: 'media:read', description: 'Read own media files and folders' },
+  { name: 'media:write', description: 'Upload and update own media files and folders' },
+  { name: 'media:delete', description: 'Delete own media files and folders' },
+  { name: 'media:read_any', description: 'Admin: read any media files and folders' },
+  { name: 'media:write_any', description: 'Admin: update any media files and folders' },
+  { name: 'media:delete_any', description: 'Admin: delete any media files and folders' },
 ] as const;
 
 // Role to permissions mapping
@@ -84,6 +92,12 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'secrets:read_any',
     'secrets:write_any',
     'secrets:delete_any',
+    'media:read',
+    'media:write',
+    'media:delete',
+    'media:read_any',
+    'media:write_any',
+    'media:delete_any',
   ],
   contributor: [
     'user_settings:read',
@@ -96,6 +110,9 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'secrets:read',
     'secrets:write',
     'secrets:delete',
+    'media:read',
+    'media:write',
+    'media:delete',
   ],
   viewer: [
     'user_settings:read',
@@ -103,6 +120,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'storage:read',
     'secret_types:read',
     'secrets:read',
+    'media:read',
   ],
 };
 

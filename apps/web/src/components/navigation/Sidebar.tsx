@@ -18,6 +18,7 @@ import {
   People as PeopleIcon,
   VpnKey as VpnKeyIcon,
   Category as CategoryIcon,
+  PermMedia as PermMediaIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -46,6 +47,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       label: 'Secrets',
       icon: <VpnKeyIcon />,
       path: '/secrets',
+      visible: true,
+    },
+    {
+      label: 'Media',
+      icon: <PermMediaIcon />,
+      path: '/media',
       visible: true,
     },
     {
@@ -98,7 +105,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           .map((item) => (
             <ListItem key={item.path} disablePadding>
               <ListItemButton
-                selected={location.pathname === item.path}
+                selected={
+                  item.path === '/'
+                    ? location.pathname === '/'
+                    : location.pathname.startsWith(item.path)
+                }
                 onClick={() => handleNavigate(item.path)}
                 sx={{
                   '&.Mui-selected': {
@@ -112,7 +123,9 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 <ListItemIcon
                   sx={{
                     color:
-                      location.pathname === item.path
+                      (item.path === '/'
+                        ? location.pathname === '/'
+                        : location.pathname.startsWith(item.path))
                         ? theme.palette.primary.main
                         : theme.palette.text.secondary,
                   }}
