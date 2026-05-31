@@ -337,6 +337,159 @@ vaultcli config reset                             # Reset to defaults
 
 ---
 
+### `sync` — Local File Sync
+
+Keep local `.env` files (or any UTF-8 text files) backed up in Vault as **Document-type secrets**, with full version history. Designed to run unattended from cron. Change detection is client-side via SHA-256 — unchanged files are skipped and no new version is created.
+
+The local registry is persisted at `~/.config/vaultcli/sync.json` (mode `0600`; honors `VAULTCLI_CONFIG_DIR`). Registration is local-only; the Vault secret is created lazily on the first `sync run`. Removing an entry only unregisters it locally — it does **not** delete the Vault secret.
+
+#### `sync add`
+
+Register a single file.
+
+```bash
+vaultcli sync add --name "app/env-prod" --path /home/user/myapp/.env.production
+vaultcli sync add --name "app/env-prod" --path /home/user/myapp/.env.production \
+  --description "Production environment variables"
+```
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--name <secretName>` | Yes | Secret name (unique per user) |
+| `--path <absolutePath>` | Yes | Absolute path to the file |
+| `--description <text>` | No | Description stored on the Vault secret |
+
+Fails (exit 1) on a duplicate name or a relative path. Warns if the file does not exist yet but still registers the entry.
+
+#### `sync add-dir`
+
+Register a directory. Matching files are discovered at run time, not at registration.
+
+```bash
+vaultcli sync add-dir --path /home/user/myapp
+vaultcli sync add-dir --path /home/user/myapp --pattern "*.env" --recursive
+vaultcli sync add-dir --path /home/user/myapp --name-prefix "myapp"
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--path <absoluteDir>` | Absolute path to the directory | — (required) |
+| `--pattern <glob>` | Glob pattern to match files | `.env*` |
+| `--recursive` | Descend into subdirectories | `false` |
+| `--name-prefix <prefix>` | Prefix for derived secret names | directory basename |
+| `--description <text>` | Description for discovered secrets | — |
+
+Derived secret name is `<name-prefix>/<relative path>` — deterministic across runs. `.git` and `node_modules` are always skipped. Explicit per-file entries (added via `sync add`) take precedence over directory-discovered duplicates.
+
+#### `sync remove <name-or-path>`
+
+Unregister a file by name or path, or a directory by path. Exits 1 if nothing matched. Does **not** delete the Vault secret.
+
+```bash
+vaultcli sync remove "app/env-prod"
+vaultcli sync remove /home/user/myapp/.env.production
+vaultcli sync remove /home/user/myapp          # removes the directory entry
+```
+
+#### `sync list`
+
+Offline listing of all registered files and watched directories. Shows cached status and last-synced date without contacting the server.
+
+```bash
+vaultcli sync list
+vaultcli sync list --json
+```
+
+Status values: `not-yet-created`, `synced (vN)`.
+
+#### `sync status`
+
+Dry run — compares each file against Vault and reports what would happen, without writing anything. Exits non-zero if any entry errored.
+
+```bash
+vaultcli sync status
+vaultcli sync status --name "app/env-prod"
+```
+
+Report values: `would-create`, `would-update`, `unchanged`, `error`.
+
+#### `sync run`
+
+The primary command and cron entry point. Pushes only changed files, continues past per-file errors, and prints a summary line.
+
+```bash
+vaultcli sync run
+vaultcli sync run --name "app/env-prod"    # one entry only
+vaultcli sync run --dry-run               # preview without writing
+vaultcli sync run --json                  # machine-readable output
+```
+
+| Option | Description |
+|--------|-------------|
+| `--name <name>` | Limit run to a single registered entry |
+| `--dry-run` | Preview changes without writing to Vault |
+
+Summary output (human mode):
+
+```
+3 created, 1 updated, 5 unchanged, 0 errors
+```
+
+JSON envelope:
+
+```json
+{
+  "success": true,
+  "data": {
+    "dryRun": false,
+    "summary": { "created": 3, "updated": 1, "unchanged": 5, "errors": 0 },
+    "results": [...]
+  }
+}
+```
+
+Exit code: **0** when there are no errors, **1** when one or more entries errored.
+
+Quiet mode prints one line per changed or errored entry:
+
+```
+created app/env-prod
+updated app/env-staging
+```
+
+#### `sync where`
+
+Print the path to the local sync registry file.
+
+```bash
+vaultcli sync where
+# → /home/user/.config/vaultcli/sync.json
+```
+
+---
+
+### Running `sync` from Cron
+
+`sync run` is designed to be called unattended. Authenticate once interactively (`vaultcli auth login`), then add a crontab entry. Because cron runs with a minimal environment, set `HOME`, `VAULTCLI_CONFIG_DIR`, and `PATH` explicitly and use absolute paths.
+
+```cron
+*/15 * * * * HOME=/home/USER VAULTCLI_CONFIG_DIR=/home/USER/.config/vaultcli PATH=/usr/local/bin:/usr/bin:/bin vaultcli sync run --json >> /home/USER/.local/state/vaultcli-sync.log 2>&1
+```
+
+The non-zero exit on errors makes the job alertable via standard cron mail or external monitoring.
+
+**Prerequisites:**
+- The CLI must already be authenticated. Run `vaultcli auth login` once; the PAT is stored at `~/.config/vaultcli/auth.json`.
+- If using a local build instead of the installed symlink, use absolute paths to `node` and `bin/vaultcli.js`.
+
+#### Sync Caveats
+
+- The encrypted `notes` field on the Vault secret is the authoritative versioned copy. A storage attachment is also kept as a best-effort downloadable mirror — a failed or blocked upload logs a warning and does **not** fail the entry or change the exit code.
+- Only UTF-8 text files are supported. A trailing-newline change counts as a real change.
+- `sync run` operates on the authenticated user's own secrets.
+
+---
+
 ## AI Agent Integration
 
 The CLI is designed for seamless AI agent integration with `--json` and `-q` modes.
@@ -398,6 +551,7 @@ fi
 |------|---------|-------------|
 | `~/.config/vaultcli/auth.json` | PAT token storage | `0600` |
 | `~/.config/vaultcli/config.json` | Server URL override | `0600` |
+| `~/.config/vaultcli/sync.json` | Sync registry (files and directories) | `0600` |
 
 ### Server URL Priority
 
@@ -434,11 +588,13 @@ tools/vaultcli/
 │   │   ├── versions.ts      # version history
 │   │   ├── types.ts         # secret types
 │   │   ├── health.ts        # health checks
-│   │   └── config.ts        # config management
+│   │   ├── config.ts        # config management
+│   │   └── sync.ts          # sync add/add-dir/remove/list/status/run/where
 │   ├── lib/                 # Core libraries
 │   │   ├── api-client.ts    # HTTP client
 │   │   ├── auth-store.ts    # Token persistence
-│   │   └── formatters.ts    # Human-readable output
+│   │   ├── formatters.ts    # Human-readable output
+│   │   └── sync-store.ts    # Sync registry persistence
 │   └── utils/               # Shared utilities
 │       ├── types.ts         # TypeScript interfaces
 │       ├── output.ts        # OutputManager
@@ -482,3 +638,7 @@ npm run typecheck     # Type check only
 | `types get` | `GET` | `/api/secret-types/:id` |
 | `health live` | `GET` | `/api/health/live` |
 | `health ready` | `GET` | `/api/health/ready` |
+| `sync run` (create) | `POST` | `/api/secrets` |
+| `sync run` (update) | `PUT` | `/api/secrets/:id` |
+| `sync run` (read) | `GET` | `/api/secrets/by-name/:name` |
+| `sync run` (attachment) | `POST` | `/api/storage/objects` |
