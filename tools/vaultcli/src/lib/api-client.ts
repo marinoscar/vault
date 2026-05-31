@@ -4,9 +4,11 @@ import type {
   HealthResponse,
   PaginatedResponse,
   Secret,
+  SecretAttachment,
   SecretListItem,
   SecretType,
   SecretVersion,
+  StorageObject,
   UserInfo,
 } from '../utils/types.js';
 
@@ -214,6 +216,89 @@ export async function getSecretType(id: string): Promise<SecretType> {
   if (!res.ok) throw new Error(`Failed to get secret type: ${res.status}`);
   const json = (await res.json()) as { data: SecretType };
   return json.data;
+}
+
+// ---------------------------------------------------------------------------
+// Storage objects & attachments
+// ---------------------------------------------------------------------------
+
+/**
+ * Upload a file via the simple (single-request) storage endpoint.
+ * The body is a FormData instance — apiRequest only forces a JSON
+ * Content-Type for string bodies, so fetch sets the multipart boundary.
+ */
+export async function uploadStorageObject(params: {
+  content: string | Buffer;
+  filename: string;
+  mimeType?: string;
+}): Promise<StorageObject> {
+  const form = new FormData();
+  const blob = new Blob([params.content], {
+    type: params.mimeType ?? 'text/plain',
+  });
+  form.append('file', blob, params.filename);
+
+  const res = await apiRequest('/storage/objects', {
+    method: 'POST',
+    body: form,
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Failed to upload file: ${res.status} ${body}`);
+  }
+  const json = (await res.json()) as { data: StorageObject };
+  return json.data;
+}
+
+export async function listAttachments(secretId: string): Promise<SecretAttachment[]> {
+  const res = await apiRequest(
+    `/secrets/${encodeURIComponent(secretId)}/attachments`,
+  );
+  if (!res.ok) throw new Error(`Failed to list attachments: ${res.status}`);
+  const json = (await res.json()) as { data: SecretAttachment[] };
+  return json.data;
+}
+
+export async function linkAttachment(
+  secretId: string,
+  dto: { storageObjectId: string; label?: string },
+): Promise<SecretAttachment> {
+  const res = await apiRequest(
+    `/secrets/${encodeURIComponent(secretId)}/attachments`,
+    { method: 'POST', body: JSON.stringify(dto) },
+  );
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Failed to link attachment: ${res.status} ${body}`);
+  }
+  const json = (await res.json()) as { data: SecretAttachment };
+  return json.data;
+}
+
+export async function deleteAttachment(
+  secretId: string,
+  attachmentId: string,
+): Promise<void> {
+  const res = await apiRequest(
+    `/secrets/${encodeURIComponent(secretId)}/attachments/${encodeURIComponent(attachmentId)}`,
+    { method: 'DELETE' },
+  );
+  if (!res.ok && res.status !== 404) {
+    throw new Error(`Failed to delete attachment: ${res.status}`);
+  }
+}
+
+/**
+ * Find the id of the system "Document" secret type (the one that
+ * allows attachments). Used by the sync engine to create file secrets.
+ */
+export async function findDocumentTypeId(): Promise<string> {
+  const types = await listSecretTypes();
+  const doc = types.find((t) => t.name === 'Document' && t.allowAttachments);
+  if (!doc) {
+    throw new Error('Document secret type not found on server');
+  }
+  return doc.id;
 }
 
 // ---------------------------------------------------------------------------
