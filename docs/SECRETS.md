@@ -293,6 +293,14 @@ Audit records include the acting user's ID and a timestamp, providing a forensic
 
 ---
 
+## CLI and Automation
+
+Document-type secrets can be created and updated programmatically using the `vaultcli` CLI without any browser interaction. The `vaultcli secrets create` and `vaultcli secrets update` commands accept `--data` as a JSON object and work with any secret type, including Document.
+
+The `vaultcli sync` command automates this for local `.env` files (or any UTF-8 text file): it registers files or directories locally and, on each `sync run`, compares local content to the Vault copy via client-side SHA-256 hashing, then pushes only changed files as new versions of their corresponding Document secrets. This makes it straightforward to keep server environment files backed up in Vault with full version history, safe to call from cron. See [ENV-SYNC.md](ENV-SYNC.md) for the full guide.
+
+---
+
 ## Security Considerations
 
 **Encryption key loss is permanent.** There is no recovery mechanism. If `VAULT_ENCRYPTION_KEY` is lost or corrupted, all encrypted secret data becomes unrecoverable. Store the key in a secure secrets manager (e.g., AWS Secrets Manager, HashiCorp Vault) and maintain an offline backup.

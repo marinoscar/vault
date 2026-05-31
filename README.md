@@ -14,6 +14,7 @@ Vault is a self-hosted secrets manager. It stores credentials, API keys, credit 
 - **Authorization**: Role-based access control (RBAC) with Admin, Contributor, and Viewer roles. Admins can view secrets across all users.
 - **Access Control**: Email allowlist restricts access to pre-authorized users only.
 - **Personal Access Tokens**: Long-lived tokens for programmatic API and CLI access.
+- **.env File Sync**: Back up server `.env` files into Vault as versioned secrets via the `vaultcli` CLI.
 - **Audit Logging**: All secret operations are logged to the audit event store.
 - **Observability**: OpenTelemetry instrumentation with traces, metrics, and structured logging via Uptrace.
 - **API Documentation**: Swagger/OpenAPI documentation at `/api/docs`.
@@ -188,7 +189,14 @@ Development mode (`dev.compose.yml`) includes hot reload for both frontend and b
 - Backend: Changes to `apps/api/src/**` trigger restart
 - Frontend: Vite HMR updates immediately
 
-## CLI Tool
+## CLI Tools
+
+This repository includes two separate CLI tools with different purposes:
+
+- **`app`** — Dev/admin CLI for managing the development environment, running tests, seeding the database, and performing administrative API operations. See [tools/app/README.md](tools/app/README.md).
+- **`vaultcli`** — Secrets CLI for interacting with Vault secrets programmatically. Includes the `vaultcli sync` command for backing up local `.env` files into Vault as versioned Document secrets. See [tools/vaultcli/README.md](tools/vaultcli/README.md).
+
+### `app` — Development and Admin CLI
 
 A cross-platform CLI (`app`) is available for managing development, testing, and API operations. The CLI can connect to any deployed instance, not just localhost.
 
@@ -247,7 +255,7 @@ app config set-url https://vault-staging.example.com
 app config show
 ```
 
-For complete CLI documentation, see [tools/app/README.md](tools/app/README.md).
+For complete `app` CLI documentation, see [tools/app/README.md](tools/app/README.md).
 
 ## Project Structure
 
@@ -303,7 +311,9 @@ vault/
 
 ## Documentation
 
-- **[CLI Tool](tools/app/README.md)** - CLI for development, testing, and API management
+- **[app CLI](tools/app/README.md)** - Dev/admin CLI for development, testing, and API management
+- **[vaultcli CLI](tools/vaultcli/README.md)** - Secrets CLI for programmatic access to Vault
+- **[ENV-SYNC.md](docs/ENV-SYNC.md)** - Backing up `.env` files into Vault via the `vaultcli` CLI
 - **[DEVELOPMENT.md](docs/DEVELOPMENT.md)** - Development setup, common patterns, and troubleshooting
 - **[SECURITY.md](docs/SECURITY.md)** - Security design and implementation
 - **[OBSERVABILITY.md](docs/OBSERVABILITY.md)** - Monitoring, logging, and tracing
