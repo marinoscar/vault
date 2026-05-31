@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import { header, keyValue, tableHeader, tableRow, blank, statusBadge, section } from '../utils/output.js';
+import { header, keyValue, tableHeader, tableRow, blank, statusBadge, section, dim } from '../utils/output.js';
 import type {
 
   HealthResponse,
@@ -8,6 +8,9 @@ import type {
   SecretListItem,
   SecretType,
   SecretVersion,
+  SyncRegistry,
+  SyncResult,
+  SyncRunSummary,
 } from '../utils/types.js';
 
 // ---------------------------------------------------------------------------
@@ -215,6 +218,110 @@ export function formatSecretTypeDetail(type: SecretType): void {
     }
   }
 
+  blank();
+}
+
+// ---------------------------------------------------------------------------
+// Sync
+// ---------------------------------------------------------------------------
+
+export function formatSyncList(registry: SyncRegistry): void {
+  const files = registry.entries.filter((e) => e.kind === 'file');
+  const dirs = registry.entries.filter((e) => e.kind === 'dir');
+
+  header(`Synced files (${files.length} file${files.length === 1 ? '' : 's'}, ${dirs.length} dir${dirs.length === 1 ? '' : 's'})`);
+
+  if (files.length > 0) {
+    const widths = [26, 34, 16, 12];
+    tableHeader(['Name', 'Path', 'Status', 'Last Synced'], widths);
+    for (const e of files) {
+      if (e.kind !== 'file') continue;
+      const status = e.secretId
+        ? chalk.green(`synced (v${e.lastVersion ?? '?'})`)
+        : chalk.yellow('not-yet-created');
+      tableRow(
+        [
+          truncate(e.name, 26),
+          truncate(e.path, 34),
+          status,
+          e.lastSyncedAt ? shortDate(e.lastSyncedAt) : '-',
+        ],
+        widths,
+      );
+    }
+  }
+
+  if (dirs.length > 0) {
+    section('Watched directories');
+    const widths = [34, 14, 12, 16];
+    tableHeader(['Path', 'Pattern', 'Recursive', 'Name Prefix'], widths);
+    for (const e of dirs) {
+      if (e.kind !== 'dir') continue;
+      tableRow(
+        [
+          truncate(e.path, 34),
+          e.pattern,
+          e.recursive ? chalk.green('Yes') : chalk.dim('No'),
+          e.namePrefix ?? chalk.dim('(dir name)'),
+        ],
+        widths,
+      );
+    }
+  }
+
+  if (files.length === 0 && dirs.length === 0) {
+    keyValue('Status', 'No files or directories registered yet');
+    dim('  Add one with: vaultcli sync add --name <name> --path <file>');
+  }
+
+  blank();
+}
+
+function syncActionBadge(action: string, dryRun: boolean): string {
+  const verb = dryRun
+    ? { created: 'would-create', updated: 'would-update', unchanged: 'unchanged', error: 'error' }[action] ?? action
+    : action;
+  const color: Record<string, (s: string) => string> = {
+    created: chalk.green,
+    updated: chalk.cyan,
+    unchanged: chalk.dim,
+    error: chalk.red,
+  };
+  const fn = color[action] || chalk.white;
+  return fn(verb);
+}
+
+export function formatSyncRun(
+  results: SyncResult[],
+  summary: SyncRunSummary,
+  dryRun: boolean,
+): void {
+  header(dryRun ? 'Sync (dry run)' : 'Sync');
+  const widths = [16, 28, 38];
+  tableHeader(['Action', 'Name', 'Detail'], widths);
+
+  for (const r of results) {
+    let detail: string;
+    if (r.action === 'error') {
+      detail = chalk.red(r.reason ?? 'error');
+    } else if (r.action === 'unchanged') {
+      detail = r.version != null ? `v${r.version}` : '-';
+    } else {
+      const ver = r.version != null ? `v${r.version}` : '';
+      const att = r.attachmentSynced === false ? chalk.yellow(' (no attachment)') : '';
+      detail = `${ver}${att}`;
+    }
+    tableRow([syncActionBadge(r.action, dryRun), truncate(r.name, 28), detail], widths);
+  }
+
+  blank();
+  const parts = [
+    chalk.green(`${summary.created} created`),
+    chalk.cyan(`${summary.updated} updated`),
+    chalk.dim(`${summary.unchanged} unchanged`),
+    summary.errors > 0 ? chalk.red(`${summary.errors} errors`) : chalk.dim('0 errors'),
+  ];
+  keyValue('Summary', parts.join(', '));
   blank();
 }
 

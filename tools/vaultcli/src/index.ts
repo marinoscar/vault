@@ -6,6 +6,7 @@ import { registerVersionCommands } from './commands/versions.js';
 import { registerTypeCommands } from './commands/types.js';
 import { registerHealthCommands } from './commands/health.js';
 import { registerConfigCommands } from './commands/config.js';
+import { registerSyncCommands } from './commands/sync.js';
 import { VERSION } from './version.js';
 
 const program = new Command();
@@ -71,6 +72,7 @@ registerVersionCommands(program);
 registerTypeCommands(program);
 registerHealthCommands(program);
 registerConfigCommands(program);
+registerSyncCommands(program);
 
 // Help examples
 program.addHelpText(
@@ -100,6 +102,13 @@ ${chalk.bold('Examples:')}
   ${chalk.dim('# Secret types')}
   $ vaultcli types list                                       ${chalk.dim('# Browse available types')}
   $ vaultcli types get <id>                                   ${chalk.dim('# See type field schema')}
+
+  ${chalk.dim('# Sync .env files into Vault (versioned Document secrets)')}
+  $ vaultcli sync add --name "api/.env" --path /srv/api/.env     ${chalk.dim('# Register one file')}
+  $ vaultcli sync add-dir --path /srv --recursive                ${chalk.dim('# Auto-discover .env files')}
+  $ vaultcli sync run                                            ${chalk.dim('# Push only changed files')}
+  $ vaultcli sync status                                         ${chalk.dim('# Preview what would change')}
+  $ vaultcli sync list                                          ${chalk.dim('# Show registered files')}
 
   ${chalk.dim('# Server health (no auth needed)')}
   $ vaultcli health live                                      ${chalk.dim('# Liveness check')}
