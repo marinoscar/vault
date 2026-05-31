@@ -103,6 +103,62 @@ export interface SecretAttachment {
   };
 }
 
+export interface StorageObject {
+  id: string;
+  name: string;
+  size: string;
+  mimeType: string;
+  status: string;
+}
+
+// ---------------------------------------------------------------------------
+// .env file sync
+// ---------------------------------------------------------------------------
+
+export interface SyncFileEntry {
+  kind: 'file';
+  name: string;
+  path: string;
+  description?: string;
+  secretId?: string;
+  lastSyncedHash?: string;
+  lastVersion?: number;
+  lastSyncedAt?: string;
+}
+
+export interface SyncDirEntry {
+  kind: 'dir';
+  path: string;
+  pattern: string;
+  recursive: boolean;
+  namePrefix?: string;
+  description?: string;
+}
+
+export type SyncEntry = SyncFileEntry | SyncDirEntry;
+
+export interface SyncRegistry {
+  entries: SyncEntry[];
+}
+
+export type SyncAction = 'created' | 'updated' | 'unchanged' | 'error';
+
+export interface SyncResult {
+  name: string;
+  path: string;
+  action: SyncAction;
+  version?: number;
+  reason?: string;
+  attachmentSynced?: boolean;
+}
+
+export interface SyncRunSummary {
+  created: number;
+  updated: number;
+  unchanged: number;
+  errors: number;
+}
+
 export interface PaginatedResponse<T> {
   items: T[];
   meta: {
