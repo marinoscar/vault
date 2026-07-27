@@ -72,7 +72,7 @@ describe('Health Endpoints (Integration)', () => {
 
       expect(response.body).toMatchObject({
         statusCode: 503,
-        code: 'ERROR',
+        code: 'SERVICE_UNAVAILABLE',
         timestamp: expect.any(String),
       });
     });
@@ -209,7 +209,7 @@ describe('Health Endpoints (Integration)', () => {
         .expect(503);
 
       expect(response.body.statusCode).toBe(503);
-      expect(response.body.code).toBe('ERROR');
+      expect(response.body.code).toBe('SERVICE_UNAVAILABLE');
     });
 
     it('should be accessible without authentication', async () => {
@@ -335,7 +335,7 @@ describe('Health Endpoints (Integration)', () => {
         .expect(503);
 
       expect(response.body.statusCode).toBe(503);
-      expect(response.body.code).toBe('ERROR');
+      expect(response.body.code).toBe('SERVICE_UNAVAILABLE');
     });
   });
 
@@ -364,7 +364,7 @@ describe('Health Endpoints (Integration)', () => {
 
       expect(response.body).toMatchObject({
         statusCode: 503,
-        code: 'ERROR',
+        code: 'SERVICE_UNAVAILABLE',
         message: expect.any(String),
         timestamp: expect.any(String),
         path: expect.any(String),
