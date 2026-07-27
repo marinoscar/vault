@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 
 import { SecretsService } from './secrets.service';
@@ -39,6 +40,8 @@ describe('SecretsService', () => {
   const secretId = 'secret-111';
   const typeId = 'type-222';
   const versionId = 'version-333';
+  const storageObjectId = 'object-444';
+  const attachmentId = 'attachment-555';
 
   const encryptedPayload = {
     ciphertext: 'base64ciphertext==',
@@ -87,6 +90,36 @@ describe('SecretsService', () => {
     createdById: userId,
     createdBy: { id: userId, email: 'user@example.com', name: 'Test User' },
     createdAt: new Date(),
+  };
+
+  // `size` is intentionally a real BigInt — this is exactly what Prisma returns
+  // and what Fastify's serializer cannot handle.
+  const mockStorageObject = {
+    id: storageObjectId,
+    name: 'front.png',
+    size: BigInt(2048),
+    mimeType: 'image/png',
+    storageKey: 'secrets/abc123.png',
+    storageProvider: 's3',
+    bucket: 'app-bucket',
+    status: 'ready',
+    s3UploadId: 'upload-xyz',
+    metadata: null,
+    uploadedById: userId,
+    mediaFolderId: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const mockAttachment = {
+    id: attachmentId,
+    secretId,
+    secretVersionId: versionId,
+    storageObjectId,
+    role: 'card_front',
+    label: null,
+    createdAt: new Date(),
+    storageObject: mockStorageObject,
   };
 
   beforeEach(async () => {
@@ -364,6 +397,275 @@ describe('SecretsService', () => {
       const perms = [PERMISSIONS.SECRETS_READ_ANY];
 
       await expect(service.findOne(secretId, otherUserId, perms)).resolves.toBeDefined();
+    });
+
+    it('should expose currentVersionId (the row id, not the version number)', async () => {
+      mockPrisma.secret.findUnique
+        .mockResolvedValueOnce(mockSecret as any)
+        .mockResolvedValueOnce(fullSecretDetail as any);
+
+      const result = await service.findOne(secretId, userId, [PERMISSIONS.SECRETS_READ]);
+
+      expect(result.currentVersionId).toBe(versionId);
+      expect(result.currentVersion).toBe(1);
+    });
+
+    it('should set currentVersionId to null when there is no current version', async () => {
+      mockPrisma.secret.findUnique
+        .mockResolvedValueOnce(mockSecret as any)
+        .mockResolvedValueOnce({ ...mockSecret, versions: [], attachments: [] } as any);
+
+      const result = await service.findOne(secretId, userId, [PERMISSIONS.SECRETS_READ]);
+
+      expect(result.currentVersionId).toBeNull();
+      expect(result.values).toBeNull();
+    });
+
+    it('should serialize the attachment BigInt size as a string', async () => {
+      // Fastify's serializer throws on a raw BigInt, and there is deliberately
+      // no global BigInt.prototype.toJSON in this app.
+      mockPrisma.secret.findUnique
+        .mockResolvedValueOnce(mockSecret as any)
+        .mockResolvedValueOnce({
+          ...mockSecret,
+          versions: [mockVersion],
+          attachments: [mockAttachment],
+        } as any);
+
+      const result = await service.findOne(secretId, userId, [PERMISSIONS.SECRETS_READ]);
+
+      expect(result.attachments).toHaveLength(1);
+      expect(result.attachments[0].storageObject!.size).toBe('2048');
+      expect(typeof result.attachments[0].storageObject!.size).toBe('string');
+      expect(() => JSON.stringify(result.attachments)).not.toThrow();
+    });
+
+    it('should not leak internal storage columns on attachments', async () => {
+      mockPrisma.secret.findUnique
+        .mockResolvedValueOnce(mockSecret as any)
+        .mockResolvedValueOnce({
+          ...mockSecret,
+          versions: [mockVersion],
+          attachments: [mockAttachment],
+        } as any);
+
+      const result = await service.findOne(secretId, userId, [PERMISSIONS.SECRETS_READ]);
+
+      expect(result.attachments[0].storageObject).not.toHaveProperty('storageKey');
+      expect(result.attachments[0].storageObject).not.toHaveProperty('s3UploadId');
+      expect(result.attachments[0].secretVersionId).toBe(versionId);
+      expect(result.attachments[0].role).toBe('card_front');
+    });
+  });
+
+  // ============================================================================
+  // linkAttachment
+  // ============================================================================
+
+  describe('linkAttachment', () => {
+    const attachType = { ...mockSecretType, allowAttachments: true };
+    const attachSecret = { ...mockSecret, type: attachType };
+    const writePerms = [PERMISSIONS.SECRETS_WRITE];
+
+    beforeEach(() => {
+      mockPrisma.secret.findUnique.mockResolvedValue(attachSecret as any);
+      mockPrisma.storageObject.findUnique.mockResolvedValue(mockStorageObject as any);
+      mockPrisma.secretVersion.findFirst.mockResolvedValue({ id: versionId } as any);
+      mockPrisma.secretAttachment.create.mockResolvedValue(mockAttachment as any);
+    });
+
+    it('should resolve the current version and insert inside a single transaction', async () => {
+      await service.linkAttachment(
+        secretId,
+        { storageObjectId: storageObjectId } as any,
+        userId,
+        writePerms,
+      );
+
+      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+      // The isCurrent lookup must happen inside the transaction, before insert.
+      expect(mockPrisma.secretVersion.findFirst).toHaveBeenCalledWith({
+        where: { secretId, isCurrent: true },
+        select: { id: true },
+      });
+      const findFirstOrder = (mockPrisma.secretVersion.findFirst as jest.Mock).mock
+        .invocationCallOrder[0];
+      const createOrder = (mockPrisma.secretAttachment.create as jest.Mock).mock
+        .invocationCallOrder[0];
+      expect(findFirstOrder).toBeLessThan(createOrder);
+    });
+
+    it('should stamp the resolved secretVersionId on the attachment', async () => {
+      await service.linkAttachment(
+        secretId,
+        { storageObjectId: storageObjectId } as any,
+        userId,
+        writePerms,
+      );
+
+      expect(mockPrisma.secretAttachment.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            secretId,
+            secretVersionId: versionId,
+            storageObjectId,
+          }),
+        }),
+      );
+    });
+
+    it('should pass an explicit role through to the create', async () => {
+      await service.linkAttachment(
+        secretId,
+        { storageObjectId: storageObjectId, role: 'card_back' } as any,
+        userId,
+        writePerms,
+      );
+
+      const call = (mockPrisma.secretAttachment.create as jest.Mock).mock.calls[0][0];
+      expect(call.data.role).toBe('card_back');
+    });
+
+    it('should leave role undefined (generic attachment) when omitted', async () => {
+      await service.linkAttachment(
+        secretId,
+        { storageObjectId: storageObjectId } as any,
+        userId,
+        writePerms,
+      );
+
+      const call = (mockPrisma.secretAttachment.create as jest.Mock).mock.calls[0][0];
+      expect(call.data.role).toBeUndefined();
+    });
+
+    it('should stringify the BigInt size on the returned attachment', async () => {
+      const result = await service.linkAttachment(
+        secretId,
+        { storageObjectId: storageObjectId } as any,
+        userId,
+        writePerms,
+      );
+
+      expect(result.storageObject!.size).toBe('2048');
+      expect(() => JSON.stringify(result)).not.toThrow();
+    });
+
+    it('should throw BadRequestException when the type does not allow attachments', async () => {
+      mockPrisma.secret.findUnique.mockResolvedValue(mockSecret as any); // allowAttachments: false
+
+      await expect(
+        service.linkAttachment(
+          secretId,
+          { storageObjectId: storageObjectId } as any,
+          userId,
+          writePerms,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw NotFoundException when the storage object does not exist', async () => {
+      mockPrisma.storageObject.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.linkAttachment(
+          secretId,
+          { storageObjectId: storageObjectId } as any,
+          userId,
+          writePerms,
+        ),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw ForbiddenException when the storage object belongs to someone else', async () => {
+      mockPrisma.storageObject.findUnique.mockResolvedValue({
+        ...mockStorageObject,
+        uploadedById: otherUserId,
+      } as any);
+
+      await expect(
+        service.linkAttachment(
+          secretId,
+          { storageObjectId: storageObjectId } as any,
+          userId,
+          writePerms,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should throw NotFoundException when the secret has no current version', async () => {
+      mockPrisma.secretVersion.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.linkAttachment(
+          secretId,
+          { storageObjectId: storageObjectId } as any,
+          userId,
+          writePerms,
+        ),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should map a P2002 on [secretVersionId, role] to a 409 naming the side', async () => {
+      mockPrisma.secretAttachment.create.mockRejectedValue(
+        Object.assign(new Error('Unique constraint failed'), {
+          code: 'P2002',
+          meta: { target: ['secret_version_id', 'role'] },
+        }),
+      );
+
+      let caught: ConflictException | undefined;
+      try {
+        await service.linkAttachment(
+          secretId,
+          { storageObjectId: storageObjectId, role: 'card_front' } as any,
+          userId,
+          writePerms,
+        );
+      } catch (err) {
+        caught = err as ConflictException;
+      }
+
+      expect(caught).toBeInstanceOf(ConflictException);
+      expect(caught!.message).toContain('front image');
+    });
+
+    it('should map a P2002 on [secretVersionId, storageObjectId] to a duplicate-file 409', async () => {
+      mockPrisma.secretAttachment.create.mockRejectedValue(
+        Object.assign(new Error('Unique constraint failed'), {
+          code: 'P2002',
+          meta: { target: ['secret_version_id', 'storage_object_id'] },
+        }),
+      );
+
+      let caught: ConflictException | undefined;
+      try {
+        await service.linkAttachment(
+          secretId,
+          { storageObjectId: storageObjectId } as any,
+          userId,
+          writePerms,
+        );
+      } catch (err) {
+        caught = err as ConflictException;
+      }
+
+      expect(caught).toBeInstanceOf(ConflictException);
+      expect(caught!.message).toContain('already attached');
+    });
+
+    it('should rethrow non-P2002 errors untouched', async () => {
+      mockPrisma.secretAttachment.create.mockRejectedValue(
+        Object.assign(new Error('connection reset'), { code: 'P1001' }),
+      );
+
+      await expect(
+        service.linkAttachment(
+          secretId,
+          { storageObjectId: storageObjectId } as any,
+          userId,
+          writePerms,
+        ),
+      ).rejects.toThrow('connection reset');
     });
   });
 

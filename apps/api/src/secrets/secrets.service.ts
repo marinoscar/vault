@@ -15,6 +15,10 @@ import { CreateSecretDto } from './dto/create-secret.dto';
 import { UpdateSecretDto } from './dto/update-secret.dto';
 import { SecretListQueryDto } from './dto/secret-list-query.dto';
 import { LinkAttachmentDto } from './dto/link-attachment.dto';
+import {
+  AttachmentResponseDto,
+  AttachmentStorageObjectDto,
+} from './dto/attachment-response.dto';
 
 @Injectable()
 export class SecretsService {
@@ -148,6 +152,75 @@ export class SecretsService {
       version.authTag,
     );
     return JSON.parse(plaintext) as Record<string, unknown>;
+  }
+
+  /**
+   * Map a StorageObject row to its attachment response shape.
+   *
+   * `size` is a BigInt column; it MUST be stringified here. Fastify's
+   * serializer throws `TypeError: Do not know how to serialize a BigInt` on a
+   * raw row, and this app intentionally does not install a global
+   * `BigInt.prototype.toJSON` (that would change the existing storage
+   * endpoints' output shape). Fields are listed explicitly so internal
+   * columns (storageKey, s3UploadId, bucket) are not leaked.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private mapStorageObject(object: any): AttachmentStorageObjectDto | null {
+    if (!object) {
+      return null;
+    }
+
+    return {
+      id: object.id,
+      name: object.name,
+      size: object.size?.toString() ?? '0',
+      mimeType: object.mimeType,
+      status: object.status,
+      metadata: object.metadata ?? null,
+      createdAt: object.createdAt,
+      updatedAt: object.updatedAt,
+    };
+  }
+
+  /**
+   * Map a SecretAttachment row (with its included storageObject) to the
+   * response shape used everywhere attachments leave this service.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private mapAttachment(attachment: any): AttachmentResponseDto {
+    return {
+      id: attachment.id,
+      secretId: attachment.secretId,
+      secretVersionId: attachment.secretVersionId,
+      storageObjectId: attachment.storageObjectId,
+      role: attachment.role ?? null,
+      label: attachment.label ?? null,
+      createdAt: attachment.createdAt,
+      storageObject: this.mapStorageObject(attachment.storageObject),
+    };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private mapAttachments(attachments: any): AttachmentResponseDto[] {
+    if (!Array.isArray(attachments)) {
+      return [];
+    }
+    return attachments.map((a) => this.mapAttachment(a));
+  }
+
+  /**
+   * Narrow an unknown error to a Prisma unique-constraint violation (P2002).
+   * Duck-typed rather than `instanceof` so it also holds for errors surfaced
+   * through mocks and transaction wrappers.
+   */
+  private isUniqueConstraintViolation(
+    error: unknown,
+  ): error is { code: string; meta?: { target?: unknown } } {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      (error as { code?: unknown }).code === 'P2002'
+    );
   }
 
   /**
@@ -377,8 +450,14 @@ export class SecretsService {
 
     return {
       ...secret,
+      // BigInt `size` on the storage objects must be stringified before it
+      // reaches the serializer — see mapStorageObject().
+      attachments: this.mapAttachments(secret.attachments),
       values,
       currentVersion: currentVersion?.version ?? null,
+      // The row id (not the version number) of the current version. Clients
+      // need it to attach files to the version they just created.
+      currentVersionId: currentVersion?.id ?? null,
     };
   }
 
@@ -701,16 +780,79 @@ export class SecretsService {
       `Linking storage object ${dto.storageObjectId} to secret ${secretId}`,
     );
 
-    const attachment = await this.prisma.secretAttachment.create({
-      data: {
-        secretId,
-        storageObjectId: dto.storageObjectId,
-        label: dto.label,
-      },
-      include: { storageObject: true },
-    });
+    // Resolve the current version and insert in ONE transaction, re-reading
+    // isCurrent inside it. Reading the version outside the transaction lets an
+    // update() commit in between, which would stamp the attachment onto a
+    // now-stale version — the file would be invisible in the UI.
+    let attachment;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      attachment = await this.prisma.$transaction(async (tx: any) => {
+        const currentVersion = await tx.secretVersion.findFirst({
+          where: { secretId, isCurrent: true },
+          select: { id: true },
+        });
 
-    return attachment;
+        if (!currentVersion) {
+          throw new NotFoundException(
+            'Secret has no current version to attach to',
+          );
+        }
+
+        return tx.secretAttachment.create({
+          data: {
+            secretId,
+            secretVersionId: currentVersion.id,
+            storageObjectId: dto.storageObjectId,
+            role: dto.role,
+            label: dto.label,
+          },
+          include: { storageObject: true },
+        });
+      });
+    } catch (error) {
+      throw this.translateAttachmentConflict(error, dto);
+    }
+
+    return this.mapAttachment(attachment);
+  }
+
+  /**
+   * Turn a unique-constraint violation from the attachment insert into a 409
+   * with an actionable message instead of letting it surface as a raw 500.
+   *
+   * Two unique constraints can fire: [secretVersionId, role] (one image per
+   * role per version) and [secretVersionId, storageObjectId] (same file linked
+   * twice). Any other error is returned unchanged for the caller to rethrow.
+   */
+  private translateAttachmentConflict(
+    error: unknown,
+    dto: LinkAttachmentDto,
+  ): unknown {
+    if (!this.isUniqueConstraintViolation(error)) {
+      return error;
+    }
+
+    const target = error.meta?.target;
+    const targetText = Array.isArray(target)
+      ? target.join(',')
+      : String(target ?? '');
+
+    // Postgres reports either the column list or the constraint name.
+    const isRoleConflict = targetText.includes('role')
+      ? true
+      : targetText === '' && Boolean(dto.role);
+
+    if (isRoleConflict && dto.role) {
+      const side = dto.role === 'card_front' ? 'front' : 'back';
+      return new ConflictException(
+        `This card already has a ${side} image for the current version`,
+      );
+    }
+
+    return new ConflictException(
+      'This file is already attached to the current version of this secret',
+    );
   }
 
   /**
