@@ -33,6 +33,21 @@ const fieldC: FieldDefinition = {
   sensitive: false,
 };
 
+const selectField: FieldDefinition = {
+  name: 'card_network',
+  label: 'Card Network',
+  type: 'select',
+  required: true,
+  sensitive: false,
+  options: ['Visa', 'Mastercard', 'Amex'],
+};
+
+/** Last `fields` array an onChange spy was called with. */
+function lastFields(handleChange: ReturnType<typeof vi.fn>): FieldDefinition[] {
+  const calls = handleChange.mock.calls;
+  return calls[calls.length - 1][0];
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -383,6 +398,347 @@ describe('FieldDefinitionBuilder', () => {
         const fields: FieldDefinition[] = lastCall[0];
         expect(fields[0].sensitive).toBe(true);
       });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Select fields (issue #33)
+  // -------------------------------------------------------------------------
+
+  describe('Authoring a select field', () => {
+    it('should offer Select (list) as a selectable type', async () => {
+      const user = userEvent.setup();
+
+      render(<FieldDefinitionBuilder fields={[fieldA]} onChange={vi.fn()} />);
+
+      await user.click(screen.getByRole('combobox', { name: /type/i }));
+
+      const selectOption = screen.getByRole('option', { name: 'Select (list)' });
+      expect(selectOption).toBeInTheDocument();
+      expect(selectOption).not.toHaveAttribute('aria-disabled', 'true');
+    });
+
+    it('should switch a field to select with an empty options list', async () => {
+      const user = userEvent.setup();
+      const handleChange = vi.fn();
+
+      render(<FieldDefinitionBuilder fields={[fieldA]} onChange={handleChange} />);
+
+      await user.click(screen.getByRole('combobox', { name: /type/i }));
+      await user.click(screen.getByRole('option', { name: 'Select (list)' }));
+
+      const updated = lastFields(handleChange);
+      expect(updated[0].type).toBe('select');
+      expect(updated[0].options).toEqual([]);
+    });
+
+    it('should not render an options editor for non-select fields', () => {
+      render(<FieldDefinitionBuilder fields={[fieldA]} onChange={vi.fn()} />);
+
+      expect(screen.queryByRole('button', { name: /add option/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('textbox', { name: /^option /i })).not.toBeInTheDocument();
+    });
+
+    it('should load the options of an existing select field, in order', () => {
+      render(<FieldDefinitionBuilder fields={[selectField]} onChange={vi.fn()} />);
+
+      const optionInputs = screen.getAllByRole('textbox', { name: /^option \d+ for card network$/i });
+      expect(optionInputs).toHaveLength(3);
+      expect(optionInputs[0]).toHaveValue('Visa');
+      expect(optionInputs[1]).toHaveValue('Mastercard');
+      expect(optionInputs[2]).toHaveValue('Amex');
+    });
+
+    it('should append a blank option when Add Option is clicked', async () => {
+      const user = userEvent.setup();
+      const handleChange = vi.fn();
+
+      render(
+        <FieldDefinitionBuilder
+          fields={[{ ...selectField, options: ['Visa'] }]}
+          onChange={handleChange}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', { name: /add option/i }));
+
+      expect(lastFields(handleChange)[0].options).toEqual(['Visa', '']);
+    });
+
+    it('should call onChange with the edited option value', () => {
+      const handleChange = vi.fn();
+
+      render(
+        <FieldDefinitionBuilder
+          fields={[{ ...selectField, options: ['Visa', ''] }]}
+          onChange={handleChange}
+        />,
+      );
+
+      const optionInputs = screen.getAllByRole('textbox', { name: /^option \d+ for card network$/i });
+      fireEvent.change(optionInputs[1], { target: { value: 'Discover' } });
+
+      expect(lastFields(handleChange)[0].options).toEqual(['Visa', 'Discover']);
+    });
+
+    it('should trim an option on blur so trailing whitespace cannot fake a distinct value', () => {
+      const handleChange = vi.fn();
+
+      render(
+        <FieldDefinitionBuilder
+          fields={[{ ...selectField, options: ['Visa ', 'Amex'] }]}
+          onChange={handleChange}
+        />,
+      );
+
+      const optionInputs = screen.getAllByRole('textbox', { name: /^option \d+ for card network$/i });
+      fireEvent.blur(optionInputs[0]);
+
+      expect(lastFields(handleChange)[0].options).toEqual(['Visa', 'Amex']);
+    });
+
+    it('should remove an option', async () => {
+      const user = userEvent.setup();
+      const handleChange = vi.fn();
+
+      render(<FieldDefinitionBuilder fields={[selectField]} onChange={handleChange} />);
+
+      await user.click(screen.getByRole('button', { name: 'Remove option 2' }));
+
+      expect(lastFields(handleChange)[0].options).toEqual(['Visa', 'Amex']);
+    });
+
+    it('should allow the last remaining option to be removed', () => {
+      render(
+        <FieldDefinitionBuilder
+          fields={[{ ...selectField, options: ['Visa'] }]}
+          onChange={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByRole('button', { name: 'Remove option 1' })).not.toBeDisabled();
+    });
+  });
+
+  describe('Reordering select options', () => {
+    it('should move an option up', async () => {
+      const user = userEvent.setup();
+      const handleChange = vi.fn();
+
+      render(<FieldDefinitionBuilder fields={[selectField]} onChange={handleChange} />);
+
+      await user.click(screen.getByRole('button', { name: 'Move option 2 up' }));
+
+      expect(lastFields(handleChange)[0].options).toEqual(['Mastercard', 'Visa', 'Amex']);
+    });
+
+    it('should move an option down', async () => {
+      const user = userEvent.setup();
+      const handleChange = vi.fn();
+
+      render(<FieldDefinitionBuilder fields={[selectField]} onChange={handleChange} />);
+
+      await user.click(screen.getByRole('button', { name: 'Move option 1 down' }));
+
+      expect(lastFields(handleChange)[0].options).toEqual(['Mastercard', 'Visa', 'Amex']);
+    });
+
+    it('should disable move-up on the first option and move-down on the last', () => {
+      render(<FieldDefinitionBuilder fields={[selectField]} onChange={vi.fn()} />);
+
+      expect(screen.getByRole('button', { name: 'Move option 1 up' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Move option 3 down' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Move option 2 up' })).not.toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Move option 2 down' })).not.toBeDisabled();
+    });
+  });
+
+  describe('Select option validation', () => {
+    it('should flag a select field with no options', () => {
+      render(
+        <FieldDefinitionBuilder
+          fields={[{ ...selectField, options: [] }]}
+          onChange={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByText('Add at least one option')).toBeInTheDocument();
+    });
+
+    it('should flag a select field whose options key is missing entirely', () => {
+      const { options: _omitted, ...withoutOptions } = selectField;
+
+      render(
+        <FieldDefinitionBuilder fields={[withoutOptions]} onChange={vi.fn()} />,
+      );
+
+      expect(screen.getByText('Add at least one option')).toBeInTheDocument();
+    });
+
+    it('should flag a blank option', () => {
+      render(
+        <FieldDefinitionBuilder
+          fields={[{ ...selectField, options: ['Visa', '  '] }]}
+          onChange={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByText('Option cannot be empty')).toBeInTheDocument();
+    });
+
+    it('should flag a duplicate option', () => {
+      render(
+        <FieldDefinitionBuilder
+          fields={[{ ...selectField, options: ['Visa', 'Visa'] }]}
+          onChange={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByText('This option is already in the list')).toBeInTheDocument();
+    });
+
+    it('should flag an option longer than 100 characters', () => {
+      render(
+        <FieldDefinitionBuilder
+          fields={[{ ...selectField, options: ['a'.repeat(101)] }]}
+          onChange={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByText('Options must be 100 characters or less')).toBeInTheDocument();
+    });
+
+    it('should flag more than 50 options', () => {
+      const tooMany = Array.from({ length: 51 }, (_, i) => `Option ${i + 1}`);
+
+      render(
+        <FieldDefinitionBuilder
+          fields={[{ ...selectField, options: tooMany }]}
+          onChange={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByText('A field can have at most 50 options')).toBeInTheDocument();
+    });
+
+    it('should disable Add Option once 50 options exist', () => {
+      const full = Array.from({ length: 50 }, (_, i) => `Option ${i + 1}`);
+
+      render(
+        <FieldDefinitionBuilder
+          fields={[{ ...selectField, options: full }]}
+          onChange={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByRole('button', { name: /add option/i })).toBeDisabled();
+    });
+
+    it('should show no option errors for a valid select field', () => {
+      render(<FieldDefinitionBuilder fields={[selectField]} onChange={vi.fn()} />);
+
+      expect(screen.queryByText('Add at least one option')).not.toBeInTheDocument();
+      expect(screen.queryByText('Option cannot be empty')).not.toBeInTheDocument();
+      expect(screen.queryByText('This option is already in the list')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Switching a select field to another type', () => {
+    it('should drop stale options when the type changes away from select', async () => {
+      const user = userEvent.setup();
+      const handleChange = vi.fn();
+
+      render(<FieldDefinitionBuilder fields={[selectField]} onChange={handleChange} />);
+
+      await user.click(screen.getByRole('combobox', { name: /type/i }));
+      await user.click(screen.getByRole('option', { name: 'String' }));
+
+      const updated = lastFields(handleChange);
+      expect(updated[0].type).toBe('string');
+      // The API rejects `options` on non-select fields, so the key must be gone
+      // entirely — not just emptied.
+      expect(updated[0].options).toBeUndefined();
+      expect('options' in updated[0]).toBe(false);
+    });
+  });
+
+  describe('Blocking save while options are invalid', () => {
+    function renderInForm(fields: FieldDefinition[], onSubmit: () => void) {
+      return render(
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            onSubmit();
+          }}
+        >
+          <FieldDefinitionBuilder fields={fields} onChange={vi.fn()} />
+          <button type="submit">Save</button>
+        </form>,
+      );
+    }
+
+    it('should block submission of the enclosing form while a select field has no options', async () => {
+      const user = userEvent.setup();
+      const handleSubmit = vi.fn();
+
+      renderInForm([{ ...selectField, options: [] }], handleSubmit);
+
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(handleSubmit).not.toHaveBeenCalled();
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Card Network: Add at least one option',
+      );
+    });
+
+    it('should block submission while an option is a duplicate', async () => {
+      const user = userEvent.setup();
+      const handleSubmit = vi.fn();
+
+      renderInForm([{ ...selectField, options: ['Visa', 'Visa'] }], handleSubmit);
+
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(handleSubmit).not.toHaveBeenCalled();
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Card Network: This option is already in the list',
+      );
+    });
+
+    it('should allow submission when every select field has valid options', async () => {
+      const user = userEvent.setup();
+      const handleSubmit = vi.fn();
+
+      renderInForm([fieldA, selectField], handleSubmit);
+
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(handleSubmit).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('should report validity changes to the parent', () => {
+      const handleValidityChange = vi.fn();
+
+      const { rerender } = render(
+        <FieldDefinitionBuilder
+          fields={[{ ...selectField, options: [] }]}
+          onChange={vi.fn()}
+          onValidityChange={handleValidityChange}
+        />,
+      );
+
+      expect(handleValidityChange).toHaveBeenLastCalledWith(false);
+
+      rerender(
+        <FieldDefinitionBuilder
+          fields={[selectField]}
+          onChange={vi.fn()}
+          onValidityChange={handleValidityChange}
+        />,
+      );
+
+      expect(handleValidityChange).toHaveBeenLastCalledWith(true);
     });
   });
 });

@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import {
   Box,
   TextField,
@@ -9,29 +10,36 @@ import {
   Chip,
   Button,
   Paper,
+  Alert,
 } from '@mui/material';
 import {
   Delete as DeleteIcon,
   Add as AddIcon,
 } from '@mui/icons-material';
 import type { FieldDefinition } from '../../types';
+import { FieldOptionsEditor } from './FieldOptionsEditor';
+import {
+  validateFieldDefinitions,
+  validateFieldOptions,
+} from './fieldOptionsValidation';
 
 interface FieldDefinitionBuilderProps {
   fields: FieldDefinition[];
   onChange: (fields: FieldDefinition[]) => void;
+  /**
+   * Called whenever the validity of the field definitions changes, so a parent
+   * can disable its save action. Parents that do not use it are still safe:
+   * the builder blocks submission of its enclosing form while invalid.
+   */
+  onValidityChange?: (isValid: boolean) => void;
 }
 
 const FIELD_TYPES: { value: FieldDefinition['type']; label: string }[] = [
   { value: 'string', label: 'String' },
   { value: 'number', label: 'Number' },
   { value: 'date', label: 'Date' },
+  { value: 'select', label: 'Select (list)' },
 ];
-
-// 'select' fields are seed-only for now: this builder has no options editor, so
-// admins cannot author one. It is still listed (disabled) whenever the field
-// being edited already is a select, otherwise the Type dropdown would render
-// blank for such fields and hide what the field actually is.
-const SELECT_TYPE_LABEL = 'Select (list)';
 
 function labelToName(label: string): string {
   return label
@@ -50,7 +58,53 @@ function uniqueName(base: string, existingNames: string[], selfIndex: number): s
   return `${base}_${counter}`;
 }
 
-export function FieldDefinitionBuilder({ fields, onChange }: FieldDefinitionBuilderProps) {
+export function FieldDefinitionBuilder({
+  fields,
+  onChange,
+  onValidityChange,
+}: FieldDefinitionBuilderProps) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [blockedMessage, setBlockedMessage] = useState<string | null>(null);
+
+  const validationError = validateFieldDefinitions(fields);
+
+  // The builder is embedded in forms it does not own (create page, edit page,
+  // dialog) whose submit handlers post `fields` straight to the API. Guard the
+  // enclosing form here so an invalid option list can never be submitted,
+  // regardless of whether the parent opted into `onValidityChange`.
+  const validationErrorRef = useRef(validationError);
+  validationErrorRef.current = validationError;
+
+  useEffect(() => {
+    const form = rootRef.current?.closest('form');
+    if (!form) return;
+
+    const guard = (event: Event) => {
+      const message = validationErrorRef.current;
+      if (!message) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setBlockedMessage(message);
+    };
+
+    form.addEventListener('submit', guard, true);
+    return () => form.removeEventListener('submit', guard, true);
+  }, []);
+
+  // Reported through a ref so parents can pass an inline callback without the
+  // effect re-firing on every render.
+  const isValid = validationError === null;
+  const onValidityChangeRef = useRef(onValidityChange);
+  onValidityChangeRef.current = onValidityChange;
+
+  useEffect(() => {
+    onValidityChangeRef.current?.(isValid);
+  }, [isValid]);
+
+  useEffect(() => {
+    if (isValid) setBlockedMessage(null);
+  }, [isValid]);
+
   const handleLabelChange = (index: number, label: string) => {
     const existingNames = fields.map((f) => f.name);
     const rawName = labelToName(label);
@@ -70,14 +124,24 @@ export function FieldDefinitionBuilder({ fields, onChange }: FieldDefinitionBuil
     const updated = fields.map((f, i) => {
       if (i !== index) return f;
       const next = { ...f, [key]: value };
-      // `options` only means anything for select fields; drop it when the type
-      // is changed to something else so we never send a stale list to the API.
-      if (key === 'type' && value !== 'select') {
-        delete next.options;
+      if (key === 'type') {
+        // `options` only means anything for select fields; drop it when the type
+        // is changed to something else so we never send a stale list to the API.
+        if (value !== 'select') {
+          delete next.options;
+        } else if (!next.options) {
+          // Start select fields with an empty list so the options editor has
+          // something to render; it is invalid until the admin adds a value.
+          next.options = [];
+        }
       }
       return next;
     });
     onChange(updated);
+  };
+
+  const handleOptionsChange = (index: number, options: string[]) => {
+    onChange(fields.map((f, i) => (i === index ? { ...f, options } : f)));
   };
 
   const handleAddField = () => {
@@ -96,100 +160,114 @@ export function FieldDefinitionBuilder({ fields, onChange }: FieldDefinitionBuil
   };
 
   return (
-    <Box>
+    <Box ref={rootRef}>
       <Typography variant="subtitle2" gutterBottom>
         Fields
       </Typography>
 
+      {blockedMessage && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {blockedMessage}
+        </Alert>
+      )}
+
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {fields.map((field, index) => (
-          <Paper key={index} variant="outlined" sx={{ p: 2 }}>
-            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-              {/* Label */}
-              <TextField
-                label="Label"
-                size="small"
-                value={field.label}
-                onChange={(e) => handleLabelChange(index, e.target.value)}
-                sx={{ flex: '1 1 160px' }}
-                required
-              />
-
-              {/* Type */}
-              <TextField
-                select
-                label="Type"
-                size="small"
-                value={field.type}
-                onChange={(e) =>
-                  handleFieldChange(index, 'type', e.target.value as FieldDefinition['type'])
-                }
-                sx={{ flex: '0 0 120px' }}
-              >
-                {FIELD_TYPES.map((t) => (
-                  <MenuItem key={t.value} value={t.value}>
-                    {t.label}
-                  </MenuItem>
-                ))}
-                {field.type === 'select' && (
-                  <MenuItem value="select" disabled>
-                    {SELECT_TYPE_LABEL}
-                  </MenuItem>
-                )}
-              </TextField>
-
-              {/* Required */}
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={field.required}
-                    onChange={(e) => handleFieldChange(index, 'required', e.target.checked)}
-                    size="small"
-                  />
-                }
-                label="Required"
-                sx={{ flex: '0 0 auto' }}
-              />
-
-              {/* Sensitive */}
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={field.sensitive}
-                    onChange={(e) => handleFieldChange(index, 'sensitive', e.target.checked)}
-                    size="small"
-                  />
-                }
-                label="Sensitive"
-                sx={{ flex: '0 0 auto' }}
-              />
-
-              {/* Delete */}
-              <IconButton
-                size="small"
-                color="error"
-                onClick={() => handleDeleteField(index)}
-                disabled={fields.length <= 1}
-                aria-label="Remove field"
-                sx={{ mt: 0.5 }}
-              >
-                <DeleteIcon fontSize="small" />
-              </IconButton>
-            </Box>
-
-            {/* Auto-generated name chip */}
-            {field.name && (
-              <Box sx={{ mt: 1 }}>
-                <Chip
-                  label={`name: ${field.name}`}
+        {fields.map((field, index) => {
+          const optionsValidation = validateFieldOptions(field);
+          return (
+            <Paper key={index} variant="outlined" sx={{ p: 2 }}>
+              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                {/* Label */}
+                <TextField
+                  label="Label"
                   size="small"
-                  variant="outlined"
-                  sx={{ fontFamily: 'monospace', fontSize: '0.7rem' }}
+                  value={field.label}
+                  onChange={(e) => handleLabelChange(index, e.target.value)}
+                  sx={{ flex: '1 1 160px' }}
+                  required
                 />
+
+                {/* Type */}
+                <TextField
+                  select
+                  label="Type"
+                  size="small"
+                  value={field.type}
+                  onChange={(e) =>
+                    handleFieldChange(index, 'type', e.target.value as FieldDefinition['type'])
+                  }
+                  sx={{ flex: '0 0 140px' }}
+                >
+                  {FIELD_TYPES.map((t) => (
+                    <MenuItem key={t.value} value={t.value}>
+                      {t.label}
+                    </MenuItem>
+                  ))}
+                </TextField>
+
+                {/* Required */}
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={field.required}
+                      onChange={(e) => handleFieldChange(index, 'required', e.target.checked)}
+                      size="small"
+                    />
+                  }
+                  label="Required"
+                  sx={{ flex: '0 0 auto' }}
+                />
+
+                {/* Sensitive */}
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={field.sensitive}
+                      onChange={(e) => handleFieldChange(index, 'sensitive', e.target.checked)}
+                      size="small"
+                    />
+                  }
+                  label="Sensitive"
+                  sx={{ flex: '0 0 auto' }}
+                />
+
+                {/* Delete */}
+                <IconButton
+                  size="small"
+                  color="error"
+                  onClick={() => handleDeleteField(index)}
+                  disabled={fields.length <= 1}
+                  aria-label="Remove field"
+                  sx={{ mt: 0.5 }}
+                >
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
               </Box>
-            )}
-          </Paper>
-        ))}
+
+              {/* Options (select fields only) */}
+              {field.type === 'select' && (
+                <FieldOptionsEditor
+                  fieldLabel={field.label}
+                  options={field.options ?? []}
+                  validation={optionsValidation}
+                  onChange={(options) => handleOptionsChange(index, options)}
+                />
+              )}
+
+              {/* Auto-generated name chip */}
+              {field.name && (
+                <Box sx={{ mt: 1 }}>
+                  <Chip
+                    label={`name: ${field.name}`}
+                    size="small"
+                    variant="outlined"
+                    sx={{ fontFamily: 'monospace', fontSize: '0.7rem' }}
+                  />
+                </Box>
+              )}
+            </Paper>
+          );
+        })}
       </Box>
 
       <Button

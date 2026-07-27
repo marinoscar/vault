@@ -16,6 +16,7 @@ import {
   Divider,
 } from '@mui/material';
 import { FieldDefinitionBuilder } from './FieldDefinitionBuilder';
+import { validateFieldDefinitions } from './fieldOptionsValidation';
 import { SecretTypeIcon, availableIcons } from '../secrets/SecretTypeIcon';
 import type { SecretType, FieldDefinition } from '../../types';
 
@@ -96,6 +97,14 @@ export function SecretTypeFormDialog({
     const hasDuplicates = names.length !== new Set(names).size;
     if (hasDuplicates) {
       setFormError('Field names must be unique');
+      return;
+    }
+
+    // Select fields must carry a valid `options` list; the API rejects anything
+    // else, so stop here rather than trading a filled-in form for a 400.
+    const optionsError = validateFieldDefinitions(fields);
+    if (optionsError) {
+      setFormError(optionsError);
       return;
     }
 
