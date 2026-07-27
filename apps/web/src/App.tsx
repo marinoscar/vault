@@ -20,6 +20,7 @@ const SystemSettingsPage = lazy(() => import('./pages/SystemSettingsPage'));
 const UserManagementPage = lazy(() => import('./pages/UserManagementPage'));
 const SecretsPage = lazy(() => import('./pages/SecretsPage'));
 const CardsPage = lazy(() => import('./pages/CardsPage'));
+const ImportCardPage = lazy(() => import('./pages/ImportCardPage'));
 const CreateSecretPage = lazy(() => import('./pages/CreateSecretPage'));
 const SecretDetailPage = lazy(() => import('./pages/SecretDetailPage'));
 const EditSecretPage = lazy(() => import('./pages/EditSecretPage'));
@@ -65,6 +66,8 @@ function AppRoutes() {
               <Route element={<Layout />}>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/cards" element={<CardsPage />} />
+                {/* Declared before /cards/:id would be, if that ever exists. */}
+                <Route path="/cards/import" element={<ImportCardPage />} />
                 <Route path="/secrets" element={<SecretsPage />} />
                 <Route path="/secrets/new" element={<CreateSecretPage />} />
                 <Route path="/secrets/:id" element={<SecretDetailPage />} />

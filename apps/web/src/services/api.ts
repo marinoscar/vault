@@ -214,8 +214,44 @@ import type {
   MediaFile,
   MediaFilesResponse,
   AiSettingsUpdate,
+  AiStatus,
+  AttachmentRole,
+  CardExtractionResult,
+  ExtractCardRequest,
   SystemSettings,
 } from '../types';
+
+// =============================================================================
+// AI API
+// =============================================================================
+
+/**
+ * Whether AI-backed features are available to the current user.
+ *
+ * Readable by any signed-in user (system settings are admin-only), which is
+ * what lets a Viewer's UI hide the card-scan entry point instead of offering a
+ * button that can only ever return 503.
+ */
+export async function getAiStatus(): Promise<AiStatus> {
+  return api.get<AiStatus>('/ai/status');
+}
+
+/**
+ * Read card fields from already-cropped images.
+ *
+ * The transport is base64 JSON rather than multipart because `request()` above
+ * force-sets `Content-Type: application/json` whenever a body is present — a
+ * multipart endpoint would be unreachable through this client. Cropping is the
+ * caller's job (see `utils/cardImage.ts`); whatever is passed here is what
+ * leaves the device.
+ *
+ * The response never contains a CVV. The API does not ask the model for one.
+ */
+export async function extractCardFromImages(
+  images: ExtractCardRequest,
+): Promise<CardExtractionResult> {
+  return api.post<CardExtractionResult>('/secrets/cards/extract', images);
+}
 
 // System Settings API
 
@@ -459,14 +495,24 @@ export async function rollbackSecretVersion(
   return api.post<SecretDetail>(`/secrets/${secretId}/versions/${versionId}/rollback`);
 }
 
+/**
+ * Link an already-uploaded storage object to a secret.
+ *
+ * `role` marks the object as a card face. The API enforces one attachment per
+ * role per secret version and applies image mime/size constraints to
+ * role-bearing attachments, so passing a role is not cosmetic — it changes what
+ * the server will accept.
+ */
 export async function linkSecretAttachment(
   secretId: string,
   storageObjectId: string,
   label?: string,
+  role?: AttachmentRole,
 ): Promise<SecretAttachment> {
   return api.post<SecretAttachment>(`/secrets/${secretId}/attachments`, {
     storageObjectId,
     label,
+    role,
   });
 }
 
@@ -551,6 +597,37 @@ export async function getMediaFileDownloadUrl(
   return api.get<{ url: string; expiresIn: number }>(
     `/media/folders/${folderId}/files/${fileId}/download`,
   );
+}
+
+// =============================================================================
+// Storage objects
+// =============================================================================
+
+/**
+ * Signed download URL for any storage object the caller owns.
+ *
+ * The media variant above is scoped to a folder and cannot address an object
+ * linked as a secret attachment, which is what card face images are.
+ */
+export async function getStorageObjectDownloadUrl(
+  objectId: string,
+  expiresIn?: number,
+): Promise<{ url: string; expiresIn: number }> {
+  const query = expiresIn !== undefined ? `?expiresIn=${expiresIn}` : '';
+  return api.get<{ url: string; expiresIn: number }>(
+    `/storage/objects/${objectId}/download${query}`,
+  );
+}
+
+/**
+ * Delete a storage object outright.
+ *
+ * Used to clean up after an abandoned or half-failed card import: an image
+ * uploaded before the flow was cancelled would otherwise sit in storage with
+ * nothing pointing at it and no UI able to reach it.
+ */
+export async function deleteStorageObject(objectId: string): Promise<void> {
+  await api.delete<void>(`/storage/objects/${objectId}`);
 }
 
 export async function simpleStorageUpload(

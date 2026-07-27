@@ -76,6 +76,91 @@ export const AI_SETTINGS_DEFAULTS = {
   maxCallsPerUserPerDay: 50,
 } as const;
 
+/**
+ * Response of `GET /api/ai/status`.
+ *
+ * Deliberately two booleans — no model name, no key metadata, no reason. Any
+ * signed-in user may read it, which is what makes "hide the scan button when
+ * the feature is unavailable" implementable for a Viewer who cannot see system
+ * settings at all.
+ */
+export interface AiStatus {
+  enabled: boolean;
+  features: {
+    cardExtract: boolean;
+  };
+}
+
+/**
+ * Error codes returned by the AI endpoints, mirroring `AI_ERROR_CODES` in
+ * `apps/api/src/ai/ai.constants.ts`.
+ *
+ * KNOWN ISSUE #35: the API's global `HttpExceptionFilter` unconditionally
+ * overwrites `code` with a status-derived value, so none of these actually
+ * reach the browser today — a 429 arrives as `TOO_MANY_REQUESTS` whether it was
+ * a burst limit or the daily quota. Client code therefore branches on `code`
+ * first and falls back to `status`, and starts distinguishing the two the
+ * moment #35 is fixed. See `describeCardExtractionError` in
+ * `hooks/useCardImport.ts`.
+ */
+export const AI_ERROR_CODES = {
+  NOT_CONFIGURED: 'AI_NOT_CONFIGURED',
+  KEY_UNREADABLE: 'AI_KEY_UNREADABLE',
+  INVALID_IMAGE: 'AI_INVALID_IMAGE',
+  RATE_LIMITED: 'AI_RATE_LIMITED',
+  QUOTA_EXCEEDED: 'AI_QUOTA_EXCEEDED',
+  UPSTREAM_AUTH: 'AI_UPSTREAM_AUTH',
+  UPSTREAM_RATE_LIMITED: 'AI_UPSTREAM_RATE_LIMITED',
+  UPSTREAM_UNAVAILABLE: 'AI_UPSTREAM_UNAVAILABLE',
+  EXTRACTION_FAILED: 'AI_EXTRACTION_FAILED',
+} as const;
+
+export type AiErrorCode = (typeof AI_ERROR_CODES)[keyof typeof AI_ERROR_CODES];
+
+/**
+ * Fields the extraction endpoint can return, mirroring `EXTRACTED_FIELD_NAMES`
+ * in the API.
+ *
+ * `cvv` is deliberately absent and must never be added. The model is instructed
+ * never to emit it and the API never returns it, because the CVV is the value
+ * that turns a photographed card number into a usable card-not-present
+ * credential. The wizard collects it by hand.
+ */
+export const EXTRACTED_CARD_FIELD_NAMES = [
+  'cardholder_name',
+  'number',
+  'exp_month',
+  'exp_year',
+  'card_network',
+  'card_kind',
+  'issuing_bank',
+  'security_code_2',
+] as const;
+
+export type ExtractedCardFieldName = (typeof EXTRACTED_CARD_FIELD_NAMES)[number];
+
+/** Body of `POST /api/secrets/cards/extract`: already-cropped base64 data URLs. */
+export interface ExtractCardRequest {
+  front: string;
+  back?: string;
+}
+
+/**
+ * Response of `POST /api/secrets/cards/extract`.
+ *
+ * Nothing here is persisted server-side — the values exist only in this
+ * response until the user confirms them on the review step.
+ */
+export interface CardExtractionResult {
+  fields: Record<ExtractedCardFieldName, string | null>;
+  /** 0..1 per field; 0 whenever the field came back null. */
+  confidence: Record<ExtractedCardFieldName, number>;
+  warnings: string[];
+  model: string;
+  /** True when the call succeeded but nothing legible came back. */
+  partial: boolean;
+}
+
 export interface SystemSettings {
   ui: {
     allowUserThemeOverride: boolean;
@@ -210,9 +295,18 @@ export interface SecretListItem {
   updatedAt: string;
 }
 
+/**
+ * Role of an attachment within its secret version, mirroring
+ * `attachmentRoleSchema` in the API. `null` is a generic attachment, of which a
+ * version may have many; a role-bearing attachment is unique per version.
+ */
+export type AttachmentRole = 'card_front' | 'card_back';
+
 export interface SecretAttachment {
   id: string;
   label: string | null;
+  /** `null` for generic (role-less) attachments. */
+  role: AttachmentRole | null;
   storageObject: {
     id: string;
     name: string;

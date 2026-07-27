@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { HttpResponse, http } from 'msw';
+import { server } from '../mocks/server';
 import { render } from '../utils/test-utils';
 import CardsPage from '../../pages/CardsPage';
 import type { CardSummary } from '../../hooks/useCards';
@@ -136,17 +138,53 @@ describe('CardsPage', () => {
     expect(text.indexOf('BBB')).toBeLessThan(text.indexOf('CCC'));
   });
 
-  it('disables the import action and explains it is coming soon', async () => {
-    mockCards([]);
+  it('routes the import action to the wizard when AI is available', async () => {
+    const user = userEvent.setup();
+    mockCards([makeSummary({ id: 'card-1' })]);
     render(<CardsPage />);
 
-    const importButton = screen.getByRole('button', { name: /import credit card/i });
-    expect(importButton).toBeDisabled();
+    // Enabled by the default /api/ai/status handler.
+    const importButton = await screen.findByRole('button', {
+      name: /import credit card/i,
+    });
+    expect(importButton).toBeEnabled();
 
-    // The tooltip lives on a wrapper span because a disabled button emits no
-    // pointer events.
+    await user.click(importButton);
+    expect(mockNavigate).toHaveBeenCalledWith('/cards/import');
+  });
+
+  it('hides the import action entirely when AI is disabled', async () => {
+    server.use(
+      http.get('*/api/ai/status', () =>
+        HttpResponse.json({ data: { enabled: false, features: { cardExtract: false } } }),
+      ),
+    );
+    mockCards([makeSummary({ id: 'card-1' })]);
+    render(<CardsPage />);
+
+    // The list renders regardless; only the import entry point is withheld.
+    expect(await screen.findByText('Visa')).toBeInTheDocument();
     await waitFor(() =>
-      expect(importButton.parentElement).toHaveAttribute('aria-label', 'Coming soon'),
+      expect(
+        screen.queryByRole('button', { name: /import credit card/i }),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
+  it('hides the import action when the status check fails', async () => {
+    server.use(
+      http.get('*/api/ai/status', () =>
+        HttpResponse.json({ message: 'boom' }, { status: 500 }),
+      ),
+    );
+    mockCards([makeSummary({ id: 'card-1' })]);
+    render(<CardsPage />);
+
+    expect(await screen.findByText('Visa')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: /import credit card/i }),
+      ).not.toBeInTheDocument(),
     );
   });
 

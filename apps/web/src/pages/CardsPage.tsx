@@ -17,6 +17,7 @@ import {
 } from '@mui/material';
 import { AddPhotoAlternate as ImportIcon } from '@mui/icons-material';
 import { CardTile } from '../components/cards/CardTile';
+import { useAiStatus } from '../hooks/useAiStatus';
 import { useCards } from '../hooks/useCards';
 import { isNeedsAttention } from '../utils/cardExpiry';
 
@@ -30,6 +31,7 @@ import { isNeedsAttention } from '../utils/cardExpiry';
 export default function CardsPage() {
   const navigate = useNavigate();
   const { cards, isTruncated, totalItems, isLoading, error, fetchCards } = useCards();
+  const { cardExtractEnabled, isLoading: isAiStatusLoading } = useAiStatus();
   const [search, setSearch] = useState('');
   const [needsAttentionOnly, setNeedsAttentionOnly] = useState(false);
 
@@ -63,6 +65,10 @@ export default function CardsPage() {
   }, [cards, needsAttentionOnly, search]);
 
   const attentionTotal = expiredCount + expiringCount;
+
+  // Nothing is shown while the status is in flight, so the button never appears
+  // and then vanishes under a user who is reaching for it.
+  const isImportAvailable = !isAiStatusLoading && cardExtractEnabled;
 
   // Null when there is nothing worth saying: the empty state below already
   // spells out that there are no cards, and repeating it here reads as a bug.
@@ -106,15 +112,24 @@ export default function CardsPage() {
       >
         <Typography variant="h4">Cards</Typography>
 
-        {/* The AI import flow does not exist yet, so this advertises the
-            capability without inventing a route that would 404. */}
-        <Tooltip title="Coming soon">
-          <span>
-            <Button variant="contained" startIcon={<ImportIcon />} disabled>
+        {/* Gated on GET /api/ai/status: with the feature off, the wizard can
+            only ever end in a 503 the user cannot act on, so the button is
+            hidden rather than offered and disappointing. The status call fails
+            closed, so a broken check hides the button too.
+
+            `describeChild` keeps the tooltip a description: without it MUI puts
+            the tooltip text in aria-label and the button loses its own name. */}
+        {isImportAvailable && (
+          <Tooltip describeChild title="Read the details from a photo of the card">
+            <Button
+              variant="contained"
+              startIcon={<ImportIcon />}
+              onClick={() => navigate('/cards/import')}
+            >
               Import credit card
             </Button>
-          </span>
-        </Tooltip>
+          </Tooltip>
+        )}
       </Box>
 
       {summaryLine && (
@@ -166,9 +181,20 @@ export default function CardsPage() {
           <Typography variant="body2" color="text.secondary">
             Add a card from the Secrets page to see its expiry status here.
           </Typography>
-          <Button sx={{ mt: 2 }} variant="outlined" onClick={() => navigate('/secrets/new')}>
-            Add a card
-          </Button>
+          <Box sx={{ mt: 2, display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <Button variant="outlined" onClick={() => navigate('/secrets/new')}>
+              Add a card
+            </Button>
+            {isImportAvailable && (
+              <Button
+                variant="contained"
+                startIcon={<ImportIcon />}
+                onClick={() => navigate('/cards/import')}
+              >
+                Import credit card
+              </Button>
+            )}
+          </Box>
         </Box>
       ) : visibleCards.length === 0 ? (
         <Box sx={{ py: 6, textAlign: 'center' }}>
