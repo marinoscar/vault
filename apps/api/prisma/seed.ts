@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { SYSTEM_SECRET_TYPES } from './system-secret-types';
 
 const prisma = new PrismaClient();
 
@@ -237,93 +238,34 @@ async function seedInitialAdminAllowlist() {
 async function seedSecretTypes() {
   console.log('Seeding system secret types...');
 
-  const systemTypes = [
-    {
-      name: 'Credential',
-      description: 'Username and password credentials',
-      icon: 'Key',
-      fields: [
-        { name: 'username', label: 'Username', type: 'string', required: true, sensitive: false },
-        { name: 'password', label: 'Password', type: 'string', required: true, sensitive: true },
-        { name: 'url', label: 'URL', type: 'string', required: false, sensitive: false },
-        { name: 'notes', label: 'Notes', type: 'string', required: false, sensitive: false },
-      ],
-      allowAttachments: false,
-    },
-    {
-      name: 'API Key',
-      description: 'API keys and access tokens',
-      icon: 'VpnKey',
-      fields: [
-        { name: 'key', label: 'API Key', type: 'string', required: true, sensitive: true },
-        { name: 'provider', label: 'Provider', type: 'string', required: false, sensitive: false },
-        { name: 'notes', label: 'Notes', type: 'string', required: false, sensitive: false },
-      ],
-      allowAttachments: false,
-    },
-    {
-      name: 'Card',
-      description: 'Credit or debit card information',
-      icon: 'CreditCard',
-      fields: [
-        { name: 'cardholder_name', label: 'Cardholder Name', type: 'string', required: true, sensitive: false },
-        { name: 'number', label: 'Card Number', type: 'string', required: true, sensitive: true },
-        { name: 'exp_month', label: 'Expiration Month', type: 'string', required: true, sensitive: false },
-        { name: 'exp_year', label: 'Expiration Year', type: 'string', required: true, sensitive: false },
-        { name: 'cvv', label: 'CVV', type: 'string', required: true, sensitive: true },
-        { name: 'notes', label: 'Notes', type: 'string', required: false, sensitive: false },
-      ],
-      allowAttachments: false,
-    },
-    {
-      name: 'Token',
-      description: 'Authentication tokens',
-      icon: 'Token',
-      fields: [
-        { name: 'token', label: 'Token', type: 'string', required: true, sensitive: true },
-        { name: 'provider', label: 'Provider', type: 'string', required: false, sensitive: false },
-        { name: 'notes', label: 'Notes', type: 'string', required: false, sensitive: false },
-      ],
-      allowAttachments: false,
-    },
-    {
-      name: 'Note',
-      description: 'Secure notes',
-      icon: 'Description',
-      fields: [
-        { name: 'content', label: 'Content', type: 'string', required: true, sensitive: false },
-      ],
-      allowAttachments: false,
-    },
-    {
-      name: 'Document',
-      description: 'Documents with file attachments',
-      icon: 'AttachFile',
-      fields: [
-        { name: 'title', label: 'Title', type: 'string', required: true, sensitive: false },
-        { name: 'notes', label: 'Notes', type: 'string', required: false, sensitive: false },
-      ],
-      allowAttachments: true,
-    },
-  ];
-
-  let count = 0;
-  for (const typeData of systemTypes) {
-    const existing = await prisma.secretType.findFirst({
-      where: { name: typeData.name, isSystem: true },
+  // Note: SecretType.name has NO unique index. findFirst + update would only
+  // touch one arbitrary row if duplicates exist and leave others stale, and
+  // secrets pointing at a stale type would then fail validation with "Unknown
+  // field". updateMany converges all rows matching (name, isSystem) instead.
+  let created = 0;
+  let updated = 0;
+  for (const typeData of SYSTEM_SECRET_TYPES) {
+    const { name, ...rest } = typeData;
+    const res = await prisma.secretType.updateMany({
+      where: { name, isSystem: true },
+      data: {
+        description: rest.description,
+        icon: rest.icon,
+        fields: rest.fields as any,
+        allowAttachments: rest.allowAttachments,
+      },
     });
-    if (!existing) {
+    if (res.count === 0) {
       await prisma.secretType.create({
-        data: {
-          ...typeData,
-          isSystem: true,
-        },
+        data: { ...typeData, fields: typeData.fields as any, isSystem: true },
       });
-      count++;
+      created++;
+    } else {
+      updated++;
     }
   }
 
-  console.log(`✓ Seeded ${count} system secret types (${systemTypes.length - count} already existed)`);
+  console.log(`✓ Seeded system secret types (${created} created, ${updated} updated)`);
 }
 
 // =============================================================================
