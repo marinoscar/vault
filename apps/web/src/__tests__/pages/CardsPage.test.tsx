@@ -188,6 +188,62 @@ describe('CardsPage', () => {
     );
   });
 
+  it('offers renewal on every card and routes to the renewal wizard', async () => {
+    const user = userEvent.setup();
+    mockCards([makeSummary({ id: 'card-7', status: 'valid' })]);
+    render(<CardsPage />);
+
+    // Not only the expiring ones: a card can be reissued after loss or fraud
+    // long before its printed date.
+    await user.click(screen.getByRole('button', { name: /renew visa/i }));
+    expect(mockNavigate).toHaveBeenCalledWith('/cards/card-7/renew');
+  });
+
+  it('keeps renewal available when AI is disabled', async () => {
+    // The renewal flow degrades to a manual edit with no OpenAI key, so unlike
+    // the import wizard it must NOT disappear with the AI feature. Hiding it
+    // here would remove a working feature from the users least able to fix it.
+    server.use(
+      http.get('*/api/ai/status', () =>
+        HttpResponse.json({ data: { enabled: false, features: { cardExtract: false } } }),
+      ),
+    );
+    mockCards([makeSummary({ id: 'card-7', status: 'expired' })]);
+    render(<CardsPage />);
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: /import credit card/i }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole('button', { name: /renew visa/i })).toBeEnabled();
+  });
+
+  it('keeps renewal available when the AI status check fails', async () => {
+    server.use(
+      http.get('*/api/ai/status', () =>
+        HttpResponse.json({ message: 'boom' }, { status: 500 }),
+      ),
+    );
+    mockCards([makeSummary({ id: 'card-7' })]);
+    render(<CardsPage />);
+
+    expect(await screen.findByRole('button', { name: /renew visa/i })).toBeEnabled();
+  });
+
+  it('does not let the renew button open the card detail as well', async () => {
+    const user = userEvent.setup();
+    mockCards([makeSummary({ id: 'card-7' })]);
+    render(<CardsPage />);
+
+    await user.click(screen.getByRole('button', { name: /renew visa/i }));
+
+    // One navigation, to the wizard — the tile's own click handler must not
+    // also fire, which is why the button sits outside the CardActionArea.
+    expect(mockNavigate).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).not.toHaveBeenCalledWith('/secrets/card-7');
+  });
+
   it('renders a card missing network / kind without error', () => {
     mockCards([
       makeSummary({

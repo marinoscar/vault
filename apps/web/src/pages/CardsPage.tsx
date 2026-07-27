@@ -204,7 +204,17 @@ export default function CardsPage() {
         <Grid container spacing={2}>
           {visibleCards.map((card) => (
             <Grid item xs={12} sm={6} md={4} key={card.id}>
-              <CardTile card={card} onClick={(id) => navigate(`/secrets/${id}`)} />
+              {/* Renewal is offered on every card and is NOT gated on
+                  `isImportAvailable`. Unlike the import wizard, the renewal
+                  flow is fully usable with AI switched off — it falls back to a
+                  manual edit — so hiding it behind the AI check would take a
+                  working feature away from exactly the users who cannot turn AI
+                  on. */}
+              <CardTile
+                card={card}
+                onClick={(id) => navigate(`/secrets/${id}`)}
+                onRenew={(id) => navigate(`/cards/${id}/renew`)}
+              />
             </Grid>
           ))}
         </Grid>

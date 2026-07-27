@@ -1,7 +1,20 @@
-import { Card, CardActionArea, CardContent, Box, Typography, Stack } from '@mui/material';
-import { CreditCard as CreditCardIcon } from '@mui/icons-material';
+import {
+  Card,
+  CardActionArea,
+  CardActions,
+  CardContent,
+  Box,
+  Button,
+  Typography,
+  Stack,
+} from '@mui/material';
+import {
+  CreditCard as CreditCardIcon,
+  Autorenew as RenewIcon,
+} from '@mui/icons-material';
 import { CardExpiryBadge } from './CardExpiryBadge';
 import type { CardSummary } from '../../hooks/useCards';
+import { isNeedsAttention } from '../../utils/cardExpiry';
 
 /**
  * One payment card, presented as a card rather than a table row.
@@ -14,6 +27,14 @@ import type { CardSummary } from '../../hooks/useCards';
 interface CardTileProps {
   card: CardSummary;
   onClick: (id: string) => void;
+  /**
+   * Start a renewal for this card.
+   *
+   * Offered on EVERY card, not only the expiring ones — a card can be reissued
+   * after loss or fraud at any time, long before its printed date. Expiry
+   * status only decides how prominent the button is.
+   */
+  onRenew?: (id: string) => void;
 }
 
 /**
@@ -49,17 +70,21 @@ function CardThumbnail({ hasAttachments }: { hasAttachments: boolean }) {
   );
 }
 
-export function CardTile({ card, onClick }: CardTileProps) {
+export function CardTile({ card, onClick, onRenew }: CardTileProps) {
   // Older cards predate card_network / card_kind, so fall back to the secret's
   // own name rather than rendering an empty heading.
   const heading = card.network || card.name;
   const subheading = [card.kind, card.issuingBank].filter(Boolean).join(' · ');
+  const needsAttention = isNeedsAttention(card.status);
 
   return (
-    <Card variant="outlined" sx={{ height: '100%' }}>
+    <Card
+      variant="outlined"
+      sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+    >
       <CardActionArea
         onClick={() => onClick(card.id)}
-        sx={{ height: '100%', alignItems: 'stretch' }}
+        sx={{ flexGrow: 1, alignItems: 'stretch' }}
       >
         <CardContent sx={{ height: '100%' }}>
           <Stack spacing={1.5} sx={{ height: '100%' }}>
@@ -117,6 +142,24 @@ export function CardTile({ card, onClick }: CardTileProps) {
           </Stack>
         </CardContent>
       </CardActionArea>
+
+      {/* Outside the CardActionArea on purpose: a button nested inside another
+          button is invalid markup and unreachable by keyboard in the order a
+          user expects. */}
+      {onRenew && (
+        <CardActions sx={{ pt: 0 }}>
+          <Button
+            size="small"
+            startIcon={<RenewIcon />}
+            variant={needsAttention ? 'contained' : 'text'}
+            color={card.status === 'expired' ? 'error' : 'primary'}
+            onClick={() => onRenew(card.id)}
+            aria-label={`Renew ${heading}`}
+          >
+            Renew
+          </Button>
+        </CardActions>
+      )}
     </Card>
   );
 }

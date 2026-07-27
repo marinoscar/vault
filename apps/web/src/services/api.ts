@@ -209,6 +209,8 @@ import type {
   SecretVersionDetail,
   SecretAttachment,
   SecretsResponse,
+  RenewSecretRequest,
+  RenewSecretResponse,
   MediaFolder,
   MediaFoldersResponse,
   MediaFile,
@@ -493,6 +495,26 @@ export async function rollbackSecretVersion(
   versionId: string,
 ): Promise<SecretDetail> {
   return api.post<SecretDetail>(`/secrets/${secretId}/versions/${versionId}/rollback`);
+}
+
+/**
+ * Renew a secret: create the next version from a new full field set, swapping
+ * only the attachment roles named in the request.
+ *
+ * This is the ONE call the renewal flow makes to commit. It is atomic on the
+ * server — version bump, attachment carry-forward and replacement insert all
+ * happen in a single transaction — so there is no half-renewed state to unwind
+ * on failure, unlike creating a secret and then linking files to it.
+ *
+ * `body.data` must be the COMPLETE field set for the renewed secret. The API
+ * replaces rather than merges, so any field left out is gone from the new
+ * version even though it was present on the old one.
+ */
+export async function renewSecret(
+  secretId: string,
+  body: RenewSecretRequest,
+): Promise<RenewSecretResponse> {
+  return api.post<RenewSecretResponse>(`/secrets/${secretId}/renew`, body);
 }
 
 /**

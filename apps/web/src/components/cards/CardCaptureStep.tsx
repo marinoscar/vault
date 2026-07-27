@@ -26,7 +26,27 @@ interface CardCaptureStepProps {
   onCancel: () => void;
   isProcessing?: boolean;
   error?: string | null;
+  /**
+   * Overrides for the copy, used by the renewal flow.
+   *
+   * The defaults below are written for a first-time import ("Photograph the
+   * front of the card"), which is subtly wrong when the user is replacing a
+   * card they already hold and the photo is optional. Each is opt-in so the
+   * import wizard's wording is untouched.
+   */
+  heading?: string;
+  helpText?: string;
+  /**
+   * Label for the primary button once a photo is present. Defaults to
+   * 'Continue' on the front and 'Read the card' on the back — the latter being
+   * a promise only the AI-assisted flow can keep, which is why a manual
+   * renewal overrides it.
+   */
+  continueLabel?: string;
+  /** Label for the skip button. Defaults to 'Skip the back'. */
+  skipLabel?: string;
 }
+
 
 const COPY = {
   front: {
@@ -58,6 +78,10 @@ export function CardCaptureStep({
   onCancel,
   isProcessing = false,
   error = null,
+  heading,
+  helpText,
+  continueLabel,
+  skipLabel = 'Skip the back',
 }: CardCaptureStepProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const copy = COPY[side];
@@ -72,10 +96,10 @@ export function CardCaptureStep({
   return (
     <Paper sx={{ p: { xs: 2, md: 3 } }}>
       <Typography variant="h6" gutterBottom>
-        {copy.heading}
+        {heading ?? copy.heading}
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        {copy.help}
+        {helpText ?? copy.help}
       </Typography>
 
       {error && (
@@ -152,7 +176,7 @@ export function CardCaptureStep({
               Retake
             </Button>
             <Button variant="contained" onClick={onContinue} disabled={isProcessing}>
-              {side === 'front' ? 'Continue' : 'Read the card'}
+              {continueLabel ?? (side === 'front' ? 'Continue' : 'Read the card')}
             </Button>
           </>
         ) : (
@@ -168,7 +192,7 @@ export function CardCaptureStep({
 
         {onSkip && (
           <Button onClick={onSkip} disabled={isProcessing}>
-            Skip the back
+            {skipLabel}
           </Button>
         )}
 

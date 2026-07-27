@@ -18,6 +18,7 @@ import {
 } from '@mui/icons-material';
 
 import type { FieldDefinition } from '../../types';
+import { CardFieldDiff } from './CardFieldDiff';
 
 interface CardReviewFormProps {
   /** Field definitions from the Card secret type, rendered in order. */
@@ -30,6 +31,21 @@ interface CardReviewFormProps {
   warnings?: string[];
   errors?: Record<string, string>;
   disabled?: boolean;
+  /**
+   * The outgoing version's values, turning this into a diff.
+   *
+   * Supplied only by the renewal flow. When present, each field gains a
+   * before/after line showing what changes and what stays — the review step of
+   * a renewal is a comparison against a card the user already holds, not a
+   * first look at values. Absent for import, where there is nothing to compare
+   * against and the form renders exactly as it always has.
+   */
+  currentValues?: Record<string, string>;
+  /**
+   * Field whose current value is deliberately never carried forward (the CVV).
+   * Its diff line explains the absence instead of showing an empty comparison.
+   */
+  notCarriedForwardField?: string;
 }
 
 /**
@@ -62,6 +78,8 @@ export function CardReviewForm({
   warnings = [],
   errors = {},
   disabled = false,
+  currentValues,
+  notCarriedForwardField,
 }: CardReviewFormProps) {
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
 
@@ -130,95 +148,120 @@ export function CardReviewForm({
             </Box>
           );
 
-          if (field.type === 'select') {
-            const options = Array.isArray(field.options) ? field.options : [];
-            // Keep an extracted value that is not a configured option visible
-            // rather than silently dropping it on first render.
-            const orphan = value !== '' && !options.includes(value) ? value : null;
+          // Built as a value rather than returned directly so the renewal diff
+          // can be appended beneath it without duplicating all three branches.
+          const input = (() => {
+            if (field.type === 'select') {
+              const options = Array.isArray(field.options) ? field.options : [];
+              // Keep an extracted value that is not a configured option visible
+              // rather than silently dropping it on first render.
+              const orphan = value !== '' && !options.includes(value) ? value : null;
+
+              return (
+                <TextField
+                  key={field.name}
+                  select
+                  fullWidth
+                  label={label}
+                  required={field.required}
+                  value={value}
+                  onChange={(e) => onChange(field.name, e.target.value)}
+                  error={Boolean(error)}
+                  helperText={helperText}
+                  disabled={disabled}
+                  sx={warningSx}
+                  InputLabelProps={{ shrink: true }}
+                  SelectProps={{ displayEmpty: true }}
+                >
+                  {!field.required && (
+                    <MenuItem value="">
+                      <em>None</em>
+                    </MenuItem>
+                  )}
+                  {orphan !== null && (
+                    <MenuItem value={orphan}>{orphan}</MenuItem>
+                  )}
+                  {options.map((option) => (
+                    <MenuItem key={option} value={option}>
+                      {option}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              );
+            }
+
+            if (field.sensitive) {
+              const isRevealed = revealed.has(field.name);
+              return (
+                <TextField
+                  key={field.name}
+                  fullWidth
+                  label={label}
+                  required={field.required}
+                  type={isRevealed ? 'text' : 'password'}
+                  value={value}
+                  onChange={(e) => onChange(field.name, e.target.value)}
+                  error={Boolean(error)}
+                  helperText={helperText}
+                  disabled={disabled}
+                  sx={warningSx}
+                  InputProps={{
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton
+                          edge="end"
+                          size="small"
+                          onClick={() => toggleReveal(field.name)}
+                          aria-label={
+                            isRevealed ? `Hide ${field.label}` : `Show ${field.label}`
+                          }
+                        >
+                          {isRevealed ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              );
+            }
 
             return (
               <TextField
                 key={field.name}
-                select
                 fullWidth
                 label={label}
                 required={field.required}
+                multiline={field.name === 'notes'}
+                minRows={field.name === 'notes' ? 2 : undefined}
                 value={value}
                 onChange={(e) => onChange(field.name, e.target.value)}
                 error={Boolean(error)}
                 helperText={helperText}
                 disabled={disabled}
                 sx={warningSx}
-                InputLabelProps={{ shrink: true }}
-                SelectProps={{ displayEmpty: true }}
-              >
-                {!field.required && (
-                  <MenuItem value="">
-                    <em>None</em>
-                  </MenuItem>
-                )}
-                {orphan !== null && (
-                  <MenuItem value={orphan}>{orphan}</MenuItem>
-                )}
-                {options.map((option) => (
-                  <MenuItem key={option} value={option}>
-                    {option}
-                  </MenuItem>
-                ))}
-              </TextField>
-            );
-          }
-
-          if (field.sensitive) {
-            const isRevealed = revealed.has(field.name);
-            return (
-              <TextField
-                key={field.name}
-                fullWidth
-                label={label}
-                required={field.required}
-                type={isRevealed ? 'text' : 'password'}
-                value={value}
-                onChange={(e) => onChange(field.name, e.target.value)}
-                error={Boolean(error)}
-                helperText={helperText}
-                disabled={disabled}
-                sx={warningSx}
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton
-                        edge="end"
-                        size="small"
-                        onClick={() => toggleReveal(field.name)}
-                        aria-label={
-                          isRevealed ? `Hide ${field.label}` : `Show ${field.label}`
-                        }
-                      >
-                        {isRevealed ? <VisibilityOffIcon /> : <VisibilityIcon />}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                }}
               />
             );
-          }
+          })();
+
+          // Import passes no `currentValues`, so its markup is unchanged: the
+          // TextField is returned exactly as before, with the key on it.
+          if (!currentValues) return input;
 
           return (
-            <TextField
-              key={field.name}
-              fullWidth
-              label={label}
-              required={field.required}
-              multiline={field.name === 'notes'}
-              minRows={field.name === 'notes' ? 2 : undefined}
-              value={value}
-              onChange={(e) => onChange(field.name, e.target.value)}
-              error={Boolean(error)}
-              helperText={helperText}
-              disabled={disabled}
-              sx={warningSx}
-            />
+            <Box key={field.name}>
+              {input}
+              <CardFieldDiff
+                field={field}
+                current={currentValues[field.name] ?? ''}
+                proposed={value}
+                changed={
+                  field.name === notCarriedForwardField
+                    ? value.trim() !== ''
+                    : value.trim() !== (currentValues[field.name] ?? '').trim()
+                }
+                notCarriedForward={field.name === notCarriedForwardField}
+              />
+            </Box>
           );
         })}
       </Stack>

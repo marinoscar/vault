@@ -334,6 +334,50 @@ export interface SecretVersionDetail extends SecretVersion {
   values: Record<string, unknown>;
 }
 
+/**
+ * One file supplied with a renewal, mirroring `renewAttachmentSchema` in the
+ * API.
+ *
+ * A role-bearing entry REPLACES the same-role file on the outgoing version; a
+ * role-less entry is simply added. Anything whose role is absent from the
+ * request is carried forward onto the new version untouched, which is what
+ * keeps the old card's photos viewable in its own version.
+ */
+export interface RenewSecretAttachment {
+  storageObjectId: string;
+  role?: AttachmentRole;
+  label?: string;
+}
+
+/**
+ * Body of `POST /api/secrets/:id/renew`, mirroring `renewSecretSchema`.
+ *
+ * `data` is a REPLACEMENT, not a patch: the API validates it against the whole
+ * secret type exactly as `PUT /secrets/:id` does, so every field the renewed
+ * secret should keep must be present — including the ones the user did not
+ * change. Sending a partial object silently drops the omitted fields from the
+ * new version.
+ */
+export interface RenewSecretRequest {
+  data: Record<string, string>;
+  attachments?: RenewSecretAttachment[];
+  /**
+   * Whether the values were read off a photo by the AI rather than typed.
+   *
+   * Recorded in the audit trail as `extractionMethod` and nothing else — it has
+   * no effect on validation or on what is stored. It exists so an AI-assisted
+   * renewal can be told apart from a manual one after the fact, so it must
+   * report what actually happened rather than whether AI was merely available.
+   */
+  aiAssisted?: boolean;
+}
+
+/**
+ * Response of `POST /api/secrets/:id/renew`: the secret as it now stands, at
+ * its new current version. Shape-identical to `GET /api/secrets/:id`.
+ */
+export type RenewSecretResponse = SecretDetail;
+
 export interface SecretsResponse {
   items: SecretListItem[];
   meta: {
