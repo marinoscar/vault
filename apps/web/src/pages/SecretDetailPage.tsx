@@ -20,10 +20,21 @@ import {
 import { SecretDetail } from '../components/secrets/SecretDetail';
 import { SecretVersionHistory } from '../components/secrets/SecretVersionHistory';
 import { SecretAttachments } from '../components/secrets/SecretAttachments';
+import { CardImages, supportsCardImages } from '../components/secrets/CardImages';
 import { DynamicSecretFields } from '../components/secrets/DynamicSecretFields';
 import { useSecretDetail } from '../hooks/useSecretDetail';
+import type { SecretVersionDetailWithAttachments } from '../hooks/useSecretDetail';
 import { deleteSecret } from '../services/api';
-import type { SecretVersionDetail } from '../types';
+
+/**
+ * Tabs are addressed by key, not by position.
+ *
+ * The Attachments tab is conditional, so with positional values the index of
+ * every tab depends on which other tabs happen to be rendered — adding or
+ * reordering one silently routes the panel body to the wrong tab. Keys make the
+ * mapping independent of both.
+ */
+type TabKey = 'details' | 'versions' | 'attachments';
 
 export default function SecretDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -38,9 +49,10 @@ export default function SecretDetailPage() {
     fetchVersion,
     rollback,
   } = useSecretDetail();
-  const [activeTab, setActiveTab] = useState(0);
+  const [activeTab, setActiveTab] = useState<TabKey>('details');
   const [versionDetailOpen, setVersionDetailOpen] = useState(false);
-  const [selectedVersion, setSelectedVersion] = useState<SecretVersionDetail | null>(null);
+  const [selectedVersion, setSelectedVersion] =
+    useState<SecretVersionDetailWithAttachments | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -101,6 +113,18 @@ export default function SecretDetailPage() {
   }
 
   const showAttachments = secret.type?.allowAttachments ?? false;
+  const showCardImages = supportsCardImages(secret.type, secret.attachments ?? []);
+
+  const tabs: { key: TabKey; label: string }[] = [
+    { key: 'details', label: 'Details' },
+    { key: 'versions', label: 'Version History' },
+    ...(showAttachments ? [{ key: 'attachments' as const, label: 'Attachments' }] : []),
+  ];
+
+  // A secret can finish loading as a type without attachments while
+  // `activeTab` still holds a key that is no longer rendered. Fall back rather
+  // than show an empty page under a Tabs bar with nothing selected.
+  const currentTab: TabKey = tabs.some((t) => t.key === activeTab) ? activeTab : 'details';
 
   return (
     <Container maxWidth="lg" sx={{ py: 3 }}>
@@ -125,14 +149,14 @@ export default function SecretDetailPage() {
       )}
 
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
-        <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)}>
-          <Tab label="Details" />
-          <Tab label="Version History" />
-          {showAttachments && <Tab label="Attachments" />}
+        <Tabs value={currentTab} onChange={(_, v: TabKey) => setActiveTab(v)}>
+          {tabs.map((tab) => (
+            <Tab key={tab.key} value={tab.key} label={tab.label} />
+          ))}
         </Tabs>
       </Box>
 
-      {activeTab === 0 && (
+      {currentTab === 'details' && (
         <SecretDetail
           secret={secret}
           onEdit={() => navigate(`/secrets/${id}/edit`)}
@@ -140,7 +164,7 @@ export default function SecretDetailPage() {
         />
       )}
 
-      {activeTab === 1 && (
+      {currentTab === 'versions' && (
         <SecretVersionHistory
           versions={versions}
           isLoading={isLoading}
@@ -149,13 +173,24 @@ export default function SecretDetailPage() {
         />
       )}
 
-      {activeTab === 2 && showAttachments && (
-        <SecretAttachments
-          attachments={secret.attachments || []}
-          secretId={secret.id}
-          onUploadComplete={handleUploadComplete}
-          onDelete={handleDeleteAttachment}
-        />
+      {currentTab === 'attachments' && (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {/* Card faces live here rather than on the Details tab so a card
+              number and a photo of the card are never on the same screen. */}
+          {showCardImages && (
+            <CardImages
+              secretId={secret.id}
+              attachments={secret.attachments ?? []}
+              onChange={handleUploadComplete}
+            />
+          )}
+          <SecretAttachments
+            attachments={secret.attachments || []}
+            secretId={secret.id}
+            onUploadComplete={handleUploadComplete}
+            onDelete={handleDeleteAttachment}
+          />
+        </Box>
       )}
 
       {/* Version detail dialog */}
@@ -179,6 +214,19 @@ export default function SecretDetailPage() {
                 onChange={() => {}}
                 readOnly
               />
+              {/* Deliberately the *version's* attachments, not the secret's:
+                  viewing v1 of a renewed card must show v1's photo. Read-only
+                  because a historical version is immutable. */}
+              {supportsCardImages(secret.type, selectedVersion.attachments ?? []) && (
+                <Box sx={{ mt: 3 }}>
+                  <CardImages
+                    secretId={secret.id}
+                    attachments={selectedVersion.attachments ?? []}
+                    readOnly
+                    title={`Card Images (v${selectedVersion.version})`}
+                  />
+                </Box>
+              )}
             </Box>
           )}
         </DialogContent>

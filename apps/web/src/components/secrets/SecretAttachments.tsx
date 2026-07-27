@@ -24,6 +24,12 @@ import type { SecretAttachment } from '../../types';
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
 interface SecretAttachmentsProps {
+  /**
+   * All of the secret's attachments. Role-bearing ones (card faces) are
+   * filtered out here rather than by the caller — they render as images in
+   * `CardImages`, and listing them again as generic files would show the same
+   * upload twice with a delete button that silently removes a card photo.
+   */
   attachments: SecretAttachment[];
   secretId: string;
   onUploadComplete: () => void;
@@ -42,6 +48,9 @@ export function SecretAttachments({
   onUploadComplete,
   onDelete,
 }: SecretAttachmentsProps) {
+  // A Document's attachments are all role-less, so this is a no-op for them and
+  // their behaviour is unchanged.
+  const genericAttachments = attachments.filter((a) => a.role == null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -164,13 +173,13 @@ export function SecretAttachments({
         </Alert>
       )}
 
-      {attachments.length === 0 ? (
+      {genericAttachments.length === 0 ? (
         <Typography variant="body2" color="text.secondary">
           No attachments yet.
         </Typography>
       ) : (
         <List dense disablePadding>
-          {attachments.map((attachment) => (
+          {genericAttachments.map((attachment) => (
             <ListItem key={attachment.id} disableGutters>
               <ListItemIcon sx={{ minWidth: 36 }}>
                 <AttachFileIcon fontSize="small" />
