@@ -1177,7 +1177,63 @@ HAVING COUNT(*) > 10;
 
 ---
 
-## 8. Infrastructure Security
+## 8. AI Features and Data Egress
+
+### Overview
+
+The card-scanning feature (`POST /api/secrets/cards/extract`) is the **first and only** place this application sends any secret-adjacent data to a third party over the network. Every threat model in this document up to this point has assumed secret data never leaves the API process except in an HTTP response to the authenticated owner over the same-origin connection. That assumption no longer holds unconditionally, and it is important to be explicit about it rather than let it sit implicitly contradicted by a single feature buried in the secrets module.
+
+This section documents exactly what leaves, to whom, under what administrative control, what is deliberately withheld, and how the credential enabling it is stored.
+
+### What Leaves the Server
+
+**Exactly one payload type: a cropped card face image, as a base64 data URL, sent inside the JSON body of an outbound HTTPS request to OpenAI's API.** The client (`apps/web`) crops the photo to the card boundary before it is ever transmitted to the API — the API does not perform its own cropping and never sees or stores an uncropped photo. `POST /api/secrets/cards/extract` accepts `front` (required) and `back` (optional), each already in that cropped form, and forwards them to the configured vision model.
+
+**Nothing else about the secret is sent.** The endpoint has no access to a secret ID, an existing secret's stored values, or any other field — it is a stateless "read this image" call that happens before any `Secret` or `SecretVersion` row exists for the card being imported.
+
+**Persistence:** none. Neither the images nor the model's extracted field values are written to any table. The single database row this feature writes is an `audit_events` entry (`ai.card.extract`) containing only an image count, the model name, timing, and an outcome/error code — never an image, a field value, or a confidence score (see §6 Database Security Model and `docs/SECRETS.md` § Audit Trail).
+
+### To Whom
+
+**OpenAI**, via whichever model is configured in system settings (`ai.model`, default `gpt-4o-mini`). There is no support for a self-hosted or alternate vision provider in the current implementation — `AI_VISION_PROVIDER`'s only concrete binding is `OpenAiVisionProvider`.
+
+### Under What Control
+
+The egress is gated by two independent conditions, both administrator-controlled through `PATCH /system-settings`:
+
+1. **`ai.enabled` must be `true`.** The default is `false` — the feature is off until an administrator explicitly opts in.
+2. **A working OpenAI API key must be stored** (`ai.apiKeyConfigured`). Storing, rotating, or clearing this key requires `system_settings:write` (Admin-only).
+
+Any authenticated user can check whether the feature is currently available (`GET /api/ai/status`), but only a boolean — no model name, key mask, or failure reason is exposed outside the admin-gated system settings response. This exists so a Viewer's UI can hide the "scan a card" button without needing permission to read system settings.
+
+Even with the feature enabled, per-user limits bound how much data can flow: a per-replica in-memory burst window (10 calls / 5 minutes) and a durable per-user daily budget (`ai.maxCallsPerUserPerDay`, default 50/day, enforced via `audit_events` row counts so it survives restarts and is correct across replicas). See §10 for how these fit the wider rate-limiting picture and `docs/API.md` § AI Card Extraction for the exact error codes.
+
+### What Is Deliberately Never Sent
+
+**The CVV/CVC is never requested from the model and has no place in the response schema.** `EXTRACTED_FIELD_NAMES` (`apps/api/src/ai/providers/vision-provider.interface.ts`) omits `cvv` entirely — it is not a field the model is asked to read, and the JSON schema OpenAI is constrained to return (`OPENAI_CARD_JSON_SCHEMA`) has no key for it. This is a deliberate, structural exclusion, not merely a client-side filter: even if a photographed card's CVV were visible in the image, there is no code path that reads it out of the model's response, because the response cannot contain it. The web client's review form always seeds the CVV field as an empty string regardless of what the extraction otherwise returned.
+
+The full, unmasked card number, expiry, cardholder name, network, kind, issuing bank, and the *secondary* security code (`security_code_2` — a different value from the CVV, e.g. the 4-digit code on an Amex front) ARE sent, because reading them from the image is the entire point of the feature. Treat this the same as any other card-data egress from a security-review standpoint: it is bounded by the controls above, not eliminated.
+
+### Credential Storage
+
+The OpenAI API key is stored **encrypted at rest with AES-256-GCM**, via the same `CryptoService` (`apps/api/src/common/services/crypto.service.ts`) used for every secret value in this application, keyed by the same `VAULT_ENCRYPTION_KEY`. It is stored inside the `system_settings.value` JSONB column (`ai.apiKey`), never in an environment variable.
+
+The credential is **write-only** from the API's perspective once stored:
+- `PATCH /system-settings` accepts a plaintext `apiKey` (to set/replace) or `null` (to clear); omitting the field leaves the stored key untouched. The three-state distinction (`'apiKey' in patch`) exists specifically so "don't touch it" and "clear it" are both expressible without a separate endpoint.
+- Every read path — `GET /system-settings`, `GET /api/ai/status`, and internal callers — sees only a masked projection: `apiKeyConfigured` (boolean), `apiKeyLast4` (string), `apiKeyUpdatedAt` (timestamp). The plaintext is reconstituted in exactly one place, `SystemSettingsService.getOpenAiApiKeyPlaintext()`, called only by `AiConfigService` immediately before a provider call — never logged, never returned over HTTP, never written anywhere else.
+- Audit rows for settings changes are redacted to the same masked shape (`{ enabled, model, maxCallsPerUserPerDay, apiKeyChanged, apiKeyLast4 }`) on both the "what changed" and "resulting value" sides — neither plaintext nor ciphertext is ever written to `audit_events`, because audit rows are permanent and a ciphertext copy would survive a subsequent key rotation and defeat it.
+
+**Rotating `VAULT_ENCRYPTION_KEY` permanently invalidates the stored OpenAI key**, exactly as it would any secret value encrypted with the old key: the ciphertext can no longer be authenticated, `getOpenAiApiKeyPlaintext()` throws, `GET /api/ai/status` reports `enabled: false`, and card extraction returns `503 AI_KEY_UNREADABLE` until an administrator re-enters the key under the new `VAULT_ENCRYPTION_KEY`. There is no dual-key transition period — see §11 Configuration Reference and the "Key rotation" caveat already documented for secrets generally.
+
+### Known Gaps
+
+- **No integration test or production traffic has ever exercised the real OpenAI API.** The vision provider is covered only by unit tests against a mocked HTTP layer. Its error classification (auth vs. rate-limit vs. unavailable vs. invalid-output) is unverified against OpenAI's actual behavior.
+- **The burst limiter is per-replica and resets on deploy** — it bounds a single stuck client, not aggregate spend across a multi-replica deployment. Only the durable daily budget is a real spend control.
+- Clipboard copying of revealed card fields (front-end) does not clear the OS clipboard after use — see `docs/SECRETS.md` § Security Considerations.
+
+---
+
+## 9. Infrastructure Security
 
 ### Nginx Security Headers
 
@@ -1272,7 +1328,7 @@ cp .env.example .env
 
 ---
 
-## 9. Attack Mitigation Matrix
+## 10. Attack Mitigation Matrix
 
 | Attack Vector | Mitigation Strategy | Implementation |
 |--------------|---------------------|----------------|
@@ -1292,6 +1348,7 @@ cp .env.example .env
 | **Mass Assignment** | DTO validation | Class-validator on all DTOs, whitelist only |
 | **Information Disclosure** | Generic errors, no stack traces | Production error handler, sanitized responses |
 | **Denial of Service** | Rate limiting (recommended) | Can add rate limiter to Nginx or NestJS |
+| **Third-Party Data Egress (AI card scanning)** | Opt-in feature flag, admin-only credential, minimal field set, per-user burst + daily budget | `ai.enabled` default `false`; CVV never requested/returned (§8); burst limiter + audit-row-counted daily quota in `CardExtractService` |
 
 **Not Yet Implemented (Consider for Production):**
 - **Rate Limiting**: Add `@nestjs/throttler` or Nginx rate limiting
@@ -1302,7 +1359,7 @@ cp .env.example .env
 
 ---
 
-## 10. Configuration Reference
+## 11. Configuration Reference
 
 ### Environment Variables
 
@@ -1377,7 +1434,7 @@ NODE_ENV=production
 
 ---
 
-## 11. Implementation Notes: Fastify + Passport OAuth
+## 12. Implementation Notes: Fastify + Passport OAuth
 
 ### Challenge: OAuth Strategy Compatibility
 
@@ -1569,7 +1626,7 @@ The application provides a test authentication bypass mechanism that enables aut
 
 ---
 
-## 12. File Reference
+## 14. File Reference
 
 ### Key Security Files
 
@@ -1653,7 +1710,7 @@ apps/web/src/
 
 ---
 
-## 13. Security Best Practices Summary
+## 15. Security Best Practices Summary
 
 ### For Developers
 

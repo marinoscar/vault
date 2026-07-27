@@ -39,7 +39,15 @@ S3_BUCKET=your-bucket
 S3_REGION=us-east-1
 AWS_ACCESS_KEY_ID=...
 AWS_SECRET_ACCESS_KEY=...
+
+# Card face image size cap in bytes (optional, default 5 MB = 5242880)
+# Applies only to card_front / card_back attachments. A non-numeric or
+# non-positive value is ignored (falls back to the default) rather than
+# disabling the check.
+CARD_IMAGE_MAX_BYTES=5242880
 ```
+
+AI card scanning is configured entirely through **system settings** (`ai.enabled`, `ai.model`, `ai.maxCallsPerUserPerDay`, `ai.apiKey`), not environment variables — there is no `OPENAI_API_KEY` env var. See [Security Considerations](#security-considerations) and [API.md](API.md#ai-card-extraction).
 
 `VAULT_ENCRYPTION_KEY` must be a 64-character hexadecimal string representing 32 bytes. The application validates this on startup and will refuse to start if the key is absent or the wrong length.
 
@@ -74,18 +82,35 @@ Secret types define the schema of a secret's data fields. There are two categori
 
 ### System Types
 
-Six system types are created during database seeding. They cannot be modified or deleted.
+Six system types are created during database seeding. They cannot be modified or deleted. Source of truth: `apps/api/prisma/system-secret-types.ts`.
 
-| Type | Icon | Fields |
-|------|------|--------|
-| Credential | Key | `username`, `password` (sensitive), `url`, `notes` |
-| API Key | VpnKey | `key` (sensitive), `provider`, `notes` |
-| Card | CreditCard | `cardholder_name`, `number` (sensitive), `exp_month`, `exp_year`, `cvv` (sensitive), `notes` |
-| Token | Token | `token` (sensitive), `provider`, `notes` |
-| Note | Description | `content` |
-| Document | AttachFile | `title`, `notes`. Attachments allowed. |
+| Type | Icon | Fields | Attachments |
+|------|------|--------|-------------|
+| Credential | Key | `username`, `password` (sensitive), `url`, `notes` | No |
+| API Key | VpnKey | `key` (sensitive), `provider`, `notes` | No |
+| Card | CreditCard | `card_network` (select, optional), `card_kind` (select, optional), `cardholder_name`, `number` (sensitive), `exp_month`, `exp_year`, `cvv` (sensitive), `security_code_2` (sensitive, optional), `issuing_bank` (optional), `notes` | **Yes** |
+| Token | Token | `token` (sensitive), `provider`, `notes` | No |
+| Note | Description | `content` | No |
+| Document | AttachFile | `title`, `notes` | Yes |
 
 Fields marked as sensitive are masked in the UI and require a deliberate reveal action.
+
+#### Card fields in detail
+
+| Field | Type | Required | Sensitive | Notes |
+|-------|------|----------|-----------|-------|
+| `card_network` | `select` | No | No | Options from `CARD_NETWORKS` (`apps/api/src/common/constants/card.constants.ts`): Visa, Mastercard, American Express, Discover, Diners Club, JCB, UnionPay, Maestro, RuPay, Elo, Hipercard, Other |
+| `card_kind` | `select` | No | No | Options from `CARD_KINDS`: Credit, Debit, Prepaid, Other |
+| `cardholder_name` | `string` | Yes | No | |
+| `number` | `string` | Yes | Yes | Full PAN |
+| `exp_month` | `string` | Yes | No | |
+| `exp_year` | `string` | Yes | No | |
+| `cvv` | `string` | Yes | Yes | CVV/CVC. Never sent to, or returned by, the AI extraction endpoint (see [Security Considerations](#security-considerations)) |
+| `security_code_2` | `string` | No | Yes | Secondary security code (CID / control number, e.g. the 4-digit code on an Amex front) — a different value from the CVV |
+| `issuing_bank` | `string` | No | No | |
+| `notes` | `string` | No | No | |
+
+`card_network` and `card_kind` are `required: false` even though they are always shown in the UI. This is deliberate and permanent: `validateDataAgainstType` rejects unknown keys, and a secret type's fields are append-only, so a `required: true` field added after cards already exist would make every pre-existing card permanently unsaveable on its next edit (there is no way to back-fill a value into an already-encrypted, per-version blob). Do not "fix" this by making them required.
 
 ### Custom Types
 
@@ -105,9 +130,12 @@ Each `FieldDefinition` has:
 |----------|-------------|
 | `name` | Snake_case identifier matching `^[a-z][a-z0-9_]*$`, 1-50 characters |
 | `label` | Display label, 1-100 characters |
-| `type` | `string` \| `number` \| `date` |
+| `type` | `string` \| `number` \| `date` \| `select` |
 | `required` | Boolean |
 | `sensitive` | Boolean, default `false` |
+| `options` | `string[]`, 1-50 entries, each 1-100 characters, no duplicates. **Required when `type` is `select`, and rejected for every other type.** |
+
+A `select` field without `options` fails DTO validation (`options is required for select fields`); a non-`select` field that supplies `options` also fails validation (`options is only allowed for select fields`). This is enforced at the DTO layer (`apps/api/src/secret-types/dto/create-secret-type.dto.ts`) for every type created or updated through the API. It is not enforced at the database level: a `select` field written directly to the database (or seeded before this constraint existed) with no `options` does not brick existing secrets — `validateDataAgainstType` treats an empty/missing `options` list on a `select` field as "anything goes" rather than rejecting every value.
 
 A custom type cannot be deleted if any secret currently references it. The API returns `409 Conflict` in that case.
 
@@ -131,6 +159,8 @@ Version records store:
 
 The combination of `[secretId, version]` is unique. Only one version per secret has `isCurrent = true` at any time.
 
+**Attachments carry forward automatically.** Every new version — from a data edit (`PUT`), a rollback, or a renewal (`POST /:id/renew`) — copies every attachment row from its source version onto the new version (same `storageObjectId`; the row is a pointer, so the underlying file is shared, not duplicated). A version's attachment set is therefore never empty just because the secret was edited without touching files. This is implemented in one place, `SecretsService.createNewVersion()` / `carryForwardAttachments()`, so update, rollback, and renew cannot drift from each other.
+
 ---
 
 ## Rollback
@@ -140,25 +170,66 @@ Rolling back to a previous version creates a new version with that version's dat
 1. Decrypt the target version's `encryptedData` using its stored `iv` and `authTag`.
 2. Re-encrypt the plaintext with a fresh randomly generated IV.
 3. Insert a new version record (next version number in the sequence) with the re-encrypted data.
-4. Mark the new version as current; mark all other versions as not current.
-5. Log an audit event with the source `fromVersion`.
+4. Carry forward the **target** version's attachment set (not the current version's) — see below.
+5. Mark the new version as current; mark all other versions as not current.
+6. Log an audit event with the source `fromVersion` and the number of attachments carried forward.
 
 **Example:** A secret has versions v1, v2, v3 (current). Rolling back to v1 produces v4 containing v1's data. v4 becomes current. v1, v2, and v3 remain in history unchanged.
 
 The re-encryption step ensures IV uniqueness even when the same plaintext is stored multiple times.
 
+**Rollback restores the target version's attachments, not the current version's.** If v1 had `card_front`/`card_back` images and v3 (current) has different ones, rolling back to v1 makes v4 carry v1's images — not v3's. Carrying the current version's files forward instead would show the restored card's old field values next to the wrong card's photos.
+
 ---
 
 ## Attachments
 
-A secret type may set `allowAttachments: true` to permit file attachments. Attachments are stored via the Storage Objects API and linked to a secret through the `SecretAttachment` join table.
+A secret type may set `allowAttachments: true` to permit file attachments. Attachments are stored via the Storage Objects API and linked to a secret through the `SecretAttachment` join table. As of migration `20260727120000_version_scoped_attachments`, attachments are scoped to a **specific `SecretVersion`**, not just to the secret.
 
-Key behaviors:
+### Version scoping
 
-- Files are uploaded first via the Storage Objects API, then linked to a secret using the returned storage object ID.
+Every `SecretAttachment` row carries a `secretVersionId` (not-null, `onDelete: Cascade` from `SecretVersion`) in addition to `secretId`. This is what makes it possible for a historical version to keep showing its own files even after the secret has moved on to a new version with different (or additional) attachments — see [Versioning](#versioning) and [Rollback](#rollback) for how the carry-forward keeps a version's attachment set populated across edits.
+
+Two unique constraints replace the old single-secret constraint:
+
+| Constraint | Purpose |
+|------------|---------|
+| `[secretVersionId, storageObjectId]` | The same file cannot be linked twice to the same version. |
+| `[secretVersionId, role]` | At most one attachment per **role** per version (see below). Postgres treats `NULL` as distinct from any other `NULL`, so this does *not* limit how many role-less (generic) attachments a version can have — only how many attachments of the *same named role* it can have. |
+
+A conflict on either constraint returns `409 Conflict` with a message naming which side was duplicated (e.g. "This card already has a front image for the current version"), not a raw database error.
+
+### Roles (card_front and card_back)
+
+An attachment may optionally carry a `role`, one of `card_front` or `card_back` (`apps/api/src/secrets/dto/link-attachment.dto.ts`). These identify the two card-face images the Card import flow captures and are the only roles the API currently defines. An attachment with no role (`role: null`) is a generic file — e.g. a Document's supporting attachments — and a version may have any number of them.
+
+**Card image constraints** apply only to `card_front` / `card_back` attachments (checked by `SecretsService.enforceCardImageConstraints()`, in both `linkAttachment` and `renew`):
+
+- **Allowed MIME types:** `image/jpeg`, `image/png`, `image/webp`, `image/heic`, `image/heif` (HEIC/HEIF included because iOS cameras produce them by default). The comparison strips parameters (e.g. `; charset=binary`) and lower-cases before matching.
+- **Size limit:** 5 MB by default, overridable via the `CARD_IMAGE_MAX_BYTES` environment variable. An invalid override (non-numeric or ≤ 0) is ignored and logged, falling back to the 5 MB default rather than silently disabling the check.
+- **Size is measured, not trusted, when the recorded size is 0.** The simple (`multipart/form-data`) upload path — the one the card capture UI uses — always records `size: BigInt(0)` at upload time and relies on a post-processor that does not exist to fill it in later. So for every real card image, `enforceCardImageConstraints` falls back to reading the object back from storage and counting bytes, stopping one byte past the limit. An object that cannot be read from storage is rejected (fails closed) rather than allowed through.
+- **The MIME type itself is taken from the client's declared `Content-Type` for that multipart part (Fastify's `file.mimetype`) — it is not sniffed from the file's actual bytes.** A client that lies about the Content-Type of a non-image file with an accepted extension/type string is not currently caught by content inspection.
+
+Generic (role-less) attachments have no MIME type or size constraint beyond whatever the Storage Objects API itself enforces.
+
+### Deleting an attachment: refcounted, not automatic
+
+**Deleting an attachment no longer unconditionally deletes the underlying storage object.** Because the same `storageObjectId` can now be referenced by multiple `SecretAttachment` rows — one per version it was carried forward onto, and potentially by another secret entirely — `unlinkAttachment()` only deletes the `StorageObject` row (and, best-effort, its blob) when **no other `SecretAttachment` row references it** after the unlink:
+
+1. Lock the `storage_objects` row (`SELECT ... FOR UPDATE`).
+2. Delete the `SecretAttachment` row.
+3. Count remaining `SecretAttachment` rows referencing the same `storageObjectId`.
+4. If zero, delete the `StorageObject` row; otherwise leave it (and the blob) in place.
+5. Commit.
+6. Only after commit, best-effort delete the blob from the storage provider. A blob-delete failure is logged, not thrown — the DB is already consistent, and the caller's unlink genuinely succeeded even if a byte is orphaned in storage.
+
+The `FOR UPDATE` lock is what makes step 3 correct under concurrency: without it, two simultaneous unlinks of the last two references could each observe "1 remaining" and neither would delete, leaking the object and its blob forever.
+
+### General
+
+- Files are uploaded first via the Storage Objects API, then linked to a secret's current version using the returned storage object ID (`POST /secrets/:id/attachments`), or supplied as part of a renewal (`POST /secrets/:id/renew`).
 - Each attachment record has an optional `label`.
-- The constraint `[secretId, storageObjectId]` prevents duplicate links.
-- Deleting an attachment also deletes the underlying storage object. This is a hard delete of the file, not just the link.
+- `GET /secrets/:id/attachments` defaults to the current version's attachments; pass `versionId` to read a historical version's set, and/or `role` to filter to one card face.
 - The attachments tab in the UI is only shown when the secret's type has `allowAttachments: true`.
 
 ---
@@ -193,16 +264,39 @@ All endpoints require a valid JWT Bearer token. Ownership checks are enforced at
 | Method | Path | Permission | Description |
 |--------|------|------------|-------------|
 | `GET` | `/secrets/:id/versions` | `secrets:read` | List version history (metadata only, no decrypted data) |
-| `GET` | `/secrets/:id/versions/:versionId` | `secrets:read` | Get a specific version with decrypted data |
-| `POST` | `/secrets/:id/versions/:versionId/rollback` | `secrets:write` | Rollback to this version |
+| `GET` | `/secrets/:id/versions/:versionId` | `secrets:read` | Get a specific version with decrypted data and that version's own attachments |
+| `POST` | `/secrets/:id/versions/:versionId/rollback` | `secrets:write` | Rollback to this version (restores this version's attachment set) |
+
+### Renewal (POST /secrets/:id/renew)
+
+Requires `secrets:write`. Mints the next version from a **new** set of field values (a replacement, not a merge — a reissued card has a new number and often a new expiry and name) while swapping only the attachment roles present in the request; every other attachment is carried forward unchanged. Intended for a card that has been reissued, expired, or replaced after fraud, but works for any type that allows attachments.
+
+Request body:
+
+```json
+{
+  "data": { "cardholder_name": "...", "number": "...", "exp_month": "...", "exp_year": "...", "cvv": "..." },
+  "attachments": [
+    { "storageObjectId": "uuid", "role": "card_front" },
+    { "storageObjectId": "uuid", "role": "card_back" }
+  ],
+  "aiAssisted": true
+}
+```
+
+- `attachments` is optional and capped at 20 entries. Each entry with a `role` **replaces** the existing attachment for that role on the new version; entries with no `role` are additions. An entry that repeats a `role`, or repeats a `storageObjectId`, is rejected with `400` before any storage lookup happens.
+- `aiAssisted` is a pure audit-trail flag (`extractionMethod: 'ai_assisted' | 'manual'` on the `secret.renew` audit event). It has no effect on validation or on what is stored.
+- The previous (superseded) version is untouched: its own attachment rows still point at the old files, so the old card's number, expiry, name, **and photos** are all still readable together from the version history after a renewal.
+- Version bump, selective carry-forward, and the replacement insert all happen in a single transaction; a failure anywhere in it leaves the previous version current and creates no partial version.
+- Returns `409 Conflict` if a concurrent renewal collided on an attachment role.
 
 ### Attachments — `/api/secrets/:id/attachments`
 
 | Method | Path | Permission | Description |
 |--------|------|------------|-------------|
-| `POST` | `/secrets/:id/attachments` | `secrets:write` | Link a storage object to this secret |
-| `GET` | `/secrets/:id/attachments` | `secrets:read` | List attachments |
-| `DELETE` | `/secrets/:id/attachments/:attachmentId` | `secrets:write` | Remove the attachment and delete the storage object |
+| `POST` | `/secrets/:id/attachments` | `secrets:write` | Link a storage object to the secret's **current** version |
+| `GET` | `/secrets/:id/attachments` | `secrets:read` | List attachments. Query: `versionId` (optional UUID, defaults to current version), `role` (optional, `card_front` \| `card_back`) |
+| `DELETE` | `/secrets/:id/attachments/:attachmentId` | `secrets:write` | Remove the attachment; the underlying storage object is deleted only if no other attachment row (any version, any secret) still references it |
 
 ### Secret Types — `/api/secret-types`
 
@@ -251,6 +345,7 @@ When creating or updating a secret, the provided data object is validated agains
   - `string` — any string value
   - `number` — numeric value; `NaN` is rejected
   - `date` — ISO 8601 date string
+  - `select` — the value must appear in the field's `options` list (case-sensitive, exact match). If the field somehow has no `options` (e.g. a row written before this constraint existed), the check is skipped rather than rejecting every value — see [Custom Types](#custom-types) for why `options` is otherwise mandatory for `select` fields at the DTO layer.
 
 Validation failures return `400 Bad Request` with a `details` array identifying each invalid field.
 
@@ -263,13 +358,19 @@ Every secret and secret type operation is written to the `audit_events` table. T
 | Event | Metadata |
 |-------|----------|
 | `secret.create` | `{ name, typeId }` |
-| `secret.update` | `{ name, dataChanged }` |
+| `secret.update` | `{ name, dataChanged, carriedAttachments? }` |
 | `secret.delete` | `{ name }` |
-| `secret.rollback` | `{ fromVersion }` |
-| `secret.attachment.unlink` | `{ attachmentId, storageObjectId }` |
+| `secret.rollback` | `{ fromVersion, carriedAttachments }` |
+| `secret.renew` | `{ fromVersionId, version, carriedAttachments, replacedAttachments, replacedRoles, extractionMethod }` — `extractionMethod` is `'ai_assisted'` or `'manual'`, from the request's `aiAssisted` flag |
+| `secret.attachment.unlink` | `{ attachmentId, storageObjectId, storageObjectDeleted }` |
 | `secret_type.create` | `{ name }` |
 | `secret_type.update` | `{ name }` |
 | `secret_type.delete` | `{ name }` |
+| `ai.card.extract` | `{ imageCount, model, durationMs, outcome, errorCode? }` — written by the AI extraction endpoint, not the secrets module; see [API.md](API.md#ai-card-extraction) |
+
+**No audit event is written when an attachment is linked** (`POST /secrets/:id/attachments` / a renewal's replacements). Only the unlink path (`secret.attachment.unlink`) and the version-level events (`secret.create`, `secret.update`, `secret.renew`, `secret.rollback` — which record `carriedAttachments` counts) currently touch the audit log for attachments. If your operational or compliance requirements assume a link-time audit row, note that one does not exist yet.
+
+The AI card-extraction audit row is deliberately minimal: it never records an image, a field value, or a confidence score — only counts, timing, the model name, and outcome. It is also the only record used to enforce the daily per-user extraction budget (`maxCallsPerUserPerDay`): the budget check counts `ai.card.extract` rows in the last 24 hours, and the row is written *before* the provider call so a crashed request still consumes budget rather than being free to retry indefinitely.
 
 Audit records include the acting user's ID and a timestamp, providing a forensic trail for all sensitive operations.
 
@@ -313,4 +414,16 @@ The `vaultcli sync` command automates this for local `.env` files (or any UTF-8 
 
 **Service-layer ownership enforcement.** Access control is not limited to HTTP guards and decorators. The service layer independently verifies that the requesting user owns the resource (or holds an `*_any` permission) before performing any read, write, or delete operation.
 
-**Audit coverage.** All mutations and rollbacks are logged to `audit_events` with user ID and timestamp. This log should be treated as append-only and protected from modification.
+**Audit coverage.** All mutations and rollbacks are logged to `audit_events` with user ID and timestamp. This log should be treated as append-only and protected from modification. Note the gap above: attachment *linking* is not currently audited, only unlinking and the version-level events that record carry-forward counts.
+
+**Card images are card data, not incidental files.** A `card_front` / `card_back` attachment is a photograph of a physical payment card — it can show the full PAN, expiry, cardholder name, and (depending on framing) the CVV printed on the back. It should be handled with the same sensitivity as the `number` field itself: access to it is gated by the same secret-level ownership/`*_any` permission check as the rest of the secret, and it is refcount-deleted like any other attachment (see [Attachments](#attachments)) — but nothing about the storage layer encrypts the image bytes at rest beyond whatever the S3-compatible provider does. Unlike `number` and `cvv`, the image is not passed through `CryptoService`.
+
+**Clipboard exposure and auto-clear.** Copying a sensitive field value (e.g. the card number) uses the browser Clipboard API and shows a transient "copied" acknowledgement for 1.5 seconds (`COPIED_RESET_MS` in `apps/web/src/hooks/useCopyToClipboard.ts`). This resets the UI's own `copied`/`failed` indicator state — it does **not** clear the value from the OS clipboard itself. The copied plaintext therefore remains available to any other application on the user's device (or a malicious clipboard-reading page) until the user copies something else over it. There is no clipboard-clearing timer.
+
+**AI card extraction sends a card image to a third party (OpenAI).** This is a new category of data egress for this application: previously, no secret data ever left the API process except in an HTTP response to the authenticated owner. `POST /api/secrets/cards/extract` sends the cropped front (and optionally back) card image, as a base64 data URL, to the OpenAI vision model configured in system settings. This happens only when:
+- an administrator has explicitly set `ai.enabled: true` in system settings (default: `false`), **and**
+- an administrator has stored a working OpenAI API key.
+
+**The CVV is never part of this egress.** `EXTRACTED_FIELD_NAMES` (`apps/api/src/ai/providers/vision-provider.interface.ts`) deliberately excludes `cvv` from what the model is asked to extract, and the extraction response schema has no field for it — the review form always seeds `cvv` as an empty string, regardless of what the model returned for anything else. See [API.md](API.md#ai-card-extraction) and [SECURITY-ARCHITECTURE.md](SECURITY-ARCHITECTURE.md) §8 (AI Features and Data Egress) for the full data-flow, key-storage, and mitigation details.
+
+**No real OpenAI call has ever been exercised.** As of this writing, the OpenAI vision provider (`apps/api/src/ai/providers/openai/openai-vision.provider.ts`) is covered only by unit tests against a mocked HTTP layer (`openai-vision.provider.spec.ts`). There is no integration test, staging deployment, or manual QA pass on record that has sent a real request to OpenAI. Treat the provider's error-mapping and response-parsing logic as unverified against the real API's actual behavior until that changes.

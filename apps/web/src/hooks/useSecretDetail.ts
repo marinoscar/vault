@@ -1,5 +1,10 @@
 import { useState, useCallback } from 'react';
-import type { SecretDetail, SecretVersion, SecretVersionDetail } from '../types';
+import type {
+  SecretAttachment,
+  SecretDetail,
+  SecretVersion,
+  SecretVersionDetail,
+} from '../types';
 import {
   getSecret as fetchSecretApi,
   updateSecret as updateSecretApi,
@@ -7,6 +12,20 @@ import {
   getSecretVersion as fetchVersionApi,
   rollbackSecretVersion as rollbackApi,
 } from '../services/api';
+
+/**
+ * A version detail as `GET /secrets/:id/versions/:versionId` actually returns
+ * it: the API includes the attachments the version owns (carried forward when
+ * the version was minted), which is what lets a historical version render its
+ * own card photos rather than the current ones.
+ *
+ * Declared here rather than widened in `types/index.ts` because the shared
+ * `SecretVersionDetail` is consumed by callers that do not read attachments;
+ * `attachments` is optional so a response without it still type-checks.
+ */
+export interface SecretVersionDetailWithAttachments extends SecretVersionDetail {
+  attachments?: SecretAttachment[];
+}
 
 interface UseSecretDetailResult {
   secret: SecretDetail | null;
@@ -16,7 +35,10 @@ interface UseSecretDetailResult {
   fetchSecret: (id: string) => Promise<void>;
   updateSecret: (id: string, data: { name?: string; description?: string | null; data?: Record<string, unknown> }) => Promise<void>;
   fetchVersions: (secretId: string) => Promise<void>;
-  fetchVersion: (secretId: string, versionId: string) => Promise<SecretVersionDetail>;
+  fetchVersion: (
+    secretId: string,
+    versionId: string,
+  ) => Promise<SecretVersionDetailWithAttachments>;
   rollback: (secretId: string, versionId: string) => Promise<void>;
 }
 
@@ -64,7 +86,10 @@ export function useSecretDetail(): UseSecretDetailResult {
     }
   }, []);
 
-  const fetchVersion = useCallback(async (secretId: string, versionId: string) => {
+  const fetchVersion = useCallback(async (
+    secretId: string,
+    versionId: string,
+  ): Promise<SecretVersionDetailWithAttachments> => {
     setError(null);
     try {
       return await fetchVersionApi(secretId, versionId);

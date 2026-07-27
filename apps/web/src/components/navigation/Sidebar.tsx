@@ -17,6 +17,7 @@ import {
   AdminPanelSettings as AdminIcon,
   People as PeopleIcon,
   VpnKey as VpnKeyIcon,
+  CreditCard as CreditCardIcon,
   Category as CategoryIcon,
   PermMedia as PermMediaIcon,
 } from '@mui/icons-material';
@@ -47,6 +48,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       label: 'Secrets',
       icon: <VpnKeyIcon />,
       path: '/secrets',
+      visible: true,
+    },
+    {
+      label: 'Cards',
+      icon: <CreditCardIcon />,
+      path: '/cards',
       visible: true,
     },
     {

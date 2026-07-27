@@ -19,6 +19,9 @@ const UserSettingsPage = lazy(() => import('./pages/UserSettingsPage'));
 const SystemSettingsPage = lazy(() => import('./pages/SystemSettingsPage'));
 const UserManagementPage = lazy(() => import('./pages/UserManagementPage'));
 const SecretsPage = lazy(() => import('./pages/SecretsPage'));
+const CardsPage = lazy(() => import('./pages/CardsPage'));
+const ImportCardPage = lazy(() => import('./pages/ImportCardPage'));
+const RenewCardPage = lazy(() => import('./pages/RenewCardPage'));
 const CreateSecretPage = lazy(() => import('./pages/CreateSecretPage'));
 const SecretDetailPage = lazy(() => import('./pages/SecretDetailPage'));
 const EditSecretPage = lazy(() => import('./pages/EditSecretPage'));
@@ -63,6 +66,12 @@ function AppRoutes() {
 
               <Route element={<Layout />}>
                 <Route path="/" element={<HomePage />} />
+                <Route path="/cards" element={<CardsPage />} />
+                {/* Declared before /cards/:id would be, if that ever exists. */}
+                <Route path="/cards/import" element={<ImportCardPage />} />
+                {/* Renewal is NOT gated on AI availability — the wizard runs as
+                    a manual edit-and-version when no OpenAI key is configured. */}
+                <Route path="/cards/:id/renew" element={<RenewCardPage />} />
                 <Route path="/secrets" element={<SecretsPage />} />
                 <Route path="/secrets/new" element={<CreateSecretPage />} />
                 <Route path="/secrets/:id" element={<SecretDetailPage />} />

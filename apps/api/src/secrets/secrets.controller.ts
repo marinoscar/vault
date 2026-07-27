@@ -28,11 +28,16 @@ import { PERMISSIONS } from '../common/constants/roles.constants';
 import { SecretsService } from './secrets.service';
 import { CreateSecretDto } from './dto/create-secret.dto';
 import { UpdateSecretDto } from './dto/update-secret.dto';
+import { RenewSecretDto } from './dto/renew-secret.dto';
 import {
   SecretListQueryDto,
   secretListQuerySchema,
 } from './dto/secret-list-query.dto';
 import { LinkAttachmentDto } from './dto/link-attachment.dto';
+import {
+  AttachmentListQueryDto,
+  attachmentListQuerySchema,
+} from './dto/attachment-list-query.dto';
 
 @ApiTags('Secrets')
 @Controller('secrets')
@@ -188,6 +193,38 @@ export class SecretsController {
     return { data: result };
   }
 
+  @Post(':id/renew')
+  @Auth({ permissions: [PERMISSIONS.SECRETS_WRITE] })
+  @ApiOperation({
+    summary: 'Renew a secret with new values and replacement files',
+    description:
+      'For a card that has been reissued, expired, or replaced after fraud. ' +
+      'Creates the next version from the supplied data and swaps only the ' +
+      'attachment roles present in the request; every other file is carried ' +
+      'forward. The previous version keeps its own values AND its own images, ' +
+      'so the old card stays readable in the version history. Version bump, ' +
+      'carry-forward and replacement insert all happen in one transaction.',
+  })
+  @ApiParam({ name: 'id', type: String, format: 'uuid', description: 'Secret ID' })
+  @ApiResponse({ status: 201, description: 'Renewal completed, new version created' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Data failed type validation, duplicate attachment entries, type does ' +
+      'not allow attachments, or a card image of the wrong type/size',
+  })
+  @ApiResponse({ status: 403, description: 'Access denied to the secret or a storage object' })
+  @ApiResponse({ status: 404, description: 'Secret or storage object not found' })
+  @ApiResponse({ status: 409, description: 'Concurrent renewal conflicted on an attachment role' })
+  async renew(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RenewSecretDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    const result = await this.secretsService.renew(id, dto, user.id, user.permissions);
+    return { data: result };
+  }
+
   // ---------------------------------------------------------------------------
   // Attachments
   // ---------------------------------------------------------------------------
@@ -209,15 +246,30 @@ export class SecretsController {
 
   @Get(':id/attachments')
   @Auth({ permissions: [PERMISSIONS.SECRETS_READ] })
-  @ApiOperation({ summary: 'List all attachments for a secret' })
+  @ApiOperation({
+    summary: 'List attachments for a secret',
+    description:
+      'Defaults to the current version. Pass versionId to read a historical ' +
+      "version's attachments, and/or role to filter to a single card side.",
+  })
   @ApiParam({ name: 'id', type: String, format: 'uuid', description: 'Secret ID' })
+  @ApiQuery({ name: 'versionId', required: false, type: String, format: 'uuid' })
+  @ApiQuery({ name: 'role', required: false, enum: ['card_front', 'card_back'] })
   @ApiResponse({ status: 200, description: 'Attachment list' })
+  @ApiResponse({ status: 404, description: 'Secret or version not found' })
   async findAttachments(
     @Param('id', ParseUUIDPipe) id: string,
+    @Query(new ZodValidationPipe(attachmentListQuerySchema))
+    query: AttachmentListQueryDto,
     @CurrentUser() user: RequestUser,
   ) {
-    const secret = await this.secretsService.findOne(id, user.id, user.permissions);
-    return { data: secret.attachments ?? [] };
+    const attachments = await this.secretsService.findAttachments(
+      id,
+      user.id,
+      user.permissions,
+      query,
+    );
+    return { data: attachments };
   }
 
   @Delete(':id/attachments/:attachmentId')

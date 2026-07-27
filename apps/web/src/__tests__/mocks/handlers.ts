@@ -189,6 +189,17 @@ export const handlers = [
     return HttpResponse.json({ message: 'Not found' }, { status: 404 });
   }),
 
+  // AI status
+  //
+  // Present in the default handler set because any page carrying a card-import
+  // entry point calls it on mount. Tests that care about the disabled path
+  // override it with server.use(...).
+  http.get(`${API_BASE}/ai/status`, () => {
+    return HttpResponse.json({
+      data: { enabled: true, features: { cardExtract: true } },
+    });
+  }),
+
   // Health endpoints
   http.get(`${API_BASE}/health/live`, () => {
     return HttpResponse.json({

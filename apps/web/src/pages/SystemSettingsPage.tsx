@@ -16,6 +16,7 @@ import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { SystemSettingsEditor } from '../components/admin/SystemSettingsEditor';
 import { FeatureFlagsList } from '../components/admin/FeatureFlagsList';
 import { UISettings } from '../components/admin/UISettings';
+import { AiSettings } from '../components/settings/AiSettings';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -99,6 +100,7 @@ export default function SystemSettingsPage() {
             >
               <Tab label="UI Settings" />
               <Tab label="Feature Flags" />
+              <Tab label="AI" />
               <Tab label="Advanced (JSON)" />
             </Tabs>
 
@@ -119,7 +121,14 @@ export default function SystemSettingsPage() {
                 />
               </TabPanel>
 
+              {/* AiSettings owns its own load/save cycle (including the
+                  three-state API key contract), so it is not fed from the
+                  page-level settings object. */}
               <TabPanel value={tabIndex} index={2}>
+                <AiSettings disabled={!canWrite} />
+              </TabPanel>
+
+              <TabPanel value={tabIndex} index={3}>
                 <SystemSettingsEditor
                   settings={settings}
                   onSave={updateSettings}

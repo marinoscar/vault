@@ -70,9 +70,11 @@ export interface SecretVersion {
 export interface FieldDefinition {
   name: string;
   label: string;
-  type: 'string' | 'number' | 'date';
+  type: 'string' | 'number' | 'date' | 'select';
   required: boolean;
   sensitive: boolean;
+  /** Allowed values; only meaningful when type is 'select'. */
+  options?: string[];
 }
 
 export interface SecretType {

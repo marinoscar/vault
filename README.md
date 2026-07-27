@@ -8,8 +8,10 @@ Vault is a self-hosted secrets manager. It stores credentials, API keys, credit 
 
 - **Encrypted Secrets Storage**: AES-256-GCM encryption for all secret values. Six built-in secret types (Credential, API Key, Card, Token, Note, Document) plus user-defined custom types with flexible field schemas.
 - **Version History and Rollback**: Every update creates an immutable version. View any historical version in decrypted form and roll back, which creates a new version from the historical data.
-- **File Attachments**: Secrets can carry file attachments via S3-compatible storage. The Document type has attachments enabled by default.
-- **Custom Secret Types**: Define your own secret types with custom field schemas (field name, label, data type, required flag, sensitive flag).
+- **File Attachments**: Secrets can carry file attachments via S3-compatible storage, scoped per version so historical versions keep their own files. Card and Document types have attachments enabled by default.
+- **Card Import via AI Photo Scan** (optional, admin-configured): scan the front/back of a physical card to prefill a new Card secret's fields via an OpenAI vision model. Disabled by default; the CVV is never sent or returned, and nothing about the card is persisted beyond a minimal audit event.
+- **Card Renewal**: replace just the fields and photos of a reissued or expired card in one step, while keeping the old card's data and photos in version history.
+- **Custom Secret Types**: Define your own secret types with custom field schemas (field name, label, data type — including a `select` type with a fixed option list — required flag, sensitive flag).
 - **Authentication**: Google OAuth 2.0 with JWT access tokens, refresh token rotation, and Device Authorization Flow (RFC 8628) for CLI and IoT devices.
 - **Authorization**: Role-based access control (RBAC) with Admin, Contributor, and Viewer roles. Admins can view secrets across all users.
 - **Access Control**: Email allowlist restricts access to pre-authorized users only.

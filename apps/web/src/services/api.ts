@@ -202,17 +202,98 @@ import type {
   PersonalAccessToken,
   PatCreatedResponse,
   PatDurationUnit,
+  FieldDefinition,
   SecretType,
   SecretDetail,
   SecretVersion,
   SecretVersionDetail,
   SecretAttachment,
   SecretsResponse,
+  RenewSecretRequest,
+  RenewSecretResponse,
   MediaFolder,
   MediaFoldersResponse,
   MediaFile,
   MediaFilesResponse,
+  AiSettingsUpdate,
+  AiStatus,
+  AttachmentRole,
+  CardExtractionResult,
+  ExtractCardRequest,
+  SystemSettings,
 } from '../types';
+
+// =============================================================================
+// AI API
+// =============================================================================
+
+/**
+ * Whether AI-backed features are available to the current user.
+ *
+ * Readable by any signed-in user (system settings are admin-only), which is
+ * what lets a Viewer's UI hide the card-scan entry point instead of offering a
+ * button that can only ever return 503.
+ */
+export async function getAiStatus(): Promise<AiStatus> {
+  return api.get<AiStatus>('/ai/status');
+}
+
+/**
+ * Read card fields from already-cropped images.
+ *
+ * The transport is base64 JSON rather than multipart because `request()` above
+ * force-sets `Content-Type: application/json` whenever a body is present — a
+ * multipart endpoint would be unreachable through this client. Cropping is the
+ * caller's job (see `utils/cardImage.ts`); whatever is passed here is what
+ * leaves the device.
+ *
+ * The response never contains a CVV. The API does not ask the model for one.
+ */
+export async function extractCardFromImages(
+  images: ExtractCardRequest,
+): Promise<CardExtractionResult> {
+  return api.post<CardExtractionResult>('/secrets/cards/extract', images);
+}
+
+// System Settings API
+
+/**
+ * PATCH the `ai` block of the system settings.
+ *
+ * This is the single place the AI patch body is assembled, because the
+ * `apiKey` field is three-state and getting it wrong destroys a credential:
+ *
+ *   absent -> keep the stored key
+ *   null   -> clear the stored key
+ *   string -> replace the stored key
+ *
+ * `apiKey` is copied onto the payload ONLY when the caller passed something
+ * other than `undefined`, so a caller saving unrelated fields (say, toggling
+ * `enabled`) can never wipe the key by accident. `null` is passed through
+ * untouched - that is a deliberate "clear it" from the caller.
+ *
+ * `version` is sent as `If-Match` for optimistic concurrency; the API answers
+ * 409 when the settings changed underneath us.
+ */
+export async function patchSystemSettingsAi(
+  ai: AiSettingsUpdate,
+  version: number,
+): Promise<SystemSettings> {
+  const payload: AiSettingsUpdate = {};
+
+  if (ai.enabled !== undefined) payload.enabled = ai.enabled;
+  if (ai.model !== undefined) payload.model = ai.model;
+  if (ai.maxCallsPerUserPerDay !== undefined) {
+    payload.maxCallsPerUserPerDay = ai.maxCallsPerUserPerDay;
+  }
+  if (ai.apiKey !== undefined) payload.apiKey = ai.apiKey;
+
+  return api.patch<SystemSettings>(
+    '/system-settings',
+    { ai: payload },
+    { headers: { 'If-Match': String(version) } },
+  );
+}
 
 // Allowlist API
 export async function getAllowlist(params?: {
@@ -328,13 +409,7 @@ export async function createSecretType(data: {
   name: string;
   description?: string;
   icon?: string;
-  fields: Array<{
-    name: string;
-    label: string;
-    type: 'string' | 'number' | 'date';
-    required: boolean;
-    sensitive: boolean;
-  }>;
+  fields: FieldDefinition[];
   allowAttachments: boolean;
 }): Promise<SecretType> {
   return api.post<SecretType>('/secret-types', data);
@@ -346,13 +421,7 @@ export async function updateSecretType(
     name?: string;
     description?: string | null;
     icon?: string | null;
-    fields?: Array<{
-      name: string;
-      label: string;
-      type: 'string' | 'number' | 'date';
-      required: boolean;
-      sensitive: boolean;
-    }>;
+    fields?: FieldDefinition[];
     allowAttachments?: boolean;
   },
 ): Promise<SecretType> {
@@ -428,14 +497,44 @@ export async function rollbackSecretVersion(
   return api.post<SecretDetail>(`/secrets/${secretId}/versions/${versionId}/rollback`);
 }
 
+/**
+ * Renew a secret: create the next version from a new full field set, swapping
+ * only the attachment roles named in the request.
+ *
+ * This is the ONE call the renewal flow makes to commit. It is atomic on the
+ * server — version bump, attachment carry-forward and replacement insert all
+ * happen in a single transaction — so there is no half-renewed state to unwind
+ * on failure, unlike creating a secret and then linking files to it.
+ *
+ * `body.data` must be the COMPLETE field set for the renewed secret. The API
+ * replaces rather than merges, so any field left out is gone from the new
+ * version even though it was present on the old one.
+ */
+export async function renewSecret(
+  secretId: string,
+  body: RenewSecretRequest,
+): Promise<RenewSecretResponse> {
+  return api.post<RenewSecretResponse>(`/secrets/${secretId}/renew`, body);
+}
+
+/**
+ * Link an already-uploaded storage object to a secret.
+ *
+ * `role` marks the object as a card face. The API enforces one attachment per
+ * role per secret version and applies image mime/size constraints to
+ * role-bearing attachments, so passing a role is not cosmetic — it changes what
+ * the server will accept.
+ */
 export async function linkSecretAttachment(
   secretId: string,
   storageObjectId: string,
   label?: string,
+  role?: AttachmentRole,
 ): Promise<SecretAttachment> {
   return api.post<SecretAttachment>(`/secrets/${secretId}/attachments`, {
     storageObjectId,
     label,
+    role,
   });
 }
 
@@ -520,6 +619,37 @@ export async function getMediaFileDownloadUrl(
   return api.get<{ url: string; expiresIn: number }>(
     `/media/folders/${folderId}/files/${fileId}/download`,
   );
+}
+
+// =============================================================================
+// Storage objects
+// =============================================================================
+
+/**
+ * Signed download URL for any storage object the caller owns.
+ *
+ * The media variant above is scoped to a folder and cannot address an object
+ * linked as a secret attachment, which is what card face images are.
+ */
+export async function getStorageObjectDownloadUrl(
+  objectId: string,
+  expiresIn?: number,
+): Promise<{ url: string; expiresIn: number }> {
+  const query = expiresIn !== undefined ? `?expiresIn=${expiresIn}` : '';
+  return api.get<{ url: string; expiresIn: number }>(
+    `/storage/objects/${objectId}/download${query}`,
+  );
+}
+
+/**
+ * Delete a storage object outright.
+ *
+ * Used to clean up after an abandoned or half-failed card import: an image
+ * uploaded before the flow was cancelled would otherwise sit in storage with
+ * nothing pointing at it and no UI able to reach it.
+ */
+export async function deleteStorageObject(objectId: string): Promise<void> {
+  await api.delete<void>(`/storage/objects/${objectId}`);
 }
 
 export async function simpleStorageUpload(

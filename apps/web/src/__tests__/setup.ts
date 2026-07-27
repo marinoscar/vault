@@ -71,6 +71,39 @@ Object.defineProperty(window, 'localStorage', {
   value: localStorageMock,
 });
 
+// Mock the Clipboard API — jsdom does not implement navigator.clipboard.
+// Exported so tests can assert on writes, stub readback, or simulate a
+// rejection (permission denied / insecure context).
+export const clipboardMock = {
+  writeText: vi.fn<(text: string) => Promise<void>>(),
+  readText: vi.fn<() => Promise<string>>(),
+};
+
+Object.defineProperty(navigator, 'clipboard', {
+  configurable: true,
+  writable: true,
+  value: clipboardMock,
+});
+
+/**
+ * Restore the clipboard mock to its default resolving behaviour and clear any
+ * recorded calls. Runs automatically between tests; call it directly after a
+ * test replaces navigator.clipboard wholesale.
+ */
+export function resetClipboardMock(): void {
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    writable: true,
+    value: clipboardMock,
+  });
+  clipboardMock.writeText.mockReset();
+  clipboardMock.readText.mockReset();
+  clipboardMock.writeText.mockResolvedValue(undefined);
+  clipboardMock.readText.mockResolvedValue('');
+}
+
+resetClipboardMock();
+
 // Mock ResizeObserver as a class
 class ResizeObserverMock {
   observe = vi.fn();
@@ -100,6 +133,7 @@ beforeAll(() => {
 afterEach(() => {
   cleanup();
   server.resetHandlers();
+  resetClipboardMock();
 });
 
 afterAll(() => {

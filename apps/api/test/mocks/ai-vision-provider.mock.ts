@@ -1,0 +1,44 @@
+import {
+  AiVisionProvider,
+  EXTRACTED_FIELD_NAMES,
+  RawCardConfidence,
+  RawCardFields,
+  RawExtraction,
+} from '../../src/ai/providers';
+
+/**
+ * Build a RawExtraction with every field null and every confidence 0, then
+ * apply overrides. Mirrors the storage-provider mock idiom: sensible defaults
+ * that individual tests narrow.
+ */
+export function buildRawExtraction(
+  fields: Partial<RawCardFields> = {},
+  confidence: Partial<RawCardConfidence> = {},
+  overrides: Partial<Pick<RawExtraction, 'warnings' | 'model'>> = {},
+): RawExtraction {
+  const baseFields = {} as RawCardFields;
+  const baseConfidence = {} as RawCardConfidence;
+
+  for (const name of EXTRACTED_FIELD_NAMES) {
+    baseFields[name] = null;
+    baseConfidence[name] = 0;
+  }
+
+  return {
+    fields: { ...baseFields, ...fields },
+    confidence: { ...baseConfidence, ...confidence },
+    warnings: overrides.warnings ?? [],
+    model: overrides.model ?? 'gpt-4o-mini',
+  };
+}
+
+/**
+ * Mock vision provider.
+ *
+ * Every test binds this at the AI_VISION_PROVIDER token so that no test can
+ * reach api.openai.com. The provider's own spec is the only place `fetch` is
+ * exercised, and it stubs `global.fetch`.
+ */
+export const createMockAiVisionProvider = (): jest.Mocked<AiVisionProvider> => ({
+  extractCard: jest.fn().mockResolvedValue(buildRawExtraction()),
+});

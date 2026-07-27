@@ -10,6 +10,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **vaultcli .env Sync** (vaultcli 1.1.0): new `vaultcli sync` command group to back up local `.env` files (or any UTF-8 text file) into Vault as versioned Document secrets, with directory auto-discovery, client-side SHA-256 change detection, and cron support. This is distinct from the existing `app` CLI's bidirectional folder sync. See [docs/ENV-SYNC.md](docs/ENV-SYNC.md).
+- **Card Import via AI Photo Scan**: an admin-configurable, opt-in feature (disabled by default) to populate a Card secret's fields from photos of the physical card. `POST /api/secrets/cards/extract` sends a cropped front/back image to an OpenAI vision model, returns candidate field values with per-field confidence for user review, and persists nothing about the card itself — only a minimal audit row. The CVV is never requested or returned. Bounded by a per-user burst limiter and a durable daily budget. See [docs/SECRETS.md](docs/SECRETS.md) and [docs/SECURITY-ARCHITECTURE.md](docs/SECURITY-ARCHITECTURE.md) §8.
+- **Card Renewal**: `POST /api/secrets/:id/renew` mints a new version of a secret from a replacement set of field values while selectively swapping only the attachment roles supplied (e.g. the front/back images of a reissued card), carrying every other attachment forward. The superseded version keeps its own values and its own images.
+- **Version-Scoped Attachments**: secret attachments are now scoped to a specific `SecretVersion` rather than just the secret, so each version (including historical ones reachable via rollback) shows its own attachment set. Attachments carry forward automatically onto every new version (edit, rollback, or renewal). Deleting an attachment now refcounts the underlying storage object instead of always deleting it, since the same object may be referenced by more than one version.
+- **Card attachment roles** (`card_front`, `card_back`): a card-face attachment is constrained to accepted image MIME types (JPEG/PNG/WebP/HEIC/HEIF) and a configurable size cap (`CARD_IMAGE_MAX_BYTES`, default 5 MB).
+- **Expanded Card secret type fields**: `card_network` and `card_kind` (`select` fields with a fixed option list), and `security_code_2` / `issuing_bank` (optional).
+- **`select` field type** for secret type field definitions, with a required, non-empty `options` list.
+- **System settings `ai` block**: admin-only, write-only OpenAI API key (AES-256-GCM encrypted, masked in every read response), plus `enabled`, `model`, and `maxCallsPerUserPerDay`.
+- **`GET /api/ai/status`**: lets any authenticated user check whether AI-backed features are currently available, without exposing system settings.
+
+### Known Issues
+
+- **#34**: 75 pre-existing test failures on this branch, unrelated to the card feature work.
+- **#35**: the global `HttpExceptionFilter` discards any custom `code` an exception's response body carries and substitutes one derived purely from HTTP status. This affects every `AI_*` error code from the card-extraction endpoint (and any other endpoint that relies on a custom `code`) — clients currently see status-derived codes (e.g. `TOO_MANY_REQUESTS` for both a burst-limit and a quota rejection) instead of the specific code. See [docs/API.md](docs/API.md#error-codes).
+- The `20260727120000_version_scoped_attachments` migration has not yet been run against a live database as part of this work.
+- The OpenAI vision provider is exercised only by mocked unit tests; no real call to the OpenAI API has been made.
 
 ## [1.0.1] - 2026-01-24
 

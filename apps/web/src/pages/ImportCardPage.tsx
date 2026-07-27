@@ -1,0 +1,491 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+  Alert,
+  AlertTitle,
+  Box,
+  Breadcrumbs,
+  Button,
+  CircularProgress,
+  Container,
+  Link,
+  Paper,
+  Step,
+  StepLabel,
+  Stepper,
+  TextField,
+  Typography,
+} from '@mui/material';
+
+import { AiEgressNotice } from '../components/cards/AiEgressNotice';
+import { CardCaptureStep } from '../components/cards/CardCaptureStep';
+import { CardReviewForm } from '../components/cards/CardReviewForm';
+import { useAiStatus } from '../hooks/useAiStatus';
+import {
+  LOW_CONFIDENCE_THRESHOLD,
+  buildDefaultCardName,
+  toReviewValues,
+  useCardImport,
+  type CapturedCardSide,
+} from '../hooks/useCardImport';
+import { usePermissions } from '../hooks/usePermissions';
+import { cropImageFileToCard, type CroppedCardImage } from '../utils/cardImage';
+
+type Stage = 'front' | 'back' | 'processing' | 'review';
+
+const STEP_LABELS = ['Front', 'Back', 'Read', 'Review'];
+const STEP_INDEX: Record<Stage, number> = {
+  front: 0,
+  back: 1,
+  processing: 2,
+  review: 3,
+};
+
+/**
+ * AI-assisted card import.
+ *
+ * Front capture -> back capture (skippable) -> extraction -> review -> save.
+ *
+ * Two invariants shape the whole flow:
+ *
+ *  1. The CVV is collected by hand. The extraction never returns one (the model
+ *     is instructed never to emit it), and the Card secret type marks it
+ *     required, so saving is blocked until the user types it.
+ *  2. A failed extraction is not a dead end. Any failure still lands on the
+ *     review step with the captured photos and an empty form, so the card can
+ *     be entered manually instead of starting over.
+ */
+export default function ImportCardPage() {
+  const navigate = useNavigate();
+  const { hasPermission } = usePermissions();
+  const {
+    cardExtractEnabled,
+    isLoading: isStatusLoading,
+  } = useAiStatus();
+  const {
+    cardType,
+    isTypeLoading,
+    typeError,
+    extraction,
+    extractionError,
+    isExtracting,
+    runExtraction,
+    isSaving,
+    saveError,
+    saveCard,
+    abandonImport,
+  } = useCardImport();
+
+  const [stage, setStage] = useState<Stage>('front');
+  const [frontImage, setFrontImage] = useState<CroppedCardImage | null>(null);
+  const [backImage, setBackImage] = useState<CroppedCardImage | null>(null);
+  const [isCropping, setIsCropping] = useState(false);
+  const [captureError, setCaptureError] = useState<string | null>(null);
+
+  const [name, setName] = useState('');
+  const [values, setValues] = useState<Record<string, string>>(() => toReviewValues(null));
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [editedFields, setEditedFields] = useState<Set<string>>(new Set());
+  const [savedNotice, setSavedNotice] = useState<
+    { secretId: string; warning: string } | null
+  >(null);
+
+  // Preview object URLs are revoked explicitly. They are held in a ref as well
+  // as state so the unmount cleanup sees the current set rather than a stale
+  // closure, which is the difference between releasing the blobs and leaking
+  // them for the life of the document.
+  const previewUrlsRef = useRef<Set<string>>(new Set());
+
+  const trackPreview = useCallback((image: CroppedCardImage | null) => {
+    if (image) previewUrlsRef.current.add(image.previewUrl);
+  }, []);
+
+  const releasePreview = useCallback((image: CroppedCardImage | null) => {
+    if (!image) return;
+    previewUrlsRef.current.delete(image.previewUrl);
+    URL.revokeObjectURL(image.previewUrl);
+  }, []);
+
+  useEffect(() => {
+    const urls = previewUrlsRef.current;
+    return () => {
+      urls.forEach((url) => URL.revokeObjectURL(url));
+      urls.clear();
+    };
+  }, []);
+
+  const capturedSides: CapturedCardSide[] = useMemo(() => {
+    const sides: CapturedCardSide[] = [];
+    if (frontImage) sides.push({ role: 'card_front', image: frontImage });
+    if (backImage) sides.push({ role: 'card_back', image: backImage });
+    return sides;
+  }, [frontImage, backImage]);
+
+  const handleFileSelected = async (side: 'front' | 'back', file: File) => {
+    setCaptureError(null);
+
+    if (!file.type.startsWith('image/')) {
+      setCaptureError('Please choose an image file.');
+      return;
+    }
+
+    setIsCropping(true);
+    try {
+      const cropped = await cropImageFileToCard(file, {
+        fileName: `card-${side}.jpg`,
+      });
+      trackPreview(cropped);
+      if (side === 'front') {
+        releasePreview(frontImage);
+        setFrontImage(cropped);
+      } else {
+        releasePreview(backImage);
+        setBackImage(cropped);
+      }
+    } catch (err) {
+      setCaptureError(
+        err instanceof Error ? err.message : 'That photo could not be processed.',
+      );
+    } finally {
+      setIsCropping(false);
+    }
+  };
+
+  const handleRetake = (side: 'front' | 'back') => {
+    setCaptureError(null);
+    if (side === 'front') {
+      releasePreview(frontImage);
+      setFrontImage(null);
+    } else {
+      releasePreview(backImage);
+      setBackImage(null);
+    }
+  };
+
+  const goToReview = async (sides: CapturedCardSide[]) => {
+    setStage('processing');
+    const result = await runExtraction(sides);
+    const seeded = toReviewValues(result);
+    setValues(seeded);
+    setName(buildDefaultCardName(seeded.card_network, seeded.number));
+    setEditedFields(new Set());
+    setFieldErrors({});
+    setStage('review');
+  };
+
+  const handleCancel = async () => {
+    await abandonImport();
+    navigate('/cards');
+  };
+
+  const handleFieldChange = (field: string, value: string) => {
+    setValues((prev) => ({ ...prev, [field]: value }));
+    setEditedFields((prev) => new Set(prev).add(field));
+    setFieldErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
+
+  const lowConfidenceFields = useMemo(() => {
+    const flagged = new Set<string>();
+    if (!extraction?.confidence) return flagged;
+    for (const [field, score] of Object.entries(extraction.confidence)) {
+      // A field the user has already corrected no longer needs checking, and an
+      // empty field is covered by required-field validation instead.
+      if (editedFields.has(field)) continue;
+      if ((values[field] ?? '') === '') continue;
+      if (score <= LOW_CONFIDENCE_THRESHOLD) flagged.add(field);
+    }
+    return flagged;
+  }, [extraction, values, editedFields]);
+
+  const cvvEntered = (values.cvv ?? '').trim() !== '';
+
+  const handleSave = async () => {
+    if (!cardType) return;
+
+    const errors: Record<string, string> = {};
+    if (!name.trim()) errors.__name = 'A name is required';
+    for (const field of cardType.fields) {
+      if (field.required && (values[field.name] ?? '').trim() === '') {
+        errors[field.name] = `${field.label} is required`;
+      }
+    }
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      return;
+    }
+
+    const outcome = await saveCard({ name, values, images: capturedSides });
+    if (!outcome) return;
+
+    if (outcome.attachmentWarning) {
+      // Do not swallow this by navigating away — the user chose to attach
+      // photos and needs to know they are not there.
+      setSavedNotice({ secretId: outcome.secretId, warning: outcome.attachmentWarning });
+      return;
+    }
+    navigate(`/secrets/${outcome.secretId}`);
+  };
+
+  // ---------------------------------------------------------------------------
+  // Gating
+  // ---------------------------------------------------------------------------
+
+  if (isStatusLoading) {
+    return (
+      <Container maxWidth="md" sx={{ py: 6, textAlign: 'center' }}>
+        <CircularProgress />
+      </Container>
+    );
+  }
+
+  if (!cardExtractEnabled) {
+    // Non-admins get an explanation and nothing else. There is deliberately no
+    // API key input anywhere on this page for any role — credentials are
+    // entered in System Settings, behind the admin gate, and nowhere else.
+    const canConfigure = hasPermission('system_settings:write');
+    return (
+      <Container maxWidth="md" sx={{ py: 3 }}>
+        <Breadcrumbs sx={{ mb: 2 }}>
+          <Link
+            color="inherit"
+            href="/cards"
+            onClick={(e) => {
+              e.preventDefault();
+              navigate('/cards');
+            }}
+          >
+            Cards
+          </Link>
+          <Typography color="text.primary">Import</Typography>
+        </Breadcrumbs>
+
+        <Alert severity="info">
+          <AlertTitle>Card scanning is not available</AlertTitle>
+          {canConfigure
+            ? 'AI card scanning is turned off, or no OpenAI API key is stored. Enable it and add a key under System Settings → AI.'
+            : 'AI card scanning is turned off for this application. Ask an administrator to enable it if you need it.'}
+          <Box sx={{ mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            {canConfigure && (
+              <Button variant="contained" onClick={() => navigate('/admin/settings')}>
+                Open System Settings
+              </Button>
+            )}
+            <Button variant="outlined" onClick={() => navigate('/secrets/new')}>
+              Add a card manually
+            </Button>
+            <Button color="inherit" onClick={() => navigate('/cards')}>
+              Back to cards
+            </Button>
+          </Box>
+        </Alert>
+      </Container>
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Wizard
+  // ---------------------------------------------------------------------------
+
+  return (
+    <Container maxWidth="md" sx={{ py: 3 }}>
+      <Breadcrumbs sx={{ mb: 2 }}>
+        <Link
+          color="inherit"
+          href="/cards"
+          onClick={(e) => {
+            e.preventDefault();
+            navigate('/cards');
+          }}
+        >
+          Cards
+        </Link>
+        <Typography color="text.primary">Import a card</Typography>
+      </Breadcrumbs>
+
+      <Typography variant="h4" gutterBottom>
+        Import a credit card
+      </Typography>
+
+      <Stepper activeStep={STEP_INDEX[stage]} sx={{ my: 3 }} alternativeLabel>
+        {STEP_LABELS.map((label) => (
+          <Step key={label}>
+            <StepLabel>{label}</StepLabel>
+          </Step>
+        ))}
+      </Stepper>
+
+      {typeError && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {typeError}
+        </Alert>
+      )}
+
+      {savedNotice ? (
+        <Paper sx={{ p: 3 }}>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            <AlertTitle>Card saved, photos not attached</AlertTitle>
+            {savedNotice.warning}
+          </Alert>
+          <Button
+            variant="contained"
+            onClick={() => navigate(`/secrets/${savedNotice.secretId}`)}
+          >
+            View the card
+          </Button>
+        </Paper>
+      ) : stage === 'front' ? (
+        <>
+          <AiEgressNotice />
+          <CardCaptureStep
+            side="front"
+            image={frontImage}
+            isProcessing={isCropping}
+            error={captureError}
+            onFileSelected={(file) => void handleFileSelected('front', file)}
+            onRetake={() => handleRetake('front')}
+            onContinue={() => setStage('back')}
+            onCancel={() => void handleCancel()}
+          />
+        </>
+      ) : stage === 'back' ? (
+        <>
+          <AiEgressNotice />
+          <CardCaptureStep
+            side="back"
+            image={backImage}
+            isProcessing={isCropping}
+            error={captureError}
+            onFileSelected={(file) => void handleFileSelected('back', file)}
+            onRetake={() => handleRetake('back')}
+            onContinue={() => void goToReview(capturedSides)}
+            onSkip={() => {
+              releasePreview(backImage);
+              setBackImage(null);
+              void goToReview(
+                frontImage ? [{ role: 'card_front', image: frontImage }] : [],
+              );
+            }}
+            onCancel={() => void handleCancel()}
+          />
+        </>
+      ) : stage === 'processing' ? (
+        <Paper sx={{ p: 4, textAlign: 'center' }}>
+          <CircularProgress sx={{ mb: 2 }} />
+          <Typography variant="h6" gutterBottom>
+            Reading the card…
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            {isExtracting
+              ? 'Your cropped photos have been sent to OpenAI. This usually takes a few seconds.'
+              : 'Preparing the results…'}
+          </Typography>
+        </Paper>
+      ) : (
+        <Paper sx={{ p: { xs: 2, md: 3 } }}>
+          <Typography variant="h6" gutterBottom>
+            Check the details
+          </Typography>
+
+          {extractionError && (
+            <Alert
+              severity={extractionError.adminActionRequired ? 'warning' : 'error'}
+              sx={{ mb: 2 }}
+              action={
+                extractionError.retryable ? (
+                  <Button
+                    color="inherit"
+                    size="small"
+                    onClick={() => void goToReview(capturedSides)}
+                  >
+                    Try again
+                  </Button>
+                ) : undefined
+              }
+            >
+              <AlertTitle>{extractionError.title}</AlertTitle>
+              {extractionError.detail}
+              <Typography variant="body2" sx={{ mt: 1 }}>
+                Your photos were kept — fill the details in below and they will be
+                attached to the card.
+              </Typography>
+            </Alert>
+          )}
+
+          {extraction?.partial && !extractionError && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              Nothing legible came back from the photos. Enter the details below.
+            </Alert>
+          )}
+
+          {saveError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {saveError}
+            </Alert>
+          )}
+
+          <TextField
+            fullWidth
+            required
+            label="Name"
+            value={name}
+            onChange={(e) => {
+              setName(e.target.value);
+              setFieldErrors((prev) => {
+                if (!prev.__name) return prev;
+                const next = { ...prev };
+                delete next.__name;
+                return next;
+              });
+            }}
+            error={Boolean(fieldErrors.__name)}
+            helperText={fieldErrors.__name ?? 'Shown in your card list.'}
+            disabled={isSaving}
+            sx={{ mb: 2 }}
+          />
+
+          {isTypeLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <CardReviewForm
+              fields={cardType?.fields ?? []}
+              values={values}
+              onChange={handleFieldChange}
+              lowConfidenceFields={lowConfidenceFields}
+              warnings={extraction?.warnings ?? []}
+              errors={fieldErrors}
+              disabled={isSaving}
+            />
+          )}
+
+          {!cvvEntered && (
+            <Alert severity="info" sx={{ mt: 2 }}>
+              Enter the CVV / CVC to save this card. It is never read from the
+              photo, so you have to type it from the card yourself.
+            </Alert>
+          )}
+
+          <Box sx={{ display: 'flex', gap: 1, mt: 3, flexWrap: 'wrap' }}>
+            <Button
+              variant="contained"
+              onClick={() => void handleSave()}
+              disabled={isSaving || !cvvEntered || !cardType}
+            >
+              {isSaving ? 'Saving…' : 'Save card'}
+            </Button>
+            <Box sx={{ flexGrow: 1 }} />
+            <Button color="inherit" onClick={() => void handleCancel()} disabled={isSaving}>
+              Cancel
+            </Button>
+          </Box>
+        </Paper>
+      )}
+    </Container>
+  );
+}
