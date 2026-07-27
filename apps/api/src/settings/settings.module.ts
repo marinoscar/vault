@@ -3,8 +3,10 @@ import { UserSettingsController } from './user-settings/user-settings.controller
 import { UserSettingsService } from './user-settings/user-settings.service';
 import { SystemSettingsController } from './system-settings/system-settings.controller';
 import { SystemSettingsService } from './system-settings/system-settings.service';
+import { CommonModule } from '../common/common.module';
 
 @Module({
+  imports: [CommonModule],
   controllers: [UserSettingsController, SystemSettingsController],
   providers: [UserSettingsService, SystemSettingsService],
   exports: [UserSettingsService, SystemSettingsService],

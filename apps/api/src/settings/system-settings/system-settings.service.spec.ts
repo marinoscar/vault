@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException } from '@nestjs/common';
 import { SystemSettingsService } from './system-settings.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CryptoService } from '../../common/services/crypto.service';
 import {
   createMockPrismaService,
   MockPrismaService,
@@ -14,6 +15,7 @@ import {
 describe('SystemSettingsService', () => {
   let service: SystemSettingsService;
   let mockPrisma: MockPrismaService;
+  let mockCrypto: jest.Mocked<Pick<CryptoService, 'encrypt' | 'decrypt'>>;
 
   const mockUserId = 'user-123';
   const mockUser = {
@@ -33,11 +35,20 @@ describe('SystemSettingsService', () => {
 
   beforeEach(async () => {
     mockPrisma = createMockPrismaService();
+    mockCrypto = {
+      encrypt: jest.fn().mockReturnValue({
+        ciphertext: 'mock-ciphertext',
+        iv: 'mock-iv',
+        authTag: 'mock-auth-tag',
+      }),
+      decrypt: jest.fn().mockReturnValue('sk-decrypted-key'),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SystemSettingsService,
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: CryptoService, useValue: mockCrypto },
       ],
     }).compile();
 
@@ -103,6 +114,15 @@ describe('SystemSettingsService', () => {
   });
 
   describe('replaceSettings (PUT)', () => {
+    // replaceSettings now reads the current row before writing, so it can carry
+    // the encrypted `ai` block across a PUT. Without this, Zod would strip the
+    // unknown key and silently destroy the stored API key.
+    beforeEach(() => {
+      mockPrisma.systemSettings.findUnique.mockResolvedValue(
+        mockSystemSettings as any,
+      );
+    });
+
     it('should replace entire settings', async () => {
       const newSettings: SystemSettingsValue = {
         ui: { allowUserThemeOverride: false },
@@ -124,16 +144,23 @@ describe('SystemSettingsService', () => {
         features: newSettings.features,
         version: 2,
       });
+      // The persisted value carries the stored `ai` block through untouched --
+      // a PUT must never be able to drop the encrypted API key.
+      const persisted = {
+        ...newSettings,
+        ai: (mockSystemSettings.value as any).ai,
+      };
+
       expect(mockPrisma.systemSettings.upsert).toHaveBeenCalledWith({
         where: { key: 'global' },
         update: {
-          value: newSettings as any,
+          value: persisted as any,
           updatedByUserId: mockUserId,
           version: { increment: 1 },
         },
         create: {
           key: 'global',
-          value: newSettings as any,
+          value: persisted as any,
           updatedByUserId: mockUserId,
         },
         include: {
@@ -192,10 +219,62 @@ describe('SystemSettingsService', () => {
           targetType: 'system_settings',
           targetId: mockSystemSettings.id,
           meta: {
-            newValue: newSettings,
+            newValue: {
+              ...newSettings,
+              // Redacted: the audit trail records that a key exists and whether
+              // it changed, never the key itself or its ciphertext.
+              ai: {
+                enabled: false,
+                model: 'gpt-4o-mini',
+                maxCallsPerUserPerDay: 50,
+                apiKeyChanged: false,
+                apiKeyLast4: null,
+              },
+            },
           } as any,
         },
       });
+    });
+
+    it('should never write key material into the audit trail', async () => {
+      const plaintextKey = 'sk-test-abcdefghijklmnopqrstuvwxyz';
+
+      mockPrisma.systemSettings.findUnique.mockResolvedValue({
+        ...mockSystemSettings,
+        value: {
+          ...(mockSystemSettings.value as any),
+          ai: {
+            enabled: true,
+            provider: 'openai',
+            model: 'gpt-4o-mini',
+            maxCallsPerUserPerDay: 50,
+            apiKey: {
+              ciphertext: 'super-secret-ciphertext',
+              iv: 'iv',
+              authTag: 'tag',
+              last4: 'wxyz',
+              updatedAt: new Date().toISOString(),
+            },
+          },
+        },
+      } as any);
+
+      mockPrisma.systemSettings.upsert.mockResolvedValue(
+        mockSystemSettings as any,
+      );
+      mockPrisma.auditEvent.create.mockResolvedValue({} as any);
+
+      await service.replaceSettings(
+        { ui: { allowUserThemeOverride: false }, features: {} },
+        mockUserId,
+      );
+
+      const auditArg = JSON.stringify(
+        mockPrisma.auditEvent.create.mock.calls[0][0],
+      );
+      expect(auditArg).not.toContain(plaintextKey);
+      expect(auditArg).not.toContain('super-secret-ciphertext');
+      expect(auditArg).not.toContain('authTag');
     });
   });
 
