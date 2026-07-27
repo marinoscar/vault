@@ -63,8 +63,13 @@ export class SecretsService {
         continue;
       }
 
-      if (field.type === 'string' && typeof value !== 'string') {
-        errors.push(`Field "${key}" must be a string`);
+      // Captured before narrowing so the defensive `else` can report it.
+      const fieldType: string = field.type;
+
+      if (field.type === 'string') {
+        if (typeof value !== 'string') {
+          errors.push(`Field "${key}" must be a string`);
+        }
       } else if (field.type === 'number') {
         if (typeof value !== 'number' && (typeof value !== 'string' || isNaN(Number(value)))) {
           errors.push(`Field "${key}" must be a number`);
@@ -75,6 +80,17 @@ export class SecretsService {
         if (isNaN(parsed.getTime())) {
           errors.push(`Field "${key}" must be a valid ISO date string`);
         }
+      } else if (field.type === 'select') {
+        // A row can reach the DB with type 'select' and no options (direct DB
+        // write, or an older API version). Skip the check rather than reject
+        // every value and brick the type.
+        const opts = field.options ?? [];
+        if (opts.length > 0 && !opts.includes(String(value))) {
+          errors.push(`Field "${key}" must be one of: ${opts.join(', ')}`);
+        }
+      } else {
+        // Defensive: a future field type must never silently skip validation.
+        errors.push(`Field "${key}" has an unsupported type "${fieldType}"`);
       }
     }
 
