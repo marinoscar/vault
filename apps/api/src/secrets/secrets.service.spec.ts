@@ -13,6 +13,7 @@ import { PERMISSIONS } from '../common/constants/roles.constants';
 import { CreateSecretDto } from './dto/create-secret.dto';
 import { UpdateSecretDto } from './dto/update-secret.dto';
 import { SecretListQueryDto } from './dto/secret-list-query.dto';
+import { SYSTEM_SECRET_TYPES } from '../../prisma/system-secret-types';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -679,6 +680,138 @@ describe('SecretsService', () => {
         name: 'Good Secret',
         typeId,
         data: { username: 'alice', password: 'hunter2' },
+      } as CreateSecretDto;
+
+      await expect(service.create(dto, userId, ownerPerms)).resolves.toBeDefined();
+    });
+
+    describe('select field type', () => {
+      const selectSecretType = {
+        ...mockSecretType,
+        fields: [
+          {
+            name: 'card_network',
+            label: 'Card Network',
+            type: 'select',
+            required: false,
+            sensitive: false,
+            options: ['Visa', 'Mastercard'],
+          },
+        ],
+      };
+
+      it('should accept a select value present in options', async () => {
+        mockPrisma.secretType.findUnique.mockResolvedValue(selectSecretType as any);
+        const dto: CreateSecretDto = {
+          name: 'Good Card',
+          typeId,
+          data: { card_network: 'Visa' },
+        } as CreateSecretDto;
+
+        await expect(service.create(dto, userId, ownerPerms)).resolves.toBeDefined();
+      });
+
+      it('should reject a select value not present in options, naming the allowed values', async () => {
+        mockPrisma.secretType.findUnique.mockResolvedValue(selectSecretType as any);
+        const dto: CreateSecretDto = {
+          name: 'Bad Card',
+          typeId,
+          data: { card_network: 'Bitcoin' },
+        } as CreateSecretDto;
+
+        let caught: BadRequestException | undefined;
+        try {
+          await service.create(dto, userId, ownerPerms);
+        } catch (err) {
+          caught = err as BadRequestException;
+        }
+
+        expect(caught).toBeInstanceOf(BadRequestException);
+        const response = caught!.getResponse() as { details: { errors: string[] } };
+        expect(response.details.errors.join(' ')).toContain('Visa, Mastercard');
+      });
+
+      it('should accept any value when a select field has no options (defensive guard)', async () => {
+        const selectWithoutOptions = {
+          ...mockSecretType,
+          fields: [
+            {
+              name: 'card_network',
+              label: 'Card Network',
+              type: 'select',
+              required: false,
+              sensitive: false,
+              // options intentionally omitted — simulates a row written by
+              // an older API version or direct DB write.
+            },
+          ],
+        };
+        mockPrisma.secretType.findUnique.mockResolvedValue(selectWithoutOptions as any);
+        const dto: CreateSecretDto = {
+          name: 'Legacy Card',
+          typeId,
+          data: { card_network: 'anything-goes' },
+        } as CreateSecretDto;
+
+        await expect(service.create(dto, userId, ownerPerms)).resolves.toBeDefined();
+      });
+    });
+
+    it('should reject an unrecognised field type via the defensive else branch', async () => {
+      const unknownTypeSecretType = {
+        ...mockSecretType,
+        fields: [
+          {
+            name: 'mystery',
+            label: 'Mystery Field',
+            type: 'boolean', // not a supported FieldDefinition type
+            required: false,
+            sensitive: false,
+          },
+        ],
+      };
+      mockPrisma.secretType.findUnique.mockResolvedValue(unknownTypeSecretType as any);
+      const dto: CreateSecretDto = {
+        name: 'Bad Type Secret',
+        typeId,
+        data: { mystery: 'value' },
+      } as unknown as CreateSecretDto;
+
+      let caught: BadRequestException | undefined;
+      try {
+        await service.create(dto, userId, ownerPerms);
+      } catch (err) {
+        caught = err as BadRequestException;
+      }
+
+      expect(caught).toBeInstanceOf(BadRequestException);
+      const response = caught!.getResponse() as { details: { errors: string[] } };
+      expect(response.details.errors.join(' ')).toContain('unsupported type');
+    });
+
+    it('regression: a Card-shaped payload omitting the new optional fields still validates', async () => {
+      // Guarantees that pre-existing card secrets (created before
+      // card_network/card_kind/security_code_2/issuing_bank existed) keep
+      // working without being backfilled.
+      const cardType = SYSTEM_SECRET_TYPES.find((t) => t.name === 'Card')!;
+      mockPrisma.secretType.findUnique.mockResolvedValue({
+        ...mockSecretType,
+        name: 'Card',
+        fields: cardType.fields,
+        allowAttachments: cardType.allowAttachments,
+      } as any);
+
+      const dto: CreateSecretDto = {
+        name: 'Old Card',
+        typeId,
+        data: {
+          cardholder_name: 'Alice Example',
+          number: '4111111111111111',
+          exp_month: '01',
+          exp_year: '2030',
+          cvv: '123',
+          // card_network, card_kind, security_code_2, issuing_bank omitted
+        },
       } as CreateSecretDto;
 
       await expect(service.create(dto, userId, ownerPerms)).resolves.toBeDefined();
