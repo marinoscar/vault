@@ -1,3 +1,5 @@
+import { Readable } from 'stream';
+
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   NotFoundException,
@@ -5,6 +7,7 @@ import {
   BadRequestException,
   ConflictException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 
 import { SecretsService } from './secrets.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -37,6 +40,7 @@ describe('SecretsService', () => {
   let mockPrisma: MockPrismaService;
   let mockCrypto: jest.Mocked<Pick<CryptoService, 'encrypt' | 'decrypt'>>;
   let mockStorage: jest.Mocked<StorageProvider>;
+  let mockConfig: { get: jest.Mock };
 
   const userId = 'user-aaa';
   const otherUserId = 'user-bbb';
@@ -148,12 +152,17 @@ describe('SecretsService', () => {
 
     mockStorage = createMockStorageProvider();
 
+    // Unset by default, so the service falls back to its built-in card image
+    // size cap unless a test opts into an override.
+    mockConfig = { get: jest.fn().mockReturnValue(undefined) };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SecretsService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: CryptoService, useValue: mockCrypto },
         { provide: STORAGE_PROVIDER, useValue: mockStorage },
+        { provide: ConfigService, useValue: mockConfig },
       ],
     }).compile();
 
@@ -672,6 +681,329 @@ describe('SecretsService', () => {
           writePerms,
         ),
       ).rejects.toThrow('connection reset');
+    });
+
+    // ------------------------------------------------------------------------
+    // Card image type/size constraints (issue #25)
+    // ------------------------------------------------------------------------
+
+    describe('card image constraints', () => {
+      const MB = 1024 * 1024;
+
+      /** A storage object with a specific mime type and RECORDED size. */
+      function objectWith(overrides: {
+        mimeType?: string;
+        size?: bigint;
+      }): Record<string, unknown> {
+        return { ...mockStorageObject, ...overrides };
+      }
+
+      /** A readable that yields exactly `bytes` bytes in 64 KB chunks. */
+      function blobOf(bytes: number): Readable {
+        const chunkSize = 64 * 1024;
+        let remaining = bytes;
+        return new Readable({
+          read() {
+            if (remaining <= 0) {
+              this.push(null);
+              return;
+            }
+            const next = Math.min(chunkSize, remaining);
+            remaining -= next;
+            this.push(Buffer.alloc(next));
+          },
+        });
+      }
+
+      it.each([
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+        'image/heic',
+        'image/heif',
+      ])('should accept %s as a card image', async (mimeType) => {
+        mockPrisma.storageObject.findUnique.mockResolvedValue(
+          objectWith({ mimeType, size: BigInt(2048) }) as any,
+        );
+
+        await expect(
+          service.linkAttachment(
+            secretId,
+            { storageObjectId, role: 'card_front' } as any,
+            userId,
+            writePerms,
+          ),
+        ).resolves.toBeDefined();
+
+        expect(mockPrisma.secretAttachment.create).toHaveBeenCalled();
+      });
+
+      it('should accept a mime type carrying parameters and odd casing', async () => {
+        mockPrisma.storageObject.findUnique.mockResolvedValue(
+          objectWith({ mimeType: 'Image/JPEG; charset=binary', size: BigInt(2048) }) as any,
+        );
+
+        await expect(
+          service.linkAttachment(
+            secretId,
+            { storageObjectId, role: 'card_front' } as any,
+            userId,
+            writePerms,
+          ),
+        ).resolves.toBeDefined();
+      });
+
+      it('should reject a non-image mime type, naming the type and the accepted set', async () => {
+        mockPrisma.storageObject.findUnique.mockResolvedValue(
+          objectWith({ mimeType: 'application/pdf', size: BigInt(2048) }) as any,
+        );
+
+        let caught: BadRequestException | undefined;
+        try {
+          await service.linkAttachment(
+            secretId,
+            { storageObjectId, role: 'card_front' } as any,
+            userId,
+            writePerms,
+          );
+        } catch (err) {
+          caught = err as BadRequestException;
+        }
+
+        expect(caught).toBeInstanceOf(BadRequestException);
+        expect(caught!.message).toContain('application/pdf');
+        expect(caught!.message).toContain('image/jpeg');
+        expect(mockPrisma.secretAttachment.create).not.toHaveBeenCalled();
+      });
+
+      it('should reject a disallowed image subtype (image/svg+xml)', async () => {
+        mockPrisma.storageObject.findUnique.mockResolvedValue(
+          objectWith({ mimeType: 'image/svg+xml', size: BigInt(2048) }) as any,
+        );
+
+        await expect(
+          service.linkAttachment(
+            secretId,
+            { storageObjectId, role: 'card_back' } as any,
+            userId,
+            writePerms,
+          ),
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('should NOT apply the constraints to a generic (roleless) attachment', async () => {
+        mockPrisma.storageObject.findUnique.mockResolvedValue(
+          objectWith({ mimeType: 'application/pdf', size: BigInt(500 * MB) }) as any,
+        );
+
+        await expect(
+          service.linkAttachment(
+            secretId,
+            { storageObjectId } as any,
+            userId,
+            writePerms,
+          ),
+        ).resolves.toBeDefined();
+      });
+
+      it('should reject an oversize card image, stating the limit', async () => {
+        mockPrisma.storageObject.findUnique.mockResolvedValue(
+          objectWith({ mimeType: 'image/jpeg', size: BigInt(6 * MB) }) as any,
+        );
+
+        let caught: BadRequestException | undefined;
+        try {
+          await service.linkAttachment(
+            secretId,
+            { storageObjectId, role: 'card_front' } as any,
+            userId,
+            writePerms,
+          );
+        } catch (err) {
+          caught = err as BadRequestException;
+        }
+
+        expect(caught).toBeInstanceOf(BadRequestException);
+        expect(caught!.message).toContain(String(5 * MB));
+        expect(mockPrisma.secretAttachment.create).not.toHaveBeenCalled();
+      });
+
+      it('should not read from storage when the recorded size is trustworthy', async () => {
+        mockPrisma.storageObject.findUnique.mockResolvedValue(
+          objectWith({ mimeType: 'image/jpeg', size: BigInt(2048) }) as any,
+        );
+
+        await service.linkAttachment(
+          secretId,
+          { storageObjectId, role: 'card_front' } as any,
+          userId,
+          writePerms,
+        );
+
+        expect(mockStorage.download).not.toHaveBeenCalled();
+      });
+
+      // ---- size === 0 ("unknown", because simpleUpload records 0) ----------
+
+      it('should measure the real size from storage when the recorded size is 0', async () => {
+        mockPrisma.storageObject.findUnique.mockResolvedValue(
+          objectWith({ mimeType: 'image/jpeg', size: BigInt(0) }) as any,
+        );
+        mockStorage.download.mockResolvedValue(blobOf(2 * MB));
+
+        await expect(
+          service.linkAttachment(
+            secretId,
+            { storageObjectId, role: 'card_front' } as any,
+            userId,
+            writePerms,
+          ),
+        ).resolves.toBeDefined();
+
+        expect(mockStorage.download).toHaveBeenCalledWith(
+          mockStorageObject.storageKey,
+        );
+        expect(mockPrisma.secretAttachment.create).toHaveBeenCalled();
+      });
+
+      it('should reject an oversize object whose recorded size is 0', async () => {
+        mockPrisma.storageObject.findUnique.mockResolvedValue(
+          objectWith({ mimeType: 'image/jpeg', size: BigInt(0) }) as any,
+        );
+        mockStorage.download.mockResolvedValue(blobOf(8 * MB));
+
+        await expect(
+          service.linkAttachment(
+            secretId,
+            { storageObjectId, role: 'card_front' } as any,
+            userId,
+            writePerms,
+          ),
+        ).rejects.toThrow(BadRequestException);
+
+        expect(mockPrisma.secretAttachment.create).not.toHaveBeenCalled();
+      });
+
+      it('should stop reading once past the limit instead of draining the object', async () => {
+        mockPrisma.storageObject.findUnique.mockResolvedValue(
+          objectWith({ mimeType: 'image/jpeg', size: BigInt(0) }) as any,
+        );
+
+        // 100 x 1 MB. If the limit check drained the whole object it would pull
+        // all 100; it must stop one chunk past the 5 MB cap.
+        let chunksPulled = 0;
+        let remaining = 100;
+        const stream = new Readable({
+          read() {
+            if (remaining <= 0) {
+              this.push(null);
+              return;
+            }
+            remaining -= 1;
+            chunksPulled += 1;
+            this.push(Buffer.alloc(MB));
+          },
+        });
+        mockStorage.download.mockResolvedValue(stream);
+
+        await expect(
+          service.linkAttachment(
+            secretId,
+            { storageObjectId, role: 'card_front' } as any,
+            userId,
+            writePerms,
+          ),
+        ).rejects.toThrow(BadRequestException);
+
+        expect(chunksPulled).toBeLessThan(10);
+        expect(stream.destroyed).toBe(true);
+      });
+
+      it('should fail closed when the object cannot be read back from storage', async () => {
+        mockPrisma.storageObject.findUnique.mockResolvedValue(
+          objectWith({ mimeType: 'image/jpeg', size: BigInt(0) }) as any,
+        );
+        mockStorage.download.mockRejectedValue(new Error('NoSuchKey'));
+
+        await expect(
+          service.linkAttachment(
+            secretId,
+            { storageObjectId, role: 'card_front' } as any,
+            userId,
+            writePerms,
+          ),
+        ).rejects.toThrow(BadRequestException);
+
+        expect(mockPrisma.secretAttachment.create).not.toHaveBeenCalled();
+      });
+
+      it('should fail closed when the read-back stream errors mid-flight', async () => {
+        mockPrisma.storageObject.findUnique.mockResolvedValue(
+          objectWith({ mimeType: 'image/jpeg', size: BigInt(0) }) as any,
+        );
+        const stream = new Readable({
+          read() {
+            this.destroy(new Error('connection reset'));
+          },
+        });
+        mockStorage.download.mockResolvedValue(stream);
+
+        await expect(
+          service.linkAttachment(
+            secretId,
+            { storageObjectId, role: 'card_front' } as any,
+            userId,
+            writePerms,
+          ),
+        ).rejects.toThrow(BadRequestException);
+
+        expect(mockPrisma.secretAttachment.create).not.toHaveBeenCalled();
+      });
+
+      // ---- operator-tunable limit ------------------------------------------
+
+      it('should honour a CARD_IMAGE_MAX_BYTES override', async () => {
+        mockConfig.get.mockImplementation((key: string) =>
+          key === 'CARD_IMAGE_MAX_BYTES' ? '1024' : undefined,
+        );
+        mockPrisma.storageObject.findUnique.mockResolvedValue(
+          objectWith({ mimeType: 'image/jpeg', size: BigInt(2048) }) as any,
+        );
+
+        let caught: BadRequestException | undefined;
+        try {
+          await service.linkAttachment(
+            secretId,
+            { storageObjectId, role: 'card_front' } as any,
+            userId,
+            writePerms,
+          );
+        } catch (err) {
+          caught = err as BadRequestException;
+        }
+
+        expect(caught).toBeInstanceOf(BadRequestException);
+        expect(caught!.message).toContain('1024');
+      });
+
+      it('should ignore an unparseable CARD_IMAGE_MAX_BYTES and keep the default', async () => {
+        mockConfig.get.mockImplementation((key: string) =>
+          key === 'CARD_IMAGE_MAX_BYTES' ? '5MB' : undefined,
+        );
+        mockPrisma.storageObject.findUnique.mockResolvedValue(
+          objectWith({ mimeType: 'image/jpeg', size: BigInt(6 * MB) }) as any,
+        );
+
+        // NaN must not disable the check: 6 MB is still over the 5 MB default.
+        await expect(
+          service.linkAttachment(
+            secretId,
+            { storageObjectId, role: 'card_front' } as any,
+            userId,
+            writePerms,
+          ),
+        ).rejects.toThrow(BadRequestException);
+      });
     });
   });
 

@@ -1,3 +1,5 @@
+import { Readable } from 'stream';
+
 import {
   Inject,
   Injectable,
@@ -7,6 +9,7 @@ import {
   BadRequestException,
   ConflictException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { CryptoService } from '../common/services/crypto.service';
@@ -16,12 +19,53 @@ import { STORAGE_PROVIDER, StorageProvider } from '../storage/providers';
 import { CreateSecretDto } from './dto/create-secret.dto';
 import { UpdateSecretDto } from './dto/update-secret.dto';
 import { SecretListQueryDto } from './dto/secret-list-query.dto';
-import { LinkAttachmentDto } from './dto/link-attachment.dto';
+import { AttachmentRole, LinkAttachmentDto } from './dto/link-attachment.dto';
 import { AttachmentListQueryDto } from './dto/attachment-list-query.dto';
 import {
   AttachmentResponseDto,
   AttachmentStorageObjectDto,
 } from './dto/attachment-response.dto';
+
+/**
+ * Mime types accepted for a card face image (`card_front` / `card_back`).
+ *
+ * Deliberately a code constant and NOT operator-configurable: widening it is a
+ * decision about what the card UI can actually render, and an env var that can
+ * be set to `image/*` would silently turn the allowlist off. The size cap below
+ * IS configurable, because that is a deployment tuning knob rather than a
+ * change in what the feature accepts.
+ *
+ * heic/heif are included because iOS cameras produce them by default; a user
+ * photographing a card from an iPhone would otherwise be rejected.
+ */
+const CARD_IMAGE_MIME_TYPES: readonly string[] = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+];
+
+/**
+ * Default cap for a card face image: 5 MB.
+ *
+ * A card is a credit-card-sized rectangle photographed head-on. A 12 MP phone
+ * photo of one lands around 2-4 MB of JPEG, so 5 MB clears every realistic
+ * capture with headroom while still rejecting the multi-hundred-MB files the
+ * global 10 GB `MAX_FILE_SIZE` would otherwise let through onto a card record.
+ */
+const DEFAULT_CARD_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Env var that overrides {@link DEFAULT_CARD_IMAGE_MAX_BYTES}.
+ *
+ * Read through ConfigService by raw env name rather than as a nested key like
+ * `storage.cardImage.maxBytes`, because adding the key to
+ * `src/config/configuration.ts` is outside the scope of this change. ConfigService
+ * falls back to `process.env`, so this stays operator-tunable and moves to a
+ * typed config key later without touching call sites here.
+ */
+const CARD_IMAGE_MAX_BYTES_ENV = 'CARD_IMAGE_MAX_BYTES';
 
 @Injectable()
 export class SecretsService {
@@ -30,6 +74,7 @@ export class SecretsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly crypto: CryptoService,
+    private readonly config: ConfigService,
     // The raw provider, NOT ObjectsService: ObjectsService.delete() enforces its
     // own uploader-ownership check, which would reject an admin acting under
     // secrets:write_any on someone else's file. Ownership for this path is
@@ -215,6 +260,153 @@ export class SecretsService {
       return [];
     }
     return attachments.map((a) => this.mapAttachment(a));
+  }
+
+  /**
+   * True for the roles that render as a card face image in the UI. Generic
+   * attachments (role omitted) are untouched by the image constraints.
+   */
+  private isCardImageRole(role?: AttachmentRole): boolean {
+    return role === 'card_front' || role === 'card_back';
+  }
+
+  /**
+   * Resolve the card image size cap, in bytes.
+   *
+   * A non-numeric or non-positive override is ignored rather than obeyed: a
+   * typo'd `CARD_IMAGE_MAX_BYTES=5MB` must not parse to NaN and disable the
+   * check (every comparison against NaN is false, so nothing would ever be
+   * rejected).
+   */
+  private getCardImageMaxBytes(): number {
+    const raw = this.config.get<string | number>(CARD_IMAGE_MAX_BYTES_ENV);
+
+    if (raw === undefined || raw === null || raw === '') {
+      return DEFAULT_CARD_IMAGE_MAX_BYTES;
+    }
+
+    const parsed = typeof raw === 'number' ? raw : parseInt(raw, 10);
+
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      this.logger.warn(
+        `Ignoring invalid ${CARD_IMAGE_MAX_BYTES_ENV}="${String(raw)}"; ` +
+          `falling back to ${DEFAULT_CARD_IMAGE_MAX_BYTES} bytes`,
+      );
+      return DEFAULT_CARD_IMAGE_MAX_BYTES;
+    }
+
+    return parsed;
+  }
+
+  /**
+   * Measure what a stored object ACTUALLY weighs, by reading it back from the
+   * storage provider and counting bytes.
+   *
+   * Why this exists: `ObjectsService.simpleUpload` — the endpoint the card UI
+   * uploads through — writes `size: BigInt(0)` with a comment saying
+   * post-processing will fill it in, and no processor ever does. So for every
+   * real card image the recorded size is 0, and a plain `size > max` check
+   * would pass 100% of uploads while reading like a working limit.
+   *
+   * Reading stops one byte past the limit: we only need to know whether the
+   * object is over, not how far over. Worst case transfer is therefore
+   * `limitBytes + 1`, not the whole object.
+   */
+  private async measureStoredObjectSize(
+    storageKey: string,
+    limitBytes: number,
+  ): Promise<number> {
+    let stream: Readable;
+
+    try {
+      stream = await this.storageProvider.download(storageKey);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `Cannot read storage object ${storageKey} to verify its size: ${message}`,
+      );
+      // Fail closed. An object we cannot read is not one we should be stamping
+      // onto a card: the attachment would render as a broken image anyway, so
+      // rejecting here is the correct outcome and not merely the safe one.
+      throw new BadRequestException(
+        'This file could not be read from storage, so it cannot be attached',
+      );
+    }
+
+    let total = 0;
+
+    try {
+      for await (const chunk of stream) {
+        total += Buffer.isBuffer(chunk)
+          ? chunk.length
+          : Buffer.byteLength(String(chunk));
+
+        if (total > limitBytes) {
+          break;
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `Failed while measuring storage object ${storageKey}: ${message}`,
+      );
+      throw new BadRequestException(
+        'This file could not be read from storage, so it cannot be attached',
+      );
+    } finally {
+      stream.destroy();
+    }
+
+    return total;
+  }
+
+  /**
+   * Enforce the card-face image constraints on a StorageObject before it is
+   * linked: an image mime type from a fixed allowlist, and a size cap.
+   */
+  private async enforceCardImageConstraints(
+    storageObject: { mimeType: string; size: bigint | number; storageKey: string },
+    secretId: string,
+    role: AttachmentRole,
+  ): Promise<void> {
+    // Normalize `image/jpeg; charset=binary` and casing before comparing.
+    const mimeType = (storageObject.mimeType ?? '')
+      .split(';')[0]
+      .trim()
+      .toLowerCase();
+
+    if (!CARD_IMAGE_MIME_TYPES.includes(mimeType)) {
+      this.logger.warn(
+        `Rejected ${role} attachment on secret ${secretId}: ` +
+          `mime type "${storageObject.mimeType}" is not an accepted card image type`,
+      );
+      throw new BadRequestException(
+        `Card images must be one of ${CARD_IMAGE_MIME_TYPES.join(', ')}; ` +
+          `received "${storageObject.mimeType}"`,
+      );
+    }
+
+    const maxBytes = this.getCardImageMaxBytes();
+    const recordedSize = Number(storageObject.size ?? 0);
+
+    // A recorded size of 0 means "unknown", not "empty" — see
+    // measureStoredObjectSize for why. Trust the recorded value when the upload
+    // path supplied one (the resumable /upload/init path does), and pay for a
+    // bounded read-back only when it did not.
+    const actualSize =
+      recordedSize > 0
+        ? recordedSize
+        : await this.measureStoredObjectSize(storageObject.storageKey, maxBytes);
+
+    if (actualSize > maxBytes) {
+      this.logger.warn(
+        `Rejected ${role} attachment on secret ${secretId}: ` +
+          `${actualSize} bytes exceeds the ${maxBytes} byte card image limit`,
+      );
+      throw new BadRequestException(
+        `Card images must be ${maxBytes} bytes or smaller`,
+      );
+    }
   }
 
   /**
@@ -950,6 +1142,17 @@ export class SecretsService {
     if (storageObject.uploadedById !== userId && !canWriteAny) {
       throw new ForbiddenException(
         'You do not have access to this storage object',
+      );
+    }
+
+    // Card faces are rendered as images in the UI and carried forward onto
+    // every future version, so the type/size gate belongs here — before the
+    // attachment row exists — rather than at render time.
+    if (this.isCardImageRole(dto.role)) {
+      await this.enforceCardImageConstraints(
+        storageObject,
+        secretId,
+        dto.role as AttachmentRole,
       );
     }
 
