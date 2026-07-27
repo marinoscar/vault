@@ -10,6 +10,8 @@ import { SecretsService } from './secrets.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CryptoService } from '../common/services/crypto.service';
 import { createMockPrismaService, MockPrismaService } from '../../test/mocks/prisma.mock';
+import { createMockStorageProvider } from '../../test/mocks/storage-provider.mock';
+import { STORAGE_PROVIDER, StorageProvider } from '../storage/providers';
 import { PERMISSIONS } from '../common/constants/roles.constants';
 import { CreateSecretDto } from './dto/create-secret.dto';
 import { UpdateSecretDto } from './dto/update-secret.dto';
@@ -34,6 +36,7 @@ describe('SecretsService', () => {
   let service: SecretsService;
   let mockPrisma: MockPrismaService;
   let mockCrypto: jest.Mocked<Pick<CryptoService, 'encrypt' | 'decrypt'>>;
+  let mockStorage: jest.Mocked<StorageProvider>;
 
   const userId = 'user-aaa';
   const otherUserId = 'user-bbb';
@@ -143,11 +146,14 @@ describe('SecretsService', () => {
       },
     );
 
+    mockStorage = createMockStorageProvider();
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SecretsService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: CryptoService, useValue: mockCrypto },
+        { provide: STORAGE_PROVIDER, useValue: mockStorage },
       ],
     }).compile();
 
@@ -1192,6 +1198,593 @@ describe('SecretsService', () => {
       await expect(
         service.findVersion(secretId, versionId, userId, [PERMISSIONS.SECRETS_READ]),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ============================================================================
+  // Attachment carry-forward
+  // ============================================================================
+
+  describe('attachment carry-forward', () => {
+    const newVersionId = 'version-new';
+    const writePerms = [PERMISSIONS.SECRETS_WRITE];
+
+    // A card image AND a role-less generic attachment. The generic one is the
+    // regression guard: carrying only card roles strands a Document's files.
+    const cardFront = {
+      id: 'att-front',
+      secretId,
+      secretVersionId: versionId,
+      storageObjectId: 'object-front',
+      role: 'card_front',
+      label: 'Front',
+    };
+    const genericDoc = {
+      id: 'att-doc',
+      secretId,
+      secretVersionId: versionId,
+      storageObjectId: 'object-doc',
+      role: null,
+      label: 'Scan.pdf',
+    };
+
+    describe('on update', () => {
+      const updateDto: UpdateSecretDto = {
+        data: { username: 'new_user', password: 'new_pass' },
+      } as UpdateSecretDto;
+
+      beforeEach(() => {
+        mockPrisma.secret.findUnique.mockResolvedValue({
+          ...mockSecret,
+          versions: [mockVersion],
+          attachments: [],
+        } as any);
+        mockPrisma.secret.update.mockResolvedValue(mockSecret as any);
+        // 1st findFirst = max version lookup, 2nd = current-version lookup
+        mockPrisma.secretVersion.findFirst
+          .mockResolvedValueOnce({ version: 1 } as any)
+          .mockResolvedValueOnce({ id: versionId } as any);
+        mockPrisma.secretVersion.updateMany.mockResolvedValue({ count: 1 } as any);
+        mockPrisma.secretVersion.create.mockResolvedValue({
+          ...mockVersion,
+          id: newVersionId,
+          version: 2,
+        } as any);
+        mockPrisma.secretAttachment.findMany.mockResolvedValue([
+          cardFront,
+          genericDoc,
+        ] as any);
+        mockPrisma.secretAttachment.createMany.mockResolvedValue({ count: 2 } as any);
+        mockPrisma.auditEvent.create.mockResolvedValue({} as any);
+      });
+
+      it('should copy EVERY attachment forward, including role-less ones', async () => {
+        await service.update(secretId, updateDto, userId, writePerms);
+
+        // The source query must select the whole version, unfiltered. Narrowing
+        // it to card roles would orphan a Document's generic attachments.
+        const sourceQuery = (mockPrisma.secretAttachment.findMany as jest.Mock).mock
+          .calls[0][0];
+        expect(sourceQuery.where).toEqual({ secretVersionId: versionId });
+
+        expect(mockPrisma.secretAttachment.createMany).toHaveBeenCalledTimes(1);
+        const rows = (mockPrisma.secretAttachment.createMany as jest.Mock).mock
+          .calls[0][0].data;
+
+        expect(rows).toHaveLength(2);
+        expect(rows).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ role: 'card_front', label: 'Front' }),
+            // The generic attachment must survive the edit too.
+            expect.objectContaining({ role: null, label: 'Scan.pdf' }),
+          ]),
+        );
+      });
+
+      it('should reuse the SAME storageObjectId (never duplicate the blob)', async () => {
+        await service.update(secretId, updateDto, userId, writePerms);
+
+        const rows = (mockPrisma.secretAttachment.createMany as jest.Mock).mock
+          .calls[0][0].data;
+
+        expect(rows.map((r: any) => r.storageObjectId).sort()).toEqual([
+          'object-doc',
+          'object-front',
+        ]);
+      });
+
+      it('should stamp the copies onto the newly created version', async () => {
+        await service.update(secretId, updateDto, userId, writePerms);
+
+        expect(mockPrisma.secretAttachment.findMany).toHaveBeenCalledWith(
+          expect.objectContaining({ where: { secretVersionId: versionId } }),
+        );
+
+        const rows = (mockPrisma.secretAttachment.createMany as jest.Mock).mock
+          .calls[0][0].data;
+        expect(rows.every((r: any) => r.secretVersionId === newVersionId)).toBe(true);
+      });
+
+      it('should resolve the source version before clearing isCurrent', async () => {
+        await service.update(secretId, updateDto, userId, writePerms);
+
+        // The current-version lookup is the 2nd findFirst; if updateMany ran
+        // first it would find nothing and silently carry nothing forward.
+        const lookupOrder = (mockPrisma.secretVersion.findFirst as jest.Mock).mock
+          .invocationCallOrder[1];
+        const updateManyOrder = (mockPrisma.secretVersion.updateMany as jest.Mock)
+          .mock.invocationCallOrder[0];
+        expect(lookupOrder).toBeLessThan(updateManyOrder);
+      });
+
+      it('should record the carried count on the audit event', async () => {
+        await service.update(secretId, updateDto, userId, writePerms);
+
+        expect(mockPrisma.auditEvent.create).toHaveBeenCalledWith({
+          data: expect.objectContaining({
+            action: 'secret.update',
+            meta: expect.objectContaining({ carriedAttachments: 2 }),
+          }),
+        });
+      });
+
+      it('should not carry anything forward when only metadata changes', async () => {
+        await service.update(
+          secretId,
+          { name: 'Renamed Only' } as UpdateSecretDto,
+          userId,
+          writePerms,
+        );
+
+        expect(mockPrisma.secretAttachment.createMany).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('on rollback', () => {
+      const targetVersionId = 'version-target';
+      const targetVersion = {
+        ...mockVersion,
+        id: targetVersionId,
+        version: 1,
+        isCurrent: false,
+      };
+
+      // The TARGET version's files — deliberately different objects from the
+      // current version's, so carrying the wrong set is visible.
+      const targetAttachments = [
+        {
+          id: 'att-old-front',
+          secretId,
+          secretVersionId: targetVersionId,
+          storageObjectId: 'object-old-front',
+          role: 'card_front',
+          label: null,
+        },
+      ];
+
+      beforeEach(() => {
+        mockPrisma.secret.findUnique.mockResolvedValue({
+          ...mockSecret,
+          versions: [mockVersion],
+          attachments: [],
+        } as any);
+        mockPrisma.secretVersion.findUnique.mockResolvedValue(targetVersion as any);
+        mockPrisma.secretVersion.findFirst.mockResolvedValue({ version: 3 } as any);
+        mockPrisma.secretVersion.updateMany.mockResolvedValue({ count: 3 } as any);
+        mockPrisma.secretVersion.create.mockResolvedValue({
+          ...mockVersion,
+          id: newVersionId,
+          version: 4,
+        } as any);
+        mockPrisma.secretAttachment.findMany.mockResolvedValue(
+          targetAttachments as any,
+        );
+        mockPrisma.secretAttachment.createMany.mockResolvedValue({ count: 1 } as any);
+        mockPrisma.auditEvent.create.mockResolvedValue({} as any);
+      });
+
+      it("should carry the TARGET version's attachments, not the current one's", async () => {
+        await service.rollback(secretId, targetVersionId, userId, writePerms);
+
+        expect(mockPrisma.secretAttachment.findMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: { secretVersionId: targetVersionId },
+          }),
+        );
+        // Never the current version — that would restore old field values
+        // alongside the new card's photos.
+        expect(mockPrisma.secretAttachment.findMany).not.toHaveBeenCalledWith(
+          expect.objectContaining({ where: { secretVersionId: versionId } }),
+        );
+      });
+
+      it('should copy the target rows onto the new version with the same objects', async () => {
+        await service.rollback(secretId, targetVersionId, userId, writePerms);
+
+        const rows = (mockPrisma.secretAttachment.createMany as jest.Mock).mock
+          .calls[0][0].data;
+
+        expect(rows).toEqual([
+          expect.objectContaining({
+            secretId,
+            secretVersionId: newVersionId,
+            storageObjectId: 'object-old-front',
+            role: 'card_front',
+          }),
+        ]);
+      });
+
+      it('should never look up the current version when a source is supplied', async () => {
+        await service.rollback(secretId, targetVersionId, userId, writePerms);
+
+        expect(mockPrisma.secretVersion.findFirst).not.toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: { secretId, isCurrent: true },
+          }),
+        );
+      });
+    });
+  });
+
+  // ============================================================================
+  // findOne — current-version scoping
+  // ============================================================================
+
+  describe('findOne attachment scoping', () => {
+    it('should return only the current version attachments', async () => {
+      const staleAttachment = {
+        ...mockAttachment,
+        id: 'att-stale',
+        secretVersionId: 'version-old',
+        role: 'card_back',
+      };
+
+      mockPrisma.secret.findUnique
+        .mockResolvedValueOnce(mockSecret as any)
+        .mockResolvedValueOnce({
+          ...mockSecret,
+          versions: [mockVersion],
+          // Carry-forward means the same file exists on every version. Without
+          // scoping, the list doubles on every edit.
+          attachments: [mockAttachment, staleAttachment],
+        } as any);
+
+      const result = await service.findOne(secretId, userId, [
+        PERMISSIONS.SECRETS_READ,
+      ]);
+
+      expect(result.attachments).toHaveLength(1);
+      expect(result.attachments[0].id).toBe(attachmentId);
+      expect(result.attachments[0].secretVersionId).toBe(result.currentVersionId);
+    });
+
+    it('should scope the attachment include to the current version at the DB', async () => {
+      mockPrisma.secret.findUnique
+        .mockResolvedValueOnce(mockSecret as any)
+        .mockResolvedValueOnce({
+          ...mockSecret,
+          versions: [mockVersion],
+          attachments: [],
+        } as any);
+
+      await service.findOne(secretId, userId, [PERMISSIONS.SECRETS_READ]);
+
+      const detailCall = (mockPrisma.secret.findUnique as jest.Mock).mock.calls[1][0];
+      expect(detailCall.include.attachments.where).toEqual({
+        secretVersion: { isCurrent: true },
+      });
+    });
+
+    it('should return no attachments when the secret has no current version', async () => {
+      mockPrisma.secret.findUnique
+        .mockResolvedValueOnce(mockSecret as any)
+        .mockResolvedValueOnce({
+          ...mockSecret,
+          versions: [],
+          attachments: [mockAttachment],
+        } as any);
+
+      const result = await service.findOne(secretId, userId, [
+        PERMISSIONS.SECRETS_READ,
+      ]);
+
+      expect(result.attachments).toHaveLength(0);
+    });
+  });
+
+  // ============================================================================
+  // findAttachments — version/role filters
+  // ============================================================================
+
+  describe('findAttachments', () => {
+    const readPerms = [PERMISSIONS.SECRETS_READ];
+
+    beforeEach(() => {
+      mockPrisma.secret.findUnique.mockResolvedValue(mockSecret as any);
+      mockPrisma.secretAttachment.findMany.mockResolvedValue([
+        mockAttachment,
+      ] as any);
+    });
+
+    it('should default to the current version when no versionId is given', async () => {
+      mockPrisma.secretVersion.findFirst.mockResolvedValue({ id: versionId } as any);
+
+      await service.findAttachments(secretId, userId, readPerms);
+
+      expect(mockPrisma.secretAttachment.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ secretId, secretVersionId: versionId }),
+        }),
+      );
+    });
+
+    it('should filter by an explicit versionId', async () => {
+      mockPrisma.secretVersion.findUnique.mockResolvedValue({ secretId } as any);
+
+      await service.findAttachments(secretId, userId, readPerms, {
+        versionId: 'version-old',
+      });
+
+      expect(mockPrisma.secretAttachment.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ secretVersionId: 'version-old' }),
+        }),
+      );
+    });
+
+    it('should filter by role', async () => {
+      mockPrisma.secretVersion.findFirst.mockResolvedValue({ id: versionId } as any);
+
+      await service.findAttachments(secretId, userId, readPerms, {
+        role: 'card_front',
+      });
+
+      expect(mockPrisma.secretAttachment.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ role: 'card_front' }),
+        }),
+      );
+    });
+
+    it("should reject a versionId belonging to a different secret", async () => {
+      mockPrisma.secretVersion.findUnique.mockResolvedValue({
+        secretId: 'other-secret',
+      } as any);
+
+      await expect(
+        service.findAttachments(secretId, userId, readPerms, {
+          versionId: 'version-elsewhere',
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should return an empty list when the secret has no current version', async () => {
+      mockPrisma.secretVersion.findFirst.mockResolvedValue(null);
+
+      const result = await service.findAttachments(secretId, userId, readPerms);
+
+      expect(result).toEqual([]);
+      expect(mockPrisma.secretAttachment.findMany).not.toHaveBeenCalled();
+    });
+
+    it('should stringify the BigInt size on the returned attachments', async () => {
+      mockPrisma.secretVersion.findFirst.mockResolvedValue({ id: versionId } as any);
+
+      const result = await service.findAttachments(secretId, userId, readPerms);
+
+      expect(result[0].storageObject!.size).toBe('2048');
+      expect(() => JSON.stringify(result)).not.toThrow();
+    });
+
+    it('should throw ForbiddenException when a non-owner lacks read_any', async () => {
+      await expect(
+        service.findAttachments(secretId, otherUserId, []),
+      ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  // ============================================================================
+  // unlinkAttachment — refcount-aware deletion
+  // ============================================================================
+
+  describe('unlinkAttachment', () => {
+    const writePerms = [PERMISSIONS.SECRETS_WRITE];
+    const storageKey = mockStorageObject.storageKey;
+
+    beforeEach(() => {
+      mockPrisma.secret.findUnique.mockResolvedValue(mockSecret as any);
+      mockPrisma.secretAttachment.findUnique.mockResolvedValue({
+        ...mockAttachment,
+        storageObject: { id: storageObjectId, storageKey },
+      } as any);
+      mockPrisma.secretAttachment.delete.mockResolvedValue(mockAttachment as any);
+      mockPrisma.storageObject.delete.mockResolvedValue(mockStorageObject as any);
+      mockPrisma.auditEvent.create.mockResolvedValue({} as any);
+    });
+
+    describe('when other references remain', () => {
+      beforeEach(() => {
+        // Two secrets referenced this object; one row survives the delete.
+        mockPrisma.secretAttachment.count.mockResolvedValue(1 as any);
+      });
+
+      it('should delete the attachment row', async () => {
+        await service.unlinkAttachment(secretId, attachmentId, userId, writePerms);
+
+        expect(mockPrisma.secretAttachment.delete).toHaveBeenCalledWith({
+          where: { id: attachmentId },
+        });
+      });
+
+      it('should NOT delete the storage object row', async () => {
+        await service.unlinkAttachment(secretId, attachmentId, userId, writePerms);
+
+        // Deleting it would cascade away the other holder's attachment row.
+        expect(mockPrisma.storageObject.delete).not.toHaveBeenCalled();
+      });
+
+      it('should NOT delete the blob', async () => {
+        await service.unlinkAttachment(secretId, attachmentId, userId, writePerms);
+
+        expect(mockStorage.delete).not.toHaveBeenCalled();
+      });
+
+      it('should record storageObjectDeleted=false on the audit event', async () => {
+        await service.unlinkAttachment(secretId, attachmentId, userId, writePerms);
+
+        expect(mockPrisma.auditEvent.create).toHaveBeenCalledWith({
+          data: expect.objectContaining({
+            action: 'secret.attachment.unlink',
+            meta: expect.objectContaining({ storageObjectDeleted: false }),
+          }),
+        });
+      });
+    });
+
+    describe('when it was the last reference', () => {
+      beforeEach(() => {
+        mockPrisma.secretAttachment.count.mockResolvedValue(0 as any);
+      });
+
+      it('should delete the storage object row', async () => {
+        await service.unlinkAttachment(secretId, attachmentId, userId, writePerms);
+
+        expect(mockPrisma.storageObject.delete).toHaveBeenCalledWith({
+          where: { id: storageObjectId },
+        });
+      });
+
+      it('should delete the blob from the storage provider', async () => {
+        await service.unlinkAttachment(secretId, attachmentId, userId, writePerms);
+
+        expect(mockStorage.delete).toHaveBeenCalledWith(storageKey);
+      });
+
+      it('should record storageObjectDeleted=true on the audit event', async () => {
+        await service.unlinkAttachment(secretId, attachmentId, userId, writePerms);
+
+        expect(mockPrisma.auditEvent.create).toHaveBeenCalledWith({
+          data: expect.objectContaining({
+            meta: expect.objectContaining({ storageObjectDeleted: true }),
+          }),
+        });
+      });
+
+      it('should not fail the request when the blob delete throws', async () => {
+        mockStorage.delete.mockRejectedValue(new Error('S3 unavailable'));
+
+        await expect(
+          service.unlinkAttachment(secretId, attachmentId, userId, writePerms),
+        ).resolves.toBeUndefined();
+
+        // The transaction already committed; the audit event still lands.
+        expect(mockPrisma.auditEvent.create).toHaveBeenCalled();
+      });
+    });
+
+    describe('ordering', () => {
+      beforeEach(() => {
+        mockPrisma.secretAttachment.count.mockResolvedValue(0 as any);
+      });
+
+      it('should take a FOR UPDATE row lock before counting references', async () => {
+        await service.unlinkAttachment(secretId, attachmentId, userId, writePerms);
+
+        expect(mockPrisma.$queryRaw).toHaveBeenCalled();
+        const sql = (mockPrisma.$queryRaw as jest.Mock).mock.calls[0][0].join('?');
+        expect(sql).toContain('FOR UPDATE');
+        expect(sql).toContain('storage_objects');
+
+        // Without the lock held first, two concurrent unlinks of the last two
+        // refs each observe a stale count and neither deletes.
+        const lockOrder = (mockPrisma.$queryRaw as jest.Mock).mock
+          .invocationCallOrder[0];
+        const deleteOrder = (mockPrisma.secretAttachment.delete as jest.Mock).mock
+          .invocationCallOrder[0];
+        const countOrder = (mockPrisma.secretAttachment.count as jest.Mock).mock
+          .invocationCallOrder[0];
+
+        expect(lockOrder).toBeLessThan(deleteOrder);
+        expect(deleteOrder).toBeLessThan(countOrder);
+      });
+
+      it('should delete the blob only AFTER the transaction resolves', async () => {
+        const committed = jest.fn();
+
+        // Re-wrap $transaction so "commit" is an observable event we can order
+        // against, and resolve it a macrotask later — an S3 call issued inside
+        // the transaction would land before the marker and fail this test.
+        (mockPrisma.$transaction as jest.Mock).mockImplementation(
+          async (arg: unknown) => {
+            const result =
+              typeof arg === 'function'
+                ? await (arg as (tx: unknown) => Promise<unknown>)(mockPrisma)
+                : arg;
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            committed();
+            return result;
+          },
+        );
+
+        await service.unlinkAttachment(secretId, attachmentId, userId, writePerms);
+
+        expect(committed).toHaveBeenCalled();
+        expect(mockStorage.delete).toHaveBeenCalled();
+
+        const commitOrder = committed.mock.invocationCallOrder[0];
+        const blobDeleteOrder = (mockStorage.delete as jest.Mock).mock
+          .invocationCallOrder[0];
+
+        // Deleting the blob before commit would leave a live DB row pointing at
+        // a vanished object if the transaction later rolled back.
+        expect(commitOrder).toBeLessThan(blobDeleteOrder);
+
+        const objectRowDeleteOrder = (mockPrisma.storageObject.delete as jest.Mock)
+          .mock.invocationCallOrder[0];
+        expect(objectRowDeleteOrder).toBeLessThan(commitOrder);
+      });
+    });
+
+    describe('authorization and lookup', () => {
+      beforeEach(() => {
+        mockPrisma.secretAttachment.count.mockResolvedValue(0 as any);
+      });
+
+      it('should throw NotFoundException when the attachment does not exist', async () => {
+        mockPrisma.secretAttachment.findUnique.mockResolvedValue(null);
+
+        await expect(
+          service.unlinkAttachment(secretId, 'missing', userId, writePerms),
+        ).rejects.toThrow(NotFoundException);
+      });
+
+      it('should throw NotFoundException when the attachment belongs to another secret', async () => {
+        mockPrisma.secretAttachment.findUnique.mockResolvedValue({
+          ...mockAttachment,
+          secretId: 'other-secret',
+          storageObject: { id: storageObjectId, storageKey },
+        } as any);
+
+        await expect(
+          service.unlinkAttachment(secretId, attachmentId, userId, writePerms),
+        ).rejects.toThrow(NotFoundException);
+      });
+
+      it('should throw ForbiddenException when a non-owner lacks write_any', async () => {
+        await expect(
+          service.unlinkAttachment(secretId, attachmentId, otherUserId, []),
+        ).rejects.toThrow(ForbiddenException);
+
+        expect(mockPrisma.secretAttachment.delete).not.toHaveBeenCalled();
+      });
+
+      it('should allow a non-owner holding write_any to unlink', async () => {
+        await expect(
+          service.unlinkAttachment(secretId, attachmentId, otherUserId, [
+            PERMISSIONS.SECRETS_WRITE_ANY,
+          ]),
+        ).resolves.toBeUndefined();
+      });
     });
   });
 });

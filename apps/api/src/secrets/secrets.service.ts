@@ -1,4 +1,5 @@
 import {
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
@@ -11,10 +12,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CryptoService } from '../common/services/crypto.service';
 import { FieldDefinition } from '../secret-types/dto/create-secret-type.dto';
 import { PERMISSIONS } from '../common/constants/roles.constants';
+import { STORAGE_PROVIDER, StorageProvider } from '../storage/providers';
 import { CreateSecretDto } from './dto/create-secret.dto';
 import { UpdateSecretDto } from './dto/update-secret.dto';
 import { SecretListQueryDto } from './dto/secret-list-query.dto';
 import { LinkAttachmentDto } from './dto/link-attachment.dto';
+import { AttachmentListQueryDto } from './dto/attachment-list-query.dto';
 import {
   AttachmentResponseDto,
   AttachmentStorageObjectDto,
@@ -27,6 +30,12 @@ export class SecretsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly crypto: CryptoService,
+    // The raw provider, NOT ObjectsService: ObjectsService.delete() enforces its
+    // own uploader-ownership check, which would reject an admin acting under
+    // secrets:write_any on someone else's file. Ownership for this path is
+    // already settled by getSecretWithAuthCheck().
+    @Inject(STORAGE_PROVIDER)
+    private readonly storageProvider: StorageProvider,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -221,6 +230,130 @@ export class SecretsService {
       error !== null &&
       (error as { code?: unknown }).code === 'P2002'
     );
+  }
+
+  /**
+   * Create the next version of a secret inside an open transaction, carrying
+   * that version's attachments forward.
+   *
+   * This is the ONE place a new SecretVersion is minted (update, rollback, and
+   * — issue #30 — renew all route through here). Carry-forward MUST live here:
+   * a caller that mints its own version silently orphans every attachment on
+   * the previous one.
+   *
+   * `sourceVersionId` selects which version's attachments are copied:
+   *   - omitted  -> the current version (update / renew semantics)
+   *   - supplied -> that exact version (rollback restores the TARGET version's
+   *                 files; carrying the current set instead would leave the old
+   *                 card's numbers sitting next to the new card's photos)
+   *
+   * Rows are copied with the SAME storageObjectId — an attachment is a pointer,
+   * so the blob is shared, never duplicated. `@@unique([secretVersionId, role])`
+   * cannot fire here: every copy lands on a freshly created version id.
+   */
+  private async createNewVersion(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tx: any,
+    params: {
+      secretId: string;
+      encrypted: { ciphertext: string; iv: string; authTag: string };
+      userId: string;
+      sourceVersionId?: string;
+    },
+  ): Promise<{ id: string; version: number; carriedAttachments: number }> {
+    const { secretId, encrypted, userId } = params;
+
+    const maxVersionRecord = await tx.secretVersion.findFirst({
+      where: { secretId },
+      orderBy: { version: 'desc' },
+      select: { version: true },
+    });
+
+    const nextVersion = (maxVersionRecord?.version ?? 0) + 1;
+
+    // Resolve the carry-forward source BEFORE the updateMany below clears
+    // isCurrent, otherwise the default lookup finds nothing.
+    let sourceVersionId = params.sourceVersionId;
+    if (!sourceVersionId) {
+      const currentVersion = await tx.secretVersion.findFirst({
+        where: { secretId, isCurrent: true },
+        select: { id: true },
+      });
+      sourceVersionId = currentVersion?.id;
+    }
+
+    await tx.secretVersion.updateMany({
+      where: { secretId },
+      data: { isCurrent: false },
+    });
+
+    const created = await tx.secretVersion.create({
+      data: {
+        secretId,
+        version: nextVersion,
+        encryptedData: encrypted.ciphertext,
+        iv: encrypted.iv,
+        authTag: encrypted.authTag,
+        isCurrent: true,
+        createdById: userId,
+      },
+    });
+
+    const carriedAttachments = await this.carryForwardAttachments(
+      tx,
+      secretId,
+      sourceVersionId,
+      created.id,
+    );
+
+    return {
+      id: created.id,
+      version: nextVersion,
+      carriedAttachments,
+    };
+  }
+
+  /**
+   * Copy EVERY attachment row from one version to another. "Every" is load
+   * bearing: role-less attachments (a Document's supporting files) are just as
+   * much part of the secret as a card's front/back images, and skipping them
+   * strands them on the superseded version where nothing reads them.
+   */
+  private async carryForwardAttachments(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tx: any,
+    secretId: string,
+    sourceVersionId: string | undefined,
+    targetVersionId: string,
+  ): Promise<number> {
+    if (!sourceVersionId || sourceVersionId === targetVersionId) {
+      return 0;
+    }
+
+    const source = await tx.secretAttachment.findMany({
+      where: { secretVersionId: sourceVersionId },
+      select: { storageObjectId: true, role: true, label: true },
+    });
+
+    if (!Array.isArray(source) || source.length === 0) {
+      return 0;
+    }
+
+    await tx.secretAttachment.createMany({
+      data: source.map(
+        (a: { storageObjectId: string; role: string | null; label: string | null }) => ({
+          secretId,
+          secretVersionId: targetVersionId,
+          // Same storage object: the blob is shared between versions, and the
+          // refcount-aware unlink below is what keeps it alive.
+          storageObjectId: a.storageObjectId,
+          role: a.role,
+          label: a.label,
+        }),
+      ),
+    });
+
+    return source.length;
   }
 
   /**
@@ -434,6 +567,10 @@ export class SecretsService {
           include: { createdBy: { select: { id: true, email: true, displayName: true } } },
         },
         attachments: {
+          // Attachments are carried forward onto every new version, so the
+          // unscoped set holds one copy per version — it would appear to double
+          // on each edit. Narrow at the DB so the row count stays flat.
+          where: { secretVersion: { isCurrent: true } },
           include: {
             storageObject: true,
           },
@@ -448,11 +585,20 @@ export class SecretsService {
     const currentVersion = secret.versions[0];
     const values = currentVersion ? this.decryptVersionData(currentVersion) : null;
 
+    // Filter again against the version id we actually report as
+    // `currentVersionId`. The DB filter above trusts the isCurrent flag; this
+    // guarantees the caller never sees an attachment belonging to a version
+    // other than the one in the same response.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const currentAttachments = (secret.attachments as any[]).filter(
+      (a) => a.secretVersionId === currentVersion?.id,
+    );
+
     return {
       ...secret,
       // BigInt `size` on the storage objects must be stringified before it
       // reaches the serializer — see mapStorageObject().
-      attachments: this.mapAttachments(secret.attachments),
+      attachments: this.mapAttachments(currentAttachments),
       values,
       currentVersion: currentVersion?.version ?? null,
       // The row id (not the version number) of the current version. Clients
@@ -508,6 +654,8 @@ export class SecretsService {
       newEncrypted = this.crypto.encrypt(plaintext);
     }
 
+    let carriedAttachments = 0;
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const secret = await this.prisma.$transaction(async (tx: any) => {
       // Update metadata
@@ -520,35 +668,15 @@ export class SecretsService {
         include: { type: true },
       });
 
-      // If data changed, create a new version
+      // If data changed, create a new version. The helper carries the current
+      // version's attachments forward so an edit never strands the files.
       if (newEncrypted) {
-        // Find max current version number
-        const maxVersionRecord = await tx.secretVersion.findFirst({
-          where: { secretId: id },
-          orderBy: { version: 'desc' },
-          select: { version: true },
+        const newVersion = await this.createNewVersion(tx, {
+          secretId: id,
+          encrypted: newEncrypted,
+          userId,
         });
-
-        const nextVersion = (maxVersionRecord?.version ?? 0) + 1;
-
-        // Mark all existing versions as not current
-        await tx.secretVersion.updateMany({
-          where: { secretId: id },
-          data: { isCurrent: false },
-        });
-
-        // Create new current version
-        await tx.secretVersion.create({
-          data: {
-            secretId: id,
-            version: nextVersion,
-            encryptedData: newEncrypted.ciphertext,
-            iv: newEncrypted.iv,
-            authTag: newEncrypted.authTag,
-            isCurrent: true,
-            createdById: userId,
-          },
-        });
+        carriedAttachments = newVersion.carriedAttachments;
       }
 
       return updated;
@@ -557,6 +685,7 @@ export class SecretsService {
     await this.createAuditEvent(userId, 'secret.update', id, {
       name: secret.name,
       dataChanged: newEncrypted !== null,
+      ...(newEncrypted ? { carriedAttachments } : {}),
     });
 
     this.logger.log(`Secret updated: ${id}`);
@@ -643,6 +772,10 @@ export class SecretsService {
       where: { id: versionId },
       include: {
         createdBy: { select: { id: true, email: true, displayName: true } },
+        // A historical version owns its own attachment rows (carried forward at
+        // the time it was minted). Without these the version detail view shows
+        // the old field values next to no files at all.
+        attachments: { include: { storageObject: true } },
       },
     });
 
@@ -659,7 +792,68 @@ export class SecretsService {
       createdAt: version.createdAt,
       createdBy: version.createdBy,
       values: data,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      attachments: this.mapAttachments((version as any).attachments),
     };
+  }
+
+  /**
+   * List a secret's attachments, optionally scoped to a specific version and/or
+   * role.
+   *
+   * With no `versionId` this scopes to the current version — the same set
+   * `findOne` returns. Passing an explicit `versionId` is how a client reads a
+   * historical version's files.
+   */
+  async findAttachments(
+    secretId: string,
+    userId: string,
+    userPermissions: string[],
+    query: AttachmentListQueryDto = {},
+  ): Promise<AttachmentResponseDto[]> {
+    await this.getSecretWithAuthCheck(
+      secretId,
+      userId,
+      PERMISSIONS.SECRETS_READ,
+      userPermissions,
+    );
+
+    let versionId = query.versionId;
+
+    if (versionId) {
+      // Never let a versionId from another secret leak that secret's files.
+      const version = await this.prisma.secretVersion.findUnique({
+        where: { id: versionId },
+        select: { secretId: true },
+      });
+
+      if (!version || version.secretId !== secretId) {
+        throw new NotFoundException('Version not found');
+      }
+    } else {
+      const currentVersion = await this.prisma.secretVersion.findFirst({
+        where: { secretId, isCurrent: true },
+        select: { id: true },
+      });
+
+      if (!currentVersion) {
+        return [];
+      }
+
+      versionId = currentVersion.id;
+    }
+
+    const attachments = await this.prisma.secretAttachment.findMany({
+      where: {
+        secretId,
+        secretVersionId: versionId,
+        ...(query.role ? { role: query.role } : {}),
+      },
+      include: { storageObject: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    return this.mapAttachments(attachments);
   }
 
   /**
@@ -699,38 +893,21 @@ export class SecretsService {
     const { ciphertext, iv, authTag } = this.crypto.encrypt(plaintext);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await this.prisma.$transaction(async (tx: any) => {
-      // Find max version number
-      const maxVersionRecord = await tx.secretVersion.findFirst({
-        where: { secretId },
-        orderBy: { version: 'desc' },
-        select: { version: true },
-      });
-
-      const nextVersion = (maxVersionRecord?.version ?? 0) + 1;
-
-      // Unmark current
-      await tx.secretVersion.updateMany({
-        where: { secretId },
-        data: { isCurrent: false },
-      });
-
-      // Create new version
-      await tx.secretVersion.create({
-        data: {
-          secretId,
-          version: nextVersion,
-          encryptedData: ciphertext,
-          iv,
-          authTag,
-          isCurrent: true,
-          createdById: userId,
-        },
-      });
-    });
+    const newVersion = await this.prisma.$transaction(async (tx: any) =>
+      this.createNewVersion(tx, {
+        secretId,
+        encrypted: { ciphertext, iv, authTag },
+        userId,
+        // Restore the TARGET version's files, not the current one's. A rollback
+        // that kept the current attachments would show the old card's numbers
+        // beside the new card's photos.
+        sourceVersionId: oldVersion.id,
+      }),
+    );
 
     await this.createAuditEvent(userId, 'secret.rollback', secretId, {
       fromVersion: oldVersion.version,
+      carriedAttachments: newVersion.carriedAttachments,
     });
 
     this.logger.log(`Secret ${secretId} rolled back, new version created`);
@@ -856,7 +1033,29 @@ export class SecretsService {
   }
 
   /**
-   * Remove an attachment from a secret and delete the underlying StorageObject.
+   * Remove an attachment, deleting the underlying StorageObject and its blob
+   * only once nothing else references them.
+   *
+   * A StorageObject is shared: carry-forward points every version's rows at the
+   * same object, and two different secrets may link the same upload. The
+   * previous implementation deleted the object row unconditionally, which
+   * cascaded through `SecretAttachment.storageObject onDelete: Cascade` and
+   * silently destroyed every OTHER holder's attachment row.
+   *
+   * Ordering is deliberate and must not be rearranged:
+   *   1. lock the storage_objects row  ->  2. delete the attachment row  ->
+   *   3. count remaining refs  ->  4. delete the object row iff count is 0  ->
+   *   5. COMMIT  ->  6. best-effort blob delete.
+   *
+   * The `FOR UPDATE` lock is what makes step 3 trustworthy. Without it two
+   * concurrent unlinks of the last two references interleave their counts,
+   * each observes 1 remaining, and neither deletes — leaking the object row and
+   * its blob forever.
+   *
+   * The blob delete lives after the commit because it is irreversible: run
+   * inside the transaction, a later rollback would leave a live DB row pointing
+   * at a vanished object. A failure there is logged, never thrown — the DB is
+   * already consistent and the caller's unlink genuinely succeeded.
    */
   async unlinkAttachment(
     secretId: string,
@@ -873,29 +1072,72 @@ export class SecretsService {
 
     const attachment = await this.prisma.secretAttachment.findUnique({
       where: { id: attachmentId },
+      include: {
+        storageObject: { select: { id: true, storageKey: true } },
+      },
     });
 
     if (!attachment || attachment.secretId !== secretId) {
       throw new NotFoundException('Attachment not found');
     }
 
+    const { storageObjectId } = attachment;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const storageKey: string | null =
+      (attachment as any).storageObject?.storageKey ?? null;
+
     this.logger.log(
       `Unlinking attachment ${attachmentId} from secret ${secretId}`,
     );
 
-    // Delete the junction record (cascade from secret or explicit)
-    await this.prisma.secretAttachment.delete({ where: { id: attachmentId } });
+    const objectDeleted: boolean = await this.prisma.$transaction(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      async (tx: any) => {
+        // Serializes concurrent unlinks of this same object; the count below is
+        // only meaningful while this lock is held.
+        await tx.$queryRaw`SELECT id FROM storage_objects WHERE id = ${storageObjectId}::uuid FOR UPDATE`;
 
-    // Delete the underlying storage object
-    await this.prisma.storageObject.delete({
-      where: { id: attachment.storageObjectId },
-    });
+        await tx.secretAttachment.delete({ where: { id: attachmentId } });
+
+        const remainingRefs: number = await tx.secretAttachment.count({
+          where: { storageObjectId },
+        });
+
+        if (remainingRefs > 0) {
+          // Another version or another secret still points at this object.
+          return false;
+        }
+
+        await tx.storageObject.delete({ where: { id: storageObjectId } });
+        return true;
+      },
+    );
+
+    if (objectDeleted && storageKey) {
+      try {
+        await this.storageProvider.delete(storageKey);
+      } catch (error) {
+        // The row is gone and the transaction has committed. Losing the blob
+        // costs storage, not correctness, so this must not fail the request.
+        this.logger.error(
+          `Orphaned blob: failed to delete ${storageKey} for storage object ${storageObjectId}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
 
     await this.createAuditEvent(userId, 'secret.attachment.unlink', secretId, {
       attachmentId,
-      storageObjectId: attachment.storageObjectId,
+      storageObjectId,
+      storageObjectDeleted: objectDeleted,
     });
 
-    this.logger.log(`Attachment ${attachmentId} removed from secret ${secretId}`);
+    this.logger.log(
+      `Attachment ${attachmentId} removed from secret ${secretId}` +
+        (objectDeleted
+          ? ` (storage object ${storageObjectId} had no remaining references and was deleted)`
+          : ` (storage object ${storageObjectId} still referenced, kept)`),
+    );
   }
 }

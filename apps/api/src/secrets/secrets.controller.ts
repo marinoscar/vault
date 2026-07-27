@@ -33,6 +33,10 @@ import {
   secretListQuerySchema,
 } from './dto/secret-list-query.dto';
 import { LinkAttachmentDto } from './dto/link-attachment.dto';
+import {
+  AttachmentListQueryDto,
+  attachmentListQuerySchema,
+} from './dto/attachment-list-query.dto';
 
 @ApiTags('Secrets')
 @Controller('secrets')
@@ -209,15 +213,30 @@ export class SecretsController {
 
   @Get(':id/attachments')
   @Auth({ permissions: [PERMISSIONS.SECRETS_READ] })
-  @ApiOperation({ summary: 'List all attachments for a secret' })
+  @ApiOperation({
+    summary: 'List attachments for a secret',
+    description:
+      'Defaults to the current version. Pass versionId to read a historical ' +
+      "version's attachments, and/or role to filter to a single card side.",
+  })
   @ApiParam({ name: 'id', type: String, format: 'uuid', description: 'Secret ID' })
+  @ApiQuery({ name: 'versionId', required: false, type: String, format: 'uuid' })
+  @ApiQuery({ name: 'role', required: false, enum: ['card_front', 'card_back'] })
   @ApiResponse({ status: 200, description: 'Attachment list' })
+  @ApiResponse({ status: 404, description: 'Secret or version not found' })
   async findAttachments(
     @Param('id', ParseUUIDPipe) id: string,
+    @Query(new ZodValidationPipe(attachmentListQuerySchema))
+    query: AttachmentListQueryDto,
     @CurrentUser() user: RequestUser,
   ) {
-    const secret = await this.secretsService.findOne(id, user.id, user.permissions);
-    return { data: secret.attachments ?? [] };
+    const attachments = await this.secretsService.findAttachments(
+      id,
+      user.id,
+      user.permissions,
+      query,
+    );
+    return { data: attachments };
   }
 
   @Delete(':id/attachments/:attachmentId')
