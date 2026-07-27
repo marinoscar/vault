@@ -13,9 +13,18 @@ import {
   VisibilityOff as VisibilityOffIcon,
   ContentCopy as CopyIcon,
   Check as CheckIcon,
+  ErrorOutline as ErrorOutlineIcon,
 } from '@mui/icons-material';
 import { Tooltip } from '@mui/material';
+import { visuallyHidden } from '@mui/utils';
 import type { FieldDefinition } from '../../types';
+import { useCopyToClipboard } from '../../hooks/useCopyToClipboard';
+import {
+  formatCardNumberForCopy,
+  formatSecurityCodeForCopy,
+  formatExpiryMonthForCopy,
+  formatExpiryYearShortForCopy,
+} from '../../utils/cardFormat';
 
 interface DynamicSecretFieldsProps {
   fields: FieldDefinition[];
@@ -27,25 +36,74 @@ interface DynamicSecretFieldsProps {
 
 interface SensitiveDisplayProps {
   value: string;
+  fieldName?: string;
 }
 
-function CopyButton({ value }: { value: string }) {
-  const [copied, setCopied] = useState(false);
+interface CopyButtonProps {
+  value: string;
+  /**
+   * Field name from the secret type definition. Card fields are reformatted on
+   * copy so the value pastes cleanly into a checkout form.
+   */
+  fieldName?: string;
+}
+
+/**
+ * Card fields whose stored value is reformatted before it reaches the
+ * clipboard. Everything else copies verbatim.
+ */
+const CARD_COPY_FORMATTERS: Record<string, (value: unknown) => string> = {
+  number: formatCardNumberForCopy,
+  cvv: formatSecurityCodeForCopy,
+  security_code_2: formatSecurityCodeForCopy,
+  exp_month: formatExpiryMonthForCopy,
+  exp_year: formatExpiryYearShortForCopy,
+};
+
+function formatForCopy(value: string, fieldName?: string): string {
+  const formatter = fieldName ? CARD_COPY_FORMATTERS[fieldName] : undefined;
+  if (!formatter) {
+    return value;
+  }
+  const formatted = formatter(value);
+  // Formatters return '' for values they cannot parse. Copying the stored value
+  // is more useful than copying nothing, so fall back rather than no-op.
+  return formatted === '' ? value : formatted;
+}
+
+function CopyButton({ value, fieldName }: CopyButtonProps) {
+  const { copy, copied, failed } = useCopyToClipboard();
+
   const handleCopy = () => {
-    navigator.clipboard.writeText(value);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    // Deliberately reads `value` rather than any revealed/displayed text, so a
+    // sensitive field can be copied without ever being shown on screen.
+    void copy(formatForCopy(value, fieldName));
   };
+
+  const title = copied ? 'Copied' : failed ? 'Copy failed' : 'Copy';
+
   return (
-    <Tooltip title={copied ? 'Copied' : 'Copy'}>
-      <IconButton size="small" onClick={handleCopy} aria-label="Copy to clipboard">
-        {copied ? <CheckIcon fontSize="small" color="success" /> : <CopyIcon fontSize="small" />}
-      </IconButton>
-    </Tooltip>
+    <>
+      <Tooltip title={title}>
+        <IconButton size="small" onClick={handleCopy} aria-label="Copy to clipboard">
+          {copied ? (
+            <CheckIcon fontSize="small" color="success" />
+          ) : failed ? (
+            <ErrorOutlineIcon fontSize="small" color="error" />
+          ) : (
+            <CopyIcon fontSize="small" />
+          )}
+        </IconButton>
+      </Tooltip>
+      {/* Announce the outcome to assistive tech, which cannot see the icon swap. */}
+      <Box component="span" role="status" aria-live="polite" sx={visuallyHidden}>
+        {failed ? 'Copy failed. Clipboard is unavailable.' : ''}
+      </Box>
+    </>
   );
 }
 
-function SensitiveDisplay({ value }: SensitiveDisplayProps) {
+function SensitiveDisplay({ value, fieldName }: SensitiveDisplayProps) {
   const [revealed, setRevealed] = useState(false);
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -66,7 +124,7 @@ function SensitiveDisplay({ value }: SensitiveDisplayProps) {
           <VisibilityOffIcon fontSize="small" />
         </IconButton>
       )}
-      <CopyButton value={value} />
+      <CopyButton value={value} fieldName={fieldName} />
     </Box>
   );
 }
@@ -113,13 +171,13 @@ export function DynamicSecretFields({
                   —
                 </Typography>
               ) : field.sensitive ? (
-                <SensitiveDisplay value={value} />
+                <SensitiveDisplay value={value} fieldName={field.name} />
               ) : (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                     {value}
                   </Typography>
-                  <CopyButton value={value} />
+                  <CopyButton value={value} fieldName={field.name} />
                 </Box>
               )}
             </Box>

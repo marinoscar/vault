@@ -3,7 +3,48 @@ import { screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '../../utils/test-utils';
 import { DynamicSecretFields } from '../../../components/secrets/DynamicSecretFields';
+import { clipboardMock, resetClipboardMock } from '../../setup';
 import type { FieldDefinition } from '../../../types';
+
+const cardNumberField: FieldDefinition = {
+  name: 'number',
+  label: 'Card Number',
+  type: 'string',
+  required: true,
+  sensitive: true,
+};
+
+const cvvField: FieldDefinition = {
+  name: 'cvv',
+  label: 'CVV',
+  type: 'string',
+  required: true,
+  sensitive: true,
+};
+
+const secondaryCodeField: FieldDefinition = {
+  name: 'security_code_2',
+  label: 'Secondary Code',
+  type: 'string',
+  required: false,
+  sensitive: true,
+};
+
+const expMonthField: FieldDefinition = {
+  name: 'exp_month',
+  label: 'Expiry Month',
+  type: 'string',
+  required: true,
+  sensitive: false,
+};
+
+const expYearField: FieldDefinition = {
+  name: 'exp_year',
+  label: 'Expiry Year',
+  type: 'string',
+  required: true,
+  sensitive: false,
+};
 
 const textField: FieldDefinition = {
   name: 'username',
@@ -614,6 +655,324 @@ describe('DynamicSecretFields', () => {
         expect(handleChange).toHaveBeenCalledWith(
           expect.objectContaining({ password: 'newpassword' }),
         );
+      });
+    });
+  });
+
+  describe('Copy to clipboard', () => {
+    beforeEach(() => {
+      resetClipboardMock();
+    });
+
+    /**
+     * userEvent.setup() installs its own navigator.clipboard stub, which would
+     * shadow the one under test. Reinstall ours afterwards so these assertions
+     * observe the component's real writes.
+     */
+    const setupCopyUser = () => {
+      const user = userEvent.setup();
+      resetClipboardMock();
+      return user;
+    };
+
+    const clickCopy = async (user: ReturnType<typeof userEvent.setup>) => {
+      await user.click(screen.getByRole('button', { name: /copy to clipboard/i }));
+    };
+
+    it('should copy a plain field value verbatim', async () => {
+      const user = setupCopyUser();
+
+      render(
+        <DynamicSecretFields
+          fields={[textField]}
+          data={{ username: 'alice' }}
+          onChange={vi.fn()}
+          readOnly
+        />,
+      );
+
+      await clickCopy(user);
+
+      await waitFor(() => {
+        expect(clipboardMock.writeText).toHaveBeenCalledWith('alice');
+      });
+    });
+
+    it('should show the Copied tooltip after a successful copy', async () => {
+      const user = setupCopyUser();
+
+      render(
+        <DynamicSecretFields
+          fields={[textField]}
+          data={{ username: 'alice' }}
+          onChange={vi.fn()}
+          readOnly
+        />,
+      );
+
+      const button = screen.getByRole('button', { name: /copy to clipboard/i });
+      await user.click(button);
+      await user.hover(button);
+
+      expect(await screen.findByRole('tooltip')).toHaveTextContent('Copied');
+    });
+
+    it('should surface a failure instead of failing silently', async () => {
+      const user = setupCopyUser();
+      clipboardMock.writeText.mockRejectedValue(new Error('Permission denied'));
+
+      render(
+        <DynamicSecretFields
+          fields={[textField]}
+          data={{ username: 'alice' }}
+          onChange={vi.fn()}
+          readOnly
+        />,
+      );
+
+      await clickCopy(user);
+
+      await waitFor(() => {
+        expect(screen.getByRole('status')).toHaveTextContent(/copy failed/i);
+      });
+    });
+
+    it('should announce nothing while the copy is succeeding', async () => {
+      const user = setupCopyUser();
+
+      render(
+        <DynamicSecretFields
+          fields={[textField]}
+          data={{ username: 'alice' }}
+          onChange={vi.fn()}
+          readOnly
+        />,
+      );
+
+      await clickCopy(user);
+
+      await waitFor(() => {
+        expect(clipboardMock.writeText).toHaveBeenCalled();
+      });
+      expect(screen.getByRole('status')).toHaveTextContent('');
+    });
+
+    it('should keep the existing aria-label after a failed copy', async () => {
+      const user = setupCopyUser();
+      clipboardMock.writeText.mockRejectedValue(new Error('Permission denied'));
+
+      render(
+        <DynamicSecretFields
+          fields={[textField]}
+          data={{ username: 'alice' }}
+          onChange={vi.fn()}
+          readOnly
+        />,
+      );
+
+      await clickCopy(user);
+
+      await waitFor(() => {
+        expect(screen.getByRole('status')).toHaveTextContent(/copy failed/i);
+      });
+      expect(screen.getByRole('button', { name: /copy to clipboard/i })).toBeInTheDocument();
+    });
+
+    it('should copy a sensitive value without revealing it on screen', async () => {
+      const user = setupCopyUser();
+
+      render(
+        <DynamicSecretFields
+          fields={[sensitiveField]}
+          data={{ password: 'secret123' }}
+          onChange={vi.fn()}
+          readOnly
+        />,
+      );
+
+      // Copy without ever clicking the mask chip.
+      await clickCopy(user);
+
+      await waitFor(() => {
+        expect(clipboardMock.writeText).toHaveBeenCalledWith('secret123');
+      });
+
+      // The value must still be masked.
+      expect(screen.queryByText('secret123')).not.toBeInTheDocument();
+      expect(screen.getByText('••••••••')).toBeInTheDocument();
+    });
+
+    describe('Card field formatting', () => {
+      it('should copy a card number as digits only', async () => {
+        const user = setupCopyUser();
+
+        render(
+          <DynamicSecretFields
+            fields={[cardNumberField]}
+            data={{ number: '4242 4242 4242 4242' }}
+            onChange={vi.fn()}
+            readOnly
+          />,
+        );
+
+        await clickCopy(user);
+
+        await waitFor(() => {
+          expect(clipboardMock.writeText).toHaveBeenCalledWith('4242424242424242');
+        });
+      });
+
+      it('should copy a dash-separated card number as digits only', async () => {
+        const user = setupCopyUser();
+
+        render(
+          <DynamicSecretFields
+            fields={[cardNumberField]}
+            data={{ number: '4242-4242-4242-4242' }}
+            onChange={vi.fn()}
+            readOnly
+          />,
+        );
+
+        await clickCopy(user);
+
+        await waitFor(() => {
+          expect(clipboardMock.writeText).toHaveBeenCalledWith('4242424242424242');
+        });
+      });
+
+      it('should copy a card number without revealing it', async () => {
+        const user = setupCopyUser();
+
+        render(
+          <DynamicSecretFields
+            fields={[cardNumberField]}
+            data={{ number: '4242 4242 4242 4242' }}
+            onChange={vi.fn()}
+            readOnly
+          />,
+        );
+
+        await clickCopy(user);
+
+        await waitFor(() => {
+          expect(clipboardMock.writeText).toHaveBeenCalledWith('4242424242424242');
+        });
+        expect(screen.queryByText('4242 4242 4242 4242')).not.toBeInTheDocument();
+      });
+
+      it('should copy a CVV as digits only', async () => {
+        const user = setupCopyUser();
+
+        render(
+          <DynamicSecretFields
+            fields={[cvvField]}
+            data={{ cvv: ' 123 ' }}
+            onChange={vi.fn()}
+            readOnly
+          />,
+        );
+
+        await clickCopy(user);
+
+        await waitFor(() => {
+          expect(clipboardMock.writeText).toHaveBeenCalledWith('123');
+        });
+      });
+
+      it('should copy a secondary security code as digits only', async () => {
+        const user = setupCopyUser();
+
+        render(
+          <DynamicSecretFields
+            fields={[secondaryCodeField]}
+            data={{ security_code_2: '45-67' }}
+            onChange={vi.fn()}
+            readOnly
+          />,
+        );
+
+        await clickCopy(user);
+
+        await waitFor(() => {
+          expect(clipboardMock.writeText).toHaveBeenCalledWith('4567');
+        });
+      });
+
+      it('should zero-pad a single-digit expiry month on copy', async () => {
+        const user = setupCopyUser();
+
+        render(
+          <DynamicSecretFields
+            fields={[expMonthField]}
+            data={{ exp_month: '3' }}
+            onChange={vi.fn()}
+            readOnly
+          />,
+        );
+
+        await clickCopy(user);
+
+        await waitFor(() => {
+          expect(clipboardMock.writeText).toHaveBeenCalledWith('03');
+        });
+      });
+
+      it('should shorten a 4-digit expiry year to YY on copy', async () => {
+        const user = setupCopyUser();
+
+        render(
+          <DynamicSecretFields
+            fields={[expYearField]}
+            data={{ exp_year: '2029' }}
+            onChange={vi.fn()}
+            readOnly
+          />,
+        );
+
+        await clickCopy(user);
+
+        await waitFor(() => {
+          expect(clipboardMock.writeText).toHaveBeenCalledWith('29');
+        });
+      });
+
+      it('should fall back to the stored value when a card field cannot be formatted', async () => {
+        const user = setupCopyUser();
+
+        render(
+          <DynamicSecretFields
+            fields={[expMonthField]}
+            data={{ exp_month: 'unknown' }}
+            onChange={vi.fn()}
+            readOnly
+          />,
+        );
+
+        await clickCopy(user);
+
+        await waitFor(() => {
+          expect(clipboardMock.writeText).toHaveBeenCalledWith('unknown');
+        });
+      });
+
+      it('should not reformat a non-card field that contains separators', async () => {
+        const user = setupCopyUser();
+
+        render(
+          <DynamicSecretFields
+            fields={[textField]}
+            data={{ username: 'alice-123 456' }}
+            onChange={vi.fn()}
+            readOnly
+          />,
+        );
+
+        await clickCopy(user);
+
+        await waitFor(() => {
+          expect(clipboardMock.writeText).toHaveBeenCalledWith('alice-123 456');
+        });
       });
     });
   });
