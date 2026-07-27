@@ -42,6 +42,7 @@ describe('SystemSettingsPage', () => {
           allowUserThemeOverride: true,
         },
         features: {},
+        ai: null,
         updatedAt: new Date().toISOString(),
         updatedBy: null,
         version: 1,
@@ -51,6 +52,7 @@ describe('SystemSettingsPage', () => {
       isSaving: false,
       updateSettings: vi.fn().mockResolvedValue(undefined),
       replaceSettings: vi.fn().mockResolvedValue(undefined),
+      updateAiSettings: vi.fn().mockResolvedValue(undefined),
       refresh: vi.fn(),
     });
   });
@@ -134,6 +136,7 @@ describe('SystemSettingsPage', () => {
         isSaving: false,
         updateSettings: vi.fn(),
         replaceSettings: vi.fn(),
+        updateAiSettings: vi.fn().mockResolvedValue(undefined),
         refresh: vi.fn(),
       });
 
@@ -154,6 +157,7 @@ describe('SystemSettingsPage', () => {
         isSaving: false,
         updateSettings: vi.fn(),
         replaceSettings: vi.fn(),
+        updateAiSettings: vi.fn().mockResolvedValue(undefined),
         refresh: vi.fn(),
       });
 
@@ -224,6 +228,7 @@ describe('SystemSettingsPage', () => {
             betaFeature: true,
             newDashboard: false,
           },
+          ai: null,
           updatedAt: new Date().toISOString(),
           updatedBy: null,
           version: 1,
@@ -233,6 +238,7 @@ describe('SystemSettingsPage', () => {
         isSaving: false,
         updateSettings: vi.fn(),
         replaceSettings: vi.fn(),
+        updateAiSettings: vi.fn().mockResolvedValue(undefined),
         refresh: vi.fn(),
       });
 
@@ -258,6 +264,7 @@ describe('SystemSettingsPage', () => {
         settings: {
           ui: { allowUserThemeOverride: true },
           features: {},
+          ai: null,
           updatedAt: updatedAt.toISOString(),
           updatedBy: {
             id: 'admin-id',
@@ -270,6 +277,7 @@ describe('SystemSettingsPage', () => {
         isSaving: false,
         updateSettings: vi.fn(),
         replaceSettings: vi.fn(),
+        updateAiSettings: vi.fn().mockResolvedValue(undefined),
         refresh: vi.fn(),
       });
 
@@ -303,6 +311,7 @@ describe('SystemSettingsPage', () => {
         settings: {
           ui: { allowUserThemeOverride: true },
           features: {},
+          ai: null,
           updatedAt: new Date().toISOString(),
           updatedBy: null,
           version: 1,
@@ -312,6 +321,7 @@ describe('SystemSettingsPage', () => {
         isSaving: false,
         updateSettings,
         replaceSettings: vi.fn(),
+        updateAiSettings: vi.fn().mockResolvedValue(undefined),
         refresh: vi.fn(),
       });
 
@@ -346,6 +356,7 @@ describe('SystemSettingsPage', () => {
         settings: {
           ui: { allowUserThemeOverride: true },
           features: {},
+          ai: null,
           updatedAt: new Date().toISOString(),
           updatedBy: null,
           version: 1,
@@ -355,6 +366,7 @@ describe('SystemSettingsPage', () => {
         isSaving: false,
         updateSettings,
         replaceSettings: vi.fn(),
+        updateAiSettings: vi.fn().mockResolvedValue(undefined),
         refresh: vi.fn(),
       });
 
@@ -374,6 +386,7 @@ describe('SystemSettingsPage', () => {
         settings: {
           ui: { allowUserThemeOverride: true },
           features: {},
+          ai: null,
           updatedAt: new Date().toISOString(),
           updatedBy: null,
           version: 1,
@@ -383,6 +396,7 @@ describe('SystemSettingsPage', () => {
         isSaving: true,
         updateSettings: vi.fn(),
         replaceSettings: vi.fn(),
+        updateAiSettings: vi.fn().mockResolvedValue(undefined),
         refresh: vi.fn(),
       });
 

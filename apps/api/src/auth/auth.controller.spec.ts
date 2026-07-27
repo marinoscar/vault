@@ -2,11 +2,13 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { PatService } from '../pat/pat.service';
 
 describe('AuthController', () => {
   let controller: AuthController;
   let mockAuthService: jest.Mocked<AuthService>;
   let mockConfigService: jest.Mocked<ConfigService>;
+  let mockPatService: jest.Mocked<PatService>;
 
   beforeEach(async () => {
     mockAuthService = {
@@ -20,11 +22,16 @@ describe('AuthController', () => {
       get: jest.fn(),
     } as any;
 
+    mockPatService = {
+      validateToken: jest.fn(),
+    } as any;
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
       providers: [
         { provide: AuthService, useValue: mockAuthService },
         { provide: ConfigService, useValue: mockConfigService },
+        { provide: PatService, useValue: mockPatService },
       ],
     }).compile();
 

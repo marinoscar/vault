@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { render, mockUser, mockAdminUser } from '../../utils/test-utils';
+import { render, mockAdminUser } from '../../utils/test-utils';
 import { Sidebar } from '../../../components/navigation/Sidebar';
 
 // Mock react-router-dom
@@ -24,6 +24,35 @@ vi.mock('../../../hooks/usePermissions', () => ({
 
 import { usePermissions } from '../../../hooks/usePermissions';
 
+// Items visible to every authenticated user, in rendered order.
+const BASE_MENU_ITEMS: Array<{ label: string; path: string }> = [
+  { label: 'Home', path: '/' },
+  { label: 'Secrets', path: '/secrets' },
+  { label: 'Cards', path: '/cards' },
+  { label: 'Media', path: '/media' },
+  { label: 'Secret Types', path: '/secret-types' },
+  { label: 'User Settings', path: '/settings' },
+];
+
+// Items visible only to admins, in rendered order (appended after the base items).
+const ADMIN_ONLY_MENU_ITEMS: Array<{ label: string; path: string }> = [
+  { label: 'User Management', path: '/admin/users' },
+  { label: 'System Settings', path: '/admin/settings' },
+];
+
+function mockPermissions(isAdmin: boolean) {
+  vi.mocked(usePermissions).mockReturnValue({
+    permissions: new Set(),
+    roles: new Set(isAdmin ? ['admin'] : []),
+    hasPermission: vi.fn(),
+    hasAnyPermission: vi.fn(),
+    hasAllPermissions: vi.fn(),
+    hasRole: vi.fn(),
+    hasAnyRole: vi.fn(),
+    isAdmin,
+  });
+}
+
 describe('Sidebar', () => {
   const mockOnClose = vi.fn();
 
@@ -34,16 +63,7 @@ describe('Sidebar', () => {
 
   describe('Rendering', () => {
     it('should render Drawer component even when open is false', () => {
-      vi.mocked(usePermissions).mockReturnValue({
-        permissions: new Set(),
-        roles: new Set(),
-        hasPermission: vi.fn(),
-        hasAnyPermission: vi.fn(),
-        hasAllPermissions: vi.fn(),
-        hasRole: vi.fn(),
-        hasAnyRole: vi.fn(),
-        isAdmin: false,
-      });
+      mockPermissions(false);
 
       // The key test: calling render should work without the component returning null
       // Even though drawer content won't be in DOM with keepMounted: false and open: false,
@@ -56,98 +76,50 @@ describe('Sidebar', () => {
     });
 
     it('should render Drawer component when open is true', () => {
-      vi.mocked(usePermissions).mockReturnValue({
-        permissions: new Set(),
-        roles: new Set(),
-        hasPermission: vi.fn(),
-        hasAnyPermission: vi.fn(),
-        hasAllPermissions: vi.fn(),
-        hasRole: vi.fn(),
-        hasAnyRole: vi.fn(),
-        isAdmin: false,
-      });
+      mockPermissions(false);
 
       const { container } = render(<Sidebar open={true} onClose={mockOnClose} />);
 
       const drawer = container.querySelector('.MuiDrawer-root');
       expect(drawer).not.toBeNull();
-      expect(drawer).toBeDefined();
     });
 
-    it('should render visible menu items', () => {
-      vi.mocked(usePermissions).mockReturnValue({
-        permissions: new Set(),
-        roles: new Set(),
-        hasPermission: vi.fn(),
-        hasAnyPermission: vi.fn(),
-        hasAllPermissions: vi.fn(),
-        hasRole: vi.fn(),
-        hasAnyRole: vi.fn(),
-        isAdmin: false,
-      });
+    it('should render every base menu item as an accessible button for non-admin users', () => {
+      mockPermissions(false);
 
-      const { container } = render(<Sidebar open={true} onClose={mockOnClose} />);
+      render(<Sidebar open={true} onClose={mockOnClose} />);
 
-      // Non-admin users should see Home and User Settings (use container to bypass aria-hidden)
-      expect(container.textContent).toContain('Home');
-      expect(container.textContent).toContain('User Settings');
+      for (const item of BASE_MENU_ITEMS) {
+        expect(screen.getByRole('button', { name: item.label, hidden: true })).toBeInTheDocument();
+      }
     });
 
     it('should not render admin menu items for non-admin users', () => {
-      vi.mocked(usePermissions).mockReturnValue({
-        permissions: new Set(),
-        roles: new Set(),
-        hasPermission: vi.fn(),
-        hasAnyPermission: vi.fn(),
-        hasAllPermissions: vi.fn(),
-        hasRole: vi.fn(),
-        hasAnyRole: vi.fn(),
-        isAdmin: false,
-      });
+      mockPermissions(false);
 
-      const { container } = render(<Sidebar open={true} onClose={mockOnClose} />);
+      render(<Sidebar open={true} onClose={mockOnClose} />);
 
-      // Admin items should not be visible
-      expect(container.textContent).not.toContain('User Management');
-      expect(container.textContent).not.toContain('System Settings');
+      for (const item of ADMIN_ONLY_MENU_ITEMS) {
+        expect(screen.queryByRole('button', { name: item.label, hidden: true })).not.toBeInTheDocument();
+      }
     });
 
     it('should render admin menu items for admin users', () => {
-      vi.mocked(usePermissions).mockReturnValue({
-        permissions: new Set(),
-        roles: new Set(['admin']),
-        hasPermission: vi.fn(),
-        hasAnyPermission: vi.fn(),
-        hasAllPermissions: vi.fn(),
-        hasRole: vi.fn(),
-        hasAnyRole: vi.fn(),
-        isAdmin: true,
-      });
+      mockPermissions(true);
 
-      const { container } = render(<Sidebar open={true} onClose={mockOnClose} />, {
+      render(<Sidebar open={true} onClose={mockOnClose} />, {
         wrapperOptions: { user: mockAdminUser },
       });
 
-      // All menu items should be visible
-      expect(container.textContent).toContain('Home');
-      expect(container.textContent).toContain('User Settings');
-      expect(container.textContent).toContain('User Management');
-      expect(container.textContent).toContain('System Settings');
+      for (const item of [...BASE_MENU_ITEMS, ...ADMIN_ONLY_MENU_ITEMS]) {
+        expect(screen.getByRole('button', { name: item.label, hidden: true })).toBeInTheDocument();
+      }
     });
   });
 
   describe('ModalProps Configuration', () => {
     it('should have keepMounted set to false', () => {
-      vi.mocked(usePermissions).mockReturnValue({
-        permissions: new Set(),
-        roles: new Set(),
-        hasPermission: vi.fn(),
-        hasAnyPermission: vi.fn(),
-        hasAllPermissions: vi.fn(),
-        hasRole: vi.fn(),
-        hasAnyRole: vi.fn(),
-        isAdmin: false,
-      });
+      mockPermissions(false);
 
       const { container } = render(<Sidebar open={true} onClose={mockOnClose} />);
 
@@ -157,16 +129,7 @@ describe('Sidebar', () => {
     });
 
     it('should have disablePortal set to true', () => {
-      vi.mocked(usePermissions).mockReturnValue({
-        permissions: new Set(),
-        roles: new Set(),
-        hasPermission: vi.fn(),
-        hasAnyPermission: vi.fn(),
-        hasAllPermissions: vi.fn(),
-        hasRole: vi.fn(),
-        hasAnyRole: vi.fn(),
-        isAdmin: false,
-      });
+      mockPermissions(false);
 
       const { container } = render(<Sidebar open={true} onClose={mockOnClose} />);
 
@@ -177,76 +140,38 @@ describe('Sidebar', () => {
   });
 
   describe('Menu Item Visibility Filtering', () => {
-    it('should filter menu items based on visibility property', () => {
-      vi.mocked(usePermissions).mockReturnValue({
-        permissions: new Set(),
-        roles: new Set(),
-        hasPermission: vi.fn(),
-        hasAnyPermission: vi.fn(),
-        hasAllPermissions: vi.fn(),
-        hasRole: vi.fn(),
-        hasAnyRole: vi.fn(),
-        isAdmin: false,
-      });
+    it('should render exactly the base menu items, in order, for a non-admin user', () => {
+      mockPermissions(false);
 
-      const { container } = render(<Sidebar open={true} onClose={mockOnClose} />);
+      render(<Sidebar open={true} onClose={mockOnClose} />);
 
-      // Only items with visible: true should be rendered
-      const menuButtons = container.querySelectorAll('.MuiListItemButton-root');
-      expect(menuButtons).toHaveLength(2); // Home and User Settings
+      const names = screen.getAllByRole('button', { hidden: true }).map((button) => button.textContent);
+      expect(names).toEqual(BASE_MENU_ITEMS.map((item) => item.label));
     });
 
-    it('should show all menu items when user is admin', () => {
-      vi.mocked(usePermissions).mockReturnValue({
-        permissions: new Set(),
-        roles: new Set(['admin']),
-        hasPermission: vi.fn(),
-        hasAnyPermission: vi.fn(),
-        hasAllPermissions: vi.fn(),
-        hasRole: vi.fn(),
-        hasAnyRole: vi.fn(),
-        isAdmin: true,
-      });
+    it('should render base items plus admin items, in order, for an admin user', () => {
+      mockPermissions(true);
 
-      const { container } = render(<Sidebar open={true} onClose={mockOnClose} />, {
+      render(<Sidebar open={true} onClose={mockOnClose} />, {
         wrapperOptions: { user: mockAdminUser },
       });
 
-      const menuButtons = container.querySelectorAll('.MuiListItemButton-root');
-      expect(menuButtons).toHaveLength(4); // All menu items visible
+      const names = screen.getAllByRole('button', { hidden: true }).map((button) => button.textContent);
+      expect(names).toEqual([...BASE_MENU_ITEMS, ...ADMIN_ONLY_MENU_ITEMS].map((item) => item.label));
     });
 
     it('should dynamically update menu items when isAdmin changes', () => {
-      vi.mocked(usePermissions).mockReturnValue({
-        permissions: new Set(),
-        roles: new Set(),
-        hasPermission: vi.fn(),
-        hasAnyPermission: vi.fn(),
-        hasAllPermissions: vi.fn(),
-        hasRole: vi.fn(),
-        hasAnyRole: vi.fn(),
-        isAdmin: false,
-      });
+      mockPermissions(false);
 
-      const { rerender, container } = render(<Sidebar open={true} onClose={mockOnClose} />);
+      const { rerender } = render(<Sidebar open={true} onClose={mockOnClose} />);
 
-      expect(container.textContent).not.toContain('User Management');
+      expect(screen.queryByRole('button', { name: 'User Management', hidden: true })).not.toBeInTheDocument();
 
       // Update to admin
-      vi.mocked(usePermissions).mockReturnValue({
-        permissions: new Set(),
-        roles: new Set(['admin']),
-        hasPermission: vi.fn(),
-        hasAnyPermission: vi.fn(),
-        hasAllPermissions: vi.fn(),
-        hasRole: vi.fn(),
-        hasAnyRole: vi.fn(),
-        isAdmin: true,
-      });
-
+      mockPermissions(true);
       rerender(<Sidebar open={true} onClose={mockOnClose} />);
 
-      expect(container.textContent).toContain('User Management');
+      expect(screen.getByRole('button', { name: 'User Management', hidden: true })).toBeInTheDocument();
     });
   });
 
@@ -263,22 +188,11 @@ describe('Sidebar', () => {
         callOrder.push('navigate');
       });
 
-      vi.mocked(usePermissions).mockReturnValue({
-        permissions: new Set(),
-        roles: new Set(),
-        hasPermission: vi.fn(),
-        hasAnyPermission: vi.fn(),
-        hasAllPermissions: vi.fn(),
-        hasRole: vi.fn(),
-        hasAnyRole: vi.fn(),
-        isAdmin: false,
-      });
+      mockPermissions(false);
 
-      const { container } = render(<Sidebar open={true} onClose={trackingOnClose} />);
+      render(<Sidebar open={true} onClose={trackingOnClose} />);
 
-      const buttons = container.querySelectorAll('.MuiListItemButton-root');
-      const settingsButton = buttons[1]; // User Settings is second button
-      await user.click(settingsButton);
+      await user.click(screen.getByRole('button', { name: 'User Settings', hidden: true }));
 
       // onClose should be called immediately (synchronously)
       expect(trackingOnClose).toHaveBeenCalledTimes(1);
@@ -292,107 +206,31 @@ describe('Sidebar', () => {
       expect(callOrder).toEqual(['onClose', 'navigate']);
     });
 
-    it('should navigate to home when Home menu item is clicked', async () => {
+    it.each(BASE_MENU_ITEMS)('should navigate to $path when $label menu item is clicked', async ({ label, path }) => {
       const user = userEvent.setup();
+      mockPermissions(false);
 
-      vi.mocked(usePermissions).mockReturnValue({
-        permissions: new Set(),
-        roles: new Set(),
-        hasPermission: vi.fn(),
-        hasAnyPermission: vi.fn(),
-        hasAllPermissions: vi.fn(),
-        hasRole: vi.fn(),
-        hasAnyRole: vi.fn(),
-        isAdmin: false,
-      });
+      render(<Sidebar open={true} onClose={mockOnClose} />);
 
-      const { container } = render(<Sidebar open={true} onClose={mockOnClose} />);
-
-      const buttons = container.querySelectorAll('.MuiListItemButton-root');
-      const homeButton = buttons[0]; // Home is first button
-      await user.click(homeButton);
+      await user.click(screen.getByRole('button', { name: label, hidden: true }));
 
       await waitFor(() => {
-        expect(mockNavigate).toHaveBeenCalledWith('/');
+        expect(mockNavigate).toHaveBeenCalledWith(path);
       });
     });
 
-    it('should navigate to settings when User Settings menu item is clicked', async () => {
+    it.each(ADMIN_ONLY_MENU_ITEMS)('should navigate to $path when $label menu item is clicked', async ({ label, path }) => {
       const user = userEvent.setup();
+      mockPermissions(true);
 
-      vi.mocked(usePermissions).mockReturnValue({
-        permissions: new Set(),
-        roles: new Set(),
-        hasPermission: vi.fn(),
-        hasAnyPermission: vi.fn(),
-        hasAllPermissions: vi.fn(),
-        hasRole: vi.fn(),
-        hasAnyRole: vi.fn(),
-        isAdmin: false,
-      });
-
-      const { container } = render(<Sidebar open={true} onClose={mockOnClose} />);
-
-      const buttons = container.querySelectorAll('.MuiListItemButton-root');
-      const settingsButton = buttons[1]; // User Settings is second button
-      await user.click(settingsButton);
-
-      await waitFor(() => {
-        expect(mockNavigate).toHaveBeenCalledWith('/settings');
-      });
-    });
-
-    it('should navigate to admin/users when User Management is clicked', async () => {
-      const user = userEvent.setup();
-
-      vi.mocked(usePermissions).mockReturnValue({
-        permissions: new Set(),
-        roles: new Set(['admin']),
-        hasPermission: vi.fn(),
-        hasAnyPermission: vi.fn(),
-        hasAllPermissions: vi.fn(),
-        hasRole: vi.fn(),
-        hasAnyRole: vi.fn(),
-        isAdmin: true,
-      });
-
-      const { container } = render(<Sidebar open={true} onClose={mockOnClose} />, {
+      render(<Sidebar open={true} onClose={mockOnClose} />, {
         wrapperOptions: { user: mockAdminUser },
       });
 
-      const buttons = container.querySelectorAll('.MuiListItemButton-root');
-      const userMgmtButton = buttons[2]; // User Management is third button
-      await user.click(userMgmtButton);
+      await user.click(screen.getByRole('button', { name: label, hidden: true }));
 
       await waitFor(() => {
-        expect(mockNavigate).toHaveBeenCalledWith('/admin/users');
-      });
-    });
-
-    it('should navigate to admin/settings when System Settings is clicked', async () => {
-      const user = userEvent.setup();
-
-      vi.mocked(usePermissions).mockReturnValue({
-        permissions: new Set(),
-        roles: new Set(['admin']),
-        hasPermission: vi.fn(),
-        hasAnyPermission: vi.fn(),
-        hasAllPermissions: vi.fn(),
-        hasRole: vi.fn(),
-        hasAnyRole: vi.fn(),
-        isAdmin: true,
-      });
-
-      const { container } = render(<Sidebar open={true} onClose={mockOnClose} />, {
-        wrapperOptions: { user: mockAdminUser },
-      });
-
-      const buttons = container.querySelectorAll('.MuiListItemButton-root');
-      const systemSettingsButton = buttons[3]; // System Settings is fourth button
-      await user.click(systemSettingsButton);
-
-      await waitFor(() => {
-        expect(mockNavigate).toHaveBeenCalledWith('/admin/settings');
+        expect(mockNavigate).toHaveBeenCalledWith(path);
       });
     });
   });
@@ -400,82 +238,40 @@ describe('Sidebar', () => {
   describe('Active Menu Item Highlighting', () => {
     it('should highlight current route', () => {
       mockLocation.pathname = '/settings';
+      mockPermissions(false);
 
-      vi.mocked(usePermissions).mockReturnValue({
-        permissions: new Set(),
-        roles: new Set(),
-        hasPermission: vi.fn(),
-        hasAnyPermission: vi.fn(),
-        hasAllPermissions: vi.fn(),
-        hasRole: vi.fn(),
-        hasAnyRole: vi.fn(),
-        isAdmin: false,
-      });
+      render(<Sidebar open={true} onClose={mockOnClose} />);
 
-      const { container } = render(<Sidebar open={true} onClose={mockOnClose} />);
-
-      const buttons = container.querySelectorAll('.MuiListItemButton-root');
-      const settingsButton = buttons[1]; // User Settings
+      const settingsButton = screen.getByRole('button', { name: 'User Settings', hidden: true });
       expect(settingsButton.classList.contains('Mui-selected')).toBe(true);
     });
 
     it('should not highlight non-current routes', () => {
       mockLocation.pathname = '/';
+      mockPermissions(false);
 
-      vi.mocked(usePermissions).mockReturnValue({
-        permissions: new Set(),
-        roles: new Set(),
-        hasPermission: vi.fn(),
-        hasAnyPermission: vi.fn(),
-        hasAllPermissions: vi.fn(),
-        hasRole: vi.fn(),
-        hasAnyRole: vi.fn(),
-        isAdmin: false,
-      });
+      render(<Sidebar open={true} onClose={mockOnClose} />);
 
-      const { container } = render(<Sidebar open={true} onClose={mockOnClose} />);
-
-      const buttons = container.querySelectorAll('.MuiListItemButton-root');
-      const settingsButton = buttons[1]; // User Settings
+      const settingsButton = screen.getByRole('button', { name: 'User Settings', hidden: true });
       expect(settingsButton.classList.contains('Mui-selected')).toBe(false);
     });
 
     it('should highlight admin routes when on admin page', () => {
       mockLocation.pathname = '/admin/users';
+      mockPermissions(true);
 
-      vi.mocked(usePermissions).mockReturnValue({
-        permissions: new Set(),
-        roles: new Set(['admin']),
-        hasPermission: vi.fn(),
-        hasAnyPermission: vi.fn(),
-        hasAllPermissions: vi.fn(),
-        hasRole: vi.fn(),
-        hasAnyRole: vi.fn(),
-        isAdmin: true,
-      });
-
-      const { container } = render(<Sidebar open={true} onClose={mockOnClose} />, {
+      render(<Sidebar open={true} onClose={mockOnClose} />, {
         wrapperOptions: { user: mockAdminUser },
       });
 
-      const buttons = container.querySelectorAll('.MuiListItemButton-root');
-      const userMgmtButton = buttons[2]; // User Management
+      const userMgmtButton = screen.getByRole('button', { name: 'User Management', hidden: true });
       expect(userMgmtButton.classList.contains('Mui-selected')).toBe(true);
     });
   });
 
   describe('Drawer Close Behavior', () => {
     it('should pass onClose prop to Drawer', () => {
-      vi.mocked(usePermissions).mockReturnValue({
-        permissions: new Set(),
-        roles: new Set(),
-        hasPermission: vi.fn(),
-        hasAnyPermission: vi.fn(),
-        hasAllPermissions: vi.fn(),
-        hasRole: vi.fn(),
-        hasAnyRole: vi.fn(),
-        isAdmin: false,
-      });
+      mockPermissions(false);
 
       const { container } = render(<Sidebar open={true} onClose={mockOnClose} />);
 
@@ -487,138 +283,75 @@ describe('Sidebar', () => {
 
     it('should call onClose for each menu item click', async () => {
       const user = userEvent.setup();
+      mockPermissions(false);
 
-      vi.mocked(usePermissions).mockReturnValue({
-        permissions: new Set(),
-        roles: new Set(),
-        hasPermission: vi.fn(),
-        hasAnyPermission: vi.fn(),
-        hasAllPermissions: vi.fn(),
-        hasRole: vi.fn(),
-        hasAnyRole: vi.fn(),
-        isAdmin: false,
-      });
+      render(<Sidebar open={true} onClose={mockOnClose} />);
 
-      const { container } = render(<Sidebar open={true} onClose={mockOnClose} />);
-
-      const buttons = container.querySelectorAll('.MuiListItemButton-root');
-      const homeButton = buttons[0];
-      await user.click(homeButton);
-
+      await user.click(screen.getByRole('button', { name: 'Home', hidden: true }));
       expect(mockOnClose).toHaveBeenCalledTimes(1);
 
-      const settingsButton = buttons[1];
-      await user.click(settingsButton);
-
+      await user.click(screen.getByRole('button', { name: 'Secrets', hidden: true }));
       expect(mockOnClose).toHaveBeenCalledTimes(2);
     });
   });
 
   describe('Menu Icons', () => {
-    it('should render icons for all menu items', () => {
-      vi.mocked(usePermissions).mockReturnValue({
-        permissions: new Set(),
-        roles: new Set(['admin']),
-        hasPermission: vi.fn(),
-        hasAnyPermission: vi.fn(),
-        hasAllPermissions: vi.fn(),
-        hasRole: vi.fn(),
-        hasAnyRole: vi.fn(),
-        isAdmin: true,
-      });
+    it('should render exactly one icon per rendered menu item', () => {
+      mockPermissions(true);
 
       const { container } = render(<Sidebar open={true} onClose={mockOnClose} />, {
         wrapperOptions: { user: mockAdminUser },
       });
 
-      // Each menu item should have an icon
+      // Every button should carry exactly one icon - independent of how many
+      // menu items currently exist.
+      const buttons = screen.getAllByRole('button', { hidden: true });
       const icons = container.querySelectorAll('.MuiListItemIcon-root');
-      expect(icons).toHaveLength(4); // Home, User Settings, User Management, System Settings
+      expect(icons).toHaveLength(buttons.length);
     });
 
     it('should highlight icon for selected menu item', () => {
       mockLocation.pathname = '/settings';
+      mockPermissions(false);
 
-      vi.mocked(usePermissions).mockReturnValue({
-        permissions: new Set(),
-        roles: new Set(),
-        hasPermission: vi.fn(),
-        hasAnyPermission: vi.fn(),
-        hasAllPermissions: vi.fn(),
-        hasRole: vi.fn(),
-        hasAnyRole: vi.fn(),
-        isAdmin: false,
-      });
+      render(<Sidebar open={true} onClose={mockOnClose} />);
 
-      const { container } = render(<Sidebar open={true} onClose={mockOnClose} />);
-
-      const buttons = container.querySelectorAll('.MuiListItemButton-root');
-      const settingsButton = buttons[1]; // User Settings
-      const icon = settingsButton?.querySelector('.MuiListItemIcon-root');
+      const settingsButton = screen.getByRole('button', { name: 'User Settings', hidden: true });
+      const icon = within(settingsButton).getByTestId('SettingsIcon');
 
       expect(icon).not.toBeNull();
-      expect(icon).toBeDefined();
       // Icon should have primary color styling when selected
     });
   });
 
   describe('Accessibility', () => {
     it('should render drawer with proper structure', () => {
-      vi.mocked(usePermissions).mockReturnValue({
-        permissions: new Set(),
-        roles: new Set(),
-        hasPermission: vi.fn(),
-        hasAnyPermission: vi.fn(),
-        hasAllPermissions: vi.fn(),
-        hasRole: vi.fn(),
-        hasAnyRole: vi.fn(),
-        isAdmin: false,
-      });
+      mockPermissions(false);
 
-      const { container } = render(<Sidebar open={true} onClose={mockOnClose} />);
+      render(<Sidebar open={true} onClose={mockOnClose} />);
 
       // Drawer should be rendered with buttons
-      const buttons = container.querySelectorAll('.MuiListItemButton-root');
-      expect(buttons.length).toBeGreaterThan(0);
+      expect(screen.getAllByRole('button', { hidden: true }).length).toBeGreaterThan(0);
     });
 
     it('should have accessible button labels', () => {
-      vi.mocked(usePermissions).mockReturnValue({
-        permissions: new Set(),
-        roles: new Set(),
-        hasPermission: vi.fn(),
-        hasAnyPermission: vi.fn(),
-        hasAllPermissions: vi.fn(),
-        hasRole: vi.fn(),
-        hasAnyRole: vi.fn(),
-        isAdmin: false,
-      });
+      mockPermissions(false);
 
-      const { container } = render(<Sidebar open={true} onClose={mockOnClose} />);
+      render(<Sidebar open={true} onClose={mockOnClose} />);
 
-      // Verify text content for accessibility
-      expect(container.textContent).toContain('Home');
-      expect(container.textContent).toContain('User Settings');
+      // Every base menu item should be reachable by its accessible name
+      for (const item of BASE_MENU_ITEMS) {
+        expect(screen.getByRole('button', { name: item.label, hidden: true })).toBeInTheDocument();
+      }
     });
 
     it('should be keyboard navigable', async () => {
       const user = userEvent.setup();
+      mockPermissions(false);
 
-      vi.mocked(usePermissions).mockReturnValue({
-        permissions: new Set(),
-        roles: new Set(),
-        hasPermission: vi.fn(),
-        hasAnyPermission: vi.fn(),
-        hasAllPermissions: vi.fn(),
-        hasRole: vi.fn(),
-        hasAnyRole: vi.fn(),
-        isAdmin: false,
-      });
+      render(<Sidebar open={true} onClose={mockOnClose} />);
 
-      const { container } = render(<Sidebar open={true} onClose={mockOnClose} />);
-
-      const buttons = container.querySelectorAll('.MuiListItemButton-root');
-      const homeButton = buttons[0] as HTMLElement;
+      const homeButton = screen.getByRole('button', { name: 'Home', hidden: true });
 
       // Should be able to focus and activate with keyboard
       homeButton.focus();
@@ -631,16 +364,7 @@ describe('Sidebar', () => {
 
   describe('Regression Tests', () => {
     it('should NOT return null when open is false (critical bug fix)', () => {
-      vi.mocked(usePermissions).mockReturnValue({
-        permissions: new Set(),
-        roles: new Set(),
-        hasPermission: vi.fn(),
-        hasAnyPermission: vi.fn(),
-        hasAllPermissions: vi.fn(),
-        hasRole: vi.fn(),
-        hasAnyRole: vi.fn(),
-        isAdmin: false,
-      });
+      mockPermissions(false);
 
       // CRITICAL REGRESSION TEST:
       // Previously, the component conditionally returned null when open was false:
@@ -682,22 +406,11 @@ describe('Sidebar', () => {
         expect(drawerClosed).toBe(true);
       });
 
-      vi.mocked(usePermissions).mockReturnValue({
-        permissions: new Set(),
-        roles: new Set(),
-        hasPermission: vi.fn(),
-        hasAnyPermission: vi.fn(),
-        hasAllPermissions: vi.fn(),
-        hasRole: vi.fn(),
-        hasAnyRole: vi.fn(),
-        isAdmin: false,
-      });
+      mockPermissions(false);
 
-      const { container } = render(<Sidebar open={true} onClose={trackingOnClose} />);
+      render(<Sidebar open={true} onClose={trackingOnClose} />);
 
-      const buttons = container.querySelectorAll('.MuiListItemButton-root');
-      const homeButton = buttons[0];
-      await user.click(homeButton);
+      await user.click(screen.getByRole('button', { name: 'Home', hidden: true }));
 
       // Drawer close should happen synchronously
       expect(drawerClosed).toBe(true);
@@ -709,22 +422,12 @@ describe('Sidebar', () => {
     });
 
     it('should maintain ModalProps configuration for backdrop click handling', () => {
-      vi.mocked(usePermissions).mockReturnValue({
-        permissions: new Set(),
-        roles: new Set(),
-        hasPermission: vi.fn(),
-        hasAnyPermission: vi.fn(),
-        hasAllPermissions: vi.fn(),
-        hasRole: vi.fn(),
-        hasAnyRole: vi.fn(),
-        isAdmin: false,
-      });
+      mockPermissions(false);
 
       const { container } = render(<Sidebar open={true} onClose={mockOnClose} />);
 
       const drawer = container.querySelector('.MuiDrawer-root');
       expect(drawer).not.toBeNull();
-      expect(drawer).toBeDefined();
 
       // Critical: disablePortal: true keeps Modal in component tree
       // This prevents backdrop click issues after navigation

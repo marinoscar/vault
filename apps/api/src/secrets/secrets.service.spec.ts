@@ -36,6 +36,75 @@ function buildDefaultQuery(overrides: Partial<SecretListQueryDto> = {}): SecretL
   };
 }
 
+// ---------------------------------------------------------------------------
+// Image signature fixtures (issue #37)
+// ---------------------------------------------------------------------------
+// Real leading bytes for each format the card gate accepts, plus a few that it
+// must refuse. Card images are now verified against these, so a test that links
+// a card face has to hand back plausible bytes from storage.
+
+const MAGIC = {
+  jpeg: Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
+  png: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  // `RIFF` + a 4-byte little-endian length + `WEBP`.
+  webp: Buffer.concat([
+    Buffer.from('RIFF', 'latin1'),
+    Buffer.from([0x24, 0x00, 0x00, 0x00]),
+    Buffer.from('WEBP', 'latin1'),
+  ]),
+  // ISO-BMFF: a 4-byte box length, `ftyp`, then the major brand.
+  heic: isoBmff('heic'),
+  heix: isoBmff('heix'),
+  mif1: isoBmff('mif1'),
+  heif: isoBmff('heif'),
+  // Rejected ISO-BMFF brands.
+  hevc: isoBmff('hevc'),
+  msf1: isoBmff('msf1'),
+  avif: isoBmff('avif'),
+  mp42: isoBmff('mp42'),
+  // Not images at all.
+  pdf: Buffer.from('%PDF-1.7\n%\xe2\xe3\xcf\xd3', 'latin1'),
+  gif: Buffer.from('GIF89a', 'latin1'),
+  html: Buffer.from('<!DOCTYPE html><script>alert(1)</script>', 'latin1'),
+};
+
+/** An `ftyp` box header carrying `brand` as its major brand. */
+function isoBmff(brand: string): Buffer {
+  return Buffer.concat([
+    Buffer.from([0x00, 0x00, 0x00, 0x20]),
+    Buffer.from('ftyp', 'latin1'),
+    Buffer.from(brand, 'latin1'),
+  ]);
+}
+
+/**
+ * A readable yielding `magic` followed by enough padding to reach `totalBytes`,
+ * in 64 KB chunks. A fresh stream per call — a Readable is single-use, and
+ * several tests trigger more than one read-back.
+ */
+function imageBlob(magic: Buffer, totalBytes = 2048): Readable {
+  const chunkSize = 64 * 1024;
+  let sentMagic = false;
+  let remaining = Math.max(0, totalBytes - magic.length);
+
+  return new Readable({
+    read() {
+      if (!sentMagic) {
+        sentMagic = true;
+        this.push(magic);
+        return;
+      }
+      if (remaining <= 0) {
+        this.push(null);
+        return;
+      }
+      const next = Math.min(chunkSize, remaining);
+      remaining -= next;
+      this.push(Buffer.alloc(next));
+    },
+  });
+}
+
 describe('SecretsService', () => {
   let service: SecretsService;
   let mockPrisma: MockPrismaService;
@@ -152,6 +221,13 @@ describe('SecretsService', () => {
     );
 
     mockStorage = createMockStorageProvider();
+
+    // Card images are now signature-verified (issue #37), so every card link
+    // reads the object's leading bytes back from storage. The shared mock's
+    // default body is the string 'mock content', which is not an image — so the
+    // default here is a real PNG header, matching `mockStorageObject.mimeType`.
+    // Tests that care about the bytes override this.
+    mockStorage.download.mockImplementation(async () => imageBlob(MAGIC.png));
 
     // Unset by default, so the service falls back to its built-in card image
     // size cap unless a test opts into an override.
@@ -862,59 +938,51 @@ describe('SecretsService', () => {
         return { ...mockStorageObject, ...overrides };
       }
 
-      /** A readable that yields exactly `bytes` bytes in 64 KB chunks. */
+      /**
+       * A readable that yields exactly `bytes` bytes in 64 KB chunks, led by a
+       * JPEG signature so the file passes the format check and only its size is
+       * under test.
+       */
       function blobOf(bytes: number): Readable {
-        const chunkSize = 64 * 1024;
-        let remaining = bytes;
-        return new Readable({
-          read() {
-            if (remaining <= 0) {
-              this.push(null);
-              return;
-            }
-            const next = Math.min(chunkSize, remaining);
-            remaining -= next;
-            this.push(Buffer.alloc(next));
-          },
-        });
+        return imageBlob(MAGIC.jpeg, bytes);
+      }
+
+      /** Link a card face, with `magic` as what storage actually holds. */
+      function linkCardFace(magic: Buffer) {
+        mockStorage.download.mockImplementation(async () => imageBlob(magic));
+        return service.linkAttachment(
+          secretId,
+          { storageObjectId, role: 'card_front' } as any,
+          userId,
+          writePerms,
+        );
       }
 
       it.each([
-        'image/jpeg',
-        'image/png',
-        'image/webp',
-        'image/heic',
-        'image/heif',
-      ])('should accept %s as a card image', async (mimeType) => {
-        mockPrisma.storageObject.findUnique.mockResolvedValue(
-          objectWith({ mimeType, size: BigInt(2048) }) as any,
-        );
+        ['image/jpeg', MAGIC.jpeg],
+        ['image/png', MAGIC.png],
+        ['image/webp', MAGIC.webp],
+        ['image/heic', MAGIC.heic],
+        ['image/heif', MAGIC.heif],
+      ])(
+        'should accept %s as a card image when the bytes agree',
+        async (mimeType, magic) => {
+          mockPrisma.storageObject.findUnique.mockResolvedValue(
+            objectWith({ mimeType, size: BigInt(2048) }) as any,
+          );
 
-        await expect(
-          service.linkAttachment(
-            secretId,
-            { storageObjectId, role: 'card_front' } as any,
-            userId,
-            writePerms,
-          ),
-        ).resolves.toBeDefined();
+          await expect(linkCardFace(magic)).resolves.toBeDefined();
 
-        expect(mockPrisma.secretAttachment.create).toHaveBeenCalled();
-      });
+          expect(mockPrisma.secretAttachment.create).toHaveBeenCalled();
+        },
+      );
 
       it('should accept a mime type carrying parameters and odd casing', async () => {
         mockPrisma.storageObject.findUnique.mockResolvedValue(
           objectWith({ mimeType: 'Image/JPEG; charset=binary', size: BigInt(2048) }) as any,
         );
 
-        await expect(
-          service.linkAttachment(
-            secretId,
-            { storageObjectId, role: 'card_front' } as any,
-            userId,
-            writePerms,
-          ),
-        ).resolves.toBeDefined();
+        await expect(linkCardFace(MAGIC.jpeg)).resolves.toBeDefined();
       });
 
       it('should reject a non-image mime type, naming the type and the accepted set', async () => {
@@ -992,10 +1060,32 @@ describe('SecretsService', () => {
         expect(mockPrisma.secretAttachment.create).not.toHaveBeenCalled();
       });
 
-      it('should not read from storage when the recorded size is trustworthy', async () => {
+      it('should read only the header when the recorded size is trustworthy', async () => {
         mockPrisma.storageObject.findUnique.mockResolvedValue(
           objectWith({ mimeType: 'image/jpeg', size: BigInt(2048) }) as any,
         );
+
+        // 100 x 1 MB. A trustworthy recorded size means no measuring is needed,
+        // so the read exists only to see the signature and must stop at the
+        // first chunk.
+        let chunksPulled = 0;
+        let remaining = 100;
+        const stream = new Readable({
+          read() {
+            if (remaining <= 0) {
+              this.push(null);
+              return;
+            }
+            remaining -= 1;
+            chunksPulled += 1;
+            this.push(
+              chunksPulled === 1
+                ? Buffer.concat([MAGIC.jpeg, Buffer.alloc(MB - MAGIC.jpeg.length)])
+                : Buffer.alloc(MB),
+            );
+          },
+        });
+        mockStorage.download.mockResolvedValue(stream);
 
         await service.linkAttachment(
           secretId,
@@ -1004,7 +1094,14 @@ describe('SecretsService', () => {
           writePerms,
         );
 
-        expect(mockStorage.download).not.toHaveBeenCalled();
+        // The signature check runs on EVERY card image — skipping it whenever a
+        // size was recorded would leave the resumable upload path (which does
+        // record one) as an unguarded way in.
+        expect(mockStorage.download).toHaveBeenCalledWith(
+          mockStorageObject.storageKey,
+        );
+        expect(chunksPulled).toBe(1);
+        expect(stream.destroyed).toBe(true);
       });
 
       // ---- size === 0 ("unknown", because simpleUpload records 0) ----------
@@ -1013,7 +1110,7 @@ describe('SecretsService', () => {
         mockPrisma.storageObject.findUnique.mockResolvedValue(
           objectWith({ mimeType: 'image/jpeg', size: BigInt(0) }) as any,
         );
-        mockStorage.download.mockResolvedValue(blobOf(2 * MB));
+        mockStorage.download.mockImplementation(async () => blobOf(2 * MB));
 
         await expect(
           service.linkAttachment(
@@ -1034,17 +1131,23 @@ describe('SecretsService', () => {
         mockPrisma.storageObject.findUnique.mockResolvedValue(
           objectWith({ mimeType: 'image/jpeg', size: BigInt(0) }) as any,
         );
-        mockStorage.download.mockResolvedValue(blobOf(8 * MB));
+        mockStorage.download.mockImplementation(async () => blobOf(8 * MB));
 
-        await expect(
-          service.linkAttachment(
+        let caught: BadRequestException | undefined;
+        try {
+          await service.linkAttachment(
             secretId,
             { storageObjectId, role: 'card_front' } as any,
             userId,
             writePerms,
-          ),
-        ).rejects.toThrow(BadRequestException);
+          );
+        } catch (err) {
+          caught = err as BadRequestException;
+        }
 
+        // A valid JPEG, so the only thing wrong with it is its size.
+        expect(caught).toBeInstanceOf(BadRequestException);
+        expect(caught!.message).toContain('bytes or smaller');
         expect(mockPrisma.secretAttachment.create).not.toHaveBeenCalled();
       });
 
@@ -1053,8 +1156,9 @@ describe('SecretsService', () => {
           objectWith({ mimeType: 'image/jpeg', size: BigInt(0) }) as any,
         );
 
-        // 100 x 1 MB. If the limit check drained the whole object it would pull
-        // all 100; it must stop one chunk past the 5 MB cap.
+        // 100 x 1 MB, the first carrying a valid JPEG signature so the format
+        // check is not what stops the read. If the limit check drained the whole
+        // object it would pull all 100; it must stop one chunk past the 5 MB cap.
         let chunksPulled = 0;
         let remaining = 100;
         const stream = new Readable({
@@ -1065,20 +1169,28 @@ describe('SecretsService', () => {
             }
             remaining -= 1;
             chunksPulled += 1;
-            this.push(Buffer.alloc(MB));
+            this.push(
+              chunksPulled === 1
+                ? Buffer.concat([MAGIC.jpeg, Buffer.alloc(MB - MAGIC.jpeg.length)])
+                : Buffer.alloc(MB),
+            );
           },
         });
         mockStorage.download.mockResolvedValue(stream);
 
-        await expect(
-          service.linkAttachment(
+        let caught: BadRequestException | undefined;
+        try {
+          await service.linkAttachment(
             secretId,
             { storageObjectId, role: 'card_front' } as any,
             userId,
             writePerms,
-          ),
-        ).rejects.toThrow(BadRequestException);
+          );
+        } catch (err) {
+          caught = err as BadRequestException;
+        }
 
+        expect(caught!.message).toContain('bytes or smaller');
         expect(chunksPulled).toBeLessThan(10);
         expect(stream.destroyed).toBe(true);
       });
@@ -1167,6 +1279,179 @@ describe('SecretsService', () => {
             writePerms,
           ),
         ).rejects.toThrow(BadRequestException);
+      });
+
+      // ---- magic-number verification (issue #37) ---------------------------
+      //
+      // Everything above trusts `storageObject.mimeType`, which is nothing more
+      // than the `Content-Type` the client declared when it uploaded. These
+      // tests are the ones that make the declared type mean something.
+
+      describe('content type verification', () => {
+        /**
+         * A card image declared as `declared` whose stored bytes start with
+         * `magic`. Recorded size is deliberately non-zero so these tests
+         * exercise the signature path on its own, with no size measuring.
+         */
+        function link(declared: string, magic: Buffer) {
+          mockPrisma.storageObject.findUnique.mockResolvedValue(
+            objectWith({ mimeType: declared, size: BigInt(2048) }) as any,
+          );
+          mockStorage.download.mockImplementation(async () => imageBlob(magic));
+          return service.linkAttachment(
+            secretId,
+            { storageObjectId, role: 'card_front' } as any,
+            userId,
+            writePerms,
+          );
+        }
+
+        it('should reject a PDF declared as image/jpeg', async () => {
+          // The whole point of the exercise: a client can put any string in
+          // Content-Type, so the bytes are the only thing worth believing.
+          let caught: BadRequestException | undefined;
+          try {
+            await link('image/jpeg', MAGIC.pdf);
+          } catch (err) {
+            caught = err as BadRequestException;
+          }
+
+          expect(caught).toBeInstanceOf(BadRequestException);
+          expect(caught!.message).toMatch(/do not match any accepted image format/);
+          expect(mockPrisma.secretAttachment.create).not.toHaveBeenCalled();
+        });
+
+        it('should reject an HTML document declared as image/png', async () => {
+          await expect(link('image/png', MAGIC.html)).rejects.toThrow(
+            BadRequestException,
+          );
+          expect(mockPrisma.secretAttachment.create).not.toHaveBeenCalled();
+        });
+
+        it('should reject a GIF, which is a real image but off the allowlist', async () => {
+          await expect(link('image/png', MAGIC.gif)).rejects.toThrow(
+            BadRequestException,
+          );
+        });
+
+        it('should reject a real JPEG declared as image/png', async () => {
+          // Both types are accepted, but the declaration still has to be true:
+          // the mimeType column is what the download endpoint serves back.
+          let caught: BadRequestException | undefined;
+          try {
+            await link('image/png', MAGIC.jpeg);
+          } catch (err) {
+            caught = err as BadRequestException;
+          }
+
+          expect(caught).toBeInstanceOf(BadRequestException);
+          expect(caught!.message).toContain('image/jpeg');
+          expect(caught!.message).toContain('image/png');
+          expect(mockPrisma.secretAttachment.create).not.toHaveBeenCalled();
+        });
+
+        it.each([
+          ['a truncated 2-byte header', Buffer.from([0xff, 0xd8])],
+          ['an empty file', Buffer.alloc(0)],
+          ['a 4-byte RIFF prefix with no form type', Buffer.from('RIFF', 'latin1')],
+          [
+            'an ftyp box cut off before its brand',
+            Buffer.from([0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70]),
+          ],
+        ])('should fail closed on %s', async (_label, bytes) => {
+          mockPrisma.storageObject.findUnique.mockResolvedValue(
+            objectWith({ mimeType: 'image/jpeg', size: BigInt(2048) }) as any,
+          );
+          mockStorage.download.mockImplementation(async () =>
+            Readable.from(bytes.length > 0 ? [bytes] : []),
+          );
+
+          await expect(
+            service.linkAttachment(
+              secretId,
+              { storageObjectId, role: 'card_front' } as any,
+              userId,
+              writePerms,
+            ),
+          ).rejects.toThrow(BadRequestException);
+          expect(mockPrisma.secretAttachment.create).not.toHaveBeenCalled();
+        });
+
+        it('should assemble the header across several small chunks', async () => {
+          // A provider is free to hand back 1 byte at a time; the detector must
+          // not conclude "unrecognised" from the first chunk alone.
+          mockPrisma.storageObject.findUnique.mockResolvedValue(
+            objectWith({ mimeType: 'image/webp', size: BigInt(2048) }) as any,
+          );
+          mockStorage.download.mockImplementation(async () =>
+            Readable.from([...MAGIC.webp].map((b) => Buffer.from([b]))),
+          );
+
+          await expect(
+            service.linkAttachment(
+              secretId,
+              { storageObjectId, role: 'card_front' } as any,
+              userId,
+              writePerms,
+            ),
+          ).resolves.toBeDefined();
+        });
+
+        // ---- ISO-BMFF brands -----------------------------------------------
+
+        it.each([
+          ['heic', MAGIC.heic, 'image/heic'],
+          ['heix', MAGIC.heix, 'image/heic'],
+          ['mif1', MAGIC.mif1, 'image/heif'],
+          ['heif', MAGIC.heif, 'image/heif'],
+        ])(
+          'should accept the ISO-BMFF major brand %s',
+          async (_brand, magic, declared) => {
+            await expect(link(declared, magic)).resolves.toBeDefined();
+          },
+        );
+
+        it('should accept a mif1-branded file declared as image/heic', async () => {
+          // iPhone photos routinely carry a `mif1` major brand while the browser
+          // announces them as image/heic. heic and heif are one family for the
+          // purposes of this check; demanding an exact match would reject real
+          // photos and buy nothing, since both types are already accepted.
+          await expect(link('image/heic', MAGIC.mif1)).resolves.toBeDefined();
+        });
+
+        it.each([
+          ['hevc (an HEVC image sequence, not a still)', MAGIC.hevc],
+          ['msf1 (a HEIF image sequence, not a still)', MAGIC.msf1],
+          ['avif (a still, but image/avif is off the allowlist)', MAGIC.avif],
+          ['mp42 (an MP4 video — ftyp alone proves nothing)', MAGIC.mp42],
+        ])('should reject the ISO-BMFF major brand %s', async (_label, magic) => {
+          await expect(link('image/heic', magic)).rejects.toThrow(
+            BadRequestException,
+          );
+          expect(mockPrisma.secretAttachment.create).not.toHaveBeenCalled();
+        });
+
+        it('should NOT signature-check a role-less attachment', async () => {
+          // The gate is scoped to card faces, exactly as the size/type gate is.
+          // General storage uploads remain unverified — a known gap, documented
+          // as such in docs/SECURITY-ARCHITECTURE.md.
+          mockPrisma.storageObject.findUnique.mockResolvedValue(
+            objectWith({ mimeType: 'image/jpeg', size: BigInt(2048) }) as any,
+          );
+          mockStorage.download.mockImplementation(async () =>
+            imageBlob(MAGIC.pdf),
+          );
+
+          await expect(
+            service.linkAttachment(
+              secretId,
+              { storageObjectId } as any,
+              userId,
+              writePerms,
+            ),
+          ).resolves.toBeDefined();
+          expect(mockStorage.download).not.toHaveBeenCalled();
+        });
       });
     });
   });
@@ -1764,14 +2049,31 @@ describe('SecretsService', () => {
         ...newFrontObject,
         size: BigInt(0),
       } as any);
-      mockStorage.download.mockResolvedValue(
-        Readable.from([Buffer.alloc(6 * 1024 * 1024)]),
+      // A genuine PNG (newFrontObject declares image/png), just far too big —
+      // so the rejection is unambiguously about size, not the signature.
+      mockStorage.download.mockImplementation(async () =>
+        imageBlob(MAGIC.png, 6 * 1024 * 1024),
       );
 
       await expect(
         service.renew(secretId, renewDto, userId, writePerms),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow(/bytes or smaller/);
       expect(mockStorage.download).toHaveBeenCalledWith(newFrontObject.storageKey);
+    });
+
+    it('should reject a renewal card face whose bytes are not an image', async () => {
+      // A renewal must not be a way around the signature gate that linking
+      // enforces — the two paths share enforceCardImageConstraints precisely so
+      // they cannot drift apart.
+      mockPrisma.storageObject.findUnique.mockResolvedValue({
+        ...newFrontObject,
+      } as any);
+      mockStorage.download.mockImplementation(async () => imageBlob(MAGIC.pdf));
+
+      await expect(
+        service.renew(secretId, renewDto, userId, writePerms),
+      ).rejects.toThrow(/do not match any accepted image format/);
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
     });
 
     it('should NOT apply the image gate to a role-less addition', async () => {

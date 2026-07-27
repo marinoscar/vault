@@ -932,11 +932,16 @@ Get system-wide settings.
   "ui": {
     "allowUserThemeOverride": true
   },
-  "security": {
-    "jwtAccessTtlMinutes": 15,
-    "refreshTtlDays": 14
-  },
   "features": {},
+  "ai": {
+    "enabled": false,
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "maxCallsPerUserPerDay": 50,
+    "apiKeyConfigured": false,
+    "apiKeyLast4": null,
+    "apiKeyUpdatedAt": null
+  },
   "updatedAt": "2024-01-01T00:00:00.000Z",
   "updatedBy": {
     "id": "uuid",
@@ -950,12 +955,18 @@ Get system-wide settings.
 | Field | Type | Description |
 |-------|------|-------------|
 | `ui.allowUserThemeOverride` | boolean | Allow users to override system theme |
-| `security.jwtAccessTtlMinutes` | number | JWT access token TTL in minutes |
-| `security.refreshTtlDays` | number | Refresh token TTL in days |
 | `features` | object | Feature flags (extensible) |
+| `ai` | object \| null | Card-extraction settings; write-only for the credential. See [System Settings `ai` block](#system-settings-ai-block). `null` on rows written before the block existed |
 | `updatedAt` | string | ISO 8601 timestamp of last update |
 | `updatedBy` | object | User who last updated settings |
 | `version` | number | Version number for optimistic concurrency control |
+
+**JWT token lifetimes are not part of this payload.** They are configured
+exclusively through the `JWT_ACCESS_TTL_MINUTES` and `JWT_REFRESH_TTL_DAYS`
+environment variables and are not readable or writable over the API. Earlier
+revisions of this document showed a `security: { jwtAccessTtlMinutes,
+refreshTtlDays }` block here; no such key has ever been returned by
+`SystemSettingsService.toResponse()`, and sending one is silently ignored.
 
 ---
 
@@ -970,13 +981,13 @@ Replace all system settings.
   "ui": {
     "allowUserThemeOverride": true
   },
-  "security": {
-    "jwtAccessTtlMinutes": 15,
-    "refreshTtlDays": 14
-  },
   "features": {}
 }
 ```
+
+`PUT` cannot touch the `ai` block — its DTO has no `ai` field, and the stored
+block is carried over untouched so a replace used to flip an unrelated flag
+cannot wipe the stored credential.
 
 **Response:**
 ```json
@@ -984,11 +995,16 @@ Replace all system settings.
   "ui": {
     "allowUserThemeOverride": true
   },
-  "security": {
-    "jwtAccessTtlMinutes": 15,
-    "refreshTtlDays": 14
-  },
   "features": {},
+  "ai": {
+    "enabled": false,
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "maxCallsPerUserPerDay": 50,
+    "apiKeyConfigured": false,
+    "apiKeyLast4": null,
+    "apiKeyUpdatedAt": null
+  },
   "updatedAt": "2024-01-01T12:00:00.000Z",
   "updatedBy": {
     "id": "uuid",
@@ -1025,11 +1041,16 @@ If-Match: 1
   "ui": {
     "allowUserThemeOverride": false
   },
-  "security": {
-    "jwtAccessTtlMinutes": 15,
-    "refreshTtlDays": 14
-  },
   "features": {},
+  "ai": {
+    "enabled": false,
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "maxCallsPerUserPerDay": 50,
+    "apiKeyConfigured": false,
+    "apiKeyLast4": null,
+    "apiKeyUpdatedAt": null
+  },
   "updatedAt": "2024-01-01T12:00:00.000Z",
   "updatedBy": {
     "id": "uuid",

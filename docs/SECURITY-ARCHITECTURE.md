@@ -932,30 +932,77 @@ The storage system implements multiple layers of security to protect uploaded fi
 
 ### Upload Validation
 
-All file uploads are validated before acceptance:
+Upload validation is **not uniform across the application**. There are two
+paths, and they are guarded very differently. Read this section as two separate
+stories, because treating the stronger one as the general case is exactly the
+mistake this section previously encouraged.
 
-**MIME Type Validation:**
-- Configurable allowlist of permitted file types
-- Default: Common document and image formats
-- Server-side validation (client-declared MIME type verified)
-- Prevents upload of executable files and scripts
+#### Path 1: Card face images — validated, including by content
 
-**File Size Limits:**
-- Configurable maximum file size (default: 10GB)
-- Enforced at both simple upload and multipart initialization
-- Prevents storage abuse and DoS attacks
-- Size validation before S3 upload begins
+An attachment linked to a secret under the `card_front` or `card_back` role goes
+through `enforceCardImageConstraints` (`apps/api/src/secrets/secrets.service.ts`)
+before the attachment row is created. Three checks apply, in order:
 
-**Content Type Verification:**
-- Validates that file content matches declared MIME type
-- Uses magic number detection for common file types
-- Prevents MIME type spoofing attacks
+**Declared MIME type:** must be one of `image/jpeg`, `image/png`, `image/webp`,
+`image/heic`, `image/heif`. The list is a code constant, deliberately not
+operator-configurable — widening it is a decision about what the card UI can
+render, and an env var that could be set to `image/*` would silently turn the
+allowlist off.
 
-**Example Configuration:**
-```typescript
-STORAGE_MAX_FILE_SIZE=10737418240      // 10GB in bytes
-STORAGE_ALLOWED_MIME_TYPES=application/pdf,image/jpeg,image/png,application/zip
-```
+**Size cap:** default 5 MB, overridable with `CARD_IMAGE_MAX_BYTES`. Because the
+simple-upload endpoint records `size: 0` (a placeholder no post-processor ever
+fills in), the recorded size is not trusted when it is zero; the object is
+streamed back from storage and counted instead, aborting one byte past the limit
+rather than downloading the whole object.
+
+**Content type verification (magic numbers):** the object's leading bytes are
+read back from storage and matched against the real signature of each accepted
+format — `FF D8 FF` for JPEG, the 8-byte PNG signature, `RIFF`/`WEBP` for WebP,
+and an ISO-BMFF `ftyp` box with a still-image major brand for HEIC/HEIF. The
+upload is rejected when the bytes match no accepted signature, **or** when they
+match a different format than the one declared. A PDF, an HTML document, or a
+shell script announced as `image/jpeg` is refused here. Detection is implemented
+in `apps/api/src/common/utils/image-signature.util.ts`.
+
+This check runs on **every** card image, including ones whose recorded size is
+trustworthy. The extra cost is a single storage read aborted after the first
+chunk. It is not skipped as an optimisation, because a control with a documented
+bypass — here, the resumable `/upload/init` path, which does record a real size —
+is not a control.
+
+Failures fail closed: an object that cannot be read back from storage, or whose
+header is too short to classify, is rejected rather than waved through.
+
+Note the limits of what this proves. Verifying the container says the file is a
+JPEG; it says nothing about whether the remaining bytes are well-formed or
+whether a decoder will survive them. It is not a substitute for a sandboxed
+decoder or a virus scan.
+
+#### Path 2: General storage uploads — size and type are taken on trust
+
+Everything else — `POST /api/storage/objects`, the resumable
+`/api/storage/objects/upload/init` flow, and any attachment linked without a
+card role — performs **no MIME type validation, no content-type verification,
+and no size enforcement**. The `mimeType` column is populated verbatim from the
+client's declared `Content-Type` header and is never checked against the bytes.
+
+`MAX_FILE_SIZE` and `ALLOWED_MIME_TYPES` are parsed into application config
+(`apps/api/src/config/configuration.ts`) but have no reader anywhere else in the
+codebase. Setting them changes nothing. `infra/compose/.env.example` carries the
+same warning next to the variables.
+
+This is a **known gap**, recorded here so it is visible rather than assumed
+handled. Anything relying on stored objects having a truthful `mimeType` — most
+obviously serving them back to a browser — must not assume this validation
+exists. The signature detector added for card images is deliberately reusable
+and is the obvious starting point for closing it.
+
+| | Card face images | General storage uploads |
+|---|---|---|
+| Declared MIME type checked against an allowlist | Yes (5 image types, hard-coded) | No |
+| File contents verified against declared type | Yes (magic numbers) | No |
+| Size limit enforced | Yes (`CARD_IMAGE_MAX_BYTES`, default 5 MB) | No (`MAX_FILE_SIZE` is unread) |
+| Behaviour on unreadable/unclassifiable file | Reject | N/A — nothing is inspected |
 
 ### Access Control
 
@@ -1155,25 +1202,39 @@ HAVING COUNT(*) > 10;
 
 ### Security Best Practices
 
+These are the practices this section aims at. Where the application does not yet
+meet one, it is marked — a best-practices list that quietly describes aspirations
+as facts is how the "magic number detection" claim survived in this document for
+as long as it did.
+
 **Do's:**
 - ✅ Use IAM roles instead of access keys in production
 - ✅ Enable S3 server-side encryption
 - ✅ Set short expiration times on presigned URLs
-- ✅ Validate file types server-side (never trust client)
-- ✅ Enforce file size limits to prevent abuse
+- ⚠️ Validate file types server-side (never trust client) — **done for card face
+  images only**; general storage uploads take the client's declared
+  `Content-Type` on trust. See *Upload Validation* above.
+- ⚠️ Enforce file size limits to prevent abuse — **card images only**
+  (`CARD_IMAGE_MAX_BYTES`); `MAX_FILE_SIZE` is configured but unread
 - ✅ Monitor audit logs for suspicious patterns
 - ✅ Block public access on S3 buckets
 - ✅ Use HTTPS for all S3 operations
-- ✅ Implement virus scanning for user uploads (recommended)
+- ❌ Implement virus scanning for user uploads — **not implemented** (recommended)
 
 **Don'ts:**
 - ❌ Never commit AWS credentials to source control
-- ❌ Never allow unrestricted file uploads
-- ❌ Never rely on client-side MIME type validation
+- ⚠️ Never allow unrestricted file uploads — general storage uploads are
+  currently unrestricted by type and size; only the card image path is gated
+- ⚠️ Never rely on client-side MIME type validation — the card image path is
+  compliant: the declared type is checked against the file's magic numbers and a
+  mismatch is rejected. The general storage path is **not** compliant: the
+  declared `Content-Type` is stored and served back unverified. This is the
+  known gap described under *Upload Validation*.
 - ❌ Never use long-lived presigned URLs (> 1 hour)
 - ❌ Never skip ownership validation on operations
 - ❌ Never expose S3 bucket names in error messages
-- ❌ Never allow executable file uploads (.exe, .sh, .bat)
+- ⚠️ Never allow executable file uploads (.exe, .sh, .bat) — nothing currently
+  prevents this on the general storage path
 
 ---
 

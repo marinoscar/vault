@@ -1,494 +1,273 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { render, mockUser, mockAdminUser } from '../utils/test-utils';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { screen } from '@testing-library/react';
+import { render, mockUser } from '../utils/test-utils';
 import HomePage from '../../pages/HomePage';
+import type { SecretListItem, SecretType, MediaFolder } from '../../types';
+
+// HomePage delegates all of its data to these three hooks and simply wires
+// their state into child components. Mocking them keeps these tests focused
+// on HomePage's own composition/wiring logic rather than re-testing the
+// hooks' internal fetch behaviour (or requiring a real network layer).
+vi.mock('../../hooks/useSecrets', () => ({ useSecrets: vi.fn() }));
+vi.mock('../../hooks/useSecretTypes', () => ({ useSecretTypes: vi.fn() }));
+vi.mock('../../hooks/useMediaFolders', () => ({ useMediaFolders: vi.fn() }));
+
+import { useSecrets } from '../../hooks/useSecrets';
+import { useSecretTypes } from '../../hooks/useSecretTypes';
+import { useMediaFolders } from '../../hooks/useMediaFolders';
+
+const mockFetchSecrets = vi.fn();
+const mockFetchTypes = vi.fn();
+const mockFetchFolders = vi.fn();
+
+const mockSecretType: SecretType = {
+  id: 'type-1',
+  name: 'Password',
+  description: null,
+  icon: 'Key',
+  fields: [],
+  allowAttachments: false,
+  isSystem: true,
+  createdAt: '2024-01-01T00:00:00.000Z',
+};
+
+const mockSecret: SecretListItem = {
+  id: 'secret-1',
+  name: 'GitHub',
+  description: 'Personal access token',
+  type: mockSecretType,
+  currentVersion: 2,
+  createdAt: '2024-01-01T00:00:00.000Z',
+  updatedAt: '2024-01-01T00:00:00.000Z',
+};
+
+const mockFolder: MediaFolder = {
+  id: 'folder-1',
+  name: 'Receipts',
+  userId: mockUser.id,
+  fileCount: 3,
+  createdAt: '2024-01-01T00:00:00.000Z',
+  updatedAt: '2024-01-01T00:00:00.000Z',
+};
+
+function mockData(overrides: {
+  secrets?: SecretListItem[];
+  totalSecrets?: number;
+  secretsLoading?: boolean;
+  types?: SecretType[];
+  typesLoading?: boolean;
+  folders?: MediaFolder[];
+  totalFolders?: number;
+  foldersLoading?: boolean;
+} = {}) {
+  vi.mocked(useSecrets).mockReturnValue({
+    secrets: overrides.secrets ?? [],
+    totalItems: overrides.totalSecrets ?? (overrides.secrets?.length ?? 0),
+    page: 1,
+    pageSize: 5,
+    totalPages: 1,
+    isLoading: overrides.secretsLoading ?? false,
+    error: null,
+    fetchSecrets: mockFetchSecrets,
+    createSecret: vi.fn(),
+    deleteSecret: vi.fn(),
+  });
+
+  vi.mocked(useSecretTypes).mockReturnValue({
+    types: overrides.types ?? [],
+    isLoading: overrides.typesLoading ?? false,
+    error: null,
+    fetchTypes: mockFetchTypes,
+    createType: vi.fn(),
+    updateType: vi.fn(),
+    deleteType: vi.fn(),
+  });
+
+  vi.mocked(useMediaFolders).mockReturnValue({
+    folders: overrides.folders ?? [],
+    totalItems: overrides.totalFolders ?? (overrides.folders?.length ?? 0),
+    page: 1,
+    pageSize: 5,
+    totalPages: 1,
+    isLoading: overrides.foldersLoading ?? false,
+    error: null,
+    fetchFolders: mockFetchFolders,
+    createFolder: vi.fn(),
+    deleteFolder: vi.fn(),
+    renameFolder: vi.fn(),
+  });
+}
 
 describe('HomePage', () => {
   beforeEach(() => {
-    // Reset any state before each test
+    vi.clearAllMocks();
+    mockData();
+
+    // WelcomeHeader's greeting depends on the wall-clock hour; pin it so the
+    // heading text is deterministic across CI/local runs.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2024, 0, 1, 10, 0, 0)); // 10:00 -> "Good morning"
   });
 
-  describe('Rendering', () => {
-    it('should render welcome message with user display name', async () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  describe('Greeting header', () => {
+    it("should render the greeting with the user's display name", () => {
+      render(<HomePage />, { wrapperOptions: { authenticated: true, user: mockUser } });
+
+      expect(
+        screen.getByRole('heading', { level: 1, name: `Good morning, ${mockUser.displayName}` }),
+      ).toBeInTheDocument();
+    });
+
+    it('should render the greeting without a trailing name when displayName is null', () => {
       render(<HomePage />, {
-        wrapperOptions: {
-          authenticated: true,
-          user: mockUser,
-        },
+        wrapperOptions: { authenticated: true, user: { ...mockUser, displayName: null } },
       });
 
-      await waitFor(() => {
-        expect(screen.getByRole('heading', { name: /welcome back, test user/i })).toBeInTheDocument();
-      });
+      expect(screen.getByRole('heading', { level: 1, name: 'Good morning' })).toBeInTheDocument();
     });
 
-    it('should render welcome message without name when display name is null', async () => {
-      const userWithoutName = {
-        ...mockUser,
-        displayName: null,
-      };
+    it('should render the greeting without a name when there is no user', () => {
+      render(<HomePage />, { wrapperOptions: { authenticated: true, user: null } });
 
-      render(<HomePage />, {
-        wrapperOptions: {
-          authenticated: true,
-          user: userWithoutName,
-        },
-      });
-
-      await waitFor(() => {
-        expect(screen.getByRole('heading', { name: /^welcome back$/i })).toBeInTheDocument();
-      });
+      expect(screen.getByRole('heading', { level: 1, name: 'Good morning' })).toBeInTheDocument();
     });
 
-    it('should render dashboard overview description', () => {
+    it('should render the vault subtitle', () => {
       render(<HomePage />);
 
-      expect(screen.getByText(/your dashboard overview/i)).toBeInTheDocument();
-    });
-
-    it('should render UserProfileCard component', () => {
-      render(<HomePage />);
-
-      // UserProfileCard shows the user's email
-      expect(screen.getByText(mockUser.email)).toBeInTheDocument();
-    });
-
-    it('should render QuickActions component', () => {
-      render(<HomePage />);
-
-      // QuickActions has a title
-      expect(screen.getByText(/quick actions/i)).toBeInTheDocument();
+      expect(screen.getByText("Here's what's happening in your vault")).toBeInTheDocument();
     });
   });
 
-  describe('User Profile Card Display', () => {
-    it('should display user email in profile card', () => {
+  describe('Data fetching on mount', () => {
+    it('should fetch the 5 most recently updated secrets', () => {
       render(<HomePage />);
 
-      expect(screen.getByText(mockUser.email)).toBeInTheDocument();
-    });
-
-    it('should display user display name in profile card', () => {
-      render(<HomePage />);
-
-      expect(screen.getByText(mockUser.displayName!)).toBeInTheDocument();
-    });
-
-    it('should display user roles as chips', () => {
-      render(<HomePage />);
-
-      mockUser.roles.forEach((role) => {
-        expect(screen.getByText(role.name)).toBeInTheDocument();
+      expect(mockFetchSecrets).toHaveBeenCalledWith({
+        pageSize: 5,
+        sortBy: 'updatedAt',
+        sortOrder: 'desc',
       });
     });
 
-    it('should display member since date', () => {
+    it('should fetch secret types', () => {
       render(<HomePage />);
 
-      expect(screen.getByText(/member since/i)).toBeInTheDocument();
+      expect(mockFetchTypes).toHaveBeenCalledWith();
     });
 
-    it('should display account settings button', () => {
+    it('should fetch the 5 most recently created media folders', () => {
       render(<HomePage />);
 
-      expect(screen.getByRole('button', { name: /account settings/i })).toBeInTheDocument();
+      expect(mockFetchFolders).toHaveBeenCalledWith({
+        pageSize: 5,
+        sortBy: 'createdAt',
+        sortOrder: 'desc',
+      });
     });
   });
 
-  describe('Quick Actions Section', () => {
-    it('should display User Settings quick action', () => {
+  describe('Composition', () => {
+    it('should render all dashboard sections', () => {
       render(<HomePage />);
 
-      expect(screen.getByText(/^user settings$/i)).toBeInTheDocument();
-      expect(screen.getByText(/manage your profile and preferences/i)).toBeInTheDocument();
+      // Each section renders its title as a heading; query by role/name so
+      // this doesn't collide with the "Secret Types" stat label below.
+      expect(screen.getByRole('heading', { name: 'Recent Secrets' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Recent Media' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Quick Actions' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Secret Types' })).toBeInTheDocument();
     });
 
-    it('should display Theme quick action', () => {
-      render(<HomePage />);
-
-      expect(screen.getByText(/^theme$/i)).toBeInTheDocument();
-      expect(screen.getByText(/customize your display preferences/i)).toBeInTheDocument();
-    });
-
-    it('should not display System Settings for non-admin users', () => {
-      render(<HomePage />, {
-        wrapperOptions: {
-          authenticated: true,
-          user: mockUser, // viewer role
-        },
-      });
-
-      expect(screen.queryByText(/^system settings$/i)).not.toBeInTheDocument();
-    });
-
-    it('should display System Settings for admin users', () => {
-      render(<HomePage />, {
-        wrapperOptions: {
-          authenticated: true,
-          user: mockAdminUser,
-        },
-      });
-
-      expect(screen.getByText(/^system settings$/i)).toBeInTheDocument();
-      expect(screen.getByText(/configure application settings/i)).toBeInTheDocument();
-    });
-  });
-
-  describe('Role-Based Display', () => {
-    it('should render correctly for Viewer role', () => {
-      const viewerUser = {
-        ...mockUser,
-        roles: [{ name: 'viewer' }],
-        permissions: ['user_settings:read', 'user_settings:write'],
-      };
-
-      render(<HomePage />, {
-        wrapperOptions: {
-          authenticated: true,
-          user: viewerUser,
-        },
-      });
-
-      // Should see basic quick actions
-      expect(screen.getByText(/^user settings$/i)).toBeInTheDocument();
-      expect(screen.getByText(/^theme$/i)).toBeInTheDocument();
-
-      // Should not see admin actions
-      expect(screen.queryByText(/^system settings$/i)).not.toBeInTheDocument();
-    });
-
-    it('should render correctly for Contributor role', () => {
-      const contributorUser = {
-        ...mockUser,
-        displayName: 'Contributor User',
-        roles: [{ name: 'contributor' }],
-        permissions: ['user_settings:read', 'user_settings:write'],
-      };
-
-      render(<HomePage />, {
-        wrapperOptions: {
-          authenticated: true,
-          user: contributorUser,
-        },
-      });
-
-      // Should see basic quick actions
-      expect(screen.getByText(/^user settings$/i)).toBeInTheDocument();
-      expect(screen.getByText(/^theme$/i)).toBeInTheDocument();
-
-      // Should not see admin actions
-      expect(screen.queryByText(/^system settings$/i)).not.toBeInTheDocument();
-    });
-
-    it('should render correctly for Admin role', () => {
-      render(<HomePage />, {
-        wrapperOptions: {
-          authenticated: true,
-          user: mockAdminUser,
-        },
-      });
-
-      // Should see all quick actions including admin
-      expect(screen.getByText(/^user settings$/i)).toBeInTheDocument();
-      expect(screen.getByText(/^theme$/i)).toBeInTheDocument();
-      expect(screen.getByText(/^system settings$/i)).toBeInTheDocument();
-    });
-
-    it('should display admin chip for admin users', () => {
-      render(<HomePage />, {
-        wrapperOptions: {
-          authenticated: true,
-          user: mockAdminUser,
-        },
-      });
-
-      const adminChip = screen.getByText('admin');
-      expect(adminChip).toBeInTheDocument();
-    });
-  });
-
-  describe('Navigation', () => {
-    it('should navigate to settings when clicking Account Settings button', async () => {
-      const user = userEvent.setup();
-
-      render(<HomePage />);
-
-      const settingsButton = screen.getByRole('button', { name: /account settings/i });
-      await user.click(settingsButton);
-
-      // Navigation is handled by MemoryRouter in tests
-      // We verify the button is clickable and doesn't crash
-      expect(settingsButton).toBeInTheDocument();
-    });
-
-    it('should navigate to settings when clicking User Settings quick action', async () => {
-      const user = userEvent.setup();
-
-      render(<HomePage />);
-
-      const userSettingsButton = screen.getByRole('button', { name: /user settings manage your profile and preferences/i });
-      await user.click(userSettingsButton);
-
-      expect(userSettingsButton).toBeInTheDocument();
-    });
-
-    it('should navigate to theme settings when clicking Theme quick action', async () => {
-      const user = userEvent.setup();
-
-      render(<HomePage />);
-
-      const themeButton = screen.getByRole('button', { name: /theme customize your display preferences/i });
-      await user.click(themeButton);
-
-      expect(themeButton).toBeInTheDocument();
-    });
-
-    it('should navigate to system settings when clicking System Settings (admin)', async () => {
-      const user = userEvent.setup();
-
-      render(<HomePage />, {
-        wrapperOptions: {
-          authenticated: true,
-          user: mockAdminUser,
-        },
-      });
-
-      const systemSettingsButton = screen.getByRole('button', { name: /system settings configure application settings/i });
-      await user.click(systemSettingsButton);
-
-      expect(systemSettingsButton).toBeInTheDocument();
-    });
-  });
-
-  describe('Layout and Structure', () => {
-    it('should use Container with maxWidth lg', () => {
+    it('should render inside a max-width lg Container', () => {
       const { container } = render(<HomePage />);
 
-      const muiContainer = container.querySelector('.MuiContainer-maxWidthLg');
-      expect(muiContainer).toBeInTheDocument();
-    });
-
-    it('should have proper vertical padding', () => {
-      const { container } = render(<HomePage />);
-
-      // Check that Box with py: 4 exists
-      const paddedBox = container.querySelector('[class*="MuiBox"]');
-      expect(paddedBox).toBeInTheDocument();
-    });
-
-    it('should use Grid layout for profile and actions', () => {
-      const { container } = render(<HomePage />);
-
-      const gridContainers = container.querySelectorAll('.MuiGrid-container');
-      expect(gridContainers.length).toBeGreaterThan(0);
-    });
-
-    it('should have responsive grid items', () => {
-      const { container } = render(<HomePage />);
-
-      // Profile card should be xs=12, md=4
-      // Quick actions should be xs=12, md=8
-      const gridItems = container.querySelectorAll('.MuiGrid-item');
-      expect(gridItems.length).toBeGreaterThanOrEqual(2);
+      expect(container.querySelector('.MuiContainer-maxWidthLg')).toBeInTheDocument();
     });
   });
 
-  describe('User Display Variations', () => {
-    it('should handle user with no profile image', () => {
-      const userNoImage = {
-        ...mockUser,
-        profileImageUrl: null,
-      };
-
-      render(<HomePage />, {
-        wrapperOptions: {
-          authenticated: true,
-          user: userNoImage,
-        },
+  describe('Stats summary', () => {
+    it('should display the total secrets, media folders, and secret type counts from the hooks', () => {
+      mockData({
+        totalSecrets: 12,
+        folders: [mockFolder],
+        totalFolders: 7,
+        types: [mockSecretType, { ...mockSecretType, id: 'type-2', name: 'API Key' }],
       });
 
-      // Should still render the user's initials in avatar
-      expect(screen.getByText(mockUser.email)).toBeInTheDocument();
-    });
-
-    it('should handle user with profile image URL', () => {
-      const userWithImage = {
-        ...mockUser,
-        profileImageUrl: 'https://example.com/avatar.jpg',
-      };
-
-      render(<HomePage />, {
-        wrapperOptions: {
-          authenticated: true,
-          user: userWithImage,
-        },
-      });
-
-      expect(screen.getByText(mockUser.email)).toBeInTheDocument();
-    });
-
-    it('should display user initials when no display name', () => {
-      const userWithoutName = {
-        ...mockUser,
-        displayName: null,
-      };
-
-      render(<HomePage />, {
-        wrapperOptions: {
-          authenticated: true,
-          user: userWithoutName,
-        },
-      });
-
-      // UserProfileCard shows "No name set" when displayName is null
-      expect(screen.getByText(/no name set/i)).toBeInTheDocument();
-    });
-
-    it('should handle multiple roles', () => {
-      const multiRoleUser = {
-        ...mockUser,
-        roles: [{ name: 'admin' }, { name: 'contributor' }],
-        permissions: mockAdminUser.permissions,
-      };
-
-      render(<HomePage />, {
-        wrapperOptions: {
-          authenticated: true,
-          user: multiRoleUser,
-        },
-      });
-
-      expect(screen.getByText('admin')).toBeInTheDocument();
-      expect(screen.getByText('contributor')).toBeInTheDocument();
-    });
-  });
-
-  describe('Date Formatting', () => {
-    it('should format creation date correctly', () => {
-      const specificDate = new Date('2024-01-15T10:00:00Z');
-      const userWithDate = {
-        ...mockUser,
-        createdAt: specificDate.toISOString(),
-      };
-
-      render(<HomePage />, {
-        wrapperOptions: {
-          authenticated: true,
-          user: userWithDate,
-        },
-      });
-
-      // The date should be formatted using toLocaleDateString
-      // We just verify the "Member since" label is present
-      expect(screen.getByText(/member since/i)).toBeInTheDocument();
-    });
-  });
-
-  describe('Authentication States', () => {
-    it('should render when user is authenticated', () => {
-      render(<HomePage />, {
-        wrapperOptions: {
-          authenticated: true,
-          user: mockUser,
-        },
-      });
-
-      expect(screen.getByRole('heading', { name: /welcome back/i })).toBeInTheDocument();
-    });
-
-    it('should handle missing user data gracefully', () => {
-      render(<HomePage />, {
-        wrapperOptions: {
-          authenticated: true,
-          user: null,
-        },
-      });
-
-      // Should still render welcome header without name
-      expect(screen.getByRole('heading', { name: /^welcome back$/i })).toBeInTheDocument();
-    });
-  });
-
-  describe('Accessibility', () => {
-    it('should have proper heading hierarchy', () => {
       render(<HomePage />);
 
-      const mainHeading = screen.getByRole('heading', { name: /welcome back/i });
-      expect(mainHeading).toBeInTheDocument();
-      expect(mainHeading.tagName).toBe('H1');
+      expect(screen.getByText('12')).toBeInTheDocument();
+      expect(screen.getByText('Secrets')).toBeInTheDocument();
+      expect(screen.getByText('7')).toBeInTheDocument();
+      expect(screen.getByText('Media Folders')).toBeInTheDocument();
+      expect(screen.getByText('2')).toBeInTheDocument();
+      // "Secret Types" also labels this stat AND titles the SecretTypesOverview
+      // card below, so two matches are expected here.
+      expect(screen.getAllByText('Secret Types')).toHaveLength(2);
     });
 
-    it('should have descriptive button labels', () => {
-      render(<HomePage />);
+    it('should render skeleton placeholders instead of counts while any source is still loading', () => {
+      mockData({ secretsLoading: true });
 
-      // All buttons should have accessible names
-      const accountSettingsBtn = screen.getByRole('button', { name: /account settings/i });
-      expect(accountSettingsBtn).toBeInTheDocument();
+      const { container } = render(<HomePage />);
 
-      const userSettingsBtn = screen.getByRole('button', { name: /user settings/i });
-      expect(userSettingsBtn).toBeInTheDocument();
-    });
-
-    it('should have proper alt text for avatar images', () => {
-      const userWithImage = {
-        ...mockUser,
-        profileImageUrl: 'https://example.com/avatar.jpg',
-      };
-
-      render(<HomePage />, {
-        wrapperOptions: {
-          authenticated: true,
-          user: userWithImage,
-        },
-      });
-
-      const avatar = screen.getByAltText(mockUser.displayName!);
-      expect(avatar).toBeInTheDocument();
+      expect(container.querySelectorAll('.MuiSkeleton-root').length).toBeGreaterThan(0);
+      expect(screen.queryByText('Secrets')).not.toBeInTheDocument();
     });
   });
 
-  describe('Integration', () => {
-    it('should render all components together correctly', () => {
-      render(<HomePage />, {
-        wrapperOptions: {
-          authenticated: true,
-          user: mockAdminUser,
-        },
-      });
+  describe('Recent Secrets', () => {
+    it("should list the current user's recent secrets", () => {
+      mockData({ secrets: [mockSecret] });
 
-      // Main heading
-      expect(screen.getByRole('heading', { name: /welcome back, admin user/i })).toBeInTheDocument();
+      render(<HomePage />);
 
-      // Dashboard description
-      expect(screen.getByText(/your dashboard overview/i)).toBeInTheDocument();
-
-      // Profile card elements
-      expect(screen.getByText(mockAdminUser.email)).toBeInTheDocument();
-      expect(screen.getByText(/member since/i)).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /account settings/i })).toBeInTheDocument();
-
-      // Quick actions
-      expect(screen.getByText(/quick actions/i)).toBeInTheDocument();
-      expect(screen.getByText(/^user settings$/i)).toBeInTheDocument();
-      expect(screen.getByText(/^theme$/i)).toBeInTheDocument();
-      expect(screen.getByText(/^system settings$/i)).toBeInTheDocument();
+      expect(screen.getByText('GitHub')).toBeInTheDocument();
+      expect(screen.getByText('Personal access token')).toBeInTheDocument();
     });
 
-    it('should maintain consistent layout across different user types', () => {
-      const { rerender } = render(<HomePage />, {
-        wrapperOptions: {
-          authenticated: true,
-          user: mockUser,
-        },
-      });
+    it('should show an empty state when there are no secrets yet', () => {
+      render(<HomePage />);
 
-      expect(screen.getByText(/quick actions/i)).toBeInTheDocument();
+      expect(screen.getByText('No secrets yet')).toBeInTheDocument();
+    });
+  });
 
-      // Re-render with admin user
-      rerender(<HomePage />);
+  describe('Recent Media', () => {
+    it('should list recent media folders', () => {
+      mockData({ folders: [mockFolder] });
 
-      expect(screen.getByText(/quick actions/i)).toBeInTheDocument();
+      render(<HomePage />);
+
+      expect(screen.getByText('Receipts')).toBeInTheDocument();
+      expect(screen.getByText('3 files')).toBeInTheDocument();
+    });
+
+    it('should show an empty state when there are no media folders yet', () => {
+      render(<HomePage />);
+
+      expect(screen.getByText('No media folders yet')).toBeInTheDocument();
+    });
+  });
+
+  describe('Secret Types Overview', () => {
+    it('should list secret type chips', () => {
+      mockData({ types: [mockSecretType] });
+
+      render(<HomePage />);
+
+      expect(screen.getByText('Password')).toBeInTheDocument();
+    });
+
+    it('should show an empty state when there are no secret types', () => {
+      render(<HomePage />);
+
+      expect(screen.getByText('No secret types available')).toBeInTheDocument();
     });
   });
 });

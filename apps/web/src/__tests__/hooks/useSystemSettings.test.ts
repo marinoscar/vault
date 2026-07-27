@@ -11,6 +11,7 @@ const mockSystemSettings: SystemSettings = {
     allowUserThemeOverride: true,
   },
   features: {},
+  ai: null,
   updatedAt: new Date().toISOString(),
   updatedBy: null,
   version: 1,
@@ -294,6 +295,7 @@ describe('useSystemSettings', () => {
       const newSettings = {
         ui: { allowUserThemeOverride: false },
         features: { newFeature: true },
+        ai: null,
       };
 
       await act(async () => {
@@ -335,6 +337,7 @@ describe('useSystemSettings', () => {
       const newSettings = {
         ui: { allowUserThemeOverride: false },
         features: {},
+        ai: null,
       };
 
       let updatePromise: Promise<void>;
@@ -373,6 +376,7 @@ describe('useSystemSettings', () => {
       const newSettings = {
         ui: { allowUserThemeOverride: false },
         features: {},
+        ai: null,
       };
 
       // Should throw when replace fails
@@ -673,6 +677,7 @@ describe('useSystemSettings', () => {
       const newSettings = {
         ui: { allowUserThemeOverride: false },
         features: {},
+        ai: null,
       };
 
       // Should throw when permission is denied

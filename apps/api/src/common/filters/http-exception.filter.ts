@@ -36,14 +36,15 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
       if (typeof exceptionResponse === 'string') {
         message = exceptionResponse;
+        code = this.getCodeFromStatus(status);
       } else if (typeof exceptionResponse === 'object') {
         const resp = exceptionResponse as Record<string, unknown>;
         message = (resp.message as string) || message;
+        // Preserve an application-supplied machine-readable code (e.g.
+        // AI_QUOTA_EXCEEDED); only derive one from the status when absent.
         code = (resp.code as string) || this.getCodeFromStatus(status);
         details = resp.details;
       }
-
-      code = this.getCodeFromStatus(status);
     } else if (exception instanceof Error) {
       message = exception.message;
       // Don't expose stack traces in production
@@ -88,6 +89,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
       422: 'UNPROCESSABLE_ENTITY',
       429: 'TOO_MANY_REQUESTS',
       500: 'INTERNAL_ERROR',
+      502: 'BAD_GATEWAY',
+      503: 'SERVICE_UNAVAILABLE',
     };
     return codeMap[status] || 'ERROR';
   }

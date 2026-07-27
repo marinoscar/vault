@@ -306,7 +306,20 @@ describe('HttpExceptionFilter', () => {
       );
     });
 
-    it('should default to ERROR for unmapped status codes', () => {
+    it('should map 502 to BAD_GATEWAY', () => {
+      const exception = new HttpException('Upstream failed', HttpStatus.BAD_GATEWAY);
+
+      filter.catch(exception, mockHost);
+
+      expect(mockResponse.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          statusCode: 502,
+          code: 'BAD_GATEWAY',
+        }),
+      );
+    });
+
+    it('should map 503 to SERVICE_UNAVAILABLE', () => {
       const exception = new HttpException('Service unavailable', HttpStatus.SERVICE_UNAVAILABLE);
 
       filter.catch(exception, mockHost);
@@ -314,6 +327,19 @@ describe('HttpExceptionFilter', () => {
       expect(mockResponse.send).toHaveBeenCalledWith(
         expect.objectContaining({
           statusCode: 503,
+          code: 'SERVICE_UNAVAILABLE',
+        }),
+      );
+    });
+
+    it('should default to ERROR for unmapped status codes', () => {
+      const exception = new HttpException('I am a teapot', HttpStatus.I_AM_A_TEAPOT);
+
+      filter.catch(exception, mockHost);
+
+      expect(mockResponse.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          statusCode: 418,
           code: 'ERROR',
         }),
       );
@@ -333,6 +359,20 @@ describe('HttpExceptionFilter', () => {
       );
     });
 
+    it('should derive the code from the status for a string response', () => {
+      const exception = new HttpException('Nothing here', HttpStatus.NOT_FOUND);
+
+      filter.catch(exception, mockHost);
+
+      expect(mockResponse.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          statusCode: 404,
+          code: 'NOT_FOUND',
+          message: 'Nothing here',
+        }),
+      );
+    });
+
     it('should handle object exception response with custom code', () => {
       const exception = new HttpException(
         {
@@ -344,11 +384,113 @@ describe('HttpExceptionFilter', () => {
 
       filter.catch(exception, mockHost);
 
-      // Note: The filter overrides custom code with standard code mapping
       expect(mockResponse.send).toHaveBeenCalledWith(
         expect.objectContaining({
-          code: 'BAD_REQUEST',
+          code: 'CUSTOM_CODE',
           message: 'Custom error',
+        }),
+      );
+    });
+  });
+
+  // Regression coverage for issue #35: the filter used to read a custom `code`
+  // off the exception response and then unconditionally overwrite it with the
+  // status-derived code, so no application-defined code ever reached a client.
+  describe('Custom error code preservation (issue #35)', () => {
+    it.each([
+      ['AI_RATE_LIMITED', HttpStatus.TOO_MANY_REQUESTS, 429],
+      ['AI_QUOTA_EXCEEDED', HttpStatus.TOO_MANY_REQUESTS, 429],
+      ['AI_UPSTREAM_AUTH', HttpStatus.BAD_GATEWAY, 502],
+      ['AI_NOT_CONFIGURED', HttpStatus.SERVICE_UNAVAILABLE, 503],
+      ['DATABASE_SEED_REQUIRED', HttpStatus.INTERNAL_SERVER_ERROR, 500],
+    ])(
+      'preserves %s instead of replacing it with the status-derived code',
+      (customCode, status, expectedStatusCode) => {
+        const exception = new HttpException(
+          { code: customCode, message: 'Something specific happened' },
+          status,
+        );
+
+        filter.catch(exception, mockHost);
+
+        expect(mockResponse.code).toHaveBeenCalledWith(expectedStatusCode);
+        expect(mockResponse.send).toHaveBeenCalledWith(
+          expect.objectContaining({
+            statusCode: expectedStatusCode,
+            code: customCode,
+            message: 'Something specific happened',
+          }),
+        );
+      },
+    );
+
+    it('distinguishes two custom codes that share a status', () => {
+      const burst = new HttpException(
+        { code: 'AI_RATE_LIMITED', message: 'Slow down' },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+      const quota = new HttpException(
+        { code: 'AI_QUOTA_EXCEEDED', message: 'Daily limit reached' },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+
+      filter.catch(burst, mockHost);
+      filter.catch(quota, mockHost);
+
+      expect(mockResponse.send.mock.calls[0][0].code).toBe('AI_RATE_LIMITED');
+      expect(mockResponse.send.mock.calls[1][0].code).toBe('AI_QUOTA_EXCEEDED');
+    });
+
+    it('preserves custom code alongside details', () => {
+      const exception = new HttpException(
+        {
+          code: 'AI_INVALID_IMAGE',
+          message: 'Bad image',
+          details: { field: 'front' },
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+
+      filter.catch(exception, mockHost);
+
+      expect(mockResponse.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: 'AI_INVALID_IMAGE',
+          details: { field: 'front' },
+        }),
+      );
+    });
+
+    it('still falls back to the status-derived code when the object response has no code', () => {
+      const exception = new HttpException(
+        { message: 'Validation failed', details: [{ field: 'email' }] },
+        HttpStatus.BAD_REQUEST,
+      );
+
+      filter.catch(exception, mockHost);
+
+      expect(mockResponse.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          statusCode: 400,
+          code: 'BAD_REQUEST',
+          message: 'Validation failed',
+        }),
+      );
+    });
+
+    it('still falls back to the status-derived code for an unrelated object shape', () => {
+      // Nest's built-in exceptions produce { statusCode, message, error }.
+      const exception = new HttpException(
+        { statusCode: 403, message: 'Forbidden resource', error: 'Forbidden' },
+        HttpStatus.FORBIDDEN,
+      );
+
+      filter.catch(exception, mockHost);
+
+      expect(mockResponse.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          statusCode: 403,
+          code: 'FORBIDDEN',
         }),
       );
     });

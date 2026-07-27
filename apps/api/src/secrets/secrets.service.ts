@@ -15,6 +15,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CryptoService } from '../common/services/crypto.service';
 import { FieldDefinition } from '../secret-types/dto/create-secret-type.dto';
 import { PERMISSIONS } from '../common/constants/roles.constants';
+import {
+  detectImageType,
+  isDeclaredTypeConsistent,
+  IMAGE_SIGNATURE_HEADER_BYTES,
+} from '../common/utils/image-signature.util';
 import { STORAGE_PROVIDER, StorageProvider } from '../storage/providers';
 import { CreateSecretDto } from './dto/create-secret.dto';
 import { UpdateSecretDto } from './dto/update-secret.dto';
@@ -41,6 +46,10 @@ import {
  *
  * heic/heif are included because iOS cameras produce them by default; a user
  * photographing a card from an iPhone would otherwise be rejected.
+ *
+ * This list gates the DECLARED type. `enforceCardImageConstraints` separately
+ * verifies the file's leading bytes against the same set, so a declaration on
+ * this list has to be backed up by the contents.
  */
 const CARD_IMAGE_MIME_TYPES: readonly string[] = [
   'image/jpeg',
@@ -317,23 +326,32 @@ export class SecretsService {
   }
 
   /**
-   * Measure what a stored object ACTUALLY weighs, by reading it back from the
-   * storage provider and counting bytes.
+   * Read a stored object back from the storage provider far enough to answer
+   * two questions: what its leading bytes are, and — when asked — what it
+   * actually weighs.
    *
-   * Why this exists: `ObjectsService.simpleUpload` — the endpoint the card UI
-   * uploads through — writes `size: BigInt(0)` with a comment saying
+   * Why the size half exists: `ObjectsService.simpleUpload` — the endpoint the
+   * card UI uploads through — writes `size: BigInt(0)` with a comment saying
    * post-processing will fill it in, and no processor ever does. So for every
    * real card image the recorded size is 0, and a plain `size > max` check
    * would pass 100% of uploads while reading like a working limit.
    *
-   * Reading stops one byte past the limit: we only need to know whether the
-   * object is over, not how far over. Worst case transfer is therefore
-   * `limitBytes + 1`, not the whole object.
+   * Why the header half exists: the `mimeType` column holds whatever
+   * `Content-Type` the client declared at upload time. Nothing has ever checked
+   * it against the bytes. The header is what lets the caller disagree.
+   *
+   * Both halves share ONE bounded read, and the read is bounded twice over:
+   *   - `measureSize: false` stops as soon as the header is in hand, which is
+   *     the first chunk in every realistic case.
+   *   - `measureSize: true` stops one byte past `limitBytes`; we only need to
+   *     know whether the object is over, not how far over. Worst-case transfer
+   *     is `limitBytes + 1`, never the whole object.
    */
-  private async measureStoredObjectSize(
+  private async readStoredObjectPrefix(
     storageKey: string,
     limitBytes: number,
-  ): Promise<number> {
+    measureSize: boolean,
+  ): Promise<{ header: Buffer; size: number }> {
     let stream: Readable;
 
     try {
@@ -341,7 +359,7 @@ export class SecretsService {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(
-        `Cannot read storage object ${storageKey} to verify its size: ${message}`,
+        `Cannot read storage object ${storageKey} to verify it: ${message}`,
       );
       // Fail closed. An object we cannot read is not one we should be stamping
       // onto a card: the attachment would render as a broken image anyway, so
@@ -352,21 +370,35 @@ export class SecretsService {
     }
 
     let total = 0;
+    const headerChunks: Buffer[] = [];
+    let headerBytes = 0;
 
     try {
       for await (const chunk of stream) {
-        total += Buffer.isBuffer(chunk)
-          ? chunk.length
-          : Buffer.byteLength(String(chunk));
+        const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
+        total += buf.length;
 
-        if (total > limitBytes) {
+        if (headerBytes < IMAGE_SIGNATURE_HEADER_BYTES) {
+          headerChunks.push(buf);
+          headerBytes += buf.length;
+        }
+
+        const haveHeader = headerBytes >= IMAGE_SIGNATURE_HEADER_BYTES;
+
+        // Nothing left to learn: the caller trusts the recorded size, so the
+        // header was the only reason to open the stream at all.
+        if (!measureSize && haveHeader) {
+          break;
+        }
+
+        if (measureSize && total > limitBytes) {
           break;
         }
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(
-        `Failed while measuring storage object ${storageKey}: ${message}`,
+        `Failed while reading storage object ${storageKey}: ${message}`,
       );
       throw new BadRequestException(
         'This file could not be read from storage, so it cannot be attached',
@@ -375,12 +407,26 @@ export class SecretsService {
       stream.destroy();
     }
 
-    return total;
+    return {
+      header: Buffer.concat(headerChunks).subarray(
+        0,
+        IMAGE_SIGNATURE_HEADER_BYTES,
+      ),
+      size: total,
+    };
   }
 
   /**
    * Enforce the card-face image constraints on a StorageObject before it is
-   * linked: an image mime type from a fixed allowlist, and a size cap.
+   * linked: a declared mime type from a fixed allowlist, a size cap, and — the
+   * part that makes the other two mean something — a magic-number check that
+   * the bytes are actually one of the accepted formats.
+   *
+   * The signature check runs on EVERY card image, including one whose recorded
+   * size is trustworthy. Skipping it there would leave the resumable
+   * `/upload/init` path (which does record a real size) as an unguarded way in,
+   * and a control with a documented bypass is not a control. The cost is one
+   * `download` call whose stream is destroyed as soon as the first chunk lands.
    */
   private async enforceCardImageConstraints(
     storageObject: { mimeType: string; size: bigint | number; storageKey: string },
@@ -408,13 +454,17 @@ export class SecretsService {
     const recordedSize = Number(storageObject.size ?? 0);
 
     // A recorded size of 0 means "unknown", not "empty" — see
-    // measureStoredObjectSize for why. Trust the recorded value when the upload
-    // path supplied one (the resumable /upload/init path does), and pay for a
-    // bounded read-back only when it did not.
-    const actualSize =
-      recordedSize > 0
-        ? recordedSize
-        : await this.measureStoredObjectSize(storageObject.storageKey, maxBytes);
+    // readStoredObjectPrefix for why. Trust the recorded value when the upload
+    // path supplied one (the resumable /upload/init path does), and measure
+    // from the stream only when it did not. Either way the stream is opened,
+    // because the signature check needs the leading bytes.
+    const { header, size: streamedSize } = await this.readStoredObjectPrefix(
+      storageObject.storageKey,
+      maxBytes,
+      recordedSize <= 0,
+    );
+
+    const actualSize = recordedSize > 0 ? recordedSize : streamedSize;
 
     if (actualSize > maxBytes) {
       this.logger.warn(
@@ -423,6 +473,35 @@ export class SecretsService {
       );
       throw new BadRequestException(
         `Card images must be ${maxBytes} bytes or smaller`,
+      );
+    }
+
+    const detected = detectImageType(header);
+
+    // Fail closed on "cannot tell". A header too short to classify, or one that
+    // matches no accepted signature, is rejected on the same footing as an
+    // object we could not read at all — consistent with the read-back failure
+    // above, and the only safe reading of an unrecognised byte stream.
+    if (detected === null) {
+      this.logger.warn(
+        `Rejected ${role} attachment on secret ${secretId}: ` +
+          `declared "${mimeType}" but the file's leading bytes match no accepted ` +
+          `image signature`,
+      );
+      throw new BadRequestException(
+        `This file is not a valid ${CARD_IMAGE_MIME_TYPES.join(', ')} image; ` +
+          `its contents do not match any accepted image format`,
+      );
+    }
+
+    if (!isDeclaredTypeConsistent(detected, mimeType)) {
+      this.logger.warn(
+        `Rejected ${role} attachment on secret ${secretId}: ` +
+          `declared "${mimeType}" but the file's contents are ${detected}`,
+      );
+      throw new BadRequestException(
+        `This file is declared as "${mimeType}" but its contents are ` +
+          `${detected}; the declared type must match the actual file`,
       );
     }
   }
@@ -1275,8 +1354,9 @@ export class SecretsService {
     this.assertReplacementsAreDistinct(replacements);
 
     // Validate EVERY replacement before opening the transaction. The card image
-    // check may stream the object back from the storage provider to measure it,
-    // and holding a write transaction open across a network read is how a lock
+    // check streams the object back from the storage provider to read its
+    // signature (and, when the recorded size is unknown, to measure it), and
+    // holding a write transaction open across a network read is how a lock
     // pile-up starts. Failing here also means a rejected image never reaches the
     // version bump at all.
     for (const replacement of replacements) {

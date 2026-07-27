@@ -24,7 +24,7 @@ import { CardImages, supportsCardImages } from '../components/secrets/CardImages
 import { DynamicSecretFields } from '../components/secrets/DynamicSecretFields';
 import { useSecretDetail } from '../hooks/useSecretDetail';
 import type { SecretVersionDetailWithAttachments } from '../hooks/useSecretDetail';
-import { deleteSecret } from '../services/api';
+import { deleteSecret, unlinkSecretAttachment } from '../services/api';
 
 /**
  * Tabs are addressed by key, not by position.
@@ -35,6 +35,13 @@ import { deleteSecret } from '../services/api';
  * mapping independent of both.
  */
 type TabKey = 'details' | 'versions' | 'attachments';
+
+/**
+ * One channel for both outcomes of an action, so a failure cannot be reported
+ * through the success-shaped affordance. Errors are not auto-hidden — a delete
+ * that silently did nothing is exactly the bug this replaced.
+ */
+type Toast = { severity: 'success' | 'error'; message: string };
 
 export default function SecretDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -53,7 +60,9 @@ export default function SecretDetailPage() {
   const [versionDetailOpen, setVersionDetailOpen] = useState(false);
   const [selectedVersion, setSelectedVersion] =
     useState<SecretVersionDetailWithAttachments | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [toast, setToast] = useState<Toast | null>(null);
+  const [pendingDeleteAttachmentId, setPendingDeleteAttachmentId] = useState<string | null>(null);
+  const [deletingAttachment, setDeletingAttachment] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -82,7 +91,7 @@ export default function SecretDetailPage() {
     async (versionId: string) => {
       if (!id) return;
       await rollback(id, versionId);
-      setSuccessMessage('Rolled back successfully');
+      setToast({ severity: 'success', message: 'Rolled back successfully' });
       fetchSecret(id);
     },
     [id, rollback, fetchSecret],
@@ -92,9 +101,35 @@ export default function SecretDetailPage() {
     if (id) fetchSecret(id);
   }, [id, fetchSecret]);
 
-  const handleDeleteAttachment = useCallback(() => {
-    if (id) fetchSecret(id);
-  }, [id, fetchSecret]);
+  const handleDeleteAttachment = useCallback((attachmentId: string) => {
+    setPendingDeleteAttachmentId(attachmentId);
+  }, []);
+
+  /**
+   * Unlinking is not recoverable from the UI: the API refcount-deletes the
+   * underlying storage object once no other attachment row references it, so a
+   * file with a single reference is gone from S3 as well. Hence the confirm,
+   * and hence the failure has to be loud — the previous handler only refetched,
+   * which made a no-op indistinguishable from a successful delete.
+   */
+  const confirmDeleteAttachment = useCallback(async () => {
+    if (!id || !pendingDeleteAttachmentId) return;
+    setDeletingAttachment(true);
+    try {
+      await unlinkSecretAttachment(id, pendingDeleteAttachmentId);
+      setPendingDeleteAttachmentId(null);
+      await fetchSecret(id);
+      setToast({ severity: 'success', message: 'Attachment deleted' });
+    } catch (err) {
+      setPendingDeleteAttachmentId(null);
+      setToast({
+        severity: 'error',
+        message: err instanceof Error ? err.message : 'Failed to delete attachment',
+      });
+    } finally {
+      setDeletingAttachment(false);
+    }
+  }, [id, pendingDeleteAttachmentId, fetchSecret]);
 
   if (isLoading && !secret) {
     return (
@@ -114,6 +149,9 @@ export default function SecretDetailPage() {
 
   const showAttachments = secret.type?.allowAttachments ?? false;
   const showCardImages = supportsCardImages(secret.type, secret.attachments ?? []);
+  const pendingDeleteAttachment = (secret.attachments ?? []).find(
+    (a) => a.id === pendingDeleteAttachmentId,
+  );
 
   const tabs: { key: TabKey; label: string }[] = [
     { key: 'details', label: 'Details' },
@@ -235,12 +273,55 @@ export default function SecretDetailPage() {
         </DialogActions>
       </Dialog>
 
-      <Snackbar
-        open={!!successMessage}
-        autoHideDuration={3000}
-        onClose={() => setSuccessMessage(null)}
+      {/* Attachment delete confirmation — mirrors the secret delete dialog in
+          `SecretDetail`, because unlinking is equally irreversible. */}
+      <Dialog
+        open={!!pendingDeleteAttachmentId}
+        onClose={() => {
+          if (!deletingAttachment) setPendingDeleteAttachmentId(null);
+        }}
+        maxWidth="xs"
+        fullWidth
       >
-        <Alert severity="success">{successMessage}</Alert>
+        <DialogTitle>Delete Attachment</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to delete{' '}
+            <strong>
+              {pendingDeleteAttachment?.label ??
+                pendingDeleteAttachment?.storageObject.name ??
+                'this attachment'}
+            </strong>
+            ? This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => setPendingDeleteAttachmentId(null)}
+            disabled={deletingAttachment}
+          >
+            Cancel
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={confirmDeleteAttachment}
+            disabled={deletingAttachment}
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={!!toast}
+        // An error stays until dismissed; a success may fade.
+        autoHideDuration={toast?.severity === 'error' ? null : 3000}
+        onClose={() => setToast(null)}
+      >
+        <Alert severity={toast?.severity ?? 'success'} onClose={() => setToast(null)}>
+          {toast?.message}
+        </Alert>
       </Snackbar>
     </Container>
   );
