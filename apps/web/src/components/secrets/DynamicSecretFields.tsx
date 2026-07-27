@@ -6,6 +6,7 @@ import {
   Chip,
   IconButton,
   InputAdornment,
+  MenuItem,
 } from '@mui/material';
 import {
   Visibility as VisibilityIcon,
@@ -214,6 +215,49 @@ export function DynamicSecretFields({
               helperText={errors[field.name]}
               InputLabelProps={{ shrink: true }}
             />
+          );
+        }
+
+        if (field.type === 'select') {
+          const options = Array.isArray(field.options) ? field.options : [];
+          const hasOptions = options.length > 0;
+          // Keep a stored value that is no longer in `options` selectable/visible
+          // so editing an unrelated field cannot silently drop it.
+          const orphanValue = value !== '' && !options.includes(value) ? value : null;
+
+          return (
+            <TextField
+              key={field.name}
+              select
+              label={field.label}
+              fullWidth
+              required={field.required}
+              disabled={!hasOptions && orphanValue === null}
+              value={value}
+              onChange={(e) => handleChange(field.name, e.target.value)}
+              error={hasError}
+              helperText={
+                errors[field.name] ?? (hasOptions ? undefined : 'No options are configured for this field')
+              }
+              InputLabelProps={{ shrink: true }}
+              SelectProps={{ displayEmpty: true }}
+            >
+              {!field.required && (
+                <MenuItem value="">
+                  <em>None</em>
+                </MenuItem>
+              )}
+              {orphanValue !== null && (
+                <MenuItem key={orphanValue} value={orphanValue}>
+                  {orphanValue}
+                </MenuItem>
+              )}
+              {options.map((option) => (
+                <MenuItem key={option} value={option}>
+                  {option}
+                </MenuItem>
+              ))}
+            </TextField>
           );
         }
 

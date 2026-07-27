@@ -27,6 +27,12 @@ const FIELD_TYPES: { value: FieldDefinition['type']; label: string }[] = [
   { value: 'date', label: 'Date' },
 ];
 
+// 'select' fields are seed-only for now: this builder has no options editor, so
+// admins cannot author one. It is still listed (disabled) whenever the field
+// being edited already is a select, otherwise the Type dropdown would render
+// blank for such fields and hide what the field actually is.
+const SELECT_TYPE_LABEL = 'Select (list)';
+
 function labelToName(label: string): string {
   return label
     .toLowerCase()
@@ -61,7 +67,16 @@ export function FieldDefinitionBuilder({ fields, onChange }: FieldDefinitionBuil
     key: K,
     value: FieldDefinition[K],
   ) => {
-    const updated = fields.map((f, i) => (i === index ? { ...f, [key]: value } : f));
+    const updated = fields.map((f, i) => {
+      if (i !== index) return f;
+      const next = { ...f, [key]: value };
+      // `options` only means anything for select fields; drop it when the type
+      // is changed to something else so we never send a stale list to the API.
+      if (key === 'type' && value !== 'select') {
+        delete next.options;
+      }
+      return next;
+    });
     onChange(updated);
   };
 
@@ -116,6 +131,11 @@ export function FieldDefinitionBuilder({ fields, onChange }: FieldDefinitionBuil
                     {t.label}
                   </MenuItem>
                 ))}
+                {field.type === 'select' && (
+                  <MenuItem value="select" disabled>
+                    {SELECT_TYPE_LABEL}
+                  </MenuItem>
+                )}
               </TextField>
 
               {/* Required */}

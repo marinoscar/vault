@@ -45,6 +45,24 @@ const dateField: FieldDefinition = {
   sensitive: false,
 };
 
+const selectField: FieldDefinition = {
+  name: 'environment',
+  label: 'Environment',
+  type: 'select',
+  required: false,
+  sensitive: false,
+  options: ['dev', 'staging', 'prod'],
+};
+
+const requiredSelectField: FieldDefinition = {
+  name: 'tier',
+  label: 'Tier',
+  type: 'select',
+  required: true,
+  sensitive: false,
+  options: ['gold', 'silver'],
+};
+
 describe('DynamicSecretFields', () => {
   describe('Rendering fields from definitions', () => {
     it('should render a text input for a non-sensitive string field', () => {
@@ -214,6 +232,213 @@ describe('DynamicSecretFields', () => {
       await waitFor(() => {
         expect(screen.getByLabelText(/password/i)).toHaveAttribute('type', 'password');
       });
+    });
+  });
+
+  describe('Select fields', () => {
+    it('should render a select control labelled with the field label', () => {
+      render(
+        <DynamicSecretFields
+          fields={[selectField]}
+          data={{}}
+          onChange={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByLabelText(/environment/i)).toBeInTheDocument();
+    });
+
+    it('should display the current value from the data prop', () => {
+      render(
+        <DynamicSecretFields
+          fields={[selectField]}
+          data={{ environment: 'staging' }}
+          onChange={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByLabelText(/environment/i)).toHaveTextContent('staging');
+    });
+
+    it('should list one option per entry in field.options', async () => {
+      const user = userEvent.setup();
+
+      render(
+        <DynamicSecretFields
+          fields={[requiredSelectField]}
+          data={{}}
+          onChange={vi.fn()}
+        />,
+      );
+
+      await user.click(screen.getByLabelText(/tier/i));
+
+      const options = await screen.findAllByRole('option');
+      expect(options.map((o) => o.textContent)).toEqual(['gold', 'silver']);
+    });
+
+    it('should include an empty option for optional select fields', async () => {
+      const user = userEvent.setup();
+
+      render(
+        <DynamicSecretFields
+          fields={[selectField]}
+          data={{}}
+          onChange={vi.fn()}
+        />,
+      );
+
+      await user.click(screen.getByLabelText(/environment/i));
+
+      const options = await screen.findAllByRole('option');
+      expect(options.map((o) => o.textContent)).toEqual(['None', 'dev', 'staging', 'prod']);
+    });
+
+    it('should call onChange with the chosen option', async () => {
+      const user = userEvent.setup();
+      const handleChange = vi.fn();
+
+      render(
+        <DynamicSecretFields
+          fields={[selectField]}
+          data={{ environment: 'dev' }}
+          onChange={handleChange}
+        />,
+      );
+
+      await user.click(screen.getByLabelText(/environment/i));
+      await user.click(await screen.findByRole('option', { name: 'prod' }));
+
+      await waitFor(() => {
+        expect(handleChange).toHaveBeenCalledWith(
+          expect.objectContaining({ environment: 'prod' }),
+        );
+      });
+    });
+
+    it('should allow clearing an optional select via the empty option', async () => {
+      const user = userEvent.setup();
+      const handleChange = vi.fn();
+
+      render(
+        <DynamicSecretFields
+          fields={[selectField]}
+          data={{ environment: 'dev' }}
+          onChange={handleChange}
+        />,
+      );
+
+      await user.click(screen.getByLabelText(/environment/i));
+      await user.click(await screen.findByRole('option', { name: 'None' }));
+
+      await waitFor(() => {
+        expect(handleChange).toHaveBeenCalledWith(
+          expect.objectContaining({ environment: '' }),
+        );
+      });
+    });
+
+    it('should preserve other data values when a select changes', async () => {
+      const user = userEvent.setup();
+      const handleChange = vi.fn();
+
+      render(
+        <DynamicSecretFields
+          fields={[textField, selectField]}
+          data={{ username: 'alice', environment: 'dev' }}
+          onChange={handleChange}
+        />,
+      );
+
+      await user.click(screen.getByLabelText(/environment/i));
+      await user.click(await screen.findByRole('option', { name: 'staging' }));
+
+      await waitFor(() => {
+        expect(handleChange).toHaveBeenCalledWith({
+          username: 'alice',
+          environment: 'staging',
+        });
+      });
+    });
+
+    it('should render a disabled control when options are undefined', () => {
+      const noOptions: FieldDefinition = {
+        name: 'environment',
+        label: 'Environment',
+        type: 'select',
+        required: false,
+        sensitive: false,
+      };
+
+      render(
+        <DynamicSecretFields
+          fields={[noOptions]}
+          data={{}}
+          onChange={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByLabelText(/environment/i)).toHaveAttribute('aria-disabled', 'true');
+      expect(screen.getByText(/no options are configured/i)).toBeInTheDocument();
+    });
+
+    it('should render a disabled control when options are empty', () => {
+      render(
+        <DynamicSecretFields
+          fields={[{ ...selectField, options: [] }]}
+          data={{}}
+          onChange={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByLabelText(/environment/i)).toHaveAttribute('aria-disabled', 'true');
+    });
+
+    it('should keep a stored value that is no longer among the options selectable', async () => {
+      const user = userEvent.setup();
+
+      render(
+        <DynamicSecretFields
+          fields={[selectField]}
+          data={{ environment: 'legacy' }}
+          onChange={vi.fn()}
+        />,
+      );
+
+      const control = screen.getByLabelText(/environment/i);
+      expect(control).toHaveTextContent('legacy');
+
+      await user.click(control);
+      const options = await screen.findAllByRole('option');
+      expect(options.map((o) => o.textContent)).toContain('legacy');
+    });
+
+    it('should display error helper text for select fields', () => {
+      render(
+        <DynamicSecretFields
+          fields={[requiredSelectField]}
+          data={{}}
+          onChange={vi.fn()}
+          errors={{ tier: 'Tier is required' }}
+        />,
+      );
+
+      expect(screen.getByText('Tier is required')).toBeInTheDocument();
+    });
+
+    it('should render the select value as plain text in read-only mode', () => {
+      render(
+        <DynamicSecretFields
+          fields={[selectField]}
+          data={{ environment: 'prod' }}
+          onChange={vi.fn()}
+          readOnly
+        />,
+      );
+
+      expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+      expect(screen.getByText('prod')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /copy to clipboard/i })).toBeInTheDocument();
     });
   });
 

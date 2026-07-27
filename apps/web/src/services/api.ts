@@ -202,6 +202,7 @@ import type {
   PersonalAccessToken,
   PatCreatedResponse,
   PatDurationUnit,
+  FieldDefinition,
   SecretType,
   SecretDetail,
   SecretVersion,
@@ -328,13 +329,7 @@ export async function createSecretType(data: {
   name: string;
   description?: string;
   icon?: string;
-  fields: Array<{
-    name: string;
-    label: string;
-    type: 'string' | 'number' | 'date';
-    required: boolean;
-    sensitive: boolean;
-  }>;
+  fields: FieldDefinition[];
   allowAttachments: boolean;
 }): Promise<SecretType> {
   return api.post<SecretType>('/secret-types', data);
@@ -346,13 +341,7 @@ export async function updateSecretType(
     name?: string;
     description?: string | null;
     icon?: string | null;
-    fields?: Array<{
-      name: string;
-      label: string;
-      type: 'string' | 'number' | 'date';
-      required: boolean;
-      sensitive: boolean;
-    }>;
+    fields?: FieldDefinition[];
     allowAttachments?: boolean;
   },
 ): Promise<SecretType> {
