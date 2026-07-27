@@ -1,10 +1,5 @@
 import { Alert, AlertTitle, Typography } from '@mui/material';
 
-interface AiEgressNoticeProps {
-  /** Rendered as a plain box rather than a warning once the user has consented. */
-  variant?: 'prominent' | 'inline';
-}
-
 /**
  * Explicit notice that the card photographs leave this server for OpenAI.
  *
@@ -14,9 +9,9 @@ interface AiEgressNoticeProps {
  * both stated: what is sent (a cropped image), and what is deliberately not
  * (the CVV, which is never asked for and never returned).
  */
-export function AiEgressNotice({ variant = 'prominent' }: AiEgressNoticeProps) {
+export function AiEgressNotice() {
   return (
-    <Alert severity={variant === 'prominent' ? 'warning' : 'info'} sx={{ mb: 2 }}>
+    <Alert severity="warning" sx={{ mb: 2 }}>
       <AlertTitle>Your card photo will be sent to OpenAI</AlertTitle>
       <Typography variant="body2" component="div">
         To read the details, the cropped photo of your card is sent to OpenAI.

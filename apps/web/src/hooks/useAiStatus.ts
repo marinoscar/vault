@@ -49,14 +49,7 @@ export function useAiStatus(): UseAiStatusResult {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      await load();
-      if (cancelled) return;
-    })();
-    return () => {
-      cancelled = true;
-    };
+    void load();
   }, [load]);
 
   return {
