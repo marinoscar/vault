@@ -305,6 +305,32 @@ cd apps/api && npm run prisma:migrate
 - `GET /api/pat` - List current user's tokens
 - `DELETE /api/pat/{id}` - Revoke a token
 
+### Secrets
+- `POST /api/secrets` - Create a secret with its initial version
+- `GET /api/secrets` - List secrets (paginated, own secrets unless `secrets:read_any`)
+- `GET /api/secrets/by-name/{name}` - Get a secret by name (decrypted current version)
+- `GET /api/secrets/{id}` - Get a secret with decrypted current version data
+- `PUT /api/secrets/{id}` - Update a secret; creates a new version if data changed
+- `DELETE /api/secrets/{id}` - Delete a secret and all its versions
+- `GET /api/secrets/{id}/versions` - List version history (metadata only)
+- `GET /api/secrets/{id}/versions/{versionId}` - Get a specific version, decrypted, with that version's attachments
+- `POST /api/secrets/{id}/versions/{versionId}/rollback` - Rollback to a version (restores its attachment set)
+- `POST /api/secrets/{id}/renew` - Renew with new field values, swapping only the attachment roles supplied (e.g. reissued card front/back)
+- `POST /api/secrets/{id}/attachments` - Link a storage object to the secret's current version
+- `GET /api/secrets/{id}/attachments` - List attachments (`versionId`, `role` query filters)
+- `DELETE /api/secrets/{id}/attachments/{attachmentId}` - Unlink; underlying storage object is refcount-deleted, not always deleted
+
+### Secret Types
+- `POST /api/secret-types` - Create a custom secret type
+- `GET /api/secret-types` - List secret types (system + own/all custom)
+- `GET /api/secret-types/{id}` - Get a secret type by ID
+- `PUT /api/secret-types/{id}` - Update a custom secret type
+- `DELETE /api/secret-types/{id}` - Delete a custom secret type (409 if secrets reference it)
+
+### AI (Card Scanning)
+- `GET /api/ai/status` - Whether AI-backed features are available to the current user (no permission required)
+- `POST /api/secrets/cards/extract` - Extract candidate card fields from cropped card photos via an admin-configured OpenAI vision model (`secrets:write`). Persists nothing; the CVV is never requested or returned. Disabled by default — see `docs/SECRETS.md` and `docs/API.md`.
+
 ### Health
 - `GET /api/health/live` - Liveness check
 - `GET /api/health/ready` - Readiness check (includes DB)
@@ -324,6 +350,9 @@ cd apps/api && npm run prisma:migrate
 - `allowlist:read/write` - Allowlist management (Admin only)
 - `storage:read/write/delete` - Storage object access (own objects)
 - `storage:read_any/write_any/delete_any` - Storage object access (all objects, Admin only)
+- `secrets:read/write/delete` - Secret access (own secrets)
+- `secrets:read_any/write_any/delete_any` - Secret access (all secrets, Admin only)
+- `secret_types:read/write/delete` - Secret type management (system types are always read-only regardless of permission)
 
 ## Database Tables
 
@@ -331,15 +360,19 @@ cd apps/api && npm run prisma:migrate
 - `user_identities` - OAuth provider identities (provider + subject)
 - `roles` / `permissions` / `role_permissions` - RBAC
 - `user_roles` - User-to-role assignments
-- `system_settings` - Global app settings (JSONB)
+- `system_settings` - Global app settings (JSONB); as of the card epic, includes a write-only `ai` block (enabled flag, model, daily budget, AES-256-GCM-encrypted OpenAI API key)
 - `user_settings` - Per-user settings (JSONB)
-- `audit_events` - Action audit log
+- `audit_events` - Action audit log; also backs the AI card-extraction daily budget (counts `ai.card.extract` rows in the trailing 24h) — see `docs/SECRETS.md`
 - `refresh_tokens` - JWT refresh tokens (hashed)
 - `allowed_emails` - Allowlist for access control
 - `device_codes` - Device authorization codes (RFC 8628)
 - `storage_objects` - File metadata, status, storage references
 - `storage_object_chunks` - Multipart upload chunk tracking
 - `personal_access_tokens` - User-created long-lived API tokens (hashed)
+- `secret_types` - Secret type schemas (system + custom); `fields` is a JSONB array of field definitions (`string` \| `number` \| `date` \| `select`, the last requiring `options`)
+- `secrets` - Secret metadata (name, description, type, owner); values live only in `secret_versions`
+- `secret_versions` - One immutable, AES-256-GCM-encrypted row per version of a secret's field data; exactly one `isCurrent = true` per secret
+- `secret_attachments` - Files linked to a secret. **As of migration `20260727120000_version_scoped_attachments`, scoped to a `secret_version_id` (not just `secret_id`), and carries an optional `role` (`card_front` \| `card_back`).** Unique on `[secret_version_id, storage_object_id]` and `[secret_version_id, role]`; deleting the last reference to a `storage_objects` row deletes it, but a referenced object is never deleted out from under another version or secret still pointing at it
 
 ## Access Control: Email Allowlist
 
