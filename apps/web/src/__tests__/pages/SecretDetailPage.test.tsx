@@ -322,4 +322,120 @@ describe('SecretDetailPage', () => {
       expect(within(dialog).getByText('No front image')).toBeInTheDocument();
     });
   });
+
+  describe('attachment deletion', () => {
+    /**
+     * A Document secret, so `CardImages` is out of the tree entirely and the
+     * only Delete affordance on screen belongs to the generic attachment list.
+     *
+     * `attachments` is mutable and the GET is counted: the original bug only
+     * refetched, so a test that checks the list refreshed passes against a
+     * handler that never deletes anything. The DELETE has to be observed
+     * directly.
+     */
+    function deletionHandlers(deleteResponder: Parameters<typeof http.delete>[1]) {
+      const state = { attachments: [GENERIC_ATTACHMENT] as SecretAttachment[], fetches: 0 };
+      const handlers = [
+        http.get(`${API_BASE}/secrets/${SECRET_ID}`, () => {
+          state.fetches += 1;
+          return HttpResponse.json(secret(DOCUMENT_TYPE, state.attachments));
+        }),
+        http.get(`${API_BASE}/secrets/${SECRET_ID}/versions`, () => HttpResponse.json(VERSIONS)),
+        http.delete(`${API_BASE}/secrets/:secretId/attachments/:attachmentId`, deleteResponder),
+      ];
+      return { state, handlers };
+    }
+
+    it('calls the unlink endpoint with the secret and attachment ids, then refetches', async () => {
+      const deleted: { secretId: string; attachmentId: string }[] = [];
+      const { state, handlers } = deletionHandlers(({ params }) => {
+        deleted.push({
+          secretId: params.secretId as string,
+          attachmentId: params.attachmentId as string,
+        });
+        state.attachments = [];
+        return new HttpResponse(null, { status: 204 });
+      });
+      server.use(...handlers);
+
+      const user = userEvent.setup();
+      render(<SecretDetailPage />);
+
+      await user.click(await screen.findByRole('tab', { name: 'Attachments' }));
+      expect(await screen.findByText('contract.pdf')).toBeInTheDocument();
+      const fetchesBefore = state.fetches;
+
+      await user.click(screen.getByRole('button', { name: 'Delete attachment' }));
+
+      // Opening the confirm must not itself delete anything.
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getByText(/cannot be undone/i)).toBeInTheDocument();
+      expect(deleted).toHaveLength(0);
+
+      await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+      await waitFor(() =>
+        expect(deleted).toEqual([{ secretId: SECRET_ID, attachmentId: GENERIC_ATTACHMENT.id }]),
+      );
+      await waitFor(() => expect(state.fetches).toBeGreaterThan(fetchesBefore));
+
+      expect(await screen.findByText('No attachments yet.')).toBeInTheDocument();
+      expect(screen.queryByText('contract.pdf')).not.toBeInTheDocument();
+      expect(await screen.findByText('Attachment deleted')).toBeInTheDocument();
+    });
+
+    it('surfaces an error instead of looking like it succeeded when the unlink fails', async () => {
+      const { state, handlers } = deletionHandlers(() =>
+        HttpResponse.json({ message: 'Storage backend unavailable' }, { status: 500 }),
+      );
+      server.use(...handlers);
+
+      const user = userEvent.setup();
+      render(<SecretDetailPage />);
+
+      await user.click(await screen.findByRole('tab', { name: 'Attachments' }));
+      expect(await screen.findByText('contract.pdf')).toBeInTheDocument();
+      const fetchesBefore = state.fetches;
+
+      await user.click(screen.getByRole('button', { name: 'Delete attachment' }));
+      await user.click(
+        within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete' }),
+      );
+
+      const message = await screen.findByText('Storage backend unavailable');
+      expect(message.closest('.MuiAlert-root')).toHaveClass('MuiAlert-standardError');
+
+      // The failure must not be dressed up as a success, and the file the user
+      // still owns must still be listed.
+      expect(screen.queryByText('Attachment deleted')).not.toBeInTheDocument();
+      expect(screen.getByText('contract.pdf')).toBeInTheDocument();
+      expect(state.fetches).toBe(fetchesBefore);
+    });
+
+    it('deletes nothing when the confirmation is cancelled', async () => {
+      const deleted: string[] = [];
+      const { state, handlers } = deletionHandlers(({ params }) => {
+        deleted.push(params.attachmentId as string);
+        return new HttpResponse(null, { status: 204 });
+      });
+      server.use(...handlers);
+
+      const user = userEvent.setup();
+      render(<SecretDetailPage />);
+
+      await user.click(await screen.findByRole('tab', { name: 'Attachments' }));
+      expect(await screen.findByText('contract.pdf')).toBeInTheDocument();
+      const fetchesBefore = state.fetches;
+
+      await user.click(screen.getByRole('button', { name: 'Delete attachment' }));
+      await user.click(
+        within(await screen.findByRole('dialog')).getByRole('button', { name: 'Cancel' }),
+      );
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      expect(deleted).toHaveLength(0);
+      expect(state.fetches).toBe(fetchesBefore);
+      expect(screen.getByText('contract.pdf')).toBeInTheDocument();
+    });
+  });
 });
