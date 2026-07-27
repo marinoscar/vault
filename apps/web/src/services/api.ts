@@ -213,7 +213,49 @@ import type {
   MediaFoldersResponse,
   MediaFile,
   MediaFilesResponse,
+  AiSettingsUpdate,
+  SystemSettings,
 } from '../types';
+
+// System Settings API
+
+/**
+ * PATCH the `ai` block of the system settings.
+ *
+ * This is the single place the AI patch body is assembled, because the
+ * `apiKey` field is three-state and getting it wrong destroys a credential:
+ *
+ *   absent -> keep the stored key
+ *   null   -> clear the stored key
+ *   string -> replace the stored key
+ *
+ * `apiKey` is copied onto the payload ONLY when the caller passed something
+ * other than `undefined`, so a caller saving unrelated fields (say, toggling
+ * `enabled`) can never wipe the key by accident. `null` is passed through
+ * untouched - that is a deliberate "clear it" from the caller.
+ *
+ * `version` is sent as `If-Match` for optimistic concurrency; the API answers
+ * 409 when the settings changed underneath us.
+ */
+export async function patchSystemSettingsAi(
+  ai: AiSettingsUpdate,
+  version: number,
+): Promise<SystemSettings> {
+  const payload: AiSettingsUpdate = {};
+
+  if (ai.enabled !== undefined) payload.enabled = ai.enabled;
+  if (ai.model !== undefined) payload.model = ai.model;
+  if (ai.maxCallsPerUserPerDay !== undefined) {
+    payload.maxCallsPerUserPerDay = ai.maxCallsPerUserPerDay;
+  }
+  if (ai.apiKey !== undefined) payload.apiKey = ai.apiKey;
+
+  return api.patch<SystemSettings>(
+    '/system-settings',
+    { ai: payload },
+    { headers: { 'If-Match': String(version) } },
+  );
+}
 
 // Allowlist API
 export async function getAllowlist(params?: {

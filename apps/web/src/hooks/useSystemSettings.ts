@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { api, ApiError } from '../services/api';
-import { SystemSettings } from '../types';
+import { api, ApiError, patchSystemSettingsAi } from '../services/api';
+import { SystemSettings, AiSettingsUpdate } from '../types';
+
+const CONFLICT_MESSAGE =
+  'Settings were updated elsewhere. Please review and try again.';
 
 interface UseSystemSettingsReturn {
   settings: SystemSettings | null;
@@ -8,6 +11,12 @@ interface UseSystemSettingsReturn {
   error: string | null;
   isSaving: boolean;
   updateSettings: (updates: Partial<SystemSettings>) => Promise<void>;
+  /**
+   * Update the AI block. Pass only the fields being changed - in particular,
+   * omit `apiKey` unless the admin explicitly set or cleared the credential.
+   * See `patchSystemSettingsAi` for the three-state contract.
+   */
+  updateAiSettings: (updates: AiSettingsUpdate) => Promise<void>;
   replaceSettings: (settings: Omit<SystemSettings, 'updatedAt' | 'updatedBy' | 'version'>) => Promise<void>;
   refresh: () => Promise<void>;
 }
@@ -58,7 +67,33 @@ export function useSystemSettings(): UseSystemSettingsReturn {
       } catch (err) {
         if (err instanceof ApiError && err.status === 409) {
           await fetchSettings();
-          throw new Error('Settings were updated elsewhere. Please review and try again.');
+          throw new Error(CONFLICT_MESSAGE);
+        }
+        const message = err instanceof ApiError ? err.message : 'Failed to save settings';
+        setError(message);
+        throw err;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [settings, fetchSettings],
+  );
+
+  const updateAiSettings = useCallback(
+    async (updates: AiSettingsUpdate) => {
+      if (!settings) return;
+
+      try {
+        setIsSaving(true);
+        setError(null);
+
+        const data = await patchSystemSettingsAi(updates, settings.version);
+
+        setSettings(data);
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 409) {
+          await fetchSettings();
+          throw new Error(CONFLICT_MESSAGE);
         }
         const message = err instanceof ApiError ? err.message : 'Failed to save settings';
         setError(message);
@@ -95,6 +130,7 @@ export function useSystemSettings(): UseSystemSettingsReturn {
     error,
     isSaving,
     updateSettings,
+    updateAiSettings,
     replaceSettings,
     refresh: fetchSettings,
   };

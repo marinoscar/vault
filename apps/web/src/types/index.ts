@@ -24,11 +24,65 @@ export interface UserSettings {
   version: number;
 }
 
+/**
+ * Masked AI settings, as returned by `GET /api/system-settings`.
+ *
+ * Mirrors `aiSettingsResponseSchema` in the API. The stored credential is
+ * never sent to the client - all the UI ever learns is whether one exists,
+ * its last 4 characters, and when it was last changed.
+ */
+export interface AiSettings {
+  enabled: boolean;
+  provider: 'openai';
+  model: string;
+  maxCallsPerUserPerDay: number;
+  apiKeyConfigured: boolean;
+  apiKeyLast4: string | null;
+  apiKeyUpdatedAt: string | null;
+}
+
+/**
+ * The `ai` block accepted by `PATCH /api/system-settings`.
+ *
+ * Mirrors the `ai` member of `patchSystemSettingsSchema` in the API. `apiKey`
+ * is write-only plaintext and is THREE-STATE - the distinction is load-bearing:
+ *
+ *   omitted -> keep the stored key
+ *   null    -> clear the stored key (disables the feature for everyone)
+ *   string  -> encrypt and replace the stored key
+ *
+ * Never populate `apiKey` unless the admin explicitly asked to set or clear it.
+ * An unrelated edit that carries `apiKey: null` along silently destroys a
+ * working credential.
+ */
+export interface AiSettingsUpdate {
+  enabled?: boolean;
+  model?: string;
+  maxCallsPerUserPerDay?: number;
+  apiKey?: string | null;
+}
+
+/** API-side validation bounds for the AI settings, mirrored for client-side checks. */
+export const AI_API_KEY_MIN_LENGTH = 20;
+export const AI_API_KEY_MAX_LENGTH = 300;
+export const AI_MAX_CALLS_MIN = 0;
+export const AI_MAX_CALLS_MAX = 10000;
+
+/** API-side defaults (`DEFAULT_AI_SETTINGS`), used to seed the form when `ai` is null. */
+export const AI_SETTINGS_DEFAULTS = {
+  enabled: false,
+  provider: 'openai',
+  model: 'gpt-4o-mini',
+  maxCallsPerUserPerDay: 50,
+} as const;
+
 export interface SystemSettings {
   ui: {
     allowUserThemeOverride: boolean;
   };
   features: Record<string, boolean>;
+  /** `null` when the stored settings row predates the AI block. */
+  ai: AiSettings | null;
   updatedAt: string;
   updatedBy: { id: string; email: string } | null;
   version: number;
