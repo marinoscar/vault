@@ -18,6 +18,10 @@ import { PERMISSIONS } from '../common/constants/roles.constants';
 import { STORAGE_PROVIDER, StorageProvider } from '../storage/providers';
 import { CreateSecretDto } from './dto/create-secret.dto';
 import { UpdateSecretDto } from './dto/update-secret.dto';
+import {
+  RenewAttachmentInput,
+  RenewSecretDto,
+} from './dto/renew-secret.dto';
 import { SecretListQueryDto } from './dto/secret-list-query.dto';
 import { AttachmentRole, LinkAttachmentDto } from './dto/link-attachment.dto';
 import { AttachmentListQueryDto } from './dto/attachment-list-query.dto';
@@ -66,6 +70,20 @@ const DEFAULT_CARD_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
  * typed config key later without touching call sites here.
  */
 const CARD_IMAGE_MAX_BYTES_ENV = 'CARD_IMAGE_MAX_BYTES';
+
+/**
+ * Attachment rows a version bump must NOT copy forward.
+ *
+ * Only renewal passes this. `roles` holds the card faces the caller is
+ * replacing; `storageObjectIds` holds every incoming object, because the same
+ * blob arriving under a different role than it previously held would otherwise
+ * be inserted twice against the new version and trip
+ * `@@unique([secretVersionId, storageObjectId])`.
+ */
+interface CarryForwardExclusions {
+  roles: ReadonlySet<string>;
+  storageObjectIds: ReadonlySet<string>;
+}
 
 @Injectable()
 export class SecretsService {
@@ -410,6 +428,40 @@ export class SecretsService {
   }
 
   /**
+   * Load a StorageObject and confirm the caller may attach it.
+   *
+   * Extracted so `linkAttachment` and `renew` cannot drift: a renewal that
+   * skipped the uploader check would be a way to staple another user's file onto
+   * your own secret without ever calling the link endpoint.
+   *
+   * `secrets:write_any` is what lets an admin attach an object they did not
+   * upload — the same escalation `getSecretWithAuthCheck` honours for the secret
+   * itself.
+   */
+  private async resolveUsableStorageObject(
+    storageObjectId: string,
+    userId: string,
+    userPermissions: string[],
+  ) {
+    const storageObject = await this.prisma.storageObject.findUnique({
+      where: { id: storageObjectId },
+    });
+
+    if (!storageObject) {
+      throw new NotFoundException('Storage object not found');
+    }
+
+    const canWriteAny = userPermissions.includes(PERMISSIONS.SECRETS_WRITE_ANY);
+    if (storageObject.uploadedById !== userId && !canWriteAny) {
+      throw new ForbiddenException(
+        'You do not have access to this storage object',
+      );
+    }
+
+    return storageObject;
+  }
+
+  /**
    * Narrow an unknown error to a Prisma unique-constraint violation (P2002).
    * Duck-typed rather than `instanceof` so it also holds for errors surfaced
    * through mocks and transaction wrappers.
@@ -442,6 +494,10 @@ export class SecretsService {
    * Rows are copied with the SAME storageObjectId — an attachment is a pointer,
    * so the blob is shared, never duplicated. `@@unique([secretVersionId, role])`
    * cannot fire here: every copy lands on a freshly created version id.
+   *
+   * `excludeFromCarryForward` holds back the rows a renewal is about to replace,
+   * so the replacements can be inserted against the new version in the same
+   * transaction without colliding with a copy of the outgoing card's file.
    */
   private async createNewVersion(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -451,8 +507,14 @@ export class SecretsService {
       encrypted: { ciphertext: string; iv: string; authTag: string };
       userId: string;
       sourceVersionId?: string;
+      excludeFromCarryForward?: CarryForwardExclusions;
     },
-  ): Promise<{ id: string; version: number; carriedAttachments: number }> {
+  ): Promise<{
+    id: string;
+    version: number;
+    carriedAttachments: number;
+    sourceVersionId?: string;
+  }> {
     const { secretId, encrypted, userId } = params;
 
     const maxVersionRecord = await tx.secretVersion.findFirst({
@@ -496,12 +558,14 @@ export class SecretsService {
       secretId,
       sourceVersionId,
       created.id,
+      params.excludeFromCarryForward,
     );
 
     return {
       id: created.id,
       version: nextVersion,
       carriedAttachments,
+      sourceVersionId,
     };
   }
 
@@ -510,6 +574,9 @@ export class SecretsService {
    * bearing: role-less attachments (a Document's supporting files) are just as
    * much part of the secret as a card's front/back images, and skipping them
    * strands them on the superseded version where nothing reads them.
+   *
+   * "Every" is qualified only by `exclude`, which a renewal uses to hold back
+   * the rows it is about to supersede.
    */
   private async carryForwardAttachments(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -517,6 +584,7 @@ export class SecretsService {
     secretId: string,
     sourceVersionId: string | undefined,
     targetVersionId: string,
+    exclude?: CarryForwardExclusions,
   ): Promise<number> {
     if (!sourceVersionId || sourceVersionId === targetVersionId) {
       return 0;
@@ -531,8 +599,29 @@ export class SecretsService {
       return 0;
     }
 
+    // The exclusion is applied HERE, in JS, and deliberately not pushed into the
+    // `where` above. A Prisma `role: { notIn: [...] }` compiles to SQL
+    // `role NOT IN (...)`, which evaluates to NULL — and therefore does not
+    // match — for every role-less row. Filtering in the query would silently
+    // drop a Document's generic attachments alongside the card face being
+    // replaced. The set is a handful of rows per version, so this costs nothing.
+    const rows: Array<{
+      storageObjectId: string;
+      role: string | null;
+      label: string | null;
+    }> = exclude
+      ? source.filter(
+          (a: { storageObjectId: string; role: string | null }) =>
+            !this.isSupersededByReplacement(a, exclude),
+        )
+      : source;
+
+    if (rows.length === 0) {
+      return 0;
+    }
+
     await tx.secretAttachment.createMany({
-      data: source.map(
+      data: rows.map(
         (a: { storageObjectId: string; role: string | null; label: string | null }) => ({
           secretId,
           secretVersionId: targetVersionId,
@@ -545,7 +634,31 @@ export class SecretsService {
       ),
     });
 
-    return source.length;
+    return rows.length;
+  }
+
+  /**
+   * True when an existing attachment row must NOT be carried onto the new
+   * version because the renewal supplies something that takes its place.
+   *
+   * Two independent reasons, matching the two unique constraints on
+   * SecretAttachment:
+   *   - its role is being re-supplied  -> [secretVersionId, role]
+   *   - its object is being re-supplied under any role
+   *                                    -> [secretVersionId, storageObjectId]
+   *
+   * A role-less row is never excluded by the first test: `role` is NULL, and the
+   * caller cannot "replace the NULL role" — there may be many such rows.
+   */
+  private isSupersededByReplacement(
+    attachment: { storageObjectId: string; role: string | null },
+    exclude: CarryForwardExclusions,
+  ): boolean {
+    if (attachment.role != null && exclude.roles.has(attachment.role)) {
+      return true;
+    }
+
+    return exclude.storageObjectIds.has(attachment.storageObjectId);
   }
 
   /**
@@ -1108,6 +1221,199 @@ export class SecretsService {
   }
 
   /**
+   * Renew a secret: mint the next version from a NEW set of field values while
+   * swapping only the files the caller actually re-supplied.
+   *
+   * Why this is not `update()` plus `linkAttachment()`. `update()` mints v_n+1
+   * and carries v_n's attachment rows forward wholesale, including the outgoing
+   * card's `card_front`. Linking the new `card_front` afterwards hits
+   * `@@unique([secretVersionId, role])` and dies with P2002; and even without
+   * that constraint the two calls are separate transactions, so between them
+   * v_n+1 holds the NEW card's number next to the OLD card's photograph. A user
+   * reading the card in that window sees a record that never existed.
+   *
+   * So the version bump, the selective carry-forward and the replacement insert
+   * are one transaction, in that order:
+   *
+   *   1. createNewVersion() -> mints v_n+1 and copies forward every row from
+   *      v_n whose role is NOT in the payload (and whose object is not being
+   *      re-supplied under another role).
+   *   2. createMany() -> inserts the replacements against v_n+1's id.
+   *
+   * The excluded roles are never written to v_n+1, so step 2 cannot collide with
+   * step 1's copies, and a failure in either rolls the whole thing back — v_n
+   * stays current, and no half-renewed version is ever visible.
+   *
+   * v_n is untouched throughout. Its own attachment rows still point at the old
+   * card's images, which is what makes the old number, name, expiry AND photos
+   * readable from the version history after the card is replaced.
+   */
+  async renew(
+    secretId: string,
+    dto: RenewSecretDto,
+    userId: string,
+    userPermissions: string[],
+  ) {
+    const secret = await this.getSecretWithAuthCheck(
+      secretId,
+      userId,
+      PERMISSIONS.SECRETS_WRITE,
+      userPermissions,
+    );
+
+    const fields = secret.type.fields as unknown as FieldDefinition[];
+    this.validateDataAgainstType(dto.data as Record<string, unknown>, fields);
+
+    const replacements = dto.attachments ?? [];
+
+    if (replacements.length > 0 && !secret.type.allowAttachments) {
+      throw new BadRequestException(
+        'This secret type does not allow attachments',
+      );
+    }
+
+    this.assertReplacementsAreDistinct(replacements);
+
+    // Validate EVERY replacement before opening the transaction. The card image
+    // check may stream the object back from the storage provider to measure it,
+    // and holding a write transaction open across a network read is how a lock
+    // pile-up starts. Failing here also means a rejected image never reaches the
+    // version bump at all.
+    for (const replacement of replacements) {
+      const storageObject = await this.resolveUsableStorageObject(
+        replacement.storageObjectId,
+        userId,
+        userPermissions,
+      );
+
+      if (this.isCardImageRole(replacement.role)) {
+        await this.enforceCardImageConstraints(
+          storageObject,
+          secretId,
+          replacement.role as AttachmentRole,
+        );
+      }
+    }
+
+    const replacedRoles = new Set<string>(
+      replacements
+        .map((r) => r.role)
+        .filter((role): role is AttachmentRole => Boolean(role)),
+    );
+    const replacedObjectIds = new Set<string>(
+      replacements.map((r) => r.storageObjectId),
+    );
+
+    this.logger.log(
+      `Renewing secret ${secretId} (${replacements.length} replacement file(s), ` +
+        `roles: ${[...replacedRoles].join(', ') || 'none'})`,
+    );
+
+    const encrypted = this.crypto.encrypt(JSON.stringify(dto.data));
+
+    let newVersion: {
+      id: string;
+      version: number;
+      carriedAttachments: number;
+      sourceVersionId?: string;
+    };
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      newVersion = await this.prisma.$transaction(async (tx: any) => {
+        const version = await this.createNewVersion(tx, {
+          secretId,
+          encrypted,
+          userId,
+          excludeFromCarryForward: {
+            roles: replacedRoles,
+            storageObjectIds: replacedObjectIds,
+          },
+        });
+
+        if (replacements.length > 0) {
+          await tx.secretAttachment.createMany({
+            data: replacements.map((r) => ({
+              secretId,
+              secretVersionId: version.id,
+              storageObjectId: r.storageObjectId,
+              role: r.role ?? null,
+              label: r.label ?? null,
+            })),
+          });
+        }
+
+        return version;
+      });
+    } catch (error) {
+      // Same wording as the link endpoint. A P2002 here means two clients
+      // renewed the same secret concurrently; the loser gets a 409, not a 500.
+      throw this.translateAttachmentConflict(error, replacements[0] ?? {});
+    }
+
+    await this.createAuditEvent(userId, 'secret.renew', secretId, {
+      fromVersionId: newVersion.sourceVersionId ?? null,
+      version: newVersion.version,
+      carriedAttachments: newVersion.carriedAttachments,
+      replacedAttachments: replacements.length,
+      replacedRoles: [...replacedRoles].sort(),
+      // The ONLY thing recorded about the extraction. No field names, no field
+      // values: the audit trail is queried by support staff who have no business
+      // reading a card number, and an audit row is not encrypted the way a
+      // SecretVersion is.
+      extractionMethod: dto.aiAssisted ? 'ai_assisted' : 'manual',
+    });
+
+    this.logger.log(
+      `Secret ${secretId} renewed as version ${newVersion.version} ` +
+        `(${newVersion.carriedAttachments} carried, ${replacements.length} replaced)`,
+    );
+
+    return this.findOne(secretId, userId, userPermissions);
+  }
+
+  /**
+   * Reject a renewal payload that would collide with itself.
+   *
+   * Both checks mirror a unique constraint on SecretAttachment. Without them the
+   * insert fails inside the transaction with a P2002 that says nothing about
+   * which entry was at fault; a 400 naming the duplicate is actionable, and it
+   * costs nothing to check before any storage lookups are paid for.
+   */
+  private assertReplacementsAreDistinct(
+    replacements: RenewAttachmentInput[],
+  ): void {
+    const errors: string[] = [];
+    const seenRoles = new Set<string>();
+    const seenObjectIds = new Set<string>();
+
+    for (const replacement of replacements) {
+      if (replacement.role) {
+        if (seenRoles.has(replacement.role)) {
+          errors.push(
+            `Duplicate role "${replacement.role}" in attachments`,
+          );
+        }
+        seenRoles.add(replacement.role);
+      }
+
+      if (seenObjectIds.has(replacement.storageObjectId)) {
+        errors.push(
+          `Storage object "${replacement.storageObjectId}" is listed more than once`,
+        );
+      }
+      seenObjectIds.add(replacement.storageObjectId);
+    }
+
+    if (errors.length > 0) {
+      throw new BadRequestException({
+        message: 'Renewal attachments must be unique',
+        details: { errors },
+      });
+    }
+  }
+
+  /**
    * Link an existing StorageObject as an attachment to a secret.
    */
   async linkAttachment(
@@ -1130,20 +1436,11 @@ export class SecretsService {
     }
 
     // Verify the storage object exists and the caller can use it
-    const storageObject = await this.prisma.storageObject.findUnique({
-      where: { id: dto.storageObjectId },
-    });
-
-    if (!storageObject) {
-      throw new NotFoundException('Storage object not found');
-    }
-
-    const canWriteAny = userPermissions.includes(PERMISSIONS.SECRETS_WRITE_ANY);
-    if (storageObject.uploadedById !== userId && !canWriteAny) {
-      throw new ForbiddenException(
-        'You do not have access to this storage object',
-      );
-    }
+    const storageObject = await this.resolveUsableStorageObject(
+      dto.storageObjectId,
+      userId,
+      userPermissions,
+    );
 
     // Card faces are rendered as images in the UI and carried forward onto
     // every future version, so the type/size gate belongs here — before the
@@ -1204,10 +1501,14 @@ export class SecretsService {
    * Two unique constraints can fire: [secretVersionId, role] (one image per
    * role per version) and [secretVersionId, storageObjectId] (same file linked
    * twice). Any other error is returned unchanged for the caller to rethrow.
+   *
+   * Takes only the role rather than a whole LinkAttachmentDto so renewal, whose
+   * entries are the same shape minus the secret id, reuses the same wording
+   * instead of inventing a second set of conflict messages.
    */
   private translateAttachmentConflict(
     error: unknown,
-    dto: LinkAttachmentDto,
+    dto: { role?: AttachmentRole },
   ): unknown {
     if (!this.isUniqueConstraintViolation(error)) {
       return error;

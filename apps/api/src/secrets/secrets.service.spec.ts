@@ -18,6 +18,7 @@ import { STORAGE_PROVIDER, StorageProvider } from '../storage/providers';
 import { PERMISSIONS } from '../common/constants/roles.constants';
 import { CreateSecretDto } from './dto/create-secret.dto';
 import { UpdateSecretDto } from './dto/update-secret.dto';
+import { RenewSecretDto } from './dto/renew-secret.dto';
 import { SecretListQueryDto } from './dto/secret-list-query.dto';
 import { SYSTEM_SECRET_TYPES } from '../../prisma/system-secret-types';
 
@@ -1190,6 +1191,774 @@ describe('SecretsService', () => {
       await expect(
         service.rollback(secretId, oldVersion.id, userId, [PERMISSIONS.SECRETS_WRITE]),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ============================================================================
+  // renew  (issue #30)
+  // ============================================================================
+
+  describe('renew', () => {
+    const writePerms = [PERMISSIONS.SECRETS_WRITE];
+    const newVersionId = 'version-renewed';
+
+    // A Card type: attachments allowed, and the fields a reissued card changes.
+    const cardTypeId = 'type-card';
+    const cardType = {
+      ...mockSecretType,
+      id: cardTypeId,
+      name: 'Card',
+      fields: [
+        { name: 'number', label: 'Number', type: 'string', required: true, sensitive: true },
+        { name: 'holder', label: 'Holder', type: 'string', required: true, sensitive: false },
+        { name: 'expiry', label: 'Expiry', type: 'string', required: false, sensitive: false },
+      ],
+      allowAttachments: true,
+    };
+
+    const cardSecret = {
+      ...mockSecret,
+      typeId: cardTypeId,
+      type: cardType,
+    };
+
+    // The card that is being replaced: both faces plus an unrelated document.
+    const oldFront = {
+      storageObjectId: 'object-old-front',
+      role: 'card_front',
+      label: 'Old front',
+    };
+    const oldBack = {
+      storageObjectId: 'object-old-back',
+      role: 'card_back',
+      label: 'Old back',
+    };
+    const oldDoc = {
+      storageObjectId: 'object-doc',
+      role: null,
+      label: 'Terms.pdf',
+    };
+
+    const newFrontObject = {
+      ...mockStorageObject,
+      id: 'object-new-front',
+      name: 'new-front.png',
+      mimeType: 'image/png',
+      size: BigInt(2048),
+      uploadedById: userId,
+    };
+
+    const newCardData = {
+      number: '4111111111119999',
+      holder: 'O. MARIN',
+      expiry: '2031-04',
+    };
+
+    // Only the front is re-photographed. card_back and the document must
+    // survive; the OLD front must not.
+    const renewDto = {
+      data: newCardData,
+      attachments: [
+        { storageObjectId: newFrontObject.id, role: 'card_front' as const },
+      ],
+    } as RenewSecretDto;
+
+    function primeHappyPath() {
+      // Serves the auth check, findOne's auth check and findOne's detail read.
+      mockPrisma.secret.findUnique.mockResolvedValue({
+        ...cardSecret,
+        versions: [{ ...mockVersion, id: newVersionId, version: 2 }],
+        attachments: [],
+      } as any);
+
+      mockPrisma.storageObject.findUnique.mockResolvedValue(newFrontObject as any);
+
+      // 1st findFirst = max version lookup, 2nd = current-version lookup
+      mockPrisma.secretVersion.findFirst
+        .mockResolvedValueOnce({ version: 1 } as any)
+        .mockResolvedValueOnce({ id: versionId } as any);
+      mockPrisma.secretVersion.updateMany.mockResolvedValue({ count: 1 } as any);
+      mockPrisma.secretVersion.create.mockResolvedValue({
+        ...mockVersion,
+        id: newVersionId,
+        version: 2,
+      } as any);
+
+      mockPrisma.secretAttachment.findMany.mockResolvedValue([
+        oldFront,
+        oldBack,
+        oldDoc,
+      ] as any);
+      mockPrisma.secretAttachment.createMany.mockResolvedValue({ count: 2 } as any);
+      mockPrisma.auditEvent.create.mockResolvedValue({} as any);
+    }
+
+    /** Every row written by every createMany call, flattened. */
+    function writtenRows(): any[] {
+      return (mockPrisma.secretAttachment.createMany as jest.Mock).mock.calls.flatMap(
+        (call) => call[0].data,
+      );
+    }
+
+    beforeEach(primeHappyPath);
+
+    // -------------------------------------------------------------------------
+    // The new version
+    // -------------------------------------------------------------------------
+
+    it('should create v_n+1 carrying the NEW card data', async () => {
+      await service.renew(secretId, renewDto, userId, writePerms);
+
+      expect(mockCrypto.encrypt).toHaveBeenCalledWith(JSON.stringify(newCardData));
+      expect(mockPrisma.secretVersion.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            secretId,
+            version: 2, // max (1) + 1
+            isCurrent: true,
+            encryptedData: encryptedPayload.ciphertext,
+          }),
+        }),
+      );
+      expect(mockPrisma.secretVersion.updateMany).toHaveBeenCalledWith({
+        where: { secretId },
+        data: { isCurrent: false },
+      });
+    });
+
+    it('should validate the payload against the type exactly as update does', async () => {
+      // `number` is required on the Card type.
+      await expect(
+        service.renew(
+          secretId,
+          { data: { holder: 'O. MARIN' } } as RenewSecretDto,
+          userId,
+          writePerms,
+        ),
+      ).rejects.toThrow(BadRequestException);
+
+      // Nothing was minted: validation runs before the transaction.
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('should reject an unknown field rather than silently storing it', async () => {
+      await expect(
+        service.renew(
+          secretId,
+          { data: { ...newCardData, cvv: '123' } } as RenewSecretDto,
+          userId,
+          writePerms,
+        ),
+      ).rejects.toThrow(/Secret data validation failed|Unknown field/);
+    });
+
+    // -------------------------------------------------------------------------
+    // Selective carry-forward
+    // -------------------------------------------------------------------------
+
+    it('should carry forward the roles that were NOT replaced', async () => {
+      await service.renew(secretId, renewDto, userId, writePerms);
+
+      const carried = (mockPrisma.secretAttachment.createMany as jest.Mock).mock
+        .calls[0][0].data;
+
+      expect(carried).toHaveLength(2);
+      expect(carried).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            storageObjectId: 'object-old-back',
+            role: 'card_back',
+          }),
+          // The role-less document is not a card face and must survive.
+          expect.objectContaining({ storageObjectId: 'object-doc', role: null }),
+        ]),
+      );
+    });
+
+    it('should NOT carry forward the replaced role', async () => {
+      await service.renew(secretId, renewDto, userId, writePerms);
+
+      // The dead card's front must never land on the new version — that is the
+      // exact row that would collide on @@unique([secretVersionId, role]).
+      expect(writtenRows()).not.toContainEqual(
+        expect.objectContaining({ storageObjectId: 'object-old-front' }),
+      );
+      expect(
+        writtenRows().filter((r) => r.role === 'card_front'),
+      ).toHaveLength(1);
+    });
+
+    it('should insert the replacement against the NEW version id', async () => {
+      await service.renew(secretId, renewDto, userId, writePerms);
+
+      const replacements = (mockPrisma.secretAttachment.createMany as jest.Mock)
+        .mock.calls[1][0].data;
+
+      expect(replacements).toEqual([
+        expect.objectContaining({
+          secretId,
+          secretVersionId: newVersionId,
+          storageObjectId: 'object-new-front',
+          role: 'card_front',
+        }),
+      ]);
+      // Both carried and replacement rows land on v_n+1, never anywhere else.
+      expect(writtenRows().every((r) => r.secretVersionId === newVersionId)).toBe(
+        true,
+      );
+    });
+
+    it('should carry EVERYTHING forward when no attachments are supplied', async () => {
+      await service.renew(
+        secretId,
+        { data: newCardData } as RenewSecretDto,
+        userId,
+        writePerms,
+      );
+
+      const carried = (mockPrisma.secretAttachment.createMany as jest.Mock).mock
+        .calls[0][0].data;
+      expect(carried).toHaveLength(3);
+      expect(mockPrisma.secretAttachment.createMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('should hold back a re-supplied object even under a different role', async () => {
+      // The user attaches the file that was previously the BACK as the new
+      // front. Carrying the old row forward too would trip
+      // @@unique([secretVersionId, storageObjectId]).
+      mockPrisma.storageObject.findUnique.mockResolvedValue({
+        ...newFrontObject,
+        id: 'object-old-back',
+      } as any);
+
+      await service.renew(
+        secretId,
+        {
+          data: newCardData,
+          attachments: [
+            { storageObjectId: 'object-old-back', role: 'card_front' as const },
+          ],
+        } as RenewSecretDto,
+        userId,
+        writePerms,
+      );
+
+      const rows = writtenRows().filter(
+        (r) => r.storageObjectId === 'object-old-back',
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].role).toBe('card_front');
+    });
+
+    // -------------------------------------------------------------------------
+    // The previous version is left alone
+    // -------------------------------------------------------------------------
+
+    it('should leave the previous version its own attachment set', async () => {
+      await service.renew(secretId, renewDto, userId, writePerms);
+
+      // The old version's rows are only ever READ. Nothing deletes or re-points
+      // them, which is what keeps the dead card's images readable from history.
+      expect(mockPrisma.secretAttachment.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { secretVersionId: versionId } }),
+      );
+      expect(mockPrisma.secretAttachment.delete).not.toHaveBeenCalled();
+      expect(mockPrisma.secretAttachment.deleteMany).not.toHaveBeenCalled();
+      expect(mockPrisma.secretAttachment.update).not.toHaveBeenCalled();
+      expect(mockPrisma.secretAttachment.updateMany).not.toHaveBeenCalled();
+
+      // And no write targets the old version id.
+      expect(writtenRows().some((r) => r.secretVersionId === versionId)).toBe(false);
+    });
+
+    it('should resolve the carry-forward source before clearing isCurrent', async () => {
+      await service.renew(secretId, renewDto, userId, writePerms);
+
+      const lookupOrder = (mockPrisma.secretVersion.findFirst as jest.Mock).mock
+        .invocationCallOrder[1];
+      const updateManyOrder = (mockPrisma.secretVersion.updateMany as jest.Mock)
+        .mock.invocationCallOrder[0];
+      expect(lookupOrder).toBeLessThan(updateManyOrder);
+    });
+
+    // -------------------------------------------------------------------------
+    // Storage object validation (must match linkAttachment)
+    // -------------------------------------------------------------------------
+
+    it('should throw NotFoundException when a supplied storage object does not exist', async () => {
+      mockPrisma.storageObject.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.renew(secretId, renewDto, userId, writePerms),
+      ).rejects.toThrow(NotFoundException);
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('should throw ForbiddenException when the object belongs to someone else', async () => {
+      mockPrisma.storageObject.findUnique.mockResolvedValue({
+        ...newFrontObject,
+        uploadedById: otherUserId,
+      } as any);
+
+      await expect(
+        service.renew(secretId, renewDto, userId, writePerms),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('should let a holder of write_any use an object they did not upload', async () => {
+      mockPrisma.storageObject.findUnique.mockResolvedValue({
+        ...newFrontObject,
+        uploadedById: otherUserId,
+      } as any);
+
+      await expect(
+        service.renew(secretId, renewDto, userId, [
+          PERMISSIONS.SECRETS_WRITE,
+          PERMISSIONS.SECRETS_WRITE_ANY,
+        ]),
+      ).resolves.toBeDefined();
+    });
+
+    it('should reject attachments on a type that does not allow them', async () => {
+      mockPrisma.secret.findUnique.mockResolvedValue({
+        ...mockSecret, // allowAttachments: false
+        versions: [mockVersion],
+        attachments: [],
+      } as any);
+
+      await expect(
+        service.renew(
+          secretId,
+          {
+            data: rawData,
+            attachments: [
+              { storageObjectId: newFrontObject.id, role: 'card_front' as const },
+            ],
+          } as RenewSecretDto,
+          userId,
+          writePerms,
+        ),
+      ).rejects.toThrow('This secret type does not allow attachments');
+    });
+
+    it('should reject a payload listing the same role twice', async () => {
+      await expect(
+        service.renew(
+          secretId,
+          {
+            data: newCardData,
+            attachments: [
+              { storageObjectId: 'object-a', role: 'card_front' as const },
+              { storageObjectId: 'object-b', role: 'card_front' as const },
+            ],
+          } as RenewSecretDto,
+          userId,
+          writePerms,
+        ),
+      ).rejects.toThrow(BadRequestException);
+
+      // Rejected before a single storage lookup is paid for.
+      expect(mockPrisma.storageObject.findUnique).not.toHaveBeenCalled();
+    });
+
+    // -------------------------------------------------------------------------
+    // Card image constraints (a renewal must not bypass linkAttachment's gate)
+    // -------------------------------------------------------------------------
+
+    it('should reject a non-image card image', async () => {
+      mockPrisma.storageObject.findUnique.mockResolvedValue({
+        ...newFrontObject,
+        mimeType: 'application/pdf',
+      } as any);
+
+      await expect(
+        service.renew(secretId, renewDto, userId, writePerms),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.renew(secretId, renewDto, userId, writePerms),
+      ).rejects.toThrow(/application\/pdf/);
+
+      // No version was minted for a rejected image.
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+      expect(mockPrisma.secretVersion.create).not.toHaveBeenCalled();
+    });
+
+    it('should reject an oversize card image', async () => {
+      mockPrisma.storageObject.findUnique.mockResolvedValue({
+        ...newFrontObject,
+        size: BigInt(6 * 1024 * 1024), // over the 5 MB default
+      } as any);
+
+      await expect(
+        service.renew(secretId, renewDto, userId, writePerms),
+      ).rejects.toThrow(/5242880 bytes or smaller/);
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('should measure an object whose recorded size is 0, exactly as linking does', async () => {
+      mockPrisma.storageObject.findUnique.mockResolvedValue({
+        ...newFrontObject,
+        size: BigInt(0),
+      } as any);
+      mockStorage.download.mockResolvedValue(
+        Readable.from([Buffer.alloc(6 * 1024 * 1024)]),
+      );
+
+      await expect(
+        service.renew(secretId, renewDto, userId, writePerms),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockStorage.download).toHaveBeenCalledWith(newFrontObject.storageKey);
+    });
+
+    it('should NOT apply the image gate to a role-less addition', async () => {
+      mockPrisma.storageObject.findUnique.mockResolvedValue({
+        ...newFrontObject,
+        mimeType: 'application/pdf',
+      } as any);
+
+      await expect(
+        service.renew(
+          secretId,
+          {
+            data: newCardData,
+            attachments: [
+              { storageObjectId: newFrontObject.id, label: 'Terms.pdf' },
+            ],
+          } as RenewSecretDto,
+          userId,
+          writePerms,
+        ),
+      ).resolves.toBeDefined();
+    });
+
+    // -------------------------------------------------------------------------
+    // Atomicity
+    // -------------------------------------------------------------------------
+
+    it('should roll the whole renewal back when the replacement insert fails', async () => {
+      let txDepth = 0;
+      const depthAt: Record<string, number> = {};
+
+      (mockPrisma.$transaction as jest.Mock).mockImplementation(
+        async (arg: unknown) => {
+          if (typeof arg !== 'function') {
+            return arg;
+          }
+          txDepth += 1;
+          try {
+            return await (arg as (tx: unknown) => Promise<unknown>)(mockPrisma);
+          } finally {
+            txDepth -= 1;
+          }
+        },
+      );
+
+      (mockPrisma.secretVersion.create as jest.Mock).mockImplementation(async () => {
+        depthAt.versionCreate = txDepth;
+        return { ...mockVersion, id: newVersionId, version: 2 };
+      });
+
+      const p2002 = Object.assign(new Error('Unique constraint failed'), {
+        code: 'P2002',
+        meta: { target: ['secret_version_id', 'role'] },
+      });
+
+      (mockPrisma.secretAttachment.createMany as jest.Mock)
+        // carry-forward succeeds
+        .mockImplementationOnce(async () => ({ count: 2 }))
+        // replacement insert blows up
+        .mockImplementationOnce(async () => {
+          depthAt.replacementInsert = txDepth;
+          throw p2002;
+        });
+
+      await expect(
+        service.renew(secretId, renewDto, userId, writePerms),
+      ).rejects.toThrow(ConflictException);
+
+      // Both the version bump and the failing insert ran inside the SAME open
+      // transaction, so Postgres discards the version, the carried rows and the
+      // partial replacement together. Nothing half-renewed is ever visible.
+      expect(depthAt.versionCreate).toBe(1);
+      expect(depthAt.replacementInsert).toBe(1);
+
+      // And nothing was recorded as having happened.
+      expect(mockPrisma.auditEvent.create).not.toHaveBeenCalled();
+    });
+
+    it('should surface a non-P2002 failure untouched', async () => {
+      const boom = new Error('connection reset');
+      (mockPrisma.secretAttachment.createMany as jest.Mock)
+        .mockResolvedValueOnce({ count: 2 } as any)
+        .mockRejectedValueOnce(boom);
+
+      await expect(
+        service.renew(secretId, renewDto, userId, writePerms),
+      ).rejects.toThrow(boom);
+      expect(mockPrisma.auditEvent.create).not.toHaveBeenCalled();
+    });
+
+    // -------------------------------------------------------------------------
+    // Audit
+    // -------------------------------------------------------------------------
+
+    it('should audit under a distinct action, not secret.update', async () => {
+      await service.renew(secretId, renewDto, userId, writePerms);
+
+      expect(mockPrisma.auditEvent.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          actorUserId: userId,
+          action: 'secret.renew',
+          targetType: 'secret',
+          targetId: secretId,
+        }),
+      });
+      expect(mockPrisma.auditEvent.create).not.toHaveBeenCalledWith({
+        data: expect.objectContaining({ action: 'secret.update' }),
+      });
+    });
+
+    it('should record an AI-assisted extraction as such', async () => {
+      await service.renew(
+        secretId,
+        { ...renewDto, aiAssisted: true } as RenewSecretDto,
+        userId,
+        writePerms,
+      );
+
+      expect(mockPrisma.auditEvent.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          meta: expect.objectContaining({ extractionMethod: 'ai_assisted' }),
+        }),
+      });
+    });
+
+    it('should default to a manual extraction when the flag is absent', async () => {
+      await service.renew(secretId, renewDto, userId, writePerms);
+
+      expect(mockPrisma.auditEvent.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          meta: expect.objectContaining({ extractionMethod: 'manual' }),
+        }),
+      });
+    });
+
+    it('should record what moved without recording any card value', async () => {
+      await service.renew(
+        secretId,
+        { ...renewDto, aiAssisted: true } as RenewSecretDto,
+        userId,
+        writePerms,
+      );
+
+      const meta = (mockPrisma.auditEvent.create as jest.Mock).mock.calls[0][0].data
+        .meta;
+
+      expect(meta).toEqual(
+        expect.objectContaining({
+          fromVersionId: versionId,
+          version: 2,
+          carriedAttachments: 2,
+          replacedAttachments: 1,
+          replacedRoles: ['card_front'],
+        }),
+      );
+
+      // The audit trail is readable by support staff and is not encrypted the
+      // way a SecretVersion is. No card number, holder or expiry may appear —
+      // neither as a value nor as a field name.
+      const serialized = JSON.stringify(meta);
+      expect(serialized).not.toContain(newCardData.number);
+      expect(serialized).not.toContain(newCardData.holder);
+      expect(serialized).not.toContain(newCardData.expiry);
+      expect(serialized).not.toContain('number');
+      expect(serialized).not.toContain('holder');
+      expect(serialized).not.toContain('expiry');
+    });
+
+    // -------------------------------------------------------------------------
+    // Authorization
+    // -------------------------------------------------------------------------
+
+    it('should throw ForbiddenException when a non-owner lacks write_any', async () => {
+      await expect(
+        service.renew(secretId, renewDto, otherUserId, [PERMISSIONS.SECRETS_WRITE]),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should allow a non-owner holding the _any escalation to renew', async () => {
+      // read_any is needed alongside write_any because the response is a full
+      // read of the secret — the same pairing update() and rollback() require.
+      await expect(
+        service.renew(secretId, renewDto, otherUserId, [
+          PERMISSIONS.SECRETS_WRITE,
+          PERMISSIONS.SECRETS_WRITE_ANY,
+          PERMISSIONS.SECRETS_READ,
+          PERMISSIONS.SECRETS_READ_ANY,
+        ]),
+      ).resolves.toBeDefined();
+    });
+
+    it('should still mint the new version for an admin acting under write_any', async () => {
+      await service.renew(secretId, renewDto, otherUserId, [
+        PERMISSIONS.SECRETS_WRITE,
+        PERMISSIONS.SECRETS_WRITE_ANY,
+        PERMISSIONS.SECRETS_READ,
+        PERMISSIONS.SECRETS_READ_ANY,
+      ]);
+
+      expect(mockPrisma.secretVersion.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            version: 2,
+            // The version is attributed to whoever performed the renewal, not
+            // to the secret's owner.
+            createdById: otherUserId,
+          }),
+        }),
+      );
+    });
+
+    it('should throw NotFoundException when the secret does not exist', async () => {
+      mockPrisma.secret.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.renew(secretId, renewDto, userId, writePerms),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ============================================================================
+  // rollback after renew  (issue #30 — the reason renewal keeps history intact)
+  // ============================================================================
+
+  describe('rollback after a renewal', () => {
+    const writePerms = [PERMISSIONS.SECRETS_WRITE];
+
+    // v1 = the ORIGINAL card. Its own field values and its own images.
+    const originalVersionId = 'version-original';
+    const originalVersion = {
+      ...mockVersion,
+      id: originalVersionId,
+      version: 1,
+      isCurrent: false,
+      encryptedData: 'original-ciphertext==',
+      iv: 'original-iv==',
+      authTag: 'original-tag==',
+    };
+
+    // v1's attachments — the photographs of the card that was replaced.
+    const originalAttachments = [
+      {
+        storageObjectId: 'object-original-front',
+        role: 'card_front',
+        label: 'Original front',
+      },
+      {
+        storageObjectId: 'object-original-back',
+        role: 'card_back',
+        label: 'Original back',
+      },
+    ];
+
+    const rolledBackVersionId = 'version-rolled-back';
+
+    beforeEach(() => {
+      mockPrisma.secret.findUnique.mockResolvedValue({
+        ...mockSecret,
+        versions: [{ ...mockVersion, id: rolledBackVersionId, version: 3 }],
+        attachments: [],
+      } as any);
+      mockPrisma.secretVersion.findUnique.mockResolvedValue(originalVersion as any);
+      // v2 (the renewal) is the highest existing version.
+      mockPrisma.secretVersion.findFirst.mockResolvedValue({ version: 2 } as any);
+      mockPrisma.secretVersion.updateMany.mockResolvedValue({ count: 2 } as any);
+      mockPrisma.secretVersion.create.mockResolvedValue({
+        ...mockVersion,
+        id: rolledBackVersionId,
+        version: 3,
+      } as any);
+      mockPrisma.secretAttachment.findMany.mockResolvedValue(
+        originalAttachments as any,
+      );
+      mockPrisma.secretAttachment.createMany.mockResolvedValue({ count: 2 } as any);
+      mockPrisma.auditEvent.create.mockResolvedValue({} as any);
+    });
+
+    it('should restore the original version FIELD data', async () => {
+      await service.rollback(secretId, originalVersionId, userId, writePerms);
+
+      // Decrypted from v1 specifically — not from the renewed v2.
+      expect(mockCrypto.decrypt).toHaveBeenCalledWith(
+        originalVersion.encryptedData,
+        originalVersion.iv,
+        originalVersion.authTag,
+      );
+      expect(mockCrypto.encrypt).toHaveBeenCalledWith(rawDataJson);
+      expect(mockPrisma.secretVersion.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ version: 3, isCurrent: true }),
+        }),
+      );
+    });
+
+    it('should restore the original version IMAGES alongside the fields', async () => {
+      await service.rollback(secretId, originalVersionId, userId, writePerms);
+
+      // The attachment source is v1, the version being rolled back TO. Reading
+      // the current version here would pair the original card's number with the
+      // renewed card's photographs.
+      expect(mockPrisma.secretAttachment.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { secretVersionId: originalVersionId } }),
+      );
+
+      const rows = (mockPrisma.secretAttachment.createMany as jest.Mock).mock
+        .calls[0][0].data;
+
+      expect(rows).toHaveLength(2);
+      expect(rows).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            secretVersionId: rolledBackVersionId,
+            storageObjectId: 'object-original-front',
+            role: 'card_front',
+          }),
+          expect.objectContaining({
+            secretVersionId: rolledBackVersionId,
+            storageObjectId: 'object-original-back',
+            role: 'card_back',
+          }),
+        ]),
+      );
+    });
+
+    it('should not drag the renewed version files along', async () => {
+      await service.rollback(secretId, originalVersionId, userId, writePerms);
+
+      const rows = (mockPrisma.secretAttachment.createMany as jest.Mock).mock
+        .calls[0][0].data;
+
+      expect(rows.map((r: any) => r.storageObjectId)).not.toContain(
+        'object-new-front',
+      );
+      expect(mockPrisma.secretVersion.findFirst).not.toHaveBeenCalledWith(
+        expect.objectContaining({ where: { secretId, isCurrent: true } }),
+      );
+    });
+
+    it('should report the restored attachment count on the audit event', async () => {
+      await service.rollback(secretId, originalVersionId, userId, writePerms);
+
+      expect(mockPrisma.auditEvent.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          action: 'secret.rollback',
+          meta: expect.objectContaining({
+            fromVersion: 1,
+            carriedAttachments: 2,
+          }),
+        }),
+      });
     });
   });
 

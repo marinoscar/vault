@@ -28,6 +28,7 @@ import { PERMISSIONS } from '../common/constants/roles.constants';
 import { SecretsService } from './secrets.service';
 import { CreateSecretDto } from './dto/create-secret.dto';
 import { UpdateSecretDto } from './dto/update-secret.dto';
+import { RenewSecretDto } from './dto/renew-secret.dto';
 import {
   SecretListQueryDto,
   secretListQuerySchema,
@@ -189,6 +190,38 @@ export class SecretsController {
     @CurrentUser() user: RequestUser,
   ) {
     const result = await this.secretsService.rollback(id, versionId, user.id, user.permissions);
+    return { data: result };
+  }
+
+  @Post(':id/renew')
+  @Auth({ permissions: [PERMISSIONS.SECRETS_WRITE] })
+  @ApiOperation({
+    summary: 'Renew a secret with new values and replacement files',
+    description:
+      'For a card that has been reissued, expired, or replaced after fraud. ' +
+      'Creates the next version from the supplied data and swaps only the ' +
+      'attachment roles present in the request; every other file is carried ' +
+      'forward. The previous version keeps its own values AND its own images, ' +
+      'so the old card stays readable in the version history. Version bump, ' +
+      'carry-forward and replacement insert all happen in one transaction.',
+  })
+  @ApiParam({ name: 'id', type: String, format: 'uuid', description: 'Secret ID' })
+  @ApiResponse({ status: 201, description: 'Renewal completed, new version created' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Data failed type validation, duplicate attachment entries, type does ' +
+      'not allow attachments, or a card image of the wrong type/size',
+  })
+  @ApiResponse({ status: 403, description: 'Access denied to the secret or a storage object' })
+  @ApiResponse({ status: 404, description: 'Secret or storage object not found' })
+  @ApiResponse({ status: 409, description: 'Concurrent renewal conflicted on an attachment role' })
+  async renew(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RenewSecretDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    const result = await this.secretsService.renew(id, dto, user.id, user.permissions);
     return { data: result };
   }
 
