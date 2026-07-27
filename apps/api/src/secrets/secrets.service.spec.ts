@@ -685,6 +685,169 @@ describe('SecretsService', () => {
     });
 
     // ------------------------------------------------------------------------
+    // Audit (issue #23 — linking must leave the same trace as unlinking)
+    // ------------------------------------------------------------------------
+
+    describe('audit', () => {
+      it('should write exactly one secret.attachment.link event', async () => {
+        await service.linkAttachment(
+          secretId,
+          { storageObjectId: storageObjectId, role: 'card_front' } as any,
+          userId,
+          writePerms,
+        );
+
+        expect(mockPrisma.auditEvent.create).toHaveBeenCalledTimes(1);
+        expect(mockPrisma.auditEvent.create).toHaveBeenCalledWith({
+          data: {
+            actorUserId: userId,
+            action: 'secret.attachment.link',
+            targetType: 'secret',
+            targetId: secretId,
+            meta: {
+              attachmentId,
+              storageObjectId,
+              role: 'card_front',
+              // The version the row was stamped onto, not just the secret.
+              secretVersionId: versionId,
+            },
+          },
+        });
+      });
+
+      it('should record role: null for a generic attachment', async () => {
+        mockPrisma.secretAttachment.create.mockResolvedValue({
+          ...mockAttachment,
+          role: null,
+        } as any);
+
+        await service.linkAttachment(
+          secretId,
+          { storageObjectId: storageObjectId } as any,
+          userId,
+          writePerms,
+        );
+
+        const meta = (mockPrisma.auditEvent.create as jest.Mock).mock.calls[0][0]
+          .data.meta;
+        // Explicitly null, not an absent key: "no role" must survive the trip
+        // through JSON.
+        expect(meta).toHaveProperty('role', null);
+      });
+
+      it('should write the event only AFTER the transaction resolves', async () => {
+        const committed = jest.fn();
+
+        // Re-wrap $transaction so "commit" is an observable event we can order
+        // against, resolving a macrotask later. An audit write issued inside the
+        // transaction would land before the marker and fail this test — and in
+        // production would let an audit failure roll back the link itself.
+        (mockPrisma.$transaction as jest.Mock).mockImplementation(
+          async (arg: unknown) => {
+            const result =
+              typeof arg === 'function'
+                ? await (arg as (tx: unknown) => Promise<unknown>)(mockPrisma)
+                : arg;
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            committed();
+            return result;
+          },
+        );
+
+        await service.linkAttachment(
+          secretId,
+          { storageObjectId: storageObjectId } as any,
+          userId,
+          writePerms,
+        );
+
+        expect(committed).toHaveBeenCalled();
+        expect(mockPrisma.auditEvent.create).toHaveBeenCalled();
+
+        const commitOrder = committed.mock.invocationCallOrder[0];
+        const auditOrder = (mockPrisma.auditEvent.create as jest.Mock).mock
+          .invocationCallOrder[0];
+        expect(commitOrder).toBeLessThan(auditOrder);
+      });
+
+      it('should record no card data, not even via the file name', async () => {
+        // Filenames leak: users really do save card photos as
+        // "visa-4111...-front.png". Neither the name, the storage key nor the
+        // mime type belongs in a row support staff can read.
+        const leakyObject = {
+          ...mockStorageObject,
+          name: 'visa-4111111111111111-front.png',
+          storageKey: 'secrets/visa-4111111111111111-front.png',
+        };
+        mockPrisma.storageObject.findUnique.mockResolvedValue(leakyObject as any);
+        mockPrisma.secretAttachment.create.mockResolvedValue({
+          ...mockAttachment,
+          storageObject: leakyObject,
+        } as any);
+
+        await service.linkAttachment(
+          secretId,
+          { storageObjectId: storageObjectId, role: 'card_front' } as any,
+          userId,
+          writePerms,
+        );
+
+        const meta = (mockPrisma.auditEvent.create as jest.Mock).mock.calls[0][0]
+          .data.meta;
+        const serialized = JSON.stringify(meta);
+
+        expect(serialized).not.toContain('4111111111111111');
+        expect(serialized).not.toContain(leakyObject.name);
+        expect(serialized).not.toContain(leakyObject.storageKey);
+        expect(serialized).not.toContain('image/png');
+        // Nor any card field name, should the meta ever be widened.
+        expect(serialized).not.toContain('number');
+        expect(serialized).not.toContain('holder');
+        expect(serialized).not.toContain('expiry');
+        expect(serialized).not.toContain('cvv');
+      });
+
+      it('should write no event when the insert conflicts', async () => {
+        mockPrisma.secretAttachment.create.mockRejectedValue(
+          Object.assign(new Error('Unique constraint failed'), {
+            code: 'P2002',
+            meta: { target: ['secret_version_id', 'role'] },
+          }),
+        );
+
+        await expect(
+          service.linkAttachment(
+            secretId,
+            { storageObjectId: storageObjectId, role: 'card_front' } as any,
+            userId,
+            writePerms,
+          ),
+        ).rejects.toThrow(ConflictException);
+
+        // Nothing was linked, so nothing may be recorded as linked.
+        expect(mockPrisma.auditEvent.create).not.toHaveBeenCalled();
+      });
+
+      it('should write no event when the link is rejected before the insert', async () => {
+        mockPrisma.storageObject.findUnique.mockResolvedValue({
+          ...mockStorageObject,
+          uploadedById: otherUserId,
+        } as any);
+
+        await expect(
+          service.linkAttachment(
+            secretId,
+            { storageObjectId: storageObjectId } as any,
+            userId,
+            writePerms,
+          ),
+        ).rejects.toThrow(ForbiddenException);
+
+        expect(mockPrisma.auditEvent.create).not.toHaveBeenCalled();
+      });
+    });
+
+    // ------------------------------------------------------------------------
     // Card image type/size constraints (issue #25)
     // ------------------------------------------------------------------------
 

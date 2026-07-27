@@ -1351,6 +1351,11 @@ export class SecretsService {
       throw this.translateAttachmentConflict(error, replacements[0] ?? {});
     }
 
+    // One event for one user action. The replacements inserted above are NOT
+    // also emitted as `secret.attachment.link` rows: a renewal is a single
+    // atomic swap, not N independent link calls, and synthesising link events
+    // here would double-count against `replacedAttachments` for anyone counting
+    // rows to answer "how many files were attached to this secret".
     await this.createAuditEvent(userId, 'secret.renew', secretId, {
       fromVersionId: newVersion.sourceVersionId ?? null,
       version: newVersion.version,
@@ -1490,6 +1495,26 @@ export class SecretsService {
     } catch (error) {
       throw this.translateAttachmentConflict(error, dto);
     }
+
+    // Outside the transaction, after it has committed — the same placement every
+    // other audit call site in this service uses. Inside it, a failing audit
+    // insert would roll back the link the caller just made, which trades a
+    // missing log line for lost data.
+    //
+    // Attaching a photograph of a card is at least as sensitive as removing one,
+    // so it gets the mirror of `secret.attachment.unlink`. Identifiers only: the
+    // audit trail is queried by support staff with no business reading card
+    // data, and audit rows are not encrypted the way a SecretVersion is.
+    await this.createAuditEvent(userId, 'secret.attachment.link', secretId, {
+      attachmentId: attachment.id,
+      storageObjectId: attachment.storageObjectId,
+      // Normalised to null rather than left undefined: a generic attachment
+      // should read as "no role", not as a key missing from the JSON.
+      role: attachment.role ?? null,
+      // Attachments are version-scoped, so the secret id alone does not say what
+      // changed — this is the version the file was actually stamped onto.
+      secretVersionId: attachment.secretVersionId,
+    });
 
     return this.mapAttachment(attachment);
   }
