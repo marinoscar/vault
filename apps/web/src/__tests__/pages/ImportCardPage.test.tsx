@@ -6,24 +6,55 @@ import userEvent from '@testing-library/user-event';
 import { mockAdminUser, mockUser, render } from '../utils/test-utils';
 import { server } from '../mocks/server';
 import ImportCardPage from '../../pages/ImportCardPage';
+import type { CardCropBox } from '../../types';
+import {
+  cropImageFileToBox,
+  cropImageFileToCard,
+  prepareCardPhoto,
+} from '../../utils/cardImage';
 
 const API_BASE = '*/api';
 
-// jsdom implements neither canvas encoding nor object URLs, so the crop shim is
-// replaced wholesale. The geometry it wraps is covered in
+// jsdom implements neither canvas encoding nor object URLs, so every
+// canvas-touching export the page calls directly is replaced wholesale:
+//  - `prepareCardPhoto` (the FULL photo sent to extraction)
+//  - `cropImageFileToBox` (stored-attachment crop from the AI's box)
+//  - `cropImageFileToCard` (the centred auto-fit fallback)
+// Each returns a value distinguishable from the others so a test can assert
+// which path a given side actually took. The geometry they wrap is covered in
 // __tests__/utils/cardImage.test.ts.
 vi.mock('../../utils/cardImage', async () => {
   const actual =
     await vi.importActual<typeof import('../../utils/cardImage')>('../../utils/cardImage');
   return {
     ...actual,
-    cropImageFileToCard: vi.fn(
-      async (_file: File, options?: { fileName?: string }) => ({
-        dataUrl: 'data:image/jpeg;base64,AAAA',
-        file: new File(['bytes'], options?.fileName ?? 'card.jpg', {
+    prepareCardPhoto: vi.fn(async (file: File) => ({
+      dataUrl: `data:image/jpeg;base64,PREPARED-${file.name}`,
+      width: 1600,
+      height: 1200,
+    })),
+    cropImageFileToBox: vi.fn(
+      async (_file: File, _box: CardCropBox, options?: { fileName?: string }) => ({
+        dataUrl: 'data:image/jpeg;base64,BOXCROP',
+        // Distinct byte length from both the raw capture ('bytes', 5) and the
+        // auto-fit fallback below — msw's Request/FormData round trip through
+        // jsdom loses a File's `name` (it comes back as the literal "blob"),
+        // so tests distinguish which crop path ran by content size instead.
+        file: new File(['box-cropped-bytes'], options?.fileName ?? 'card.jpg', {
           type: 'image/jpeg',
         }),
-        previewUrl: `blob:${options?.fileName ?? 'card.jpg'}`,
+        previewUrl: `blob:box-${options?.fileName ?? 'card.jpg'}`,
+        width: 1400,
+        height: 883,
+      }),
+    ),
+    cropImageFileToCard: vi.fn(
+      async (_file: File, options?: { fileName?: string }) => ({
+        dataUrl: 'data:image/jpeg;base64,AUTOFIT',
+        file: new File(['autofit-cropped'], options?.fileName ?? 'card.jpg', {
+          type: 'image/jpeg',
+        }),
+        previewUrl: `blob:autofit-${options?.fileName ?? 'card.jpg'}`,
         width: 1400,
         height: 883,
       }),
@@ -31,17 +62,18 @@ vi.mock('../../utils/cardImage', async () => {
   };
 });
 
-// The adjust stage decodes the picked file via `Image`/`URL.createObjectURL`
-// to draw a live preview, and jsdom implements neither meaningfully (`Image`
+// Only reached via "Adjust crop" on the review step (CardCropReview), which
+// none of these flow tests click. Decoding the picked file via `Image` to
+// draw a live preview is not something jsdom can do meaningfully (`Image`
 // never fires `onload`), so the interactive adjuster is replaced by a stub
 // that confirms immediately with the default (auto-fit, no pan/zoom/rotation)
-// adjustments. Its own interaction is not this page's concern; the geometry it
-// wraps is covered in __tests__/utils/cardImage.test.ts.
+// adjustments were it ever opened. Its own interaction is not this page's
+// concern; the geometry it wraps is covered in __tests__/utils/cardImage.test.ts.
 vi.mock('../../components/cards/CardCropAdjuster', () => ({
   CardCropAdjuster: vi.fn(
     ({ onConfirm }: { onConfirm: (adjustments: Record<string, never>) => void }) => (
       <button type="button" onClick={() => onConfirm({})}>
-        Use this photo
+        Apply crop
       </button>
     ),
   ),
@@ -103,6 +135,9 @@ const EXTRACTION = {
   warnings: ['The card number did not pass its checksum.'],
   model: 'gpt-4o-mini',
   partial: false,
+  // No box by default: existing tests exercise the auto-fit fallback path.
+  // The dedicated "crop routing" describe block below overrides this per-test.
+  crops: { front: null, back: null },
 };
 
 function aiStatus(enabled: boolean) {
@@ -149,16 +184,15 @@ function field(label: RegExp): HTMLElement {
 }
 
 /**
- * Picks a photo AND confirms the (stubbed) adjust stage, landing on the
- * cropped preview — the same end state `selectPhoto` produced before the
- * adjust stage existed.
+ * Picks a photo. The capture step has no adjuster of its own — it just shows
+ * the full raw photo with Retake/Continue once `prepareCardPhoto` (mocked)
+ * resolves.
  */
 function selectPhoto(side: 'front' | 'back') {
   const input = screen.getByTestId(`card-${side}-input`);
   fireEvent.change(input, {
     target: { files: [new File(['bytes'], `${side}.png`, { type: 'image/png' })] },
   });
-  fireEvent.click(screen.getByRole('button', { name: /use this photo/i }));
 }
 
 /** Front capture -> skip the back -> land on the review step. */
@@ -246,23 +280,25 @@ describe('ImportCardPage — capture and egress', () => {
     render(<ImportCardPage />);
 
     expect(await screen.findByText(/will be sent to OpenAI/i)).toBeInTheDocument();
-    expect(screen.getByText(/CVV \/ CVC is never sent/i)).toBeInTheDocument();
+    expect(screen.getByText(/CVV \/ CVC is never read from the photo/i)).toBeInTheDocument();
     expect(seen.filter((r) => r.includes('/cards/extract'))).toHaveLength(0);
   });
 
-  it('previews the cropped shot and offers a retake before continuing', async () => {
+  it('previews the raw photo (no crop) and offers a retake before continuing', async () => {
     render(<ImportCardPage />);
     await screen.findByRole('button', { name: /take a photo of the front/i });
 
     selectPhoto('front');
 
     expect(
-      await screen.findByAltText(/cropped front of the card/i),
+      await screen.findByAltText(/photo of the front of the card/i),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /retake/i })).toBeInTheDocument();
+    // No adjuster and no crop happens at capture time.
+    expect(screen.queryByRole('button', { name: /apply crop/i })).not.toBeInTheDocument();
   });
 
-  it('sends the cropped front and back as data URLs', async () => {
+  it('sends the prepared full-frame photos, not a cropped version, to extraction', async () => {
     let body: { front?: string; back?: string } = {};
     server.use(
       http.post(`${API_BASE}/secrets/cards/extract`, async ({ request }) => {
@@ -281,8 +317,8 @@ describe('ImportCardPage — capture and egress', () => {
     fireEvent.click(await screen.findByRole('button', { name: /read the card/i }));
 
     await screen.findByRole('heading', { name: /check the details/i });
-    expect(body.front).toMatch(/^data:image\/jpeg;base64,/);
-    expect(body.back).toMatch(/^data:image\/jpeg;base64,/);
+    expect(body.front).toMatch(/^data:image\/jpeg;base64,PREPARED-front\.png/);
+    expect(body.back).toMatch(/^data:image\/jpeg;base64,PREPARED-back\.png/);
   });
 
   it('sends only the front when the back is skipped', async () => {
@@ -298,6 +334,96 @@ describe('ImportCardPage — capture and egress', () => {
 
     expect(body.front).toBeTruthy();
     expect(body.back).toBeUndefined();
+  });
+});
+
+describe('ImportCardPage — crop routing', () => {
+  beforeEach(() => {
+    server.use(aiStatus(true), secretTypes());
+  });
+
+  it('crops the front from the AI box when the extraction returns one', async () => {
+    const box: CardCropBox = {
+      x: 0.1,
+      y: 0.15,
+      width: 0.6,
+      height: 0.4,
+      quarterTurns: 0,
+      confidence: 0.92,
+    };
+    server.use(
+      http.post(`${API_BASE}/secrets/cards/extract`, () =>
+        HttpResponse.json({ data: { ...EXTRACTION, crops: { front: box, back: null } } }),
+      ),
+    );
+    render(<ImportCardPage />);
+    await walkToReview();
+
+    expect(vi.mocked(cropImageFileToBox)).toHaveBeenCalledWith(
+      expect.any(File),
+      box,
+      expect.objectContaining({ fileName: 'card-front.jpg' }),
+    );
+    expect(vi.mocked(cropImageFileToCard)).not.toHaveBeenCalledWith(
+      expect.any(File),
+      expect.objectContaining({ fileName: 'card-front.jpg' }),
+    );
+    // The box crop is what renders on the review step.
+    expect(
+      await screen.findByAltText(/cropped front of the card/i),
+    ).toHaveAttribute('src', 'blob:box-card-front.jpg');
+  });
+
+  it('falls back to the centred auto-fit crop when no box is returned', async () => {
+    server.use(
+      http.post(`${API_BASE}/secrets/cards/extract`, () =>
+        HttpResponse.json({ data: { ...EXTRACTION, crops: { front: null, back: null } } }),
+      ),
+    );
+    render(<ImportCardPage />);
+    await walkToReview();
+
+    expect(vi.mocked(cropImageFileToBox)).not.toHaveBeenCalled();
+    expect(vi.mocked(cropImageFileToCard)).toHaveBeenCalledWith(
+      expect.any(File),
+      expect.objectContaining({ fileName: 'card-front.jpg' }),
+    );
+    expect(
+      await screen.findByAltText(/cropped front of the card/i),
+    ).toHaveAttribute('src', 'blob:autofit-card-front.jpg');
+  });
+
+  it('uploads the cropped file on save, never the raw capture', async () => {
+    const user = userEvent.setup();
+    let uploadedSize = -1;
+    server.use(
+      http.post(`${API_BASE}/secrets/cards/extract`, () =>
+        HttpResponse.json({ data: { ...EXTRACTION, crops: { front: null, back: null } } }),
+      ),
+      http.post(`${API_BASE}/secrets`, () =>
+        HttpResponse.json({ data: { id: 'secret-9' } }),
+      ),
+      http.post(`${API_BASE}/storage/objects`, async ({ request }) => {
+        const formData = await request.formData();
+        const file = formData.get('file') as File;
+        uploadedSize = file.size;
+        return HttpResponse.json({ data: { id: 'object-1' } });
+      }),
+      http.post(`${API_BASE}/secrets/:id/attachments`, () =>
+        HttpResponse.json({ data: { id: 'attachment-1' } }),
+      ),
+    );
+    render(<ImportCardPage />);
+    await walkToReview();
+
+    await user.type(field(/cvv/i), '123');
+    fireEvent.click(screen.getByRole('button', { name: /save card/i }));
+
+    await waitFor(() => expect(uploadedSize).toBeGreaterThanOrEqual(0));
+    // Cropped (auto-fit, since this response has no box) content, never the
+    // raw 5-byte `front.png` capture the user actually picked.
+    expect(uploadedSize).toBe('autofit-cropped'.length);
+    expect(uploadedSize).not.toBe('bytes'.length);
   });
 });
 
@@ -564,7 +690,7 @@ describe('ImportCardPage — cancelling leaves nothing behind', () => {
 
     await screen.findByRole('button', { name: /take a photo of the front/i });
     selectPhoto('front');
-    await screen.findByAltText(/cropped front of the card/i);
+    await screen.findByAltText(/photo of the front of the card/i);
 
     fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
 

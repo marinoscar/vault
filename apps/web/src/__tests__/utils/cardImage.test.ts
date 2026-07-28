@@ -5,11 +5,16 @@ import {
   CARD_IMAGE_JPEG_QUALITY,
   CARD_IMAGE_MAX_LONG_EDGE,
   CARD_IMAGE_MAX_ZOOM,
+  CARD_PHOTO_MAX_LONG_EDGE,
+  MAX_IMAGE_DATA_URL_LENGTH,
+  adjustmentsFromCropBox,
+  adjustmentsFromCropRect,
   clamp,
   computeAdjustedCropRect,
   computeCardCropRect,
   computeMaxPan,
   computeOutputSize,
+  cropRectFromBox,
   dataUrlToBlob,
   effectiveSourceSize,
   normalizeQuarterTurns,
@@ -404,6 +409,254 @@ describe('cardImage geometry', () => {
 
       expect(atZoom2.crop.width).toBeLessThan(atZoom1.crop.width);
       expect(atZoom2.crop.height).toBeLessThan(atZoom1.crop.height);
+    });
+  });
+
+  describe('CARD_PHOTO_MAX_LONG_EDGE', () => {
+    it('is pinned to 3072px', () => {
+      // A dedicated literal, not just the constant, so an accidental change to
+      // the FULL-photo cap (distinct from the crop's CARD_IMAGE_MAX_LONG_EDGE)
+      // fails a test rather than silently changing what the model receives.
+      expect(CARD_PHOTO_MAX_LONG_EDGE).toBe(3072);
+    });
+  });
+
+  describe('MAX_IMAGE_DATA_URL_LENGTH', () => {
+    it('is pinned to 6,000,000 characters, mirroring the API-side cap', () => {
+      expect(MAX_IMAGE_DATA_URL_LENGTH).toBe(6_000_000);
+    });
+  });
+
+  describe('cropRectFromBox', () => {
+    it('converts fractional box coordinates to pixels with no margin or snap needed', () => {
+      // aspectRatio 1 and marginFraction 0 isolate the fraction -> pixel
+      // mapping: a 0.4x0.4 box in a 1000x1000 frame is already square, so
+      // nothing else in the function has anything to do.
+      const rect = cropRectFromBox(
+        1000,
+        1000,
+        { x: 0.2, y: 0.3, width: 0.4, height: 0.4 },
+        1,
+        0,
+      );
+
+      expect(rect).toEqual({ x: 200, y: 300, width: 400, height: 400 });
+    });
+
+    it('grows the rect by the margin fraction, centred on the same point', () => {
+      const box = { x: 0.2, y: 0.3, width: 0.4, height: 0.4 };
+      const noMargin = cropRectFromBox(1000, 1000, box, 1, 0);
+      const withMargin = cropRectFromBox(1000, 1000, box, 1, 0.1);
+
+      expect(withMargin.width).toBeGreaterThan(noMargin.width);
+      expect(withMargin.height).toBeGreaterThan(noMargin.height);
+      // Still centred on the same point as the unpadded box.
+      const noMarginCenterX = noMargin.x + noMargin.width / 2;
+      const withMarginCenterX = withMargin.x + withMargin.width / 2;
+      expect(withMarginCenterX).toBeCloseTo(noMarginCenterX, 0);
+    });
+
+    it('snaps to the target aspect ratio by only growing the short axis', () => {
+      // A square box against the (wider) card aspect ratio: width must grow to
+      // meet the ratio, and height — already the binding axis — must not
+      // shrink to get there.
+      const wide = cropRectFromBox(
+        1000,
+        1000,
+        { x: 0.35, y: 0.35, width: 0.3, height: 0.3 },
+        CARD_ASPECT_RATIO,
+        0,
+      );
+      expect(wide.height).toBe(300);
+      expect(wide.width).toBeGreaterThan(300);
+      expect(wide.width / wide.height).toBeCloseTo(CARD_ASPECT_RATIO, 1);
+
+      // A wide box against a square target aspect ratio: height must grow, and
+      // width — already the binding axis — must not shrink.
+      const tall = cropRectFromBox(
+        1000,
+        1000,
+        { x: 0.1, y: 0.4, width: 0.3, height: 0.1 },
+        1,
+        0,
+      );
+      expect(tall.width).toBe(300);
+      expect(tall.height).toBeGreaterThan(100);
+      expect(tall.width / tall.height).toBeCloseTo(1, 1);
+    });
+
+    it('clamps the result inside the frame when growth would push it over an edge', () => {
+      // A box near the bottom-right corner, padded until it would spill past
+      // x=1000 if left centred — the clamp catches it instead.
+      const rect = cropRectFromBox(
+        1000,
+        1000,
+        { x: 0.75, y: 0.75, width: 0.2, height: 0.2 },
+        1,
+        0.3,
+      );
+
+      expect(rect.x + rect.width).toBeLessThanOrEqual(1000);
+      expect(rect.y + rect.height).toBeLessThanOrEqual(1000);
+      expect(rect).toEqual({ x: 680, y: 680, width: 320, height: 320 });
+    });
+
+    it('never returns a rect that hangs off the source frame, across many boxes', () => {
+      const cases: [number, number, { x: number; y: number; width: number; height: number }][] = [
+        [1000, 1000, { x: 0, y: 0, width: 1, height: 1 }],
+        [1000, 1000, { x: 0.9, y: 0.9, width: 0.1, height: 0.1 }],
+        [4032, 3024, { x: 0.05, y: 0.05, width: 0.9, height: 0.9 }],
+        [640, 480, { x: 0.4, y: 0.4, width: 0.05, height: 0.05 }],
+      ];
+      for (const [w, h, box] of cases) {
+        const rect = cropRectFromBox(w, h, box);
+        expect(rect.x).toBeGreaterThanOrEqual(0);
+        expect(rect.y).toBeGreaterThanOrEqual(0);
+        expect(rect.x + rect.width).toBeLessThanOrEqual(w);
+        expect(rect.y + rect.height).toBeLessThanOrEqual(h);
+      }
+    });
+
+    it('is rotation-aware: rotates the box into the effective frame before cropping', () => {
+      // One clockwise turn on a 2000x1000 (landscape) source makes the
+      // EFFECTIVE frame 1000x2000 (portrait); the crop must be computed
+      // against that, with the box rotated to match, not against the raw
+      // frame.
+      const rect = cropRectFromBox(
+        2000,
+        1000,
+        { x: 0.3, y: 0.3, width: 0.2, height: 0.1, quarterTurns: 1 },
+        1,
+        0,
+      );
+
+      expect(rect).toEqual({ x: 450, y: 600, width: 400, height: 400 });
+      expect(rect.x + rect.width).toBeLessThanOrEqual(1000);
+      expect(rect.y + rect.height).toBeLessThanOrEqual(2000);
+    });
+
+    it('produces the unrotated result for quarterTurns 0 or undefined alike', () => {
+      const box = { x: 0.2, y: 0.3, width: 0.4, height: 0.4 };
+      const withZero = cropRectFromBox(1000, 1000, { ...box, quarterTurns: 0 });
+      const withUndefined = cropRectFromBox(1000, 1000, box);
+
+      expect(withUndefined).toEqual(withZero);
+    });
+
+    it('throws for a degenerate box with no area inside the image', () => {
+      // x=1, width=0.5 clamps to zero width once trimmed into the unit square.
+      expect(() =>
+        cropRectFromBox(1000, 1000, { x: 1, y: 1, width: 0.5, height: 0.5 }),
+      ).toThrow(RangeError);
+      expect(() =>
+        cropRectFromBox(1000, 1000, { x: 0, y: 0, width: 0, height: 0.5 }),
+      ).toThrow(RangeError);
+    });
+
+    it('rejects non-positive or non-finite image dimensions', () => {
+      expect(() =>
+        cropRectFromBox(0, 100, { x: 0, y: 0, width: 0.5, height: 0.5 }),
+      ).toThrow(RangeError);
+      expect(() =>
+        cropRectFromBox(100, Number.NaN, { x: 0, y: 0, width: 0.5, height: 0.5 }),
+      ).toThrow(RangeError);
+    });
+  });
+
+  describe('adjustmentsFromCropRect', () => {
+    it('round-trips through computeAdjustedCropRect for an unrotated rect', () => {
+      const sourceWidth = 2000;
+      const sourceHeight = 1200;
+      // A rect actually produced by the adjuster's own model, so it already
+      // has the card aspect ratio and is representable as zoom/pan.
+      const original = computeAdjustedCropRect(sourceWidth, sourceHeight, 2, 50, -30);
+
+      const adjustments = adjustmentsFromCropRect(sourceWidth, sourceHeight, original, 0);
+      const reproduced = computeAdjustedCropRect(
+        sourceWidth,
+        sourceHeight,
+        adjustments.zoom,
+        adjustments.panX,
+        adjustments.panY,
+      );
+
+      expect(reproduced).toEqual(original);
+    });
+
+    it('round-trips a rotated rect against the EFFECTIVE (post-rotation) frame', () => {
+      const sourceWidth = 2000;
+      const sourceHeight = 1200;
+      const effective = effectiveSourceSize(sourceWidth, sourceHeight, 1);
+      const original = computeAdjustedCropRect(effective.width, effective.height, 1.8, 20, -40);
+
+      const adjustments = adjustmentsFromCropRect(sourceWidth, sourceHeight, original, 1);
+      expect(adjustments.quarterTurns).toBe(1);
+      const reproduced = computeAdjustedCropRect(
+        effective.width,
+        effective.height,
+        adjustments.zoom,
+        adjustments.panX,
+        adjustments.panY,
+      );
+
+      expect(reproduced).toEqual(original);
+    });
+
+    it('clamps the derived zoom into [1, CARD_IMAGE_MAX_ZOOM]', () => {
+      const sourceWidth = 2000;
+      const sourceHeight = 1200;
+      const base = computeCardCropRect(sourceWidth, sourceHeight);
+
+      // A rect far smaller than the auto-fit base would need a zoom well past
+      // the adjuster's ceiling; the derived zoom must not exceed it.
+      const tiny = { x: base.x + base.width / 2 - 5, y: base.y + base.height / 2 - 3, width: 10, height: 6 };
+      const adjustments = adjustmentsFromCropRect(sourceWidth, sourceHeight, tiny, 0);
+
+      expect(adjustments.zoom).toBeLessThanOrEqual(CARD_IMAGE_MAX_ZOOM);
+      expect(adjustments.zoom).toBeGreaterThanOrEqual(1);
+    });
+
+    it('throws for non-positive source dimensions', () => {
+      expect(() =>
+        adjustmentsFromCropRect(0, 100, { x: 0, y: 0, width: 10, height: 10 }, 0),
+      ).toThrow(RangeError);
+    });
+  });
+
+  describe('adjustmentsFromCropBox', () => {
+    it('seeds the same crop that cropRectFromBox would produce for the box', () => {
+      const sourceWidth = 1600;
+      const sourceHeight = 1200;
+      const box = { x: 0.2, y: 0.25, width: 0.5, height: 0.35, quarterTurns: 0 };
+
+      const expectedCrop = cropRectFromBox(sourceWidth, sourceHeight, box);
+      const adjustments = adjustmentsFromCropBox(sourceWidth, sourceHeight, box);
+      const effective = effectiveSourceSize(sourceWidth, sourceHeight, adjustments.quarterTurns);
+      const reproduced = computeAdjustedCropRect(
+        effective.width,
+        effective.height,
+        adjustments.zoom,
+        adjustments.panX,
+        adjustments.panY,
+      );
+
+      expect(reproduced).toEqual(expectedCrop);
+    });
+
+    it('carries the box quarterTurns through into the adjustments', () => {
+      const sourceWidth = 1600;
+      const sourceHeight = 1200;
+      const box = { x: 0.2, y: 0.25, width: 0.5, height: 0.35, quarterTurns: 3 };
+
+      const adjustments = adjustmentsFromCropBox(sourceWidth, sourceHeight, box);
+
+      expect(adjustments.quarterTurns).toBe(3);
+    });
+
+    it('throws for a degenerate box with no area inside the image', () => {
+      expect(() =>
+        adjustmentsFromCropBox(1000, 1000, { x: 1, y: 1, width: 0.5, height: 0.5 }),
+      ).toThrow(RangeError);
     });
   });
 
