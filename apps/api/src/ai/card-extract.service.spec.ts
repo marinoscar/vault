@@ -172,13 +172,39 @@ describe('CardExtractService', () => {
       expect(result.confidence.number).toBeCloseTo(0.99);
     });
 
-    it('never returns a cvv field', async () => {
-      vision.extractCard.mockResolvedValue(goodFront());
+    it('returns a normalized cvv field, read from the photo like any other field', async () => {
+      vision.extractCard.mockResolvedValue(
+        buildRawExtraction(
+          {
+            cardholder_name: CARDHOLDER,
+            number: '4111 1111 1111 1111',
+            cvv: '123',
+          },
+          {
+            cardholder_name: 0.92,
+            number: 0.99,
+            cvv: 0.9,
+          },
+        ),
+      );
 
       const result = await service.extract({ front: FRONT_IMAGE }, user);
 
-      expect(Object.keys(result.fields)).not.toContain('cvv');
-      expect(Object.keys(result.confidence)).not.toContain('cvv');
+      expect(Object.keys(result.fields)).toContain('cvv');
+      expect(Object.keys(result.confidence)).toContain('cvv');
+      expect(result.fields.cvv).toBe('123');
+      expect(result.confidence.cvv).toBeCloseTo(0.9);
+    });
+
+    it('nulls out a cvv of the wrong length rather than passing a misread value through', async () => {
+      vision.extractCard.mockResolvedValue(
+        buildRawExtraction({ cvv: '12' }, { cvv: 0.9 }),
+      );
+
+      const result = await service.extract({ front: FRONT_IMAGE }, user);
+
+      expect(result.fields.cvv).toBeNull();
+      expect(result.confidence.cvv).toBe(0);
     });
 
     it('calls the provider exactly once with both sides when a back image is supplied', async () => {

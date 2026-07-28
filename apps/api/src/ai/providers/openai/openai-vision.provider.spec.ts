@@ -41,6 +41,7 @@ function modelJson(overrides: Record<string, unknown> = {}) {
     number: '4111 1111 1111 1111',
     exp_month: '07',
     exp_year: '27',
+    cvv: '123',
     card_network: 'Visa',
     card_kind: 'Credit',
     issuing_bank: 'Example Bank',
@@ -51,6 +52,7 @@ function modelJson(overrides: Record<string, unknown> = {}) {
       number: 0.99,
       exp_month: 0.9,
       exp_year: 0.9,
+      cvv: 0.85,
       card_network: 0.95,
       card_kind: 0.6,
       issuing_bank: 0.7,
@@ -256,18 +258,53 @@ describe('OpenAiVisionProvider', () => {
   describe('json schema', () => {
     const schema = OPENAI_CARD_JSON_SCHEMA as any;
 
-    it('never asks for a cvv', () => {
-      const serialized = JSON.stringify(schema).toLowerCase();
-      expect(Object.keys(schema.properties)).not.toContain('cvv');
-      expect(Object.keys(schema.properties.confidence.properties)).not.toContain(
+    it('requires a cvv field in the schema, in properties, required and confidence', () => {
+      // The card security code IS extracted now: this vault stores the code
+      // alongside the PAN, so the strict schema must demand it exactly like
+      // every other field - a missing cvv key must fail the request, not be
+      // silently tolerated.
+      expect(Object.keys(schema.properties)).toContain('cvv');
+      expect(schema.required).toContain('cvv');
+      expect(schema.properties.cvv.type).toEqual(['string', 'null']);
+      expect(Object.keys(schema.properties.confidence.properties)).toContain(
         'cvv',
       );
-      expect(serialized).not.toContain('"cvv"');
+      expect(schema.properties.confidence.required).toContain('cvv');
     });
 
-    it('instructs the model never to output a CVV', () => {
-      expect(OPENAI_CARD_SYSTEM_PROMPT).toContain('NEVER output a CVV');
-      expect(OPENAI_CARD_SYSTEM_PROMPT).toContain('security_code_2` is NOT the CVV');
+    it('tells the model where to find the security code: back-3 for most networks, front-4 for Amex', () => {
+      expect(OPENAI_CARD_SYSTEM_PROMPT).toContain('3-digit group on the BACK');
+      expect(OPENAI_CARD_SYSTEM_PROMPT).toContain('4-digit group on the FRONT');
+      expect(OPENAI_CARD_SYSTEM_PROMPT).toContain('American Express');
+    });
+
+    it('lists the security code label variants and covers the unlabeled case', () => {
+      expect(OPENAI_CARD_SYSTEM_PROMPT).toContain('CVV, CVC, CVV2, CVC2, CID, CSC');
+      expect(OPENAI_CARD_SYSTEM_PROMPT).toContain('"Sec Code"');
+      expect(OPENAI_CARD_SYSTEM_PROMPT).toContain('"Security Code"');
+      expect(OPENAI_CARD_SYSTEM_PROMPT).toContain('is very often absent entirely');
+      expect(OPENAI_CARD_SYSTEM_PROMPT).toContain(
+        'IS the security code even when nothing labels it',
+      );
+    });
+
+    it('warns against confusing the security code with the PAN tail, the expiry or a MEMBER SINCE year', () => {
+      expect(OPENAI_CARD_SYSTEM_PROMPT).toContain(
+        'the last four digits of the account number, the expiry, and a "MEMBER SINCE" year',
+      );
+    });
+
+    it('describes security_code_2 as an ADDITIONAL second code, never a duplicate of cvv', () => {
+      expect(OPENAI_CARD_SYSTEM_PROMPT).toContain(
+        '`security_code_2` is only for a SECOND security code on a card that prints more than one',
+      );
+      expect(OPENAI_CARD_SYSTEM_PROMPT).toContain('never repeat the `cvv` value there');
+      expect(schema.properties.security_code_2.description).toContain(
+        'An ADDITIONAL security or control number',
+      );
+      expect(schema.properties.security_code_2.description).toContain(
+        'Never a copy of the value already returned in `cvv`',
+      );
     });
 
     it('instructs the model to always give its best reading, even from poor images, with honest confidence, but still sets confidence 0 for nulls', () => {
@@ -325,6 +362,7 @@ describe('OpenAiVisionProvider', () => {
         'number',
         'exp_month',
         'exp_year',
+        'cvv',
         'card_network',
         'card_kind',
         'issuing_bank',
@@ -413,8 +451,10 @@ describe('OpenAiVisionProvider', () => {
 
       expect(result.fields.cardholder_name).toBe('ADA LOVELACE');
       expect(result.fields.number).toBe('4111 1111 1111 1111');
+      expect(result.fields.cvv).toBe('123');
       expect(result.fields.security_code_2).toBeNull();
       expect(result.confidence.number).toBeCloseTo(0.99);
+      expect(result.confidence.cvv).toBeCloseTo(0.85);
       expect(result.warnings).toEqual([]);
       expect(result.model).toBe('gpt-4o-mini-2024-07-18');
     });

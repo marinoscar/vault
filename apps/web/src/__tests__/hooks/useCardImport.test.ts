@@ -151,7 +151,7 @@ describe('describeCardExtractionError', () => {
 });
 
 describe('toReviewValues', () => {
-  it('never seeds a CVV, even if one somehow appears in the response', () => {
+  it('seeds the CVV from the extraction, like any other field', () => {
     const extraction = {
       fields: { number: '4242424242424242', cvv: '123' },
       confidence: {},
@@ -160,8 +160,20 @@ describe('toReviewValues', () => {
       partial: false,
     } as unknown as CardExtractionResult;
 
-    expect(toReviewValues(extraction).cvv).toBe('');
+    expect(toReviewValues(extraction).cvv).toBe('123');
     expect(toReviewValues(extraction).number).toBe('4242424242424242');
+  });
+
+  it('leaves the CVV empty when the extraction did not return one', () => {
+    const extraction = {
+      fields: { number: '4242424242424242' },
+      confidence: {},
+      warnings: [],
+      model: 'gpt-4o-mini',
+      partial: false,
+    } as unknown as CardExtractionResult;
+
+    expect(toReviewValues(extraction).cvv).toBe('');
   });
 
   it('produces an all-empty form when there is no extraction', () => {
