@@ -5,8 +5,8 @@ import { server } from './mocks/server';
 
 // Set base URL for fetch
 const BASE_URL = 'http://localhost:3000';
-if (typeof global !== 'undefined') {
-  (global as any).BASE_URL = BASE_URL;
+if (typeof globalThis !== 'undefined') {
+  (globalThis as any).BASE_URL = BASE_URL;
 }
 
 // Mock location for testing
@@ -110,7 +110,7 @@ class ResizeObserverMock {
   unobserve = vi.fn();
   disconnect = vi.fn();
 }
-global.ResizeObserver = ResizeObserverMock;
+globalThis.ResizeObserver = ResizeObserverMock;
 
 // Mock IntersectionObserver as a class
 class IntersectionObserverMock {
@@ -121,7 +121,7 @@ class IntersectionObserverMock {
   rootMargin = '';
   thresholds = [];
 }
-global.IntersectionObserver = IntersectionObserverMock as any;
+globalThis.IntersectionObserver = IntersectionObserverMock as any;
 
 // Setup MSW server
 beforeAll(() => {

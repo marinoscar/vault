@@ -77,7 +77,7 @@ describe('SystemSettingsPage', () => {
             email: 'viewer@example.com',
             displayName: 'Viewer User',
             profileImageUrl: null,
-            roles: ['viewer'],
+            roles: [{ name: 'viewer' }],
             permissions: ['user_settings:read'],
             isActive: true,
             createdAt: new Date().toISOString(),
@@ -115,7 +115,7 @@ describe('SystemSettingsPage', () => {
         wrapperOptions: {
           user: {
             ...mockAdminUser,
-            roles: ['viewer'],
+            roles: [{ name: 'viewer' }],
             permissions: ['system_settings:read'],
           },
         },
@@ -424,7 +424,7 @@ describe('SystemSettingsPage', () => {
         wrapperOptions: {
           user: {
             ...mockAdminUser,
-            roles: ['viewer'],
+            roles: [{ name: 'viewer' }],
             permissions: ['system_settings:read'],
           },
         },

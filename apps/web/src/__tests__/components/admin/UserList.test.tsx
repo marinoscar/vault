@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render, mockAdminUser } from '../../utils/test-utils';
 import { UserList } from '../../../components/admin/UserList';
@@ -29,6 +29,7 @@ describe('UserList', () => {
     roles: ['viewer'],
     isActive: true,
     createdAt: '2024-01-15T10:00:00Z',
+    updatedAt: '2024-01-15T10:00:00Z',
   };
 
   const mockInactiveUser: UserListItem = {
@@ -41,6 +42,7 @@ describe('UserList', () => {
     roles: ['contributor'],
     isActive: false,
     createdAt: '2024-01-16T10:00:00Z',
+    updatedAt: '2024-01-16T10:00:00Z',
   };
 
   const mockAdminUserItem: UserListItem = {
@@ -53,6 +55,7 @@ describe('UserList', () => {
     roles: ['admin', 'contributor'],
     isActive: true,
     createdAt: '2024-01-10T10:00:00Z',
+    updatedAt: '2024-01-10T10:00:00Z',
   };
 
   beforeEach(() => {
@@ -62,6 +65,9 @@ describe('UserList', () => {
     mockUseUsers.mockReturnValue({
       users: [],
       total: 0,
+      page: 1,
+      pageSize: 10,
+      totalPages: 0,
       isLoading: false,
       error: null,
       fetchUsers: mockFetchUsers,
@@ -75,6 +81,9 @@ describe('UserList', () => {
       mockUseUsers.mockReturnValue({
         users: [mockActiveUser, mockInactiveUser],
         total: 2,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
         isLoading: false,
         error: null,
         fetchUsers: mockFetchUsers,
@@ -96,6 +105,9 @@ describe('UserList', () => {
       mockUseUsers.mockReturnValue({
         users: [],
         total: 0,
+        page: 1,
+        pageSize: 10,
+        totalPages: 0,
         isLoading: true,
         error: null,
         fetchUsers: mockFetchUsers,
@@ -114,6 +126,9 @@ describe('UserList', () => {
       mockUseUsers.mockReturnValue({
         users: [],
         total: 0,
+        page: 1,
+        pageSize: 10,
+        totalPages: 0,
         isLoading: false,
         error: 'Failed to load users',
         fetchUsers: mockFetchUsers,
@@ -134,6 +149,9 @@ describe('UserList', () => {
       mockUseUsers.mockReturnValue({
         users: [],
         total: 0,
+        page: 1,
+        pageSize: 10,
+        totalPages: 0,
         isLoading: false,
         error: null,
         fetchUsers: mockFetchUsers,
@@ -156,6 +174,9 @@ describe('UserList', () => {
       mockUseUsers.mockReturnValue({
         users: [mockActiveUser],
         total: 1,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
         isLoading: false,
         error: null,
         fetchUsers: mockFetchUsers,
@@ -177,6 +198,9 @@ describe('UserList', () => {
       mockUseUsers.mockReturnValue({
         users: [mockActiveUser],
         total: 1,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
         isLoading: false,
         error: null,
         fetchUsers: mockFetchUsers,
@@ -197,6 +221,9 @@ describe('UserList', () => {
       mockUseUsers.mockReturnValue({
         users: [mockInactiveUser],
         total: 1,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
         isLoading: false,
         error: null,
         fetchUsers: mockFetchUsers,
@@ -217,6 +244,9 @@ describe('UserList', () => {
       mockUseUsers.mockReturnValue({
         users: [mockAdminUserItem],
         total: 1,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
         isLoading: false,
         error: null,
         fetchUsers: mockFetchUsers,
@@ -240,6 +270,9 @@ describe('UserList', () => {
       mockUseUsers.mockReturnValue({
         users: [mockActiveUser],
         total: 1,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
         isLoading: false,
         error: null,
         fetchUsers: mockFetchUsers,
@@ -260,6 +293,9 @@ describe('UserList', () => {
       mockUseUsers.mockReturnValue({
         users: [mockInactiveUser],
         total: 1,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
         isLoading: false,
         error: null,
         fetchUsers: mockFetchUsers,
@@ -282,6 +318,9 @@ describe('UserList', () => {
       mockUseUsers.mockReturnValue({
         users: [mockActiveUser],
         total: 1,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
         isLoading: false,
         error: null,
         fetchUsers: mockFetchUsers,
@@ -314,6 +353,9 @@ describe('UserList', () => {
       mockUseUsers.mockReturnValue({
         users: [mockActiveUser],
         total: 1,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
         isLoading: false,
         error: null,
         fetchUsers: mockFetchUsers,
@@ -348,6 +390,9 @@ describe('UserList', () => {
       mockUseUsers.mockReturnValue({
         users: [mockInactiveUser],
         total: 1,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
         isLoading: false,
         error: null,
         fetchUsers: mockFetchUsers,
@@ -382,6 +427,9 @@ describe('UserList', () => {
       mockUseUsers.mockReturnValue({
         users: [mockActiveUser],
         total: 1,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
         isLoading: false,
         error: null,
         fetchUsers: mockFetchUsers,
@@ -418,6 +466,9 @@ describe('UserList', () => {
       mockUseUsers.mockReturnValue({
         users: [mockActiveUser],
         total: 1,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
         isLoading: false,
         error: null,
         fetchUsers: mockFetchUsers,
@@ -459,6 +510,9 @@ describe('UserList', () => {
       mockUseUsers.mockReturnValue({
         users: [mockInactiveUser],
         total: 1,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
         isLoading: false,
         error: null,
         fetchUsers: mockFetchUsers,
@@ -502,6 +556,9 @@ describe('UserList', () => {
       mockUseUsers.mockReturnValue({
         users: [mockActiveUser],
         total: 1,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
         isLoading: false,
         error: null,
         fetchUsers: mockFetchUsers,
@@ -539,6 +596,9 @@ describe('UserList', () => {
       mockUseUsers.mockReturnValue({
         users: [mockActiveUser],
         total: 1,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
         isLoading: false,
         error: null,
         fetchUsers: mockFetchUsers,
@@ -574,6 +634,9 @@ describe('UserList', () => {
       mockUseUsers.mockReturnValue({
         users: [mockActiveUser],
         total: 1,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
         isLoading: false,
         error: null,
         fetchUsers: mockFetchUsers,
@@ -597,6 +660,9 @@ describe('UserList', () => {
       mockUseUsers.mockReturnValue({
         users: [mockAdminUserItem],
         total: 1,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
         isLoading: false,
         error: null,
         fetchUsers: mockFetchUsers,
@@ -672,6 +738,9 @@ describe('UserList', () => {
       mockUseUsers.mockReturnValue({
         users: [mockActiveUser, mockInactiveUser],
         total: 25,
+        page: 1,
+        pageSize: 10,
+        totalPages: 3,
         isLoading: false,
         error: null,
         fetchUsers: mockFetchUsers,
@@ -696,6 +765,9 @@ describe('UserList', () => {
           email: `user${i}@example.com`,
         })),
         total: 25,
+        page: 1,
+        pageSize: 10,
+        totalPages: 3,
         isLoading: false,
         error: null,
         fetchUsers: mockFetchUsers,

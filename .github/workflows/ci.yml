@@ -61,6 +61,9 @@ jobs:
       - name: Type check Web
         run: npm run typecheck --workspace=web
 
+      - name: Type check Web tests
+        run: npm run typecheck:test --workspace=web
+
       - name: Run Web tests
         run: npm run test:run --workspace=web
         env:

@@ -363,9 +363,9 @@ describe('AddEmailDialog', () => {
   describe('Disabled State', () => {
     it('should disable inputs while submitting', async () => {
       const user = userEvent.setup();
-      let resolveAdd: () => void;
+      let resolveAdd: (value?: void | PromiseLike<void>) => void;
       mockOnAdd.mockReturnValue(
-        new Promise((resolve) => {
+        new Promise<void>((resolve) => {
           resolveAdd = resolve;
         }),
       );
@@ -392,9 +392,9 @@ describe('AddEmailDialog', () => {
 
     it('should disable buttons while submitting', async () => {
       const user = userEvent.setup();
-      let resolveAdd: () => void;
+      let resolveAdd: (value?: void | PromiseLike<void>) => void;
       mockOnAdd.mockReturnValue(
-        new Promise((resolve) => {
+        new Promise<void>((resolve) => {
           resolveAdd = resolve;
         }),
       );
@@ -423,9 +423,9 @@ describe('AddEmailDialog', () => {
 
     it('should show "Adding..." text while submitting', async () => {
       const user = userEvent.setup();
-      let resolveAdd: () => void;
+      let resolveAdd: (value?: void | PromiseLike<void>) => void;
       mockOnAdd.mockReturnValue(
-        new Promise((resolve) => {
+        new Promise<void>((resolve) => {
           resolveAdd = resolve;
         }),
       );
@@ -452,9 +452,9 @@ describe('AddEmailDialog', () => {
 
     it('should have cancel button disabled while submitting', async () => {
       const user = userEvent.setup();
-      let resolveAdd: () => void;
+      let resolveAdd: (value?: void | PromiseLike<void>) => void;
       mockOnAdd.mockReturnValue(
-        new Promise((resolve) => {
+        new Promise<void>((resolve) => {
           resolveAdd = resolve;
         }),
       );

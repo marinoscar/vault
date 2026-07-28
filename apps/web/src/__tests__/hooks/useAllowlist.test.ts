@@ -455,12 +455,12 @@ describe('useAllowlist', () => {
 
       const { result } = renderHook(() => useAllowlist());
 
-      let thrownError: Error | null = null;
-      await act(async () => {
+      const thrownError = await act(async (): Promise<Error | null> => {
         try {
           await result.current.addEmail('test@example.com');
+          return null;
         } catch (err) {
-          thrownError = err as Error;
+          return err as Error;
         }
       });
 
@@ -477,12 +477,12 @@ describe('useAllowlist', () => {
 
       const { result } = renderHook(() => useAllowlist());
 
-      let thrownError: Error | null = null;
-      await act(async () => {
+      const thrownError = await act(async (): Promise<Error | null> => {
         try {
           await result.current.addEmail('user1@example.com');
+          return null;
         } catch (err) {
-          thrownError = err as Error;
+          return err as Error;
         }
       });
 
@@ -576,12 +576,12 @@ describe('useAllowlist', () => {
 
       const { result } = renderHook(() => useAllowlist());
 
-      let thrownError: Error | null = null;
-      await act(async () => {
+      const thrownError = await act(async (): Promise<Error | null> => {
         try {
           await result.current.removeEmail('entry-1');
+          return null;
         } catch (err) {
-          thrownError = err as Error;
+          return err as Error;
         }
       });
 
@@ -598,12 +598,12 @@ describe('useAllowlist', () => {
 
       const { result } = renderHook(() => useAllowlist());
 
-      let thrownError: Error | null = null;
-      await act(async () => {
+      const thrownError = await act(async (): Promise<Error | null> => {
         try {
           await result.current.removeEmail('nonexistent-id');
+          return null;
         } catch (err) {
-          thrownError = err as Error;
+          return err as Error;
         }
       });
 

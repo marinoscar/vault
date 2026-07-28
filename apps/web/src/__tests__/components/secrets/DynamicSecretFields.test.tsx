@@ -615,7 +615,6 @@ describe('DynamicSecretFields', () => {
     });
 
     it('should preserve existing data fields when one field changes', async () => {
-      const user = userEvent.setup();
       const handleChange = vi.fn();
 
       render(

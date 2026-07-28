@@ -788,7 +788,7 @@ describe('FeatureFlagsList', () => {
     it('should show "Saving..." text when save is in progress', async () => {
       const user = userEvent.setup();
       const slowSave = vi.fn(
-        () => new Promise((resolve) => setTimeout(resolve, 100))
+        () => new Promise<void>((resolve) => setTimeout(resolve, 100))
       );
 
       render(
@@ -812,7 +812,7 @@ describe('FeatureFlagsList', () => {
     it('should disable save button while saving', async () => {
       const user = userEvent.setup();
       const slowSave = vi.fn(
-        () => new Promise((resolve) => setTimeout(resolve, 100))
+        () => new Promise<void>((resolve) => setTimeout(resolve, 100))
       );
 
       render(
@@ -865,17 +865,7 @@ describe('FeatureFlagsList', () => {
       // Suppress console errors for this test
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-      // Use a promise that we can control to simulate failure, but resolve
-      // after the component handles the error state
-      let resolveSave: () => void;
-      const savePromise = new Promise<void>((resolve) => {
-        resolveSave = resolve;
-      });
-
-      // Track if save was called
-      let saveCalled = false;
       const failingSave = vi.fn(async () => {
-        saveCalled = true;
         // Simulate async delay then resolve (component has try/finally so it handles this)
         await new Promise(resolve => setTimeout(resolve, 10));
         // Return resolved promise - the component's finally block will still run

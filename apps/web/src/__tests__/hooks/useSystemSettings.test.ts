@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { useSystemSettings } from '../../hooks/useSystemSettings';
 import { server } from '../mocks/server';
@@ -167,7 +167,7 @@ describe('useSystemSettings', () => {
 
       server.use(
         http.patch('*/api/system-settings', async ({ request }) => {
-          const body = await request.json();
+          const body = (await request.json()) as Partial<SystemSettings>;
           await requestPromise;
           return HttpResponse.json({
             data: {
@@ -210,7 +210,7 @@ describe('useSystemSettings', () => {
       server.use(
         http.patch('*/api/system-settings', async ({ request }) => {
           requestHeaders = request.headers;
-          const body = await request.json();
+          const body = (await request.json()) as Partial<SystemSettings>;
           return HttpResponse.json({
             data: {
               ...mockSystemSettings,
@@ -321,7 +321,7 @@ describe('useSystemSettings', () => {
 
       server.use(
         http.put('*/api/system-settings', async ({ request }) => {
-          const body = await request.json();
+          const body = (await request.json()) as Partial<SystemSettings>;
           await requestPromise;
           return HttpResponse.json({
             data: {
