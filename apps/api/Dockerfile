@@ -49,5 +49,12 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY package*.json ./
 COPY prisma ./prisma/
 COPY scripts ./scripts/
+# The seed runs through ts-node against prisma/seed.ts, which imports shared
+# constants from src/ (so the seeded secret-type options and the AI request
+# schema cannot drift apart). ts-node resolves that import at runtime, so src
+# must exist in this stage -- dist/ is compiled JS and does not satisfy a
+# TypeScript import path. Without this, `npm run prisma:seed` fails in
+# production with TS2307 while passing everywhere else.
+COPY src ./src/
 EXPOSE 3000
 CMD ["npm", "run", "start:prod"]
