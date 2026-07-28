@@ -19,6 +19,13 @@ import { isNeedsAttention } from '../../utils/cardExpiry';
 /**
  * One payment card, presented as a card rather than a table row.
  *
+ * The heading is the user's own name for the card, not the network. A network
+ * does not distinguish anything once a user holds several cards on it — three
+ * Amex cards headed "American Express" are three identical tiles — whereas the
+ * name is the label the user chose for exactly this purpose ("Shown in your
+ * card list" on the import/review form). Network, kind and issuing bank are
+ * supporting detail and drop to the subheading.
+ *
  * Only the masked number is ever rendered here — a list view must never put a
  * full PAN on screen, so this component has no access to one: `CardSummary`
  * carries the masked string and nothing else.
@@ -71,10 +78,19 @@ function CardThumbnail({ hasAttachments }: { hasAttachments: boolean }) {
 }
 
 export function CardTile({ card, onClick, onRenew }: CardTileProps) {
-  // Older cards predate card_network / card_kind, so fall back to the secret's
-  // own name rather than rendering an empty heading.
-  const heading = card.network || card.name;
-  const subheading = [card.kind, card.issuingBank].filter(Boolean).join(' · ');
+  // `name` is required on a secret so it is effectively always present; the
+  // network fallback only guards against a blank-name row reaching the view.
+  const heading = card.name || card.network;
+  // Anything that merely restates the heading is dropped, so a card the user
+  // named "American Express" does not read "American Express · American
+  // Express". Older cards predate card_network / card_kind, hence the falsy
+  // filter as well.
+  const subheading = [card.network, card.kind, card.issuingBank]
+    .filter(
+      (part): part is string =>
+        Boolean(part) && part.trim().toLowerCase() !== heading.trim().toLowerCase(),
+    )
+    .join(' · ');
   const needsAttention = isNeedsAttention(card.status);
 
   return (
@@ -154,6 +170,8 @@ export function CardTile({ card, onClick, onRenew }: CardTileProps) {
             variant={needsAttention ? 'contained' : 'text'}
             color={card.status === 'expired' ? 'error' : 'primary'}
             onClick={() => onRenew(card.id)}
+            // Names the card the way the user does — with several cards on one
+            // network, "Renew American Express" would be ambiguous read aloud.
             aria-label={`Renew ${heading}`}
           >
             Renew

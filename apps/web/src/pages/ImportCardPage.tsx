@@ -64,9 +64,10 @@ const STEP_INDEX: Record<Stage, number> = {
  *
  * Two invariants shape the whole flow:
  *
- *  1. The CVV is collected by hand. The extraction never returns one (the model
- *     is instructed never to emit it), and the Card secret type marks it
- *     required, so saving is blocked until the user types it.
+ *  1. A card cannot be saved without a CVV — the Card secret type marks it
+ *     required. The extraction usually supplies one now, but the gate stays on
+ *     the VALUE rather than on where it came from, so a card the model could
+ *     not read the code off still cannot be saved half-finished.
  *  2. A failed extraction is not a dead end. Any failure still lands on the
  *     review step with the captured photos and an empty form, so the card can
  *     be entered manually instead of starting over.
@@ -570,8 +571,8 @@ export default function ImportCardPage() {
 
           {!cvvEntered && (
             <Alert severity="info" sx={{ mt: 2 }}>
-              Enter the CVV / CVC to save this card. It is never read from the
-              photo, so you have to type it from the card yourself.
+              Enter the CVV / CVC to save this card. It could not be read from
+              the photo, so type it from the card yourself.
             </Alert>
           )}
 

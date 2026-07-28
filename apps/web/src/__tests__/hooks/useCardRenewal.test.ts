@@ -38,6 +38,7 @@ function extraction(
       number: null,
       exp_month: null,
       exp_year: null,
+      cvv: null,
       card_network: null,
       card_kind: null,
       issuing_bank: null,
@@ -88,11 +89,32 @@ describe('toRenewalValues', () => {
     expect(values.notes).toBe('Travel card');
   });
 
-  it('never carries the CVV forward', () => {
+  it('seeds the CVV from the extraction, never from the outgoing card', () => {
+    // No extraction at all: nothing to seed from, so the box starts empty
+    // rather than showing the old card's code.
     expect(toRenewalValues(CURRENT, null)[CVV_FIELD]).toBe('');
+
+    // Extraction ran but did not read a security code: still empty - the old
+    // card's CVV ("123" in CURRENT) must not survive into the new form.
     expect(
       toRenewalValues(CURRENT, extraction({ number: '4111111111111111' }))[CVV_FIELD],
     ).toBe('');
+
+    // Extraction actually read a security code off the new card's photo: that
+    // reading, and only that reading, seeds the field.
+    expect(
+      toRenewalValues(CURRENT, extraction({ cvv: '999' }))[CVV_FIELD],
+    ).toBe('999');
+  });
+
+  it('never lets the outgoing card CVV leak into the field even when other values are extracted', () => {
+    const values = toRenewalValues(
+      CURRENT,
+      extraction({ number: '4111111111111111', cardholder_name: 'ADA B LOVELACE' }),
+    );
+
+    expect(values[CVV_FIELD]).toBe('');
+    expect(values[CVV_FIELD]).not.toBe(CURRENT.cvv);
   });
 
   it('overlays extracted values on top of the current card', () => {

@@ -280,7 +280,10 @@ describe('ImportCardPage — capture and egress', () => {
     render(<ImportCardPage />);
 
     expect(await screen.findByText(/will be sent to OpenAI/i)).toBeInTheDocument();
-    expect(screen.getByText(/CVV \/ CVC is never read from the photo/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/includes your security code \(CVV \/ CVC\)/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/read from the photo/i)).toBeInTheDocument();
     expect(seen.filter((r) => r.includes('/cards/extract'))).toHaveLength(0);
   });
 

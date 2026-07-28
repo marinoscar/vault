@@ -129,6 +129,22 @@ export function normalizeExpYear(value: string | null): string | null {
 }
 
 /**
+ * Card security code reduced to digits, accepted only at a real length.
+ *
+ * A security code is 3 digits on most networks and 4 on American Express, so
+ * anything else came from the model reading the wrong thing - the last group of
+ * the account number, a "MEMBER SINCE" year, an expiry - and a wrong code is
+ * worse than an empty box: it looks authoritative on the review screen and only
+ * fails at a payment terminal months later. Rejecting the odd lengths sends the
+ * user to the one place the value can be checked in a second, the card itself.
+ */
+export function normalizeSecurityCode(value: string | null): string | null {
+  if (value === null) return null;
+  const digits = value.replace(/\D/g, '');
+  return digits.length === 3 || digits.length === 4 ? digits : null;
+}
+
+/**
  * Match a model answer against the shared constants, case-insensitively.
  *
  * Returns `Other` for anything unrecognised rather than null, because `Other`
@@ -223,6 +239,29 @@ export function normalizeExtractions(
   if (rawYear !== null && fields.exp_year === null) {
     warnings.push('The expiry year could not be read reliably.');
     confidence.exp_year = 0;
+  }
+
+  // Security codes: digits only, and only at a length a real code can have.
+  const rawCvv = fields.cvv;
+  fields.cvv = normalizeSecurityCode(rawCvv);
+  if (rawCvv !== null && fields.cvv === null) {
+    warnings.push(
+      'The security code could not be read reliably — type it from the card.',
+    );
+    confidence.cvv = 0;
+  }
+
+  const rawSecondCode = fields.security_code_2;
+  fields.security_code_2 = normalizeSecurityCode(rawSecondCode);
+  if (rawSecondCode !== null && fields.security_code_2 === null) {
+    confidence.security_code_2 = 0;
+  }
+
+  // A model that finds one code and reports it twice would otherwise leave the
+  // user with a phantom "second code" to reconcile against a card that has one.
+  if (fields.cvv !== null && fields.security_code_2 === fields.cvv) {
+    fields.security_code_2 = null;
+    confidence.security_code_2 = 0;
   }
 
   // Select fields must land on a seeded option or /api/secrets will 400 on save.

@@ -49,16 +49,21 @@ interface CardReviewFormProps {
 }
 
 /**
- * The CVV is the one required field the extraction can never fill.
+ * The CVV is read from the photo like every other field, but it is the field
+ * most worth checking by hand.
  *
- * The model is instructed never to emit it and the API never returns it, but
- * the Card secret type marks it `required: true`, so `POST /api/secrets` will
- * reject a card without one. Saying so on the field itself is what stops the
- * empty box reading as a bug.
+ * It is required (`POST /api/secrets` rejects a card without one), it is three
+ * or four characters with no checksum behind it — unlike the PAN, where Luhn
+ * catches a misread — and the cost of a wrong one surfaces at a payment
+ * terminal months later. So it gets its own helper text in both states: a
+ * prompt to type it when the model found nothing, and a prompt to verify it
+ * when the model did.
  */
 const CVV_FIELD = 'cvv';
 
-const CVV_HELPER = 'Not read from the photo — type it from the card. Required.';
+const CVV_EMPTY_HELPER =
+  'Not read from the photo — type it from the card. Required.';
+const CVV_READ_HELPER = 'Read from the photo — check it against the card.';
 const LOW_CONFIDENCE_HELPER =
   'The photo was hard to read here. Check this against the card.';
 
@@ -114,13 +119,18 @@ export function CardReviewForm({
           const isLowConfidence = lowConfidenceFields?.has(field.name) ?? false;
           const isCvv = field.name === CVV_FIELD;
 
+          // An empty CVV outranks the low-confidence hint: "type it from the
+          // card" is actionable, "check this against the card" is not when
+          // there is nothing in the box to check.
           const helperText =
             error ??
-            (isCvv
-              ? CVV_HELPER
+            (isCvv && !value
+              ? CVV_EMPTY_HELPER
               : isLowConfidence
                 ? LOW_CONFIDENCE_HELPER
-                : undefined);
+                : isCvv
+                  ? CVV_READ_HELPER
+                  : undefined);
 
           // A low-confidence field is not an error — the value may well be
           // right — so it is tinted rather than marked invalid, which keeps the

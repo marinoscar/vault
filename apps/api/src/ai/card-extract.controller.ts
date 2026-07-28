@@ -41,7 +41,9 @@ export class CardExtractController {
       'candidate field values for review, plus a per-image bounding box (`crops.front` / ' +
       '`crops.back`, fractions of the image as sent, with clockwise quarter-turns) locating ' +
       'the card so the client can crop the stored copy. Persists nothing: no image and no ' +
-      'extracted value is stored. The CVV/CVC is never requested and never returned.',
+      'extracted value is stored by this endpoint - the caller decides on the review screen ' +
+      'what becomes a secret. The card security code (`cvv`) IS among the returned candidate ' +
+      'values.',
   })
   @ApiBody({ schema: EXTRACT_CARD_BODY_SCHEMA })
   @ApiResponse({

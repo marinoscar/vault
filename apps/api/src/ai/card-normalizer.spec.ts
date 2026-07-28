@@ -6,6 +6,7 @@ import {
   normalizeExpMonth,
   normalizeExpYear,
   normalizeExtractions,
+  normalizeSecurityCode,
   passesLuhn,
 } from './card-normalizer';
 import { buildRawExtraction } from '../../test/mocks/ai-vision-provider.mock';
@@ -55,6 +56,39 @@ describe('card-normalizer', () => {
     it('rejects an implausible year', () => {
       expect(normalizeExpYear('1998')).toBeNull();
       expect(normalizeExpYear('7')).toBeNull();
+    });
+  });
+
+  describe('normalizeSecurityCode', () => {
+    it('accepts a 3-digit code', () => {
+      expect(normalizeSecurityCode('123')).toBe('123');
+    });
+
+    it('accepts a 4-digit code (American Express)', () => {
+      expect(normalizeSecurityCode('1234')).toBe('1234');
+    });
+
+    it('strips spaces and other non-digit characters before checking length', () => {
+      expect(normalizeSecurityCode(' 1 2 3 ')).toBe('123');
+      expect(normalizeSecurityCode('12-3')).toBe('123');
+    });
+
+    it('rejects a 2-digit value', () => {
+      expect(normalizeSecurityCode('12')).toBeNull();
+    });
+
+    it('rejects a 5-or-more-digit value', () => {
+      expect(normalizeSecurityCode('12345')).toBeNull();
+      expect(normalizeSecurityCode('123456')).toBeNull();
+    });
+
+    it('rejects an empty or blank value', () => {
+      expect(normalizeSecurityCode('')).toBeNull();
+      expect(normalizeSecurityCode('   ')).toBeNull();
+    });
+
+    it('returns null for null input', () => {
+      expect(normalizeSecurityCode(null)).toBeNull();
     });
   });
 
@@ -245,6 +279,68 @@ describe('card-normalizer', () => {
 
       expect(result.fields.notes).toBeNull();
       expect(result.confidence.notes).toBe(0);
+    });
+
+    describe('security codes', () => {
+      it('nulls a bad-length cvv, zeroes its confidence and pushes a warning', () => {
+        const result = normalizeExtractions([
+          buildRawExtraction({ cvv: '12' }, { cvv: 0.9 }),
+        ]);
+
+        expect(result.fields.cvv).toBeNull();
+        expect(result.confidence.cvv).toBe(0);
+        expect(result.warnings.join(' ')).toContain('security code');
+      });
+
+      it('passes a well-formed cvv through untouched, with no warning', () => {
+        const result = normalizeExtractions([
+          buildRawExtraction({ cvv: '123' }, { cvv: 0.9 }),
+        ]);
+
+        expect(result.fields.cvv).toBe('123');
+        expect(result.confidence.cvv).toBeCloseTo(0.9);
+        expect(result.warnings).toEqual([]);
+      });
+
+      it('nulls security_code_2 when it duplicates cvv, without a warning', () => {
+        const result = normalizeExtractions([
+          buildRawExtraction(
+            { cvv: '1234', security_code_2: '1234' },
+            { cvv: 0.9, security_code_2: 0.8 },
+          ),
+        ]);
+
+        expect(result.fields.cvv).toBe('1234');
+        expect(result.fields.security_code_2).toBeNull();
+        expect(result.confidence.security_code_2).toBe(0);
+        expect(result.warnings).toEqual([]);
+      });
+
+      it('normalizes security_code_2 independently when it differs from cvv', () => {
+        const result = normalizeExtractions([
+          buildRawExtraction(
+            { cvv: '1234', security_code_2: '999' },
+            { cvv: 0.9, security_code_2: 0.5 },
+          ),
+        ]);
+
+        expect(result.fields.cvv).toBe('1234');
+        expect(result.fields.security_code_2).toBe('999');
+        expect(result.confidence.security_code_2).toBeCloseTo(0.5);
+      });
+
+      it('nulls a bad-length security_code_2 without pushing a warning', () => {
+        const result = normalizeExtractions([
+          buildRawExtraction(
+            { cardholder_name: 'ADA LOVELACE', security_code_2: '99' },
+            { cardholder_name: 0.9, security_code_2: 0.5 },
+          ),
+        ]);
+
+        expect(result.fields.security_code_2).toBeNull();
+        expect(result.confidence.security_code_2).toBe(0);
+        expect(result.warnings).toEqual([]);
+      });
     });
   });
 });

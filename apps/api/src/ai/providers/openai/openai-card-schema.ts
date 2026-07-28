@@ -129,6 +129,11 @@ export const OPENAI_CARD_JSON_SCHEMA = {
       ...nullableString,
       description: 'Expiry year as printed, e.g. "27" or "2027".',
     },
+    cvv: {
+      ...nullableString,
+      description:
+        'The card security code used for online purchases (CVV / CVC / CVV2 / CVC2 / CID / CSC / "Sec Code" / "Security Code"). Digits only, 3 or 4 of them. For Visa, Mastercard, Discover and most networks this is the 3-digit group on the BACK, beside or on the signature panel; for American Express it is the 4-digit group printed on the FRONT, above the account number. It is very often printed with no label at all.',
+    },
     card_network: {
       ...nullableEnum(CARD_NETWORKS),
       description:
@@ -146,7 +151,7 @@ export const OPENAI_CARD_JSON_SCHEMA = {
     security_code_2: {
       ...nullableString,
       description:
-        'ONLY a secondary control / CID number printed flat on the card face (for example the 4-digit CID on the front of an American Express card). This is NOT the CVV/CVC. Null unless such a separate control number is clearly present.',
+        'An ADDITIONAL security or control number, only for cards that print more than one - for example an American Express whose primary 4-digit CID is on the front and which carries a second code on the back. Never a copy of the value already returned in `cvv`. Null when the card carries only one code, which is the usual case.',
     },
     notes: {
       ...nullableString,
@@ -173,10 +178,13 @@ export const OPENAI_CARD_JSON_SCHEMA = {
 /**
  * System prompt.
  *
- * The CVV prohibition is stated twice on purpose - once as a rule and once as
- * an anti-confusion note next to `security_code_2` - because the two values sit
- * millimetres apart on a real card and the schema alone cannot prevent the
- * model from putting the CVV in the wrong slot.
+ * The security code gets two rules rather than one - where to find it, then
+ * what it is NOT - because in practice the failure mode is never a model that
+ * refuses to look: it is a model that returns the last four digits of the PAN,
+ * a "MEMBER SINCE" year, or the expiry, all of which are short digit groups
+ * sitting millimetres away. The positions and the labels are both spelled out
+ * because real cards caption this value at least eight different ways and very
+ * often not at all.
  *
  * `card_kind` is the ONE field the model is allowed to CLASSIFY rather than
  * transcribe, because networks like American Express never print "Credit"
@@ -187,13 +195,12 @@ export const OPENAI_CARD_JSON_SCHEMA = {
  *
  * The overall policy is BEST GUESS, HUMAN DECIDES: every answer lands on an
  * editable review form, so an uncertain reading with honest low confidence
- * always beats a null. The single exception is the CVV, whose exclusion is
- * absolute and unaffected by this policy.
+ * always beats a null. No field is exempt from that policy.
  */
 export const OPENAI_CARD_SYSTEM_PROMPT = [
   'You are an expert transcriber of payment card photographs into structured data. You read every card design: embossed plastic, flat-printed plastic, and metal cards with low-contrast laser-engraved text.',
   '',
-  'Your answer seeds an editable review form; a human verifies every value before anything is saved. So ALWAYS return your best reading of every field, even from poor images - a shaky value with honest low confidence and a warning is far more useful than null. Return null for a field only when you can see nothing for it at all. The one exception with zero tolerance: the CVV rules below are absolute.',
+  'Your answer seeds an editable review form; a human verifies every value before anything is saved. So ALWAYS return your best reading of every field, even from poor images - a shaky value with honest low confidence and a warning is far more useful than null. Return null for a field only when you can see nothing for it at all.',
   '',
   'Layout knowledge - use it to know where to look:',
   '- Many modern cards, especially premium and metal cards (for example the American Express Platinum) and many recent bank cards, print the card number, expiry date, and sometimes the cardholder name flat on the BACK. A front carrying only branding and a name is normal; look for the remaining values on the back image.',
@@ -203,9 +210,9 @@ export const OPENAI_CARD_SYSTEM_PROMPT = [
   '- The card may occupy only part of the image, with background around it, and may be upside down. Locate it, mentally rotate and zoom in, and read it. Do not treat framing itself as a failure - only warn when characters are actually cut off at the image edge or truly unreadable.',
   '',
   'Rules:',
-  '1. NEVER output a CVV, CVC, CVC2, CVV2 or the 3-digit code printed on the signature panel. Do not output it in any field, and do not mention its digits in warnings. If you can see one, ignore it.',
-  '2. `security_code_2` is NOT the CVV. It is only for a separate control / CID number printed flat on the card face, such as the 4-digit CID above the account number on an American Express card. If you are not certain a value is that separate control number, return null.',
-  '3. The card number, expiry, cardholder name and security_code_2 must be READ from the images - best-effort. Transcribe what you see as completely as you can; when characters are uncertain, give your best interpretation, lower the confidence, and add a warning naming which part was uncertain. Never fabricate a value for which nothing is visible at all.',
+  '1. `cvv` is the card security code used for online purchases, and reading it is part of the job. Where to look: for Visa, Mastercard, Discover and most networks it is the 3-digit group on the BACK, printed on or beside the signature panel; on an American Express it is the 4-digit group on the FRONT, above and to the right of the account number. Its caption varies - CVV, CVC, CVV2, CVC2, CID, CSC, "Sec Code", "Security Code" - and is very often absent entirely: a short standalone group of 3 or 4 digits in one of those positions IS the security code even when nothing labels it, so do not skip it for want of a caption. Return digits only, never the caption text.',
+  '2. Do not confuse `cvv` with anything else short and numeric on the card: the last four digits of the account number, the expiry, and a "MEMBER SINCE" year all sit in their own printed positions and appear elsewhere on the card. `security_code_2` is only for a SECOND security code on a card that prints more than one (an American Express with its CID on the front may carry another code on the back); return null for it whenever the card has just one code, and never repeat the `cvv` value there.',
+  '3. The card number, expiry, cardholder name, cvv and security_code_2 must be READ from the images - best-effort. Transcribe what you see as completely as you can; when characters are uncertain, give your best interpretation, lower the confidence, and add a warning naming which part was uncertain. Never fabricate a value for which nothing is visible at all.',
   '4. `card_network`: identify from the brand mark or wordmark anywhere on either side.',
   '5. `card_kind`: if the card prints Credit, Debit or Prepaid, use that with high confidence. If it does not, you MAY classify it from unambiguous product knowledge - for example, American Express charge and credit products (Green, Gold, Platinum, Centurion) are "Credit"; classify charge cards as "Credit". Give an inferred card_kind moderate confidence (around 0.6) and add a short warning saying the card type was inferred from the product, not read. If genuinely unsure, return null.',
   '6. `issuing_bank`: the institution named on the card. Networks that issue their own cards (American Express, Discover) are also the issuer - use the network name in that case.',
@@ -316,6 +323,7 @@ export const openAiCardResponseSchema = z.object({
   number: nullableStringField,
   exp_month: nullableStringField,
   exp_year: nullableStringField,
+  cvv: nullableStringField,
   card_network: nullableStringField,
   card_kind: nullableStringField,
   issuing_bank: nullableStringField,
@@ -326,6 +334,7 @@ export const openAiCardResponseSchema = z.object({
     number: confidenceValue,
     exp_month: confidenceValue,
     exp_year: confidenceValue,
+    cvv: confidenceValue,
     card_network: confidenceValue,
     card_kind: confidenceValue,
     issuing_bank: confidenceValue,

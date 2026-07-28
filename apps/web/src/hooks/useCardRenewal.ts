@@ -27,9 +27,9 @@ import {
  * Every other value is seeded from the outgoing card, because most of a
  * reissued card is unchanged. The security code is not: a reissued card always
  * carries a new one, and pre-filling the old one would produce a card record
- * that looks complete and declines at the till. It is also the value the
- * extraction deliberately never returns, so there is nothing to seed it from
- * either. It is collected by hand, exactly as in the import wizard.
+ * that looks complete and declines at the till. It is therefore seeded ONLY
+ * from a fresh reading of the new card's photo — never from the outgoing card
+ * — and falls back to an empty box the user fills by hand.
  */
 export const CVV_FIELD = 'cvv';
 
@@ -79,7 +79,8 @@ export function toCurrentValues(
  *
  * A `null` from the extraction means "could not read it", NOT "the card no
  * longer has one", so it falls back to the current value rather than blanking
- * the field. `cvv` is always empty — see {@link CVV_FIELD}.
+ * the field. `cvv` is the one exception to that fallback — see {@link
+ * CVV_FIELD} and the note at the end of this function.
  */
 export function toRenewalValues(
   currentValues: Record<string, string>,
@@ -107,7 +108,15 @@ export function toRenewalValues(
     }
   }
 
-  if (CVV_FIELD in proposed) proposed[CVV_FIELD] = '';
+  // The old card's code must never carry forward — a reissued card has a new
+  // one, and silently keeping the previous value would produce a card that
+  // looks complete and declines. A code read off the NEW card's photo is a
+  // different matter, and is exactly what belongs here.
+  if (CVV_FIELD in proposed) {
+    const extractedCvv = extraction?.fields?.[CVV_FIELD];
+    proposed[CVV_FIELD] =
+      typeof extractedCvv === 'string' ? extractedCvv.trim() : '';
+  }
   return proposed;
 }
 
