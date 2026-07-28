@@ -68,10 +68,13 @@ describe('CardsPage', () => {
   });
 
   it('renders card details including the masked number', () => {
-    mockCards([makeSummary({ id: 'card-1' })]);
+    mockCards([makeSummary({ id: 'card-1', name: 'Chase Sapphire' })]);
     render(<CardsPage />);
 
-    expect(screen.getByText('Visa')).toBeInTheDocument();
+    // Heading is the card's own name; network/kind are supporting detail in
+    // the subheading, joined into a single text node with kind.
+    expect(screen.getByText('Chase Sapphire')).toBeInTheDocument();
+    expect(screen.getByText(/Visa/)).toBeInTheDocument();
     expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
     expect(screen.getByText('•••• •••• •••• 4242')).toBeInTheDocument();
     expect(screen.getByText('12/29')).toBeInTheDocument();
@@ -107,10 +110,10 @@ describe('CardsPage', () => {
   it('filters to cards that need attention', async () => {
     const user = userEvent.setup();
     mockCards([
-      makeSummary({ id: 'a', network: 'ExpiredCard', status: 'expired' }),
-      makeSummary({ id: 'b', network: 'SoonCard', status: 'expiring_soon' }),
-      makeSummary({ id: 'c', network: 'GoodCard', status: 'valid' }),
-      makeSummary({ id: 'd', network: 'MysteryCard', status: 'unknown' }),
+      makeSummary({ id: 'a', name: 'ExpiredCard', status: 'expired' }),
+      makeSummary({ id: 'b', name: 'SoonCard', status: 'expiring_soon' }),
+      makeSummary({ id: 'c', name: 'GoodCard', status: 'valid' }),
+      makeSummary({ id: 'd', name: 'MysteryCard', status: 'unknown' }),
     ]);
     render(<CardsPage />);
 
@@ -159,11 +162,11 @@ describe('CardsPage', () => {
         HttpResponse.json({ data: { enabled: false, features: { cardExtract: false } } }),
       ),
     );
-    mockCards([makeSummary({ id: 'card-1' })]);
+    mockCards([makeSummary({ id: 'card-1', name: 'Everyday Card' })]);
     render(<CardsPage />);
 
     // The list renders regardless; only the import entry point is withheld.
-    expect(await screen.findByText('Visa')).toBeInTheDocument();
+    expect(await screen.findByText('Everyday Card')).toBeInTheDocument();
     await waitFor(() =>
       expect(
         screen.queryByRole('button', { name: /import credit card/i }),
@@ -177,10 +180,10 @@ describe('CardsPage', () => {
         HttpResponse.json({ message: 'boom' }, { status: 500 }),
       ),
     );
-    mockCards([makeSummary({ id: 'card-1' })]);
+    mockCards([makeSummary({ id: 'card-1', name: 'Everyday Card' })]);
     render(<CardsPage />);
 
-    expect(await screen.findByText('Visa')).toBeInTheDocument();
+    expect(await screen.findByText('Everyday Card')).toBeInTheDocument();
     await waitFor(() =>
       expect(
         screen.queryByRole('button', { name: /import credit card/i }),
@@ -190,12 +193,12 @@ describe('CardsPage', () => {
 
   it('offers renewal on every card and routes to the renewal wizard', async () => {
     const user = userEvent.setup();
-    mockCards([makeSummary({ id: 'card-7', status: 'valid' })]);
+    mockCards([makeSummary({ id: 'card-7', name: 'Business Visa', status: 'valid' })]);
     render(<CardsPage />);
 
     // Not only the expiring ones: a card can be reissued after loss or fraud
     // long before its printed date.
-    await user.click(screen.getByRole('button', { name: /renew visa/i }));
+    await user.click(screen.getByRole('button', { name: /renew business visa/i }));
     expect(mockNavigate).toHaveBeenCalledWith('/cards/card-7/renew');
   });
 
@@ -208,7 +211,7 @@ describe('CardsPage', () => {
         HttpResponse.json({ data: { enabled: false, features: { cardExtract: false } } }),
       ),
     );
-    mockCards([makeSummary({ id: 'card-7', status: 'expired' })]);
+    mockCards([makeSummary({ id: 'card-7', name: 'Business Visa', status: 'expired' })]);
     render(<CardsPage />);
 
     await waitFor(() =>
@@ -216,7 +219,7 @@ describe('CardsPage', () => {
         screen.queryByRole('button', { name: /import credit card/i }),
       ).not.toBeInTheDocument(),
     );
-    expect(screen.getByRole('button', { name: /renew visa/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /renew business visa/i })).toBeEnabled();
   });
 
   it('keeps renewal available when the AI status check fails', async () => {
@@ -225,18 +228,20 @@ describe('CardsPage', () => {
         HttpResponse.json({ message: 'boom' }, { status: 500 }),
       ),
     );
-    mockCards([makeSummary({ id: 'card-7' })]);
+    mockCards([makeSummary({ id: 'card-7', name: 'Business Visa' })]);
     render(<CardsPage />);
 
-    expect(await screen.findByRole('button', { name: /renew visa/i })).toBeEnabled();
+    expect(
+      await screen.findByRole('button', { name: /renew business visa/i }),
+    ).toBeEnabled();
   });
 
   it('does not let the renew button open the card detail as well', async () => {
     const user = userEvent.setup();
-    mockCards([makeSummary({ id: 'card-7' })]);
+    mockCards([makeSummary({ id: 'card-7', name: 'Business Visa' })]);
     render(<CardsPage />);
 
-    await user.click(screen.getByRole('button', { name: /renew visa/i }));
+    await user.click(screen.getByRole('button', { name: /renew business visa/i }));
 
     // One navigation, to the wizard — the tile's own click handler must not
     // also fire, which is why the button sits outside the CardActionArea.
@@ -265,10 +270,10 @@ describe('CardsPage', () => {
 
   it('navigates to the secret detail when a card is clicked', async () => {
     const user = userEvent.setup();
-    mockCards([makeSummary({ id: 'card-42' })]);
+    mockCards([makeSummary({ id: 'card-42', name: 'Travel Visa' })]);
     render(<CardsPage />);
 
-    await user.click(screen.getByText('Visa'));
+    await user.click(screen.getByText('Travel Visa'));
     expect(mockNavigate).toHaveBeenCalledWith('/secrets/card-42');
   });
 
@@ -289,14 +294,88 @@ describe('CardsPage', () => {
   it('filters by search term', async () => {
     const user = userEvent.setup();
     mockCards([
-      makeSummary({ id: 'a', network: 'Visa', cardholderName: 'Ada' }),
-      makeSummary({ id: 'b', network: 'Amex', cardholderName: 'Grace' }),
+      makeSummary({ id: 'a', name: 'Card One', network: 'Visa', cardholderName: 'Ada' }),
+      makeSummary({ id: 'b', name: 'Card Two', network: 'Amex', cardholderName: 'Grace' }),
     ]);
     render(<CardsPage />);
 
+    // Search matches network even though the network is only ever shown in
+    // the subheading now — the heading itself carries the card's name.
     await user.type(screen.getByLabelText(/search cards/i), 'Amex');
 
-    await waitFor(() => expect(screen.queryByText('Visa')).not.toBeInTheDocument());
-    expect(screen.getByText('Amex')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('Card One')).not.toBeInTheDocument());
+    expect(screen.getByText('Card Two')).toBeInTheDocument();
+  });
+
+  describe('card tile heading', () => {
+    it('gives two cards on the same network distinguishable headings', () => {
+      // This is the regression the name-first heading exists to prevent:
+      // three Amex cards used to all render as identical "American Express"
+      // tiles because the heading was the network, not the card's own name.
+      mockCards([
+        makeSummary({ id: 'a', name: 'Personal Amex', network: 'American Express' }),
+        makeSummary({ id: 'b', name: 'Business Amex', network: 'American Express' }),
+      ]);
+      render(<CardsPage />);
+
+      expect(screen.getByText('Personal Amex')).toBeInTheDocument();
+      expect(screen.getByText('Business Amex')).toBeInTheDocument();
+      // The shared network still shows up, but only ever as subheading detail
+      // on each of the two distinct tiles — never as a heading of its own.
+      expect(screen.queryByText('American Express')).not.toBeInTheDocument();
+      expect(screen.getAllByText(/American Express/)).toHaveLength(2);
+    });
+
+    it('shows the network in the subheading alongside the name', () => {
+      mockCards([
+        makeSummary({ id: 'a', name: 'Everyday Visa', network: 'Visa', kind: 'Debit' }),
+      ]);
+      render(<CardsPage />);
+
+      expect(screen.getByText('Everyday Visa')).toBeInTheDocument();
+      expect(screen.getByText('Visa · Debit')).toBeInTheDocument();
+    });
+
+    it('does not repeat the network in the subheading when the name equals it', () => {
+      mockCards([
+        makeSummary({
+          id: 'a',
+          name: 'American Express',
+          network: 'American Express',
+          kind: 'Credit',
+        }),
+      ]);
+      render(<CardsPage />);
+
+      expect(screen.getByText('American Express')).toBeInTheDocument();
+      // Exactly one occurrence — the heading — not a second "American
+      // Express · Credit" subheading restating it.
+      expect(screen.getAllByText(/American Express/)).toHaveLength(1);
+      expect(screen.getByText('Credit')).toBeInTheDocument();
+    });
+
+    it('falls back to the network as the heading when the card has no name', () => {
+      mockCards([makeSummary({ id: 'a', name: '', network: 'Mastercard', kind: 'Credit' })]);
+      render(<CardsPage />);
+
+      // Only one occurrence: the heading falls back to the network, and the
+      // subheading drops it again as a duplicate rather than repeating it.
+      expect(screen.getAllByText(/Mastercard/)).toHaveLength(1);
+      expect(screen.getByText('Credit')).toBeInTheDocument();
+    });
+
+    it('labels the renew button with the card name, not the network', () => {
+      mockCards([
+        makeSummary({ id: 'a', name: 'Backup Mastercard', network: 'Mastercard' }),
+      ]);
+      render(<CardsPage />);
+
+      expect(
+        screen.getByRole('button', { name: 'Renew Backup Mastercard' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Renew Mastercard' }),
+      ).not.toBeInTheDocument();
+    });
   });
 });
