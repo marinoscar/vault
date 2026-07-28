@@ -219,6 +219,10 @@ export type AiVerifyResult = AiVerifySuccess | AiVerifyFailure;
  * Fields the extraction endpoint can return, mirroring `EXTRACTED_FIELD_NAMES`
  * in the API.
  *
+ * `notes` is auxiliary text read off the card that fits no structured field —
+ * support phone numbers, "Member Since", usage instructions — and seeds the
+ * review form's Notes input.
+ *
  * `cvv` is deliberately absent and must never be added. The model is instructed
  * never to emit it and the API never returns it, because the CVV is the value
  * that turns a photographed card number into a usable card-not-present
@@ -233,6 +237,7 @@ export const EXTRACTED_CARD_FIELD_NAMES = [
   'card_kind',
   'issuing_bank',
   'security_code_2',
+  'notes',
 ] as const;
 
 export type ExtractedCardFieldName = (typeof EXTRACTED_CARD_FIELD_NAMES)[number];

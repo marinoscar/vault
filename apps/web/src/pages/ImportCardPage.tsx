@@ -29,7 +29,11 @@ import {
   type CapturedCardSide,
 } from '../hooks/useCardImport';
 import { usePermissions } from '../hooks/usePermissions';
-import { cropImageFileToCard, type CroppedCardImage } from '../utils/cardImage';
+import {
+  cropImageFileToCard,
+  type CardAdjustments,
+  type CroppedCardImage,
+} from '../utils/cardImage';
 
 type Stage = 'front' | 'back' | 'processing' | 'review';
 
@@ -121,7 +125,11 @@ export default function ImportCardPage() {
     return sides;
   }, [frontImage, backImage]);
 
-  const handleFileSelected = async (side: 'front' | 'back', file: File) => {
+  const handleFileSelected = async (
+    side: 'front' | 'back',
+    file: File,
+    adjustments: CardAdjustments,
+  ) => {
     setCaptureError(null);
 
     if (!file.type.startsWith('image/')) {
@@ -133,6 +141,7 @@ export default function ImportCardPage() {
     try {
       const cropped = await cropImageFileToCard(file, {
         fileName: `card-${side}.jpg`,
+        ...adjustments,
       });
       trackPreview(cropped);
       if (side === 'front') {
@@ -346,7 +355,9 @@ export default function ImportCardPage() {
             image={frontImage}
             isProcessing={isCropping}
             error={captureError}
-            onFileSelected={(file) => void handleFileSelected('front', file)}
+            onFileSelected={(file, adjustments) =>
+              void handleFileSelected('front', file, adjustments)
+            }
             onRetake={() => handleRetake('front')}
             onContinue={() => setStage('back')}
             onCancel={() => void handleCancel()}
@@ -360,7 +371,9 @@ export default function ImportCardPage() {
             image={backImage}
             isProcessing={isCropping}
             error={captureError}
-            onFileSelected={(file) => void handleFileSelected('back', file)}
+            onFileSelected={(file, adjustments) =>
+              void handleFileSelected('back', file, adjustments)
+            }
             onRetake={() => handleRetake('back')}
             onContinue={() => void goToReview(capturedSides)}
             onSkip={() => {
