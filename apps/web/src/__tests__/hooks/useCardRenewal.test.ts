@@ -126,6 +126,42 @@ describe('toRenewalValues', () => {
 
     expect(values).not.toHaveProperty('issuing_bank');
   });
+
+  describe('notes', () => {
+    it('appends the extracted notes on a new line rather than overwriting', () => {
+      const values = toRenewalValues(
+        CURRENT,
+        extraction({ notes: 'Reissued January 2027' }),
+      );
+
+      expect(values.notes).toBe('Travel card\nReissued January 2027');
+    });
+
+    it('sets the notes directly when there were none to append to', () => {
+      const values = toRenewalValues(
+        { ...CURRENT, notes: '' },
+        extraction({ notes: 'Reissued January 2027' }),
+      );
+
+      expect(values.notes).toBe('Reissued January 2027');
+    });
+
+    it('does not duplicate text the existing notes already contain verbatim', () => {
+      const current = { ...CURRENT, notes: 'Travel card\nReissued January 2027' };
+
+      const values = toRenewalValues(
+        current,
+        extraction({ notes: 'Reissued January 2027' }),
+      );
+
+      expect(values.notes).toBe('Travel card\nReissued January 2027');
+    });
+
+    it('leaves the current notes untouched when the extraction read nothing', () => {
+      expect(toRenewalValues(CURRENT, extraction({})).notes).toBe('Travel card');
+      expect(toRenewalValues(CURRENT, null).notes).toBe('Travel card');
+    });
+  });
 });
 
 describe('diffCardFields', () => {

@@ -28,6 +28,22 @@ vi.mock('../../utils/cardImage', async () => {
   };
 });
 
+// The adjust stage decodes the picked file via `Image`/`URL.createObjectURL`
+// to draw a live preview, and jsdom implements neither meaningfully (`Image`
+// never fires `onload`), so the interactive adjuster is replaced by a stub
+// that confirms immediately with the default (auto-fit, no pan/zoom/rotation)
+// adjustments. Its own interaction is not this page's concern; the geometry it
+// wraps is covered in __tests__/utils/cardImage.test.ts.
+vi.mock('../../components/cards/CardCropAdjuster', () => ({
+  CardCropAdjuster: vi.fn(
+    ({ onConfirm }: { onConfirm: (adjustments: Record<string, never>) => void }) => (
+      <button type="button" onClick={() => onConfirm({})}>
+        Use this photo
+      </button>
+    ),
+  ),
+}));
+
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
@@ -170,10 +186,16 @@ function field(label: RegExp): HTMLElement {
   return screen.getByLabelText(label, { selector: 'input' });
 }
 
+/**
+ * Picks a photo AND confirms the (stubbed) adjust stage, landing on the
+ * cropped preview — the same end state `selectPhoto` produced before the
+ * adjust stage existed.
+ */
 function selectPhoto(side: 'front' | 'back') {
   fireEvent.change(screen.getByTestId(`card-${side}-input`), {
     target: { files: [new File(['bytes'], `${side}.png`, { type: 'image/png' })] },
   });
+  fireEvent.click(screen.getByRole('button', { name: /use this photo/i }));
 }
 
 /** Skip both photo steps and land on the diff — the pure-manual renewal path. */

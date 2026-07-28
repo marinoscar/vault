@@ -171,6 +171,32 @@ describe('toReviewValues', () => {
     expect(values.number).toBe('');
     expect(values.cardholder_name).toBe('');
   });
+
+  it('seeds Notes from the extraction, like any other extracted field', () => {
+    const extraction = {
+      fields: { notes: 'Member since 2019 — support: +1 555 0100' },
+      confidence: {},
+      warnings: [],
+      model: 'gpt-4o-mini',
+      partial: false,
+    } as unknown as CardExtractionResult;
+
+    expect(toReviewValues(extraction).notes).toBe(
+      'Member since 2019 — support: +1 555 0100',
+    );
+  });
+
+  it('leaves Notes empty when the extraction did not return one', () => {
+    const extraction = {
+      fields: { number: '4242424242424242' },
+      confidence: {},
+      warnings: [],
+      model: 'gpt-4o-mini',
+      partial: false,
+    } as unknown as CardExtractionResult;
+
+    expect(toReviewValues(extraction).notes).toBe('');
+  });
 });
 
 describe('buildDefaultCardName', () => {
