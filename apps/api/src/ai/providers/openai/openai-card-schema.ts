@@ -64,7 +64,7 @@ export const OPENAI_CARD_JSON_SCHEMA = {
     number: {
       ...nullableString,
       description:
-        'The long card number (PAN). Digits only, no spaces. On many modern cards it is printed on the BACK. 15 digits for American Express, usually 16 for other networks. Null only if not fully legible.',
+        'The long card number (PAN). Digits only, no spaces. On many modern cards it is printed on the BACK. 15 digits for American Express, usually 16 for other networks. Null only when digits are genuinely unreadable.',
     },
     exp_month: {
       ...nullableString,
@@ -92,6 +92,11 @@ export const OPENAI_CARD_JSON_SCHEMA = {
       ...nullableString,
       description:
         'ONLY a secondary control / CID number printed flat on the card face (for example the 4-digit CID on the front of an American Express card). This is NOT the CVV/CVC. Null unless such a separate control number is clearly present.',
+    },
+    notes: {
+      ...nullableString,
+      description:
+        'Other useful, non-sensitive text printed on the card: customer service phone numbers, "Member Since" year, website, contactless indicator, usage instructions. One item per line. NEVER include the card number, CVV, or any security code here. Null if there is nothing beyond the other fields.',
     },
     confidence: {
       type: 'object',
@@ -131,17 +136,19 @@ export const OPENAI_CARD_SYSTEM_PROMPT = [
   '- Metal cards engrave characters in faint grey-on-grey. Faint is not illegible: look closely and transcribe, expressing any doubt through the confidence score rather than by returning null.',
   '- American Express numbers are 15 digits grouped 4-6-5; most other networks use 16 digits grouped 4-4-4-4. The expiry usually follows "VALID THRU" or "THRU" as MM/YY.',
   '- If the card appears rotated, tilted, or upside down in the frame, mentally rotate it and transcribe anyway. Warn only if the rotation genuinely hides characters.',
+  '- The card may occupy only part of the image, with background around it, and may be upside down. Locate it, mentally rotate and zoom in, and read it. Do not treat framing itself as a failure - only warn when characters are actually cut off at the image edge or truly unreadable.',
   '',
   'Rules:',
   '1. NEVER output a CVV, CVC, CVC2, CVV2 or the 3-digit code printed on the signature panel. Do not output it in any field, and do not mention its digits in warnings. If you can see one, ignore it.',
   '2. `security_code_2` is NOT the CVV. It is only for a separate control / CID number printed flat on the card face, such as the 4-digit CID above the account number on an American Express card. If you are not certain a value is that separate control number, return null.',
-  '3. The card number, expiry, cardholder name and security_code_2 must be READ from the images, character by character. Never derive, complete, or invent them. If part of one is truly illegible after a careful look, return null for that field - but do not give up on text merely because it is faint, small, or low-contrast.',
+  '3. The card number, expiry, cardholder name and security_code_2 must be READ from the images, character by character. Never derive, complete, or invent them. Transcribe every character you can actually make out, even when the text is faint, low-contrast, or at an angle, and express doubt through the confidence score. Return null for a field ONLY when one or more of its characters are genuinely impossible to read - not merely difficult.',
   '4. `card_network`: identify from the brand mark or wordmark anywhere on either side.',
   '5. `card_kind`: if the card prints Credit, Debit or Prepaid, use that. If it does not, you MAY classify it from unambiguous product knowledge - for example, American Express charge and credit products (Green, Gold, Platinum, Centurion) are "Credit"; classify charge cards as "Credit". Cap the confidence of any card_kind that is not literally printed on the card at 0.6, and add a short warning saying the card type was inferred from the product, not read. If genuinely unsure, return null.',
   '6. `issuing_bank`: the institution named on the card. Networks that issue their own cards (American Express, Discover) are also the issuer - use the network name in that case.',
-  '7. `card_network` and `card_kind` must be exactly one of the allowed enum values, or null. Do not invent new spellings.',
-  '8. Confidence scale: 0.9-1.0 for crisp, unambiguous text; 0.5-0.8 for text that is readable but faint, glared, small, or partially obstructed; below 0.5 only when you are close to guessing. Set the confidence to 0 for every field you return as null.',
-  '9. If the images are not a payment card at all, return null for every field, 0 for every confidence, and add a warning saying so.',
+  '7. `notes`: gather any other useful printed text - customer service phone numbers, a "Member Since" year, a website, a contactless indicator, usage instructions - into `notes`, one item per line. NEVER put the card number or any security code there. Return null when there is nothing beyond the other fields.',
+  '8. `card_network` and `card_kind` must be exactly one of the allowed enum values, or null. Do not invent new spellings.',
+  '9. Confidence scale: 0.9-1.0 for crisp, unambiguous text; 0.5-0.8 for text that is readable but faint, glared, small, or partially obstructed; below 0.5 only when you are close to guessing. Set the confidence to 0 for every field you return as null.',
+  '10. If the images are not a payment card at all, return null for every field, 0 for every confidence, and add a warning saying so.',
 ].join('\n');
 
 // -----------------------------------------------------------------------------
@@ -159,6 +166,20 @@ const nullableStringField = z
   .transform((v) => {
     const trimmed = (v ?? '').trim();
     return trimmed.length === 0 ? null : trimmed.slice(0, 200);
+  });
+
+/**
+ * Same contract as `nullableStringField`, but sized for `notes`: a multi-line
+ * collection of auxiliary text (phone numbers, "Member Since", instructions)
+ * legitimately outgrows the 200 characters that fence a single card field, so
+ * the truncation point moves to 1000 rather than silently amputating real
+ * information off the card.
+ */
+const nullableLongStringField = z
+  .union([z.string(), z.null()])
+  .transform((v) => {
+    const trimmed = (v ?? '').trim();
+    return trimmed.length === 0 ? null : trimmed.slice(0, 1000);
   });
 
 /**
@@ -192,6 +213,7 @@ export const openAiCardResponseSchema = z.object({
   card_kind: nullableStringField,
   issuing_bank: nullableStringField,
   security_code_2: nullableStringField,
+  notes: nullableLongStringField,
   confidence: z.object({
     cardholder_name: confidenceValue,
     number: confidenceValue,
@@ -201,6 +223,7 @@ export const openAiCardResponseSchema = z.object({
     card_kind: confidenceValue,
     issuing_bank: confidenceValue,
     security_code_2: confidenceValue,
+    notes: confidenceValue,
   }),
   warnings: z
     .array(z.string().trim().max(300))

@@ -32,6 +32,15 @@ import {
  */
 export const CVV_FIELD = 'cvv';
 
+/**
+ * The one field a renewal APPENDS to rather than replaces.
+ *
+ * Existing notes are the user's own words (or a previous card's auxiliary
+ * text) and must not be silently overwritten by whatever the new photo
+ * happens to say — the freshly read text goes on a new line below instead.
+ */
+const NOTES_FIELD = 'notes';
+
 /** Read a stored value as a trimmed display string; never throws. */
 function toDisplayString(value: unknown): string {
   if (typeof value === 'string') return value.trim();
@@ -82,8 +91,18 @@ export function toRenewalValues(
     // extraction may return more than this card's type knows about.
     if (!(name in proposed)) continue;
     const extracted = extraction?.fields?.[name];
-    if (typeof extracted === 'string' && extracted.trim() !== '') {
-      proposed[name] = extracted.trim();
+    if (typeof extracted !== 'string' || extracted.trim() === '') continue;
+    const trimmed = extracted.trim();
+
+    if (name === NOTES_FIELD && proposed[name].trim() !== '') {
+      // Append, never overwrite — see NOTES_FIELD. Skipped when the existing
+      // notes already contain the text verbatim, so renewing the same card
+      // twice does not stack duplicates.
+      if (!proposed[name].includes(trimmed)) {
+        proposed[name] = `${proposed[name]}\n${trimmed}`;
+      }
+    } else {
+      proposed[name] = trimmed;
     }
   }
 

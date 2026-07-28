@@ -45,6 +45,7 @@ function modelJson(overrides: Record<string, unknown> = {}) {
     card_kind: 'Credit',
     issuing_bank: 'Example Bank',
     security_code_2: null,
+    notes: null,
     confidence: {
       cardholder_name: 0.9,
       number: 0.99,
@@ -54,6 +55,7 @@ function modelJson(overrides: Record<string, unknown> = {}) {
       card_kind: 0.6,
       issuing_bank: 0.7,
       security_code_2: 0,
+      notes: 0,
     },
     warnings: [],
     ...overrides,
@@ -314,6 +316,30 @@ describe('OpenAiVisionProvider', () => {
         expect(schema.required).toContain(name);
       }
     });
+
+    it('includes notes as a nullable string field, required at both the root and confidence level', () => {
+      expect(schema.properties.notes.type).toEqual(['string', 'null']);
+      expect(schema.required).toContain('notes');
+      expect(schema.properties.confidence.properties.notes).toEqual({
+        type: 'number',
+        description: expect.any(String),
+      });
+      expect(schema.properties.confidence.required).toContain('notes');
+    });
+
+    it('instructs the model to gather auxiliary card text into notes, banning the PAN and security codes from it', () => {
+      expect(OPENAI_CARD_SYSTEM_PROMPT).toContain('`notes`: gather any other useful printed text');
+      expect(OPENAI_CARD_SYSTEM_PROMPT).toContain(
+        'NEVER put the card number or any security code there',
+      );
+    });
+
+    it('requires per-character honesty: null only when a character is genuinely unreadable, not merely difficult', () => {
+      expect(OPENAI_CARD_SYSTEM_PROMPT).toContain(
+        'Return null for a field ONLY when one or more of its characters are genuinely impossible to read',
+      );
+      expect(OPENAI_CARD_SYSTEM_PROMPT).not.toContain('null if not fully legible');
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -364,6 +390,28 @@ describe('OpenAiVisionProvider', () => {
       const result = await provider.extractCard(images, options);
       expect(result.confidence.cardholder_name).toBe(1);
       expect(result.confidence.number).toBe(0);
+    });
+
+    it('truncates an over-long notes value at 1000 characters, not 200', async () => {
+      const longNotes = 'A'.repeat(1500);
+      fetchMock.mockResolvedValue(
+        okResponse(modelJson({ notes: longNotes })),
+      );
+
+      const result = await provider.extractCard(images, options);
+      expect(result.fields.notes).toHaveLength(1000);
+      expect(result.fields.notes).toBe('A'.repeat(1000));
+    });
+
+    it('still truncates an ordinary field like issuing_bank at 200 characters', async () => {
+      const longBankName = 'B'.repeat(500);
+      fetchMock.mockResolvedValue(
+        okResponse(modelJson({ issuing_bank: longBankName })),
+      );
+
+      const result = await provider.extractCard(images, options);
+      expect(result.fields.issuing_bank).toHaveLength(200);
+      expect(result.fields.issuing_bank).toBe('B'.repeat(200));
     });
   });
 

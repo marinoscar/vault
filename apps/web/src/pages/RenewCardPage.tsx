@@ -31,7 +31,11 @@ import {
   toRenewalValues,
   useCardRenewal,
 } from '../hooks/useCardRenewal';
-import { cropImageFileToCard, type CroppedCardImage } from '../utils/cardImage';
+import {
+  cropImageFileToCard,
+  type CardAdjustments,
+  type CroppedCardImage,
+} from '../utils/cardImage';
 
 type Stage = 'front' | 'back' | 'processing' | 'review';
 
@@ -134,7 +138,11 @@ export default function RenewCardPage() {
     return sides;
   }, [frontImage, backImage]);
 
-  const handleFileSelected = async (side: 'front' | 'back', file: File) => {
+  const handleFileSelected = async (
+    side: 'front' | 'back',
+    file: File,
+    adjustments: CardAdjustments,
+  ) => {
     setCaptureError(null);
 
     if (!file.type.startsWith('image/')) {
@@ -144,10 +152,12 @@ export default function RenewCardPage() {
 
     setIsCropping(true);
     try {
-      // Cropped here, before anything leaves the device — the uncropped frame
-      // is never uploaded and never sent for extraction.
+      // Cropped here, with the framing the user confirmed in the adjust stage,
+      // before anything leaves the device — the uncropped frame is never
+      // uploaded and never sent for extraction.
       const cropped = await cropImageFileToCard(file, {
         fileName: `card-${side}.jpg`,
+        ...adjustments,
       });
       trackPreview(cropped);
       if (side === 'front') {
@@ -373,7 +383,9 @@ export default function RenewCardPage() {
               }
               continueLabel="Continue"
               skipLabel="Skip the photo"
-              onFileSelected={(file) => void handleFileSelected('front', file)}
+              onFileSelected={(file, adjustments) =>
+                void handleFileSelected('front', file, adjustments)
+              }
               onRetake={() => handleRetake('front')}
               onContinue={() => setStage('back')}
               // Present on the FRONT step too, unlike import: a renewal with no
@@ -398,7 +410,9 @@ export default function RenewCardPage() {
               helpText="The new photo replaces the back image on this card. The old version keeps its own."
               continueLabel={canExtract && frontImage ? 'Read the card' : 'Continue'}
               skipLabel="Skip the photo"
-              onFileSelected={(file) => void handleFileSelected('back', file)}
+              onFileSelected={(file, adjustments) =>
+                void handleFileSelected('back', file, adjustments)
+              }
               onRetake={() => handleRetake('back')}
               onContinue={() => void goToReview(capturedSides)}
               onSkip={() => {

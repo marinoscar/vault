@@ -1476,7 +1476,8 @@ Deliberately namespaced under `/secrets/cards`, not a general `/ai/*` path — t
       "card_network": "Visa",
       "card_kind": "Credit",
       "issuing_bank": null,
-      "security_code_2": null
+      "security_code_2": null,
+      "notes": "Customer service: 1-800-528-4800\nMember since 2019"
     },
     "confidence": {
       "cardholder_name": 0.94,
@@ -1486,7 +1487,8 @@ Deliberately namespaced under `/secrets/cards`, not a general `/ai/*` path — t
       "card_network": 0.99,
       "card_kind": 0.6,
       "issuing_bank": 0,
-      "security_code_2": 0
+      "security_code_2": 0,
+      "notes": 0.85
     },
     "warnings": [
       "The card number did not pass its checksum, so at least one digit was probably misread. Please check it against the card."
@@ -1497,7 +1499,9 @@ Deliberately namespaced under `/secrets/cards`, not a general `/ai/*` path — t
 }
 ```
 
-Fields are `null` (with confidence `0`) when unread. `cvv` never appears in `fields` or `confidence` — there is no key for it. Note the `4111 1111 1111 1111` test PAN used above is the well-known Luhn-valid test number; it is not a real card.
+Fields are `null` (with confidence `0`) only when one or more characters are genuinely impossible to read — faint or low-contrast text (e.g. laser-engraved metal cards) is transcribed with a lower confidence score rather than returned as `null`; the model expresses its doubt through `confidence`, not by withholding the value. `cvv` never appears in `fields` or `confidence` — there is no key for it. Note the `4111 1111 1111 1111` test PAN used above is the well-known Luhn-valid test number; it is not a real card.
+
+**`notes` carries auxiliary, non-sensitive printed text** the other fields have no dedicated slot for — customer service phone numbers, a "Member Since" year, a website, a contactless indicator, usage instructions — one item per line. It is bounded at 1000 characters on the wire rather than the 200-character bound applied to every other string field, since a multi-line collection of auxiliary text legitimately outgrows a single field's limit. Both the prompt and the response schema explicitly forbid the PAN and any security code (CVV or `security_code_2`) from appearing in `notes`; it is additive to the dedicated fields, never a place to recover a value banned elsewhere.
 
 **`card_kind` may be classified rather than read.** If the card doesn't print "Credit", "Debit", or "Prepaid" (American Express never does), the model may infer `card_kind` from unambiguous product knowledge instead of returning `null`. This is the one field allowed to work that way — `number`, `exp_month`, `exp_year`, `cardholder_name`, and `security_code_2` must always be transcribed from the images, never guessed. An inferred `card_kind` is fenced: its confidence is capped at `0.6` (as in the example above) and `warnings` always includes a note that the value was inferred from the product rather than read off the card, so the review screen surfaces it as a suggestion, not a confirmed reading. A `card_kind` printed on the card and read directly carries no such cap.
 
