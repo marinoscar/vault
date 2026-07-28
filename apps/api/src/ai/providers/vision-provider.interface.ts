@@ -13,13 +13,31 @@ export const AI_VISION_PROVIDER = Symbol('AI_VISION_PROVIDER');
 export type CardSide = 'front' | 'back';
 
 /**
- * One image to read. Already cropped to the card by the client - the API does
- * no server-side cropping and returns no crop box.
+ * One image to read. A FULL, uncropped photo - the client no longer pre-crops
+ * what it sends. The model locates the card and returns a `CardCropBox` per
+ * image; the API does no server-side cropping.
  */
 export interface VisionImage {
   side: CardSide;
   /** Full `data:image/{jpeg|png|webp};base64,...` URL. */
   dataUrl: string;
+}
+
+/**
+ * Where the model found the card inside one image, exactly as that image was
+ * sent. Used client-side to produce the cropped attachment the user stores.
+ *
+ * `x`/`y`/`width`/`height` are FRACTIONS (0-1) of the image's width/height.
+ * `quarterTurns` is 0-3: the number of 90-degree CLOCKWISE rotations to apply
+ * to the cropped rectangle so the card reads upright. `confidence` is 0-1.
+ */
+export interface CardCropBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  quarterTurns: number;
+  confidence: number;
 }
 
 export interface ExtractCardOptions {
@@ -70,6 +88,13 @@ export interface RawExtraction {
   confidence: RawCardConfidence;
   warnings: string[];
   model: string;
+  /**
+   * Where the model located the card in the front/back image, or null when
+   * that image was not provided or no card was visible in it. Not a merge
+   * field: boxes belong to one specific image, never to the combined answer.
+   */
+  frontBox: CardCropBox | null;
+  backBox: CardCropBox | null;
 }
 
 /**

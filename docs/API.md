@@ -1424,7 +1424,7 @@ Base paths: `/api/secrets` and `/api/secret-types`.
 
 ### AI Card Extraction
 
-Reads already-cropped card face photos with an admin-configured OpenAI vision model and returns candidate field values for the user to review before saving — it does not create or modify a secret itself. **Persists nothing about the card**: no image and no extracted field value is ever stored; the only database row this writes is a minimal audit event (`ai.card.extract`, counts/timing/model only — see [SECRETS.md § Audit Trail](SECRETS.md#audit-trail)). See [SECURITY-ARCHITECTURE.md](SECURITY-ARCHITECTURE.md) §8 for the full data-egress writeup.
+Reads full (uncropped) card photos with an admin-configured OpenAI vision model and returns candidate field values, **plus the bounding box the model used to locate the card in each image**, for the user to review before saving — it does not create or modify a secret itself. The client no longer crops before sending; the model locates the card itself and the response's `crops` tell the client what to cut out for the stored attachment. **Persists nothing about the card**: no image and no extracted field value is ever stored; the only database row this writes is a minimal audit event (`ai.card.extract`, counts/timing/model only — see [SECRETS.md § Audit Trail](SECRETS.md#audit-trail)). See [SECURITY-ARCHITECTURE.md](SECURITY-ARCHITECTURE.md) §8 for the full data-egress writeup, including the privacy consequence of sending the full frame.
 
 **The CVV is never requested or returned.** It is not in the set of fields the model is asked for, and it is not a key in the response.
 
@@ -1462,7 +1462,7 @@ Deliberately namespaced under `/secrets/cards`, not a general `/ai/*` path — t
 }
 ```
 
-`front` is required; `back` is optional. When both are supplied they are sent together as **one combined provider call, not one call per side**, so the model can cross-reference whichever image actually carries the printed number, expiry, and cardholder name — many modern and metal cards (e.g. a metal American Express Platinum) print these flat on the back rather than the front, so `back` is not merely a fallback for a poor front read. Omitting `back` means only the front image is sent, and anything printed solely on the back cannot be recovered. A provider-side failure now fails the whole request; there is no per-side degrade path. `partial: true` in the response means the single call succeeded but nothing on the supplied image(s) was legible — it does not mean one side failed while the other succeeded. Both images must be `data:image/{jpeg|png|webp};base64,...` URLs no longer than roughly 2 MB each (`MAX_IMAGE_DATA_URL_LENGTH`); the request is JSON, not multipart, and both images together must fit inside the API's 8 MiB body limit.
+`front` is required; `back` is optional. **Both are full, uncropped camera frames, not pre-cropped card photos.** The client downscales only when the long edge exceeds 3072px and otherwise sends the photo untouched (no crop, no rotation); the model locates the card itself and returns a bounding box (see `crops` below) that the client then uses to cut out the copy it actually stores. When both are supplied they are sent together as **one combined provider call, not one call per side**, so the model can cross-reference whichever image actually carries the printed number, expiry, and cardholder name — many modern and metal cards (e.g. a metal American Express Platinum) print these flat on the back rather than the front, so `back` is not merely a fallback for a poor front read. Omitting `back` means only the front image is sent, and anything printed solely on the back cannot be recovered. A provider-side failure now fails the whole request; there is no per-side degrade path. `partial: true` in the response means the single call succeeded but nothing on the supplied image(s) was legible — it does not mean one side failed while the other succeeded. Both images must be `data:image/{jpeg|png|webp};base64,...` URLs no longer than roughly 4.5 MB each (`MAX_IMAGE_DATA_URL_LENGTH`, ~6,000,000 characters of base64); the request is JSON, not multipart, and both images together must fit inside the API's 16 MiB body limit.
 
 **Response:**
 ```json
@@ -1494,16 +1494,22 @@ Deliberately namespaced under `/secrets/cards`, not a general `/ai/*` path — t
       "The card number did not pass its checksum, so at least one digit was probably misread. Please check it against the card."
     ],
     "model": "gpt-4o-mini",
+    "crops": {
+      "front": { "x": 0.18, "y": 0.31, "width": 0.64, "height": 0.4, "quarterTurns": 0, "confidence": 0.92 },
+      "back": null
+    },
     "partial": false
   }
 }
 ```
 
-Fields are `null` (with confidence `0`) only when one or more characters are genuinely impossible to read — faint or low-contrast text (e.g. laser-engraved metal cards) is transcribed with a lower confidence score rather than returned as `null`; the model expresses its doubt through `confidence`, not by withholding the value. `cvv` never appears in `fields` or `confidence` — there is no key for it. Note the `4111 1111 1111 1111` test PAN used above is the well-known Luhn-valid test number; it is not a real card.
+**`crops` is the AI-located bounding box for each supplied image**, in fractions (`x`/`y`/`width`/`height`, all 0–1) of that image exactly as sent — not of the stored attachment, and not of the original camera resolution before the client's pre-upload downscale. `quarterTurns` is how many 90° clockwise turns the client applies so the crop reads upright, and `confidence` is the model's confidence in the box placement, separate from the field confidences above. `back` is `null` whenever no back image was sent — a back box for an image the model never saw would be a hallucination by definition — and either box independently degrades to `null` if the model didn't locate a card in that image or returned a malformed box; a bad or missing box never fails the extraction, it only costs the client its auto-crop, falling back to a centered auto-fit rectangle the user can still adjust. The client renders the stored crop from the *raw* capture (not the possibly-downscaled image sent for extraction) using this box, with a small margin and a snap to the card's aspect ratio, and always offers a per-side "Adjust crop" manual override seeded from the AI box before the crop is saved as the `card_front`/`card_back` attachment.
+
+Fields are `null` (with confidence `0`) only when nothing is visible for that field at all. This is a deliberate best-guess policy: the model is instructed to always return its best reading — including faint or low-contrast text on laser-engraved metal cards — with an honest, possibly low, confidence score and a `warnings` entry, rather than withholding a value it isn't fully sure of. `cvv` never appears in `fields` or `confidence` — there is no key for it, and this rule has no exception. Note the `4111 1111 1111 1111` test PAN used above is the well-known Luhn-valid test number; it is not a real card.
 
 **`notes` carries auxiliary, non-sensitive printed text** the other fields have no dedicated slot for — customer service phone numbers, a "Member Since" year, a website, a contactless indicator, usage instructions — one item per line. It is bounded at 1000 characters on the wire rather than the 200-character bound applied to every other string field, since a multi-line collection of auxiliary text legitimately outgrows a single field's limit. Both the prompt and the response schema explicitly forbid the PAN and any security code (CVV or `security_code_2`) from appearing in `notes`; it is additive to the dedicated fields, never a place to recover a value banned elsewhere.
 
-**`card_kind` may be classified rather than read.** If the card doesn't print "Credit", "Debit", or "Prepaid" (American Express never does), the model may infer `card_kind` from unambiguous product knowledge instead of returning `null`. This is the one field allowed to work that way — `number`, `exp_month`, `exp_year`, `cardholder_name`, and `security_code_2` must always be transcribed from the images, never guessed. An inferred `card_kind` is fenced: its confidence is capped at `0.6` (as in the example above) and `warnings` always includes a note that the value was inferred from the product rather than read off the card, so the review screen surfaces it as a suggestion, not a confirmed reading. A `card_kind` printed on the card and read directly carries no such cap.
+**`card_kind` may be classified rather than read.** If the card doesn't print "Credit", "Debit", or "Prepaid" (American Express never does), the model may infer `card_kind` from unambiguous product knowledge instead of returning `null`. This is the one field allowed to work that way — `number`, `exp_month`, `exp_year`, `cardholder_name`, and `security_code_2` must always be transcribed from the images, never guessed. An inferred `card_kind` is fenced: it carries moderate confidence (around `0.6`, as in the example above — not a hard cap, just the guidance given to the model) and `warnings` always includes a note that the value was inferred from the product rather than read off the card, so the review screen surfaces it as a suggestion, not a confirmed reading. A `card_kind` printed on the card and read directly carries high confidence instead, with no such warning.
 
 **Error Cases** (see [Error Codes](#error-codes) for the full `AI_*` taxonomy):
 
@@ -1515,7 +1521,7 @@ Fields are `null` (with confidence `0`) only when one or more characters are gen
 | 429 | `AI_QUOTA_EXCEEDED` | Per-user durable daily budget exhausted (default 50/day, admin-configurable via `ai.maxCallsPerUserPerDay`) |
 | 429 | `AI_UPSTREAM_RATE_LIMITED` | OpenAI itself rate-limited the request |
 | 502 | `AI_UPSTREAM_AUTH` | OpenAI rejected the configured API key |
-| 502 | `AI_UPSTREAM_UNAVAILABLE` | OpenAI 5xx, network failure, or the API's own request timeout (60s) |
+| 502 | `AI_UPSTREAM_UNAVAILABLE` | OpenAI 5xx, network failure, or the API's own request timeout (90s) |
 | 503 | `AI_NOT_CONFIGURED` | Feature disabled, or no key stored |
 | 503 | `AI_KEY_UNREADABLE` | Key is stored but cannot be decrypted (`VAULT_ENCRYPTION_KEY` missing or rotated) |
 

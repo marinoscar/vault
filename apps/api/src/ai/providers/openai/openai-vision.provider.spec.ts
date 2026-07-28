@@ -58,8 +58,23 @@ function modelJson(overrides: Record<string, unknown> = {}) {
       notes: 0,
     },
     warnings: [],
+    front_box: null,
+    back_box: null,
     ...overrides,
   });
+}
+
+/** A well-formed box, as the model would send it on the wire. */
+function validBox(overrides: Record<string, unknown> = {}) {
+  return {
+    x: 0.1,
+    y: 0.2,
+    width: 0.8,
+    height: 0.5,
+    quarter_turns: 0,
+    confidence: 0.9,
+    ...overrides,
+  };
 }
 
 function okResponse(content: string, extras: Record<string, unknown> = {}) {
@@ -183,7 +198,7 @@ describe('OpenAiVisionProvider', () => {
 
       expect(parts[0]).toEqual({
         type: 'text',
-        text: expect.stringContaining('1 photo(s) of ONE payment card'),
+        text: expect.stringContaining('1 full photo(s) of ONE payment card'),
       });
       expect(parts[1]).toEqual({
         type: 'text',
@@ -206,7 +221,7 @@ describe('OpenAiVisionProvider', () => {
 
       expect(parts[0]).toEqual({
         type: 'text',
-        text: expect.stringContaining('2 photo(s) of ONE payment card'),
+        text: expect.stringContaining('2 full photo(s) of ONE payment card'),
       });
       expect(parts[1]).toEqual({
         type: 'text',
@@ -255,9 +270,12 @@ describe('OpenAiVisionProvider', () => {
       expect(OPENAI_CARD_SYSTEM_PROMPT).toContain('security_code_2` is NOT the CVV');
     });
 
-    it('instructs the model that values must be read, never invented, but still sets confidence 0 for nulls', () => {
+    it('instructs the model to always give its best reading, even from poor images, with honest confidence, but still sets confidence 0 for nulls', () => {
       expect(OPENAI_CARD_SYSTEM_PROMPT).toContain(
-        'Never derive, complete, or invent',
+        'ALWAYS return your best reading of every field',
+      );
+      expect(OPENAI_CARD_SYSTEM_PROMPT).toContain(
+        'Never fabricate a value for which nothing is visible at all',
       );
       expect(OPENAI_CARD_SYSTEM_PROMPT.toLowerCase()).toContain(
         'set the confidence to 0 for every field you return as null',
@@ -327,6 +345,32 @@ describe('OpenAiVisionProvider', () => {
       expect(schema.properties.confidence.required).toContain('notes');
     });
 
+    it('requires front_box/back_box: nullable objects with an integer quarter_turns, at the root and not in the confidence block', () => {
+      expect(schema.required).toContain('front_box');
+      expect(schema.required).toContain('back_box');
+      expect(schema.properties.front_box.type).toEqual(['object', 'null']);
+      expect(schema.properties.back_box.type).toEqual(['object', 'null']);
+      expect(schema.properties.front_box.additionalProperties).toBe(false);
+      expect([...schema.properties.front_box.required].sort()).toEqual(
+        ['confidence', 'height', 'quarter_turns', 'width', 'x', 'y'].sort(),
+      );
+      expect(schema.properties.front_box.properties.quarter_turns.type).toBe(
+        'integer',
+      );
+      expect(schema.properties.back_box.properties.quarter_turns.type).toBe(
+        'integer',
+      );
+
+      // Boxes are image-scoped, not field-scoped: they must not appear among
+      // the per-field confidence properties.
+      expect(Object.keys(schema.properties.confidence.properties)).not.toContain(
+        'front_box',
+      );
+      expect(Object.keys(schema.properties.confidence.properties)).not.toContain(
+        'back_box',
+      );
+    });
+
     it('instructs the model to gather auxiliary card text into notes, banning the PAN and security codes from it', () => {
       expect(OPENAI_CARD_SYSTEM_PROMPT).toContain('`notes`: gather any other useful printed text');
       expect(OPENAI_CARD_SYSTEM_PROMPT).toContain(
@@ -334,11 +378,26 @@ describe('OpenAiVisionProvider', () => {
       );
     });
 
-    it('requires per-character honesty: null only when a character is genuinely unreadable, not merely difficult', () => {
+    it('requires best-guess honesty: null only when nothing is visible at all for that field, not merely difficult to read', () => {
       expect(OPENAI_CARD_SYSTEM_PROMPT).toContain(
-        'Return null for a field ONLY when one or more of its characters are genuinely impossible to read',
+        'Return null for a field only when you can see nothing for it at all.',
+      );
+      expect(OPENAI_CARD_SYSTEM_PROMPT).not.toContain(
+        'genuinely impossible to read',
       );
       expect(OPENAI_CARD_SYSTEM_PROMPT).not.toContain('null if not fully legible');
+    });
+
+    it('states the box rule: fractional coordinates, clockwise quarter turns, prefer oversized, null when no card', () => {
+      expect(OPENAI_CARD_SYSTEM_PROMPT).toContain('front_box');
+      expect(OPENAI_CARD_SYSTEM_PROMPT).toContain('back_box');
+      expect(OPENAI_CARD_SYSTEM_PROMPT).toContain('90-degree clockwise rotations');
+      expect(OPENAI_CARD_SYSTEM_PROMPT).toContain(
+        'prefer a box slightly too large over one that cuts the card off',
+      );
+      expect(OPENAI_CARD_SYSTEM_PROMPT).toContain(
+        'Return null for the box of an image that was not provided or in which no card is visible.',
+      );
     });
   });
 
@@ -412,6 +471,106 @@ describe('OpenAiVisionProvider', () => {
       const result = await provider.extractCard(images, options);
       expect(result.fields.issuing_bank).toHaveLength(200);
       expect(result.fields.issuing_bank).toBe('B'.repeat(200));
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Crop boxes (wire re-validation)
+  // ---------------------------------------------------------------------------
+
+  describe('crop boxes', () => {
+    it('passes a valid box through into RawExtraction.frontBox, clamped into range', async () => {
+      fetchMock.mockResolvedValue(
+        okResponse(
+          modelJson({
+            front_box: validBox({ x: -0.1, width: 0.01, quarter_turns: -1 }),
+          }),
+        ),
+      );
+
+      const result = await provider.extractCard(images, options);
+
+      expect(result.frontBox).toEqual({
+        x: 0,
+        y: 0.2,
+        width: 0.05,
+        height: 0.5,
+        quarterTurns: 3,
+        confidence: 0.9,
+      });
+    });
+
+    it('rounds a fractional quarter_turns and wraps it positively into 0-3', async () => {
+      fetchMock.mockResolvedValue(
+        okResponse(modelJson({ front_box: validBox({ quarter_turns: 5.6 }) })),
+      );
+
+      const result = await provider.extractCard(images, options);
+      expect(result.frontBox?.quarterTurns).toBe(2);
+    });
+
+    it('degrades a box with a malformed field to null while the rest of the fields survive', async () => {
+      fetchMock.mockResolvedValue(
+        okResponse(
+          modelJson({
+            front_box: {
+              x: 'not-a-number',
+              y: 0.2,
+              width: 0.5,
+              height: 0.5,
+              quarter_turns: 0,
+              confidence: 0.9,
+            },
+          }),
+        ),
+      );
+
+      const result = await provider.extractCard(images, options);
+
+      expect(result.frontBox).toBeNull();
+      expect(result.fields.cardholder_name).toBe('ADA LOVELACE');
+      expect(result.fields.number).toBe('4111 1111 1111 1111');
+    });
+
+    it('degrades a box missing a required key to null', async () => {
+      const incomplete = validBox();
+      delete (incomplete as any).confidence;
+
+      fetchMock.mockResolvedValue(
+        okResponse(modelJson({ front_box: incomplete })),
+      );
+
+      const result = await provider.extractCard(images, options);
+      expect(result.frontBox).toBeNull();
+    });
+
+    it('carries both front and back boxes through from a two-image extraction', async () => {
+      fetchMock.mockResolvedValue(
+        okResponse(
+          modelJson({
+            front_box: validBox(),
+            back_box: validBox({ x: 0.3, quarter_turns: 2 }),
+          }),
+        ),
+      );
+
+      const result = await provider.extractCard(frontAndBackImages, options);
+
+      expect(result.frontBox).toEqual(
+        expect.objectContaining({ x: 0.1, quarterTurns: 0 }),
+      );
+      expect(result.backBox).toEqual(
+        expect.objectContaining({ x: 0.3, quarterTurns: 2 }),
+      );
+    });
+
+    it('leaves both boxes null when the model saw no card in either image', async () => {
+      fetchMock.mockResolvedValue(okResponse(modelJson()));
+
+      const result = await provider.extractCard(images, options);
+
+      expect(result.frontBox).toBeNull();
+      expect(result.backBox).toBeNull();
     });
   });
 

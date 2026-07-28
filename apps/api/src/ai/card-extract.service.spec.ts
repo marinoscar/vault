@@ -16,6 +16,7 @@ import {
   AI_CARD_EXTRACT_ACTION,
   AI_ERROR_CODES,
   BURST_MAX_IN_WINDOW,
+  MAX_IMAGE_DATA_URL_LENGTH,
 } from './ai.constants';
 import { AiBurstLimiterService } from './ai-burst-limiter.service';
 import { AiConfigService } from './ai-config.service';
@@ -25,6 +26,7 @@ import {
   AI_VISION_PROVIDER,
   AiProviderError,
   AiVisionProvider,
+  CardCropBox,
 } from './providers/vision-provider.interface';
 
 // -----------------------------------------------------------------------------
@@ -65,6 +67,18 @@ function goodFront() {
       card_kind: 0.6,
     },
   );
+}
+
+function box(overrides: Partial<CardCropBox> = {}): CardCropBox {
+  return {
+    x: 0.1,
+    y: 0.2,
+    width: 0.8,
+    height: 0.5,
+    quarterTurns: 0,
+    confidence: 0.9,
+    ...overrides,
+  };
 }
 
 /** Extract the AiException from a rejected call. */
@@ -258,6 +272,58 @@ describe('CardExtractService', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // Crop boxes
+  // ---------------------------------------------------------------------------
+
+  describe('crop boxes', () => {
+    it('surfaces the front box on the result', async () => {
+      vision.extractCard.mockResolvedValue(
+        buildRawExtraction({}, {}, { frontBox: box() }),
+      );
+
+      const result = await service.extract({ front: FRONT_IMAGE }, user);
+
+      expect(result.crops.front).toEqual(box());
+    });
+
+    it('forces the back box to null when only a front image was sent, even if the provider returned one', async () => {
+      // A back box for an image that was never sent would be a hallucination
+      // by definition - the client has nothing to crop it against.
+      vision.extractCard.mockResolvedValue(
+        buildRawExtraction({}, {}, { frontBox: box(), backBox: box({ x: 0.4 }) }),
+      );
+
+      const result = await service.extract({ front: FRONT_IMAGE }, user);
+
+      expect(result.crops.back).toBeNull();
+    });
+
+    it('passes the back box through when both sides were sent', async () => {
+      vision.extractCard.mockResolvedValue(
+        buildRawExtraction({}, {}, {
+          frontBox: box(),
+          backBox: box({ x: 0.4, quarterTurns: 2 }),
+        }),
+      );
+
+      const result = await service.extract(
+        { front: FRONT_IMAGE, back: BACK_IMAGE },
+        user,
+      );
+
+      expect(result.crops.back).toEqual(box({ x: 0.4, quarterTurns: 2 }));
+    });
+
+    it('leaves both crops null when the model located no card in either image', async () => {
+      vision.extractCard.mockResolvedValue(buildRawExtraction());
+
+      const result = await service.extract({ front: FRONT_IMAGE }, user);
+
+      expect(result.crops).toEqual({ front: null, back: null });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // Configuration failures
   // ---------------------------------------------------------------------------
 
@@ -316,7 +382,9 @@ describe('CardExtractService', () => {
     });
 
     it('400 AI_INVALID_IMAGE for an oversized image string', async () => {
-      const oversized = `data:image/jpeg;base64,${'A'.repeat(2_800_001)}`;
+      const prefix = 'data:image/jpeg;base64,';
+      const oversized =
+        prefix + 'A'.repeat(MAX_IMAGE_DATA_URL_LENGTH - prefix.length + 1);
 
       const error = await rejection(service.extract({ front: oversized }, user));
 

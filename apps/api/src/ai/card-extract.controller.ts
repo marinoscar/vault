@@ -37,12 +37,18 @@ export class CardExtractController {
   @ApiOperation({
     summary: 'Extract card details from photographs',
     description:
-      'Reads already-cropped card images with the configured vision model and returns ' +
-      'candidate field values for review. Persists nothing: no image and no extracted ' +
-      'value is stored. The CVV/CVC is never requested and never returned.',
+      'Reads full (uncropped) card photos with the configured vision model and returns ' +
+      'candidate field values for review, plus a per-image bounding box (`crops.front` / ' +
+      '`crops.back`, fractions of the image as sent, with clockwise quarter-turns) locating ' +
+      'the card so the client can crop the stored copy. Persists nothing: no image and no ' +
+      'extracted value is stored. The CVV/CVC is never requested and never returned.',
   })
   @ApiBody({ schema: EXTRACT_CARD_BODY_SCHEMA })
-  @ApiResponse({ status: 200, description: 'Candidate card fields with per-field confidence' })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Candidate card fields with per-field confidence, and AI-located card crop boxes per image',
+  })
   @ApiResponse({ status: 400, description: 'AI_INVALID_IMAGE - body was not acceptable image data URLs' })
   @ApiResponse({ status: 422, description: 'AI_EXTRACTION_FAILED - the model could not read the card' })
   @ApiResponse({ status: 429, description: 'AI_RATE_LIMITED / AI_QUOTA_EXCEEDED / AI_UPSTREAM_RATE_LIMITED' })

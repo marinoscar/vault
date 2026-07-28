@@ -26,6 +26,7 @@ import {
   AI_VISION_PROVIDER,
   AiProviderError,
   AiVisionProvider,
+  CardCropBox,
   RawCardConfidence,
   RawCardFields,
   RawExtraction,
@@ -37,6 +38,14 @@ export interface ExtractCardResult {
   confidence: RawCardConfidence;
   warnings: string[];
   model: string;
+  /**
+   * AI-located card bounding box per supplied image, in fractions (0-1) of
+   * that image exactly as sent, plus the clockwise quarter-turns that make
+   * the crop read upright. Null when the image was absent or no card was
+   * visible in it. The client uses these to produce the cropped attachment
+   * the user stores.
+   */
+  crops: { front: CardCropBox | null; back: CardCropBox | null };
   /** True when the call succeeded but nothing legible came back. */
   partial: boolean;
 }
@@ -165,6 +174,12 @@ export class CardExtractService {
         confidence: normalized.confidence,
         warnings: normalized.warnings,
         model: sources[0]?.model ?? config.model,
+        crops: {
+          front: normalized.crops.front,
+          // A back box for an image that was never sent is a hallucination by
+          // definition - the client would have nothing to crop with it.
+          back: images.length > 1 ? normalized.crops.back : null,
+        },
         partial: normalized.partial,
       };
 

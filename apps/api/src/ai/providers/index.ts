@@ -11,6 +11,7 @@ export type {
   AiProviderErrorDetail,
   AiProviderErrorKind,
   AiVisionProvider,
+  CardCropBox,
   CardSide,
   ExtractCardOptions,
   ExtractedFieldName,
