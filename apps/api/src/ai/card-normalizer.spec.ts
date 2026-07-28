@@ -140,6 +140,22 @@ describe('card-normalizer', () => {
 
       expect(mergeExtractions([a, b]).warnings).toEqual(['Glare on the card']);
     });
+
+    it('merges notes like any other field: higher-confidence source wins, no enum matching applied', () => {
+      const front = buildRawExtraction(
+        { notes: '1-800-555-0100' },
+        { notes: 0.4 },
+      );
+      const back = buildRawExtraction(
+        { notes: 'Member Since 2019\nsupportbank.example.com' },
+        { notes: 0.9 },
+      );
+
+      const merged = mergeExtractions([front, back]);
+
+      expect(merged.fields.notes).toBe('Member Since 2019\nsupportbank.example.com');
+      expect(merged.confidence.notes).toBeCloseTo(0.9);
+    });
   });
 
   describe('normalizeExtractions', () => {
@@ -210,6 +226,25 @@ describe('card-normalizer', () => {
 
       expect(result.partial).toBe(true);
       expect(Object.values(result.fields).every((v) => v === null)).toBe(true);
+    });
+
+    it('passes notes through untouched - no enum matching, no reformatting', () => {
+      const raw = 'Member Since 2019\nCustomer Service: 1-800-555-0100\nbank.example.com';
+      const result = normalizeExtractions([
+        buildRawExtraction({ notes: raw }, { notes: 0.85 }),
+      ]);
+
+      expect(result.fields.notes).toBe(raw);
+      expect(result.confidence.notes).toBeCloseTo(0.85);
+    });
+
+    it('keeps notes confidence at 0 when notes is null', () => {
+      const result = normalizeExtractions([
+        buildRawExtraction({ notes: null }, { notes: 0.7 }),
+      ]);
+
+      expect(result.fields.notes).toBeNull();
+      expect(result.confidence.notes).toBe(0);
     });
   });
 });
