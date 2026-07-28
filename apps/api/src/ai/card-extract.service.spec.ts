@@ -167,37 +167,51 @@ describe('CardExtractService', () => {
       expect(Object.keys(result.confidence)).not.toContain('cvv');
     });
 
-    it('calls the provider once per side and merges by confidence', async () => {
-      vision.extractCard
-        .mockResolvedValueOnce(goodFront())
-        .mockResolvedValueOnce(
-          buildRawExtraction(
-            { cardholder_name: 'A LOVELACE', issuing_bank: 'Example Bank' },
-            { cardholder_name: 0.99, issuing_bank: 0.88 },
-          ),
-        );
+    it('calls the provider exactly once with both sides when a back image is supplied', async () => {
+      vision.extractCard.mockResolvedValue(
+        buildRawExtraction(
+          {
+            cardholder_name: CARDHOLDER,
+            number: '4111 1111 1111 1111',
+            issuing_bank: 'Example Bank',
+          },
+          {
+            cardholder_name: 0.92,
+            number: 0.99,
+            issuing_bank: 0.88,
+          },
+        ),
+      );
 
       const result = await service.extract(
         { front: FRONT_IMAGE, back: BACK_IMAGE },
         user,
       );
 
-      expect(vision.extractCard).toHaveBeenCalledTimes(2);
-      expect(vision.extractCard).toHaveBeenNthCalledWith(
-        1,
+      expect(vision.extractCard).toHaveBeenCalledTimes(1);
+      expect(vision.extractCard).toHaveBeenCalledWith(
+        [
+          { side: 'front', dataUrl: FRONT_IMAGE },
+          { side: 'back', dataUrl: BACK_IMAGE },
+        ],
+        expect.objectContaining({ apiKey: API_KEY, model: 'gpt-4o-mini' }),
+      );
+
+      expect(result.fields.cardholder_name).toBe(CARDHOLDER);
+      expect(result.fields.number).toBe(PAN);
+      expect(result.fields.issuing_bank).toBe('Example Bank');
+    });
+
+    it('calls the provider exactly once with just the front when no back image is supplied', async () => {
+      vision.extractCard.mockResolvedValue(goodFront());
+
+      await service.extract({ front: FRONT_IMAGE }, user);
+
+      expect(vision.extractCard).toHaveBeenCalledTimes(1);
+      expect(vision.extractCard).toHaveBeenCalledWith(
         [{ side: 'front', dataUrl: FRONT_IMAGE }],
         expect.objectContaining({ apiKey: API_KEY, model: 'gpt-4o-mini' }),
       );
-      expect(vision.extractCard).toHaveBeenNthCalledWith(
-        2,
-        [{ side: 'back', dataUrl: BACK_IMAGE }],
-        expect.anything(),
-      );
-
-      // Back was more confident about the name, front kept the number.
-      expect(result.fields.cardholder_name).toBe('A LOVELACE');
-      expect(result.fields.number).toBe(PAN);
-      expect(result.fields.issuing_bank).toBe('Example Bank');
     });
 
     it('persists no card data - the only row written is the audit event', async () => {
@@ -241,19 +255,6 @@ describe('CardExtractService', () => {
       );
     });
 
-    it('keeps a good front when only the back call fails', async () => {
-      vision.extractCard
-        .mockResolvedValueOnce(goodFront())
-        .mockRejectedValueOnce(new AiProviderError('unavailable', 'boom'));
-
-      const result = await service.extract(
-        { front: FRONT_IMAGE, back: BACK_IMAGE },
-        user,
-      );
-
-      expect(result.fields.number).toBe(PAN);
-      expect(result.warnings.join(' ')).toContain('back of the card');
-    });
   });
 
   // ---------------------------------------------------------------------------
@@ -419,6 +420,22 @@ describe('CardExtractService', () => {
   // ---------------------------------------------------------------------------
 
   describe('upstream failure taxonomy', () => {
+    it('fails the whole request when the single provider call rejects, even with a back image supplied', async () => {
+      // There is no per-side fallback anymore: front and back go out in ONE
+      // call, so a rejection there fails the whole extraction.
+      vision.extractCard.mockRejectedValue(
+        new AiProviderError('unavailable', 'boom'),
+      );
+
+      const error = await rejection(
+        service.extract({ front: FRONT_IMAGE, back: BACK_IMAGE }, user),
+      );
+
+      expect(vision.extractCard).toHaveBeenCalledTimes(1);
+      expect(error.getStatus()).toBe(502);
+      expect(error.code).toBe(AI_ERROR_CODES.UPSTREAM_UNAVAILABLE);
+    });
+
     it('upstream 401/403 becomes 502 AI_UPSTREAM_AUTH, never a client 401', async () => {
       vision.extractCard.mockRejectedValue(
         new AiProviderError('auth', 'Invalid API key provided: sk-live-***'),

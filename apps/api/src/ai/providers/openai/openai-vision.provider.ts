@@ -131,22 +131,33 @@ export class OpenAiVisionProvider implements AiVisionProvider {
     images: VisionImage[],
     model: string,
   ): Record<string, unknown> {
+    // Interleaved text/image parts, with the side labels stated as INTENT
+    // rather than fact. The crops come from the client's blind centered crop,
+    // which can miss, tilt, or truncate the card - and users do occasionally
+    // photograph the sides in the wrong order. Telling the model the labels
+    // are best-effort keeps it reading the pixels instead of trusting us.
     const content: Array<Record<string, unknown>> = [
       {
         type: 'text',
         text:
-          `Read the following payment card image(s): ` +
-          images.map((image) => `${image.side} of the card`).join(', ') +
-          `. The images are already cropped to the card.`,
+          `You are given ${images.length} photo(s) of ONE payment card. ` +
+          `The crops are automatic and best-effort: the card may be off-centre, ` +
+          `tilted, rotated, or partially cut off, and the user may even have ` +
+          `swapped front and back. Read every value you can find on ANY of the ` +
+          `images and combine them into a single answer.`,
       },
     ];
 
-    for (const image of images) {
+    images.forEach((image, i) => {
+      content.push({
+        type: 'text',
+        text: `Image ${i + 1}: intended to be the ${image.side.toUpperCase()} of the card.`,
+      });
       content.push({
         type: 'image_url',
         image_url: { url: image.dataUrl, detail: 'high' },
       });
-    }
+    });
 
     return {
       // Transcription, not creativity. Any sampling here is pure downside.

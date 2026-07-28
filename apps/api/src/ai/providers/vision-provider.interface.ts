@@ -90,8 +90,9 @@ export interface AiVisionProvider {
   /**
    * Read one logical extraction request.
    *
-   * The service calls this once per card side so that each side yields its own
-   * per-field confidence, which is what makes the front/back merge meaningful.
+   * The service passes EVERY side of the card in a single call, so the model
+   * can cross-reference the images - modern cards often print the number and
+   * expiry on the back - and answer once for the whole card.
    */
   extractCard(
     images: VisionImage[],

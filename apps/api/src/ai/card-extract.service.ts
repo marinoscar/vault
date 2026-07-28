@@ -26,7 +26,6 @@ import {
   AI_VISION_PROVIDER,
   AiProviderError,
   AiVisionProvider,
-  EXTRACTED_FIELD_NAMES,
   RawCardConfidence,
   RawCardFields,
   RawExtraction,
@@ -189,16 +188,17 @@ export class CardExtractService {
   }
 
   /**
-   * One provider call per side.
+   * ONE provider call carrying every side of the card.
    *
-   * Each side must produce its OWN per-field confidence, otherwise
-   * "prefer the higher-confidence source" in the merge has nothing to compare.
-   *
-   * The front is required; a failure there fails the request. A failure on the
-   * BACK only downgrades to a warning - the number, expiry and cardholder name
-   * all live on the front, so discarding a perfectly good front scan because
-   * the second call timed out would be a worse outcome than a partial answer
-   * the user can complete by hand.
+   * The sides are deliberately NOT sent as separate calls. A model that sees
+   * only one side cannot cross-reference: modern cards - metal and premium
+   * cards especially (e.g. the American Express Platinum) - print the PAN,
+   * the expiry, and sometimes even the cardholder name flat on the BACK, so a
+   * per-side call looking at a branding-only front would dutifully return
+   * nulls while the other call had no front to disambiguate against. Sending
+   * both sides in one request lets the model combine whatever is legible on
+   * either image into a single answer, and it also halves the provider cost
+   * per scan.
    */
   private async callProvider(
     images: VisionImage[],
@@ -210,37 +210,8 @@ export class CardExtractService {
       timeoutMs: OPENAI_REQUEST_TIMEOUT_MS,
     };
 
-    const [front, ...rest] = images;
-
-    const settled = await Promise.allSettled([
-      this.vision.extractCard([front], options),
-      ...rest.map((image) => this.vision.extractCard([image], options)),
-    ]);
-
-    const [frontResult, ...restResults] = settled;
-
-    if (frontResult.status === 'rejected') {
-      throw frontResult.reason;
-    }
-
-    const sources: RawExtraction[] = [frontResult.value];
-
-    for (const outcome of restResults) {
-      if (outcome.status === 'fulfilled') {
-        sources.push(outcome.value);
-      } else {
-        this.logger.warn(
-          `Back-of-card extraction failed, continuing with the front only: ${
-            (outcome.reason as Error)?.message
-          }`,
-        );
-        sources.push(emptyExtraction(config.model, [
-          'The back of the card could not be read. Any details only printed on the back will need to be entered manually.',
-        ]));
-      }
-    }
-
-    return sources;
+    const result = await this.vision.extractCard(images, options);
+    return [result];
   }
 
   /**
@@ -364,14 +335,4 @@ export class CardExtractService {
       );
     }
   }
-}
-
-function emptyExtraction(model: string, warnings: string[]): RawExtraction {
-  const fields = {} as RawCardFields;
-  const confidence = {} as RawCardConfidence;
-  for (const name of EXTRACTED_FIELD_NAMES) {
-    fields[name] = null;
-    confidence[name] = 0;
-  }
-  return { fields, confidence, warnings, model };
 }
