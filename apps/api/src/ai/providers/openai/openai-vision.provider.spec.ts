@@ -22,8 +22,13 @@ import { CARD_KINDS, CARD_NETWORKS } from '../../../common/constants/card.consta
 
 const API_KEY = 'sk-live-SUPERSECRETKEY-9999';
 const IMAGE_DATA = 'data:image/jpeg;base64,QUJDRA==';
+const BACK_IMAGE_DATA = 'data:image/png;base64,RUZHSA==';
 
 const images: VisionImage[] = [{ side: 'front', dataUrl: IMAGE_DATA }];
+const frontAndBackImages: VisionImage[] = [
+  { side: 'front', dataUrl: IMAGE_DATA },
+  { side: 'back', dataUrl: BACK_IMAGE_DATA },
+];
 const options: ExtractCardOptions = {
   apiKey: API_KEY,
   model: 'gpt-4o-mini',
@@ -165,6 +170,66 @@ describe('OpenAiVisionProvider', () => {
         image_url: { url: IMAGE_DATA, detail: 'high' },
       });
     });
+
+    it('sends a single-image request as a preamble text part followed by one label + image pair', async () => {
+      fetchMock.mockResolvedValue(okResponse(modelJson()));
+
+      await provider.extractCard(images, options);
+
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      const parts = body.messages[1].content;
+
+      expect(parts[0]).toEqual({
+        type: 'text',
+        text: expect.stringContaining('1 photo(s) of ONE payment card'),
+      });
+      expect(parts[1]).toEqual({
+        type: 'text',
+        text: 'Image 1: intended to be the FRONT of the card.',
+      });
+      expect(parts[2]).toEqual({
+        type: 'image_url',
+        image_url: { url: IMAGE_DATA, detail: 'high' },
+      });
+      expect(parts).toHaveLength(3);
+    });
+
+    it('interleaves a label and image part per side, in order, for a multi-image request', async () => {
+      fetchMock.mockResolvedValue(okResponse(modelJson()));
+
+      await provider.extractCard(frontAndBackImages, options);
+
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      const parts = body.messages[1].content;
+
+      expect(parts[0]).toEqual({
+        type: 'text',
+        text: expect.stringContaining('2 photo(s) of ONE payment card'),
+      });
+      expect(parts[1]).toEqual({
+        type: 'text',
+        text: 'Image 1: intended to be the FRONT of the card.',
+      });
+      expect(parts[2]).toEqual({
+        type: 'image_url',
+        image_url: { url: IMAGE_DATA, detail: 'high' },
+      });
+      expect(parts[3]).toEqual({
+        type: 'text',
+        text: 'Image 2: intended to be the BACK of the card.',
+      });
+      expect(parts[4]).toEqual({
+        type: 'image_url',
+        image_url: { url: BACK_IMAGE_DATA, detail: 'high' },
+      });
+      expect(parts).toHaveLength(5);
+
+      // Both image_url parts are present, each preceded by its own label.
+      const imageUrls = parts
+        .filter((p: any) => p.type === 'image_url')
+        .map((p: any) => p.image_url.url);
+      expect(imageUrls).toEqual([IMAGE_DATA, BACK_IMAGE_DATA]);
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -188,10 +253,24 @@ describe('OpenAiVisionProvider', () => {
       expect(OPENAI_CARD_SYSTEM_PROMPT).toContain('security_code_2` is NOT the CVV');
     });
 
-    it('instructs the model to return null rather than guess', () => {
-      expect(OPENAI_CARD_SYSTEM_PROMPT.toLowerCase()).toContain(
-        'return null for it rather than guessing',
+    it('instructs the model that values must be read, never invented, but still sets confidence 0 for nulls', () => {
+      expect(OPENAI_CARD_SYSTEM_PROMPT).toContain(
+        'Never derive, complete, or invent',
       );
+      expect(OPENAI_CARD_SYSTEM_PROMPT.toLowerCase()).toContain(
+        'set the confidence to 0 for every field you return as null',
+      );
+    });
+
+    it('permits card_kind to be classified from product knowledge, capped at 0.6 with a mandatory warning', () => {
+      expect(OPENAI_CARD_SYSTEM_PROMPT).toContain('card_kind');
+      expect(OPENAI_CARD_SYSTEM_PROMPT).toContain('0.6');
+      expect(OPENAI_CARD_SYSTEM_PROMPT.toLowerCase()).toContain('inferred');
+    });
+
+    it('documents that modern/metal cards may print the number on the back', () => {
+      expect(OPENAI_CARD_SYSTEM_PROMPT).toMatch(/BACK/);
+      expect(OPENAI_CARD_SYSTEM_PROMPT).toMatch(/metal/i);
     });
 
     it('uses the shared CARD_NETWORKS / CARD_KINDS constants as the enums', () => {
