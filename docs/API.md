@@ -1462,7 +1462,7 @@ Deliberately namespaced under `/secrets/cards`, not a general `/ai/*` path — t
 }
 ```
 
-`front` is required; `back` is optional (a failed or omitted back-of-card read only downgrades the response to `partial: true` with a warning — it does not fail the request, since the number, expiry and cardholder name all live on the front). Both must be `data:image/{jpeg|png|webp};base64,...` URLs no longer than roughly 2 MB each (`MAX_IMAGE_DATA_URL_LENGTH`); the request is JSON, not multipart, and both images together must fit inside the API's 8 MiB body limit.
+`front` is required; `back` is optional. When both are supplied they are sent together as **one combined provider call, not one call per side**, so the model can cross-reference whichever image actually carries the printed number, expiry, and cardholder name — many modern and metal cards (e.g. a metal American Express Platinum) print these flat on the back rather than the front, so `back` is not merely a fallback for a poor front read. Omitting `back` means only the front image is sent, and anything printed solely on the back cannot be recovered. A provider-side failure now fails the whole request; there is no per-side degrade path. `partial: true` in the response means the single call succeeded but nothing on the supplied image(s) was legible — it does not mean one side failed while the other succeeded. Both images must be `data:image/{jpeg|png|webp};base64,...` URLs no longer than roughly 2 MB each (`MAX_IMAGE_DATA_URL_LENGTH`); the request is JSON, not multipart, and both images together must fit inside the API's 8 MiB body limit.
 
 **Response:**
 ```json
@@ -1498,6 +1498,8 @@ Deliberately namespaced under `/secrets/cards`, not a general `/ai/*` path — t
 ```
 
 Fields are `null` (with confidence `0`) when unread. `cvv` never appears in `fields` or `confidence` — there is no key for it. Note the `4111 1111 1111 1111` test PAN used above is the well-known Luhn-valid test number; it is not a real card.
+
+**`card_kind` may be classified rather than read.** If the card doesn't print "Credit", "Debit", or "Prepaid" (American Express never does), the model may infer `card_kind` from unambiguous product knowledge instead of returning `null`. This is the one field allowed to work that way — `number`, `exp_month`, `exp_year`, `cardholder_name`, and `security_code_2` must always be transcribed from the images, never guessed. An inferred `card_kind` is fenced: its confidence is capped at `0.6` (as in the example above) and `warnings` always includes a note that the value was inferred from the product rather than read off the card, so the review screen surfaces it as a suggestion, not a confirmed reading. A `card_kind` printed on the card and read directly carries no such cap.
 
 **Error Cases** (see [Error Codes](#error-codes) for the full `AI_*` taxonomy):
 
