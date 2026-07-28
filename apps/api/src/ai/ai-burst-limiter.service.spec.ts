@@ -1,8 +1,12 @@
 import {
   BURST_MAX_IN_WINDOW,
   BURST_WINDOW_MS,
+  VERIFY_BURST_MAX_IN_WINDOW,
 } from './ai.constants';
-import { AiBurstLimiterService } from './ai-burst-limiter.service';
+import {
+  AiBurstLimiterService,
+  VERIFY_BURST,
+} from './ai-burst-limiter.service';
 
 describe('AiBurstLimiterService', () => {
   let limiter: AiBurstLimiterService;
@@ -88,5 +92,36 @@ describe('AiBurstLimiterService', () => {
     limiter.sweep(now + 1000);
 
     expect(limiter.consume('user-1', now + 1000).allowed).toBe(false);
+  });
+
+  describe('per-action windows', () => {
+    it('applies the tighter verify allowance to the verify bucket', () => {
+      const key = AiBurstLimiterService.verifyKey('user-1');
+
+      for (let i = 0; i < VERIFY_BURST_MAX_IN_WINDOW; i++) {
+        expect(limiter.consume(key, now + i, VERIFY_BURST).allowed).toBe(true);
+      }
+
+      expect(
+        limiter.consume(key, now + VERIFY_BURST_MAX_IN_WINDOW, VERIFY_BURST)
+          .allowed,
+      ).toBe(false);
+    });
+
+    it('keeps the verify bucket separate from the extraction bucket', () => {
+      // An admin exhausting "test connection" must not also lose their own
+      // ability to scan a card, and vice versa.
+      const key = AiBurstLimiterService.verifyKey('user-1');
+      for (let i = 0; i < VERIFY_BURST_MAX_IN_WINDOW; i++) {
+        limiter.consume(key, now + i, VERIFY_BURST);
+      }
+
+      expect(limiter.consume(key, now + 100, VERIFY_BURST).allowed).toBe(false);
+      expect(limiter.consume('user-1', now + 100).allowed).toBe(true);
+    });
+
+    it('namespaces the verify key so it cannot collide with a user id', () => {
+      expect(AiBurstLimiterService.verifyKey('user-1')).toBe('verify:user-1');
+    });
   });
 });

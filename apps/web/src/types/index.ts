@@ -118,6 +118,75 @@ export const AI_ERROR_CODES = {
 export type AiErrorCode = (typeof AI_ERROR_CODES)[keyof typeof AI_ERROR_CODES];
 
 /**
+ * Why `POST /api/system-settings/ai/verify` said no.
+ *
+ * These are deliberately narrower than `AI_ERROR_CODES`: the point of the
+ * connection test is to tell an admin *which thing* is wrong, because the
+ * remedies live in completely different places. A rejected key is fixed by
+ * pasting a new credential; a model that cannot see images is fixed by typing
+ * a different model name; a quota problem is fixed on the provider's billing
+ * page and by touching nothing here at all.
+ *
+ * `network` is not a verdict on the key or the model - it means the check
+ * never got far enough to have an opinion, and must never be presented as a
+ * failure of the configuration.
+ */
+export const AI_VERIFY_FAILURE_REASONS = [
+  'invalid_key',
+  'model_not_found',
+  'model_no_image_support',
+  'model_no_structured_output',
+  'quota',
+  'network',
+  'unknown',
+] as const;
+
+export type AiVerifyFailureReason =
+  (typeof AI_VERIFY_FAILURE_REASONS)[number];
+
+/**
+ * A passing connection test.
+ *
+ * `imageSupport` is part of the success shape rather than a separate check
+ * because card import needs both halves - a key that works against a model
+ * that cannot accept an image is still a broken configuration. The API only
+ * ever produces `true` here, and only off a real request that carried an
+ * image.
+ */
+export interface AiVerifySuccess {
+  ok: true;
+  /**
+   * Model as reported by the provider, which is often a dated snapshot id
+   * rather than the alias that was configured.
+   */
+  model: string;
+  imageSupport: true;
+  durationMs: number;
+  /**
+   * Request parameters the API had to drop for this model to accept the call.
+   * Empty for a model that took the request as sent. Worth showing: it is the
+   * only signal that a setting is silently being ignored for this model.
+   */
+  adaptedParameters: string[];
+}
+
+export interface AiVerifyFailure {
+  ok: false;
+  reason: AiVerifyFailureReason;
+  /**
+   * Operator-facing explanation written by the API. Deliberately not the
+   * upstream error body, which can reflect request content back.
+   */
+  message: string;
+  /** The model that was tested, so the admin can see what was checked. */
+  model: string;
+  durationMs: number;
+  adaptedParameters: string[];
+}
+
+export type AiVerifyResult = AiVerifySuccess | AiVerifyFailure;
+
+/**
  * Fields the extraction endpoint can return, mirroring `EXTRACTED_FIELD_NAMES`
  * in the API.
  *

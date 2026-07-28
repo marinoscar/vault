@@ -42,6 +42,15 @@ export type AiErrorCode = (typeof AI_ERROR_CODES)[keyof typeof AI_ERROR_CODES];
 export const AI_CARD_EXTRACT_ACTION = 'ai.card.extract';
 
 /**
+ * Audit action for an admin-triggered connectivity/capability check.
+ *
+ * Separate from AI_CARD_EXTRACT_ACTION on purpose: these rows must NOT be
+ * counted by the per-user daily extraction budget, and an admin repeatedly
+ * testing a key should not consume a user's card-scanning allowance.
+ */
+export const AI_VERIFY_ACTION = 'ai.model.verify';
+
+/**
  * Largest accepted data URL string, in characters.
  *
  * Base64 inflates by ~4/3, so this is roughly a 2 MB image. Two of these plus
@@ -52,9 +61,31 @@ export const MAX_IMAGE_DATA_URL_LENGTH = 2_800_000;
 /** Hard ceiling on a single OpenAI call. */
 export const OPENAI_REQUEST_TIMEOUT_MS = 20_000;
 
+/**
+ * Hard ceiling on the verify probe.
+ *
+ * Shorter than an extraction: the probe sends a 70-byte image and expects a
+ * one-property JSON object, so anything slower than this is a connectivity
+ * problem the admin needs told about promptly - they are sitting watching a
+ * spinner having just pressed a button.
+ */
+export const OPENAI_VERIFY_TIMEOUT_MS = 15_000;
+
 /** In-memory burst window: 10 extractions per 5 minutes per user. */
 export const BURST_WINDOW_MS = 5 * 60 * 1000;
 export const BURST_MAX_IN_WINDOW = 10;
+
+/**
+ * Burst window for the verify probe: 5 checks per 5 minutes per admin.
+ *
+ * Modest on purpose. Each press of the button is an outbound, billable call to
+ * a paid API, and there is no legitimate reason to press it in a loop - the
+ * answer only changes when the key or model setting changes. Kept at or below
+ * BURST_WINDOW_MS so the shared sweep in AiBurstLimiterService cannot age a
+ * verify window out early.
+ */
+export const VERIFY_BURST_WINDOW_MS = 5 * 60 * 1000;
+export const VERIFY_BURST_MAX_IN_WINDOW = 5;
 
 /** Rolling window for the durable daily budget. */
 export const DAILY_BUDGET_WINDOW_MS = 24 * 60 * 60 * 1000;

@@ -4,6 +4,8 @@ import { SettingsModule } from '../settings/settings.module';
 
 import { AiBurstLimiterService } from './ai-burst-limiter.service';
 import { AiConfigService } from './ai-config.service';
+import { AiVerifyController } from './ai-verify.controller';
+import { AiVerifyService } from './ai-verify.service';
 import { AiController } from './ai.controller';
 import { CardExtractController } from './card-extract.controller';
 import { CardExtractService } from './card-extract.service';
@@ -23,7 +25,7 @@ import { OpenAiVisionProvider } from './providers/openai/openai-vision.provider'
  */
 @Module({
   imports: [SettingsModule],
-  controllers: [AiController, CardExtractController],
+  controllers: [AiController, AiVerifyController, CardExtractController],
   providers: [
     {
       provide: AI_VISION_PROVIDER,
@@ -31,6 +33,7 @@ import { OpenAiVisionProvider } from './providers/openai/openai-vision.provider'
     },
     AiConfigService,
     AiBurstLimiterService,
+    AiVerifyService,
     CardExtractService,
   ],
   exports: [AiConfigService],

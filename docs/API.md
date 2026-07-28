@@ -1428,7 +1428,7 @@ Reads already-cropped card face photos with an admin-configured OpenAI vision mo
 
 **The CVV is never requested or returned.** It is not in the set of fields the model is asked for, and it is not a key in the response.
 
-Disabled by default: an administrator must set `ai.enabled: true` and store a working OpenAI API key in system settings (see [System Settings — `ai` block](#system-settings-ai-block) below) before this endpoint returns anything but `503`.
+Disabled by default: an administrator must set `ai.enabled: true` and store a working OpenAI API key in system settings (see [System Settings — `ai` block](#system-settings-ai-block) below) before this endpoint returns anything but `503`. To check that the stored key and model actually work — including whether the chosen model can read images at all — use [`POST /system-settings/ai/verify`](#post-system-settingsaiverify), which works before the feature is switched on.
 
 #### GET /ai/status
 
@@ -1521,6 +1521,113 @@ A `429`/`502` response may include a `Retry-After` header (seconds).
 
 ---
 
+#### POST /system-settings/ai/verify
+
+**Requires Authentication** (`system_settings:write`) — Test the configured provider credential and model. Same permission as storing the key: this spends money and probes a credential, so read access is not enough.
+
+Answers the question an administrator otherwise has to answer by photographing a card, uploading it and waiting for a failure. **It is an empirical probe, not a lookup.** OpenAI's `/v1/models` lists model IDs but exposes no capability metadata — there is no field that says "this model accepts images" — so the only way to know is to send a real request. This sends the smallest one that still exercises the whole contract: a **1×1 transparent PNG constructed inline in code** (70 bytes, not fetched from anywhere) plus a trivial one-property strict `json_schema` response format.
+
+A single 200 therefore proves, all at once:
+
+- the stored key authenticates
+- the model name resolves and is available to that key
+- the model accepts **image input**
+- the model honours strict **structured outputs**
+
+**Works while `ai.enabled` is still `false`.** Only a stored key is required. The natural order is paste the key → pick a model → check it → then switch the feature on; requiring the flag first would force an admin to expose a possibly-broken feature to every user in order to find out whether it is broken.
+
+**Request Body:** none.
+
+**Success response (HTTP 200):**
+```json
+{
+  "data": {
+    "ok": true,
+    "model": "gpt-4o-mini-2024-07-18",
+    "imageSupport": true,
+    "durationMs": 812,
+    "adaptedParameters": []
+  }
+}
+```
+
+`model` is what the provider resolved to, which is usually a dated snapshot rather than the alias that was configured. `imageSupport` is only ever `true` and only ever produced by a request that actually carried an image — there is no code path that reports image support without having proven it. `adaptedParameters` lists any parameters the API had to drop for this model to accept the request (see [Adaptive request parameters](#adaptive-request-parameters) below); an empty array means the model took the request as sent.
+
+**Failure response — also HTTP 200:**
+```json
+{
+  "data": {
+    "ok": false,
+    "reason": "model_not_found",
+    "message": "The provider does not recognise this model name, or this API key does not have access to it. Check the model setting for a typo, and check that your account has been granted access to it.",
+    "model": "gpt-5.4-nano",
+    "durationMs": 240,
+    "adaptedParameters": []
+  }
+}
+```
+
+**A provider-side failure is a 200 with `ok: false`, deliberately.** Two reasons. A failed check is a *successful diagnosis* — "your model name is wrong" is the answer the admin pressed the button to get. And more importantly it makes it structurally impossible for an upstream 401 to reach the browser as a 401: `apps/web/src/services/api.ts` treats any 401 as an expired session and will refresh, retry, and can sign the user out. An admin pasting a typo'd OpenAI key must not be able to log themselves out of the application. Clients branch on `data.ok`, never on the HTTP status.
+
+| `reason` | Meaning | What the admin should change |
+|----------|---------|------------------------------|
+| `invalid_key` | Upstream rejected the credential (401/403, or an `invalid_api_key` code at any status) | Re-enter the key; check it has not been revoked |
+| `model_not_found` | 404, or an error whose `code` is `model_not_found`, or whose message says the model does not exist / is not accessible | Fix the model name, or get the account granted access to it |
+| `model_no_image_support` | The model resolved, but a 400 rejected the image content part (`param` points into `messages[].content[].type`, or the message names `image_url` / image input) | Choose a vision-capable model |
+| `model_no_structured_output` | The model resolved, but a 400 rejected `response_format` (`param` is `response_format`, or the message names `json_schema`) | Choose a model that supports structured outputs |
+| `quota` | `insufficient_quota` / billing limit, or a plain 429 | Check the account balance and rate limits |
+| `network` | DNS failure, connection reset, or the 15s probe timeout | Check outbound network access from the API container |
+| `unknown` | Reached the provider, got a failure whose shape this application does not recognise | Read the API debug log; the scrubbed upstream body is there |
+
+**`model_not_found` vs `model_no_image_support` is the distinction this endpoint exists to make.** A mistyped model name is far likelier than a bad key and is otherwise silent until an import fails, and the two send the admin to change *different settings*. Classification checks the model name **before** any capability, because an unknown model cannot have told us anything about its capabilities.
+
+**When the shape is unfamiliar, the answer is `unknown`.** The classifier never falls back to a plausible-sounding guess: naming the wrong cause sends an admin off to change a setting that was never wrong. Everything it does not recognise lands in `unknown`, with the full (scrubbed) upstream body available at debug level.
+
+**Nothing from the upstream response is echoed.** `message` comes from a fixed table keyed by `reason`, never from the provider — OpenAI reflects request fragments back inside its error payloads, and the auth error in particular is literally `"Incorrect API key provided: <the key>"`. Upstream bodies are logged at **debug only**, and are scrubbed first: the credential is removed by literal match, then any `sk-`-prefixed token, then base64 image payloads.
+
+**Error cases (real HTTP errors, for the endpoint's own failures — never for the provider's):**
+
+| Status | Code | Meaning |
+|--------|------|---------|
+| 429 | `AI_RATE_LIMITED` | Verify burst window exhausted (5 checks / 5 minutes per admin per API replica). Carries `Retry-After` |
+| 503 | `AI_NOT_CONFIGURED` | No API key stored — there is nothing to verify |
+| 503 | `AI_KEY_UNREADABLE` | A key is stored but cannot be decrypted (`VAULT_ENCRYPTION_KEY` missing or rotated) |
+
+**Rate limited on purpose:** each press is an outbound, billable call. The window is separate from the card-extraction one (bucket key `verify:<userId>`), so testing a key can never consume a user's card-scanning allowance, and vice versa.
+
+**Audited** as `ai.model.verify` with `{ model, outcome, durationMs, adaptedParameters }`. The outcome is `ok` or the failure `reason`. The key — and anything derived from it, including its length — is never written. Note the action is deliberately **not** `ai.card.extract`: that action is what the per-user daily extraction budget counts, and an admin testing a key ten times must not consume ten of a user's card scans.
+
+---
+
+### Adaptive request parameters
+
+Applies to **both** `POST /system-settings/ai/verify` and `POST /secrets/cards/extract`. They share one transport (`apps/api/src/ai/providers/openai/openai-chat.client.ts`) precisely so the behaviour a successful verify proves is the same behaviour a real extraction gets.
+
+**The problem.** The model name is a free-text admin setting, and newer model families have changed which request parameters they accept. Some reasoning-family models take only their default temperature and reject any explicit value with a 400 naming the parameter. `max_tokens` and `max_completion_tokens` are accepted by different families. A hardcoded model allowlist, or a check like `model.startsWith('gpt-5')`, is a guess about models that do not exist yet and will be wrong for the next family — so there is deliberately **no** model-name logic anywhere in this code path.
+
+**What happens instead.** The request is sent optimistically with `temperature: 0` (transcription wants determinism). If it fails with a **400 whose error identifies one of our own droppable parameters as unsupported or unrecognised**, that parameter is removed and the request is sent again — **exactly once** — and the fact is logged at `warn`. Determinism is a nice-to-have; failing every extraction is not.
+
+**⚠️ This retry is not dead code. Do not "clean it up".** It has no effect on the models it is not needed for, so it looks removable right up until an administrator selects a model family that rejects `temperature`, at which point removing it fails 100% of card imports with an opaque 422. Its behaviour is pinned by the `adaptive parameter retry` tests in `apps/api/src/ai/providers/openai/openai-vision.provider.spec.ts` and by `apps/api/src/ai/providers/openai/openai-error-classifier.spec.ts`.
+
+**Guard rails — all four must hold before anything is dropped:**
+
+1. The status is **400**. A parameter complaint is never a 401, 404, 429 or 5xx.
+2. The failure classifies as `bad_request` — i.e. it is *not* a recognised auth, quota, rate-limit, model-not-found, image-support or structured-output failure. **A genuine auth or quota failure is never retried.**
+3. The error's `code` is one of the unsupported-parameter codes (`unsupported_parameter`, `unsupported_value`, `unknown_parameter`, …) **or** its message says something is unsupported/unrecognised — `code` has been observed as `null` on exactly this class of error.
+4. The named parameter is one **we actually sent** and is in `ADAPTIVE_DROPPABLE_PARAMS`.
+
+Candidates come from the keys of our own request body, not from scraping the error text, so an unfamiliar phrasing can only ever make us give up — never make us strip something load-bearing.
+
+**Droppable:** `temperature`, `top_p`, `max_tokens`, `max_completion_tokens`, `frequency_penalty`, `presence_penalty`, `logprobs`, `top_logprobs`, `seed`, `n`, `stop`. These are sampling and limit knobs — removing one changes the cost or quality of a completion but never what it *means*.
+
+**Never droppable:** `model`, `messages`, and above all `response_format`. Dropping `response_format` would silently turn a schema-validated extraction into free text — a data-integrity change dressed up as a compatibility fix. A model that cannot do structured outputs is a hard failure the admin needs to see (`model_no_structured_output`), not something to paper over.
+
+**Strictly one retry.** If the retried request fails again — including by naming a *second* unsupported parameter — that failure is returned as-is. There is no loop and no backoff: this is a paid API behind a user-facing button.
+
+**No token-limit parameter is sent at all.** Neither `max_tokens` nor `max_completion_tokens`. Guessing the wrong spelling turns a working model into a 400, omitting both is valid everywhere, and the strict output schema already bounds the response to a handful of short strings. If a limit ever becomes genuinely necessary, add it to `ADAPTIVE_DROPPABLE_PARAMS` rather than guessing the name.
+
+---
+
 ### System Settings `ai` block
 
 `GET /system-settings` / `PUT /system-settings` / `PATCH /system-settings` (documented above) now include an `ai` object controlling the card-extraction feature. It is **write-only** for the credential: the API key can be set or cleared, but is never returned in plaintext or ciphertext.
@@ -1564,6 +1671,8 @@ A `429`/`502` response may include a `Retry-After` header (seconds).
 The three states of `apiKey` (absent / `null` / string) are distinguished with `'apiKey' in patch`, not `!== undefined` — this is why "don't touch the key" and "clear the key" are both expressible. `PUT /system-settings` cannot touch `ai` at all (its DTO has no `ai` field); the existing stored `ai` block is read from the raw row and carried over untouched so a `PUT` used to flip an unrelated flag can never silently wipe the credential.
 
 **Storage:** the key is encrypted with AES-256-GCM via the same `CryptoService` used for secret values, keyed by `VAULT_ENCRYPTION_KEY`. Only the last 4 characters (`apiKeyLast4`) and an update timestamp are ever exposed. **Rotating `VAULT_ENCRYPTION_KEY` makes the stored key permanently undecryptable** — `GET /ai/status` then reports `enabled: false` and card extraction returns `503 AI_KEY_UNREADABLE` until an administrator re-enters the key.
+
+**Neither `model` nor `apiKey` is validated on write, on purpose.** `model` is any 1–100 character string and is never checked against a list of known model names — a hardcoded allowlist would reject every model released after it was written. Whether the stored pair actually works is established empirically with [`POST /system-settings/ai/verify`](#post-system-settingsaiverify), which is also the only way to find out whether the chosen model can read images at all.
 
 Every settings write is audited (`system_settings:patch` / `system_settings:replace`), with the `ai` block redacted to `{ enabled, model, maxCallsPerUserPerDay, apiKeyChanged, apiKeyLast4 }` — neither plaintext nor ciphertext is ever written to the audit log, on either side of the diff.
 
@@ -1666,6 +1775,8 @@ Readiness check - includes database connectivity test.
 
 **`AI_*` codes are never 401/403, on purpose.** An upstream OpenAI credential rejection is surfaced as `502 AI_UPSTREAM_AUTH`, not 401/403 — the web client (`apps/web/src/services/api.ts`) treats any 401 as an expired session and reactively refreshes the token and retries, which could sign a user out over nothing more than an administrator's stale OpenAI key.
 
+**[`POST /system-settings/ai/verify`](#post-system-settingsaiverify) goes further and uses no error status at all for provider failures**: a rejected key, an unknown model or a model that cannot read images all come back as `200` with `{ "ok": false, "reason": ... }` in the body. Only the endpoint's *own* failures (`AI_RATE_LIMITED`, `AI_NOT_CONFIGURED`, `AI_KEY_UNREADABLE`) are HTTP errors, so that endpoint is also immune to the issue #35 code-overwriting defect described above — its `reason` field travels in a success body and is never rewritten by the exception filter.
+
 **Known limitation — issue #35 — every code above except the first nine is currently unreachable by clients in practice.** The `AI_*` codes (and any other custom `code` an `HttpException`'s response body carries) are computed correctly by the throwing code, but `HttpExceptionFilter` (`apps/api/src/common/filters/http-exception.filter.ts`) unconditionally overwrites `code` with a value derived purely from the HTTP status before the response is sent — the custom code is read from the exception body and then immediately discarded on the next line. Until that filter is fixed, a card-extraction client sees `TOO_MANY_REQUESTS` (for both `AI_RATE_LIMITED` and `AI_QUOTA_EXCEEDED`), `BAD_REQUEST`, `UNPROCESSABLE_ENTITY`, or a generic `ERROR` (for the 502/503 cases, which have no entry in the filter's status-to-code map) instead of the specific `AI_*` code — HTTP status and the `message` string are the only reliable signals right now. See [AI Card Extraction](#ai-card-extraction) for how the web client currently compensates.
 
 ---
@@ -1674,7 +1785,10 @@ Readiness check - includes database connectivity test.
 
 > **Note:** General-purpose rate limiting is recommended for production deployments but is not currently implemented for most of the application. Consider adding `@nestjs/throttler` or Nginx rate limiting before production deployment.
 >
-> **Exception:** `POST /secrets/cards/extract` (see [AI Card Extraction](#ai-card-extraction)) already has real, enforced limits — a per-user in-memory burst window and a per-user durable daily budget — because it is the one endpoint in this application that costs real money per call.
+> **Exceptions:** the two endpoints that make outbound paid calls already have real, enforced limits, because they are the only ones in this application that cost real money per request.
+>
+> - `POST /secrets/cards/extract` (see [AI Card Extraction](#ai-card-extraction)) — a per-user in-memory burst window (10 / 5 min) **and** a per-user durable daily budget.
+> - `POST /system-settings/ai/verify` (see [above](#post-system-settingsaiverify)) — a per-admin in-memory burst window (5 / 5 min) in its own bucket, so the two cannot consume each other's allowance. No daily budget: it is admin-only and the answer only changes when the key or model setting changes.
 
 **Recommended limits:**
 
