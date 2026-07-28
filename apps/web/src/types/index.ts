@@ -223,16 +223,17 @@ export type AiVerifyResult = AiVerifySuccess | AiVerifyFailure;
  * support phone numbers, "Member Since", usage instructions — and seeds the
  * review form's Notes input.
  *
- * `cvv` is deliberately absent and must never be added. The model is instructed
- * never to emit it and the API never returns it, because the CVV is the value
- * that turns a photographed card number into a usable card-not-present
- * credential. The wizard collects it by hand.
+ * `cvv` is the card security code — 3 digits on the back for most networks, 4
+ * on the front of an American Express. It is read from the photo like any other
+ * field and, like any other field, the user confirms it on the review screen
+ * before it is saved.
  */
 export const EXTRACTED_CARD_FIELD_NAMES = [
   'cardholder_name',
   'number',
   'exp_month',
   'exp_year',
+  'cvv',
   'card_network',
   'card_kind',
   'issuing_bank',

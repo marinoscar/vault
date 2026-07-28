@@ -50,11 +50,19 @@ export interface ExtractCardOptions {
 /**
  * Field names requested from the model.
  *
- * `cvv` is deliberately absent and must never be added: the CVV/CVC is the one
- * value that turns a photographed card number into a usable card-not-present
- * credential, so it is never sent to a third party and never returned.
- * `security_code_2` is a DIFFERENT value - the CID / control number printed on
- * the card face (e.g. the 4 digits on an American Express front).
+ * `cvv` IS extracted. This vault stores the card security code alongside the
+ * PAN, as consumer password managers do, so a card saved here is complete
+ * enough to actually use; the value is encrypted at rest like every other
+ * secret field. Note the trade-off this accepts: PAN + CVV together form a
+ * usable card-not-present credential, so the blast radius of a vault
+ * compromise is larger than it would be with the code left out. Extracting it
+ * adds no new egress - the photograph already contains the code and is already
+ * sent to the provider - it only decides whether the model reads it back.
+ *
+ * `security_code_2` is a DIFFERENT value: an ADDITIONAL code carried by cards
+ * that print more than one (for example an American Express whose primary CID
+ * is on the front and which carries a second code on the back). It is never a
+ * duplicate of `cvv`.
  *
  * `notes` carries auxiliary NON-SENSITIVE text printed on the card - customer
  * service phone numbers, a "Member Since" year, a website, a contactless
@@ -67,6 +75,7 @@ export const EXTRACTED_FIELD_NAMES = [
   'number',
   'exp_month',
   'exp_year',
+  'cvv',
   'card_network',
   'card_kind',
   'issuing_bank',

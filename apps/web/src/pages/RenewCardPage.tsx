@@ -71,8 +71,10 @@ type Stage = 'front' | 'back' | 'processing' | 'review';
  *     old version's images forward server-side, which is what keeps the old
  *     card readable in its own version of the history.
  *
- * The CVV rule from the import wizard is unchanged: it is never seeded and
- * never carried forward, and saving is blocked until it is typed.
+ * The CVV rule is narrower than it looks: the OUTGOING card's code is never
+ * carried forward, because a reissued card always has a new one. A code read
+ * from the new card's photo does seed the field, and saving stays blocked
+ * until the field holds something either way.
  */
 export default function RenewCardPage() {
   const navigate = useNavigate();
@@ -591,9 +593,9 @@ export default function RenewCardPage() {
 
           {hasCvvField && !cvvEntered && (
             <Alert severity="info" sx={{ mt: 2 }}>
-              Enter the CVV / CVC from the new card to renew. It is never read
-              from a photo and the old card's code is never reused, so you have
-              to type it yourself.
+              Enter the CVV / CVC from the new card to renew. It could not be
+              read from a photo, and the old card's code is never reused, so
+              type it from the new card yourself.
             </Alert>
           )}
 

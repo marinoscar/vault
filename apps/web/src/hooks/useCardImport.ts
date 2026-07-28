@@ -227,9 +227,10 @@ export function describeCardExtractionError(error: unknown): CardExtractionMessa
 /**
  * Seed the review form from an extraction.
  *
- * `cvv` is initialised empty and is NEVER populated from `fields` — the API does
- * not return one and never will. Every other value becomes a string because the
- * form edits strings.
+ * Every value becomes a string because the form edits strings. `cvv` seeds from
+ * the extraction like every other field; the empty default below only covers
+ * the case where the model returned nothing for it, so the input still renders
+ * and the user can type the code from the card.
  */
 export function toReviewValues(
   extraction: CardExtractionResult | null,

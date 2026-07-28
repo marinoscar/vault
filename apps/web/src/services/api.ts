@@ -255,7 +255,10 @@ export async function getAiStatus(): Promise<AiStatus> {
  * response's `crops` boxes are what the client then crops the stored
  * attachments from — the full photos themselves are never uploaded to storage.
  *
- * The response never contains a CVV. The API does not ask the model for one.
+ * The response includes the card security code (`cvv`) among the candidate
+ * values, so nothing here may log or persist the payload — it is handed
+ * straight to the review form and lives only in component state until the user
+ * saves.
  */
 export async function extractCardFromImages(
   images: ExtractCardRequest,

@@ -7,8 +7,9 @@ import { Alert, AlertTitle, Typography } from '@mui/material';
  * is a warning the user reads before the call happens — not a line of fine
  * print under the button. The facts that matter to someone deciding are all
  * stated: what is sent (the FULL photo, so the model can locate the card),
- * what is stored (only the cropped card rectangle), and what is deliberately
- * neither (the CVV, which is never asked for and never returned).
+ * what is stored (only the cropped card rectangle), and — because it is the
+ * detail a reader is most likely to assume otherwise — that the security code
+ * is among what is read and saved.
  */
 export function AiEgressNotice() {
   return (
@@ -22,8 +23,9 @@ export function AiEgressNotice() {
         confirm the details on the next screen.
       </Typography>
       <Typography variant="body2" component="div" sx={{ mt: 1 }}>
-        Your CVV / CVC is never read from the photo. You will type it in
-        yourself.
+        This includes your security code (CVV / CVC): it is read from the photo
+        along with everything else and saved, encrypted, with the card. Check it
+        on the next screen before saving.
       </Typography>
     </Alert>
   );
