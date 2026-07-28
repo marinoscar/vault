@@ -1428,7 +1428,7 @@ Reads already-cropped card face photos with an admin-configured OpenAI vision mo
 
 **The CVV is never requested or returned.** It is not in the set of fields the model is asked for, and it is not a key in the response.
 
-Disabled by default: an administrator must set `ai.enabled: true` and store a working OpenAI API key in system settings (see [System Settings — `ai` block](#system-settings-ai-block) below) before this endpoint returns anything but `503`. To check that the stored key and model actually work — including whether the chosen model can read images at all — use [`POST /system-settings/ai/verify`](#post-system-settingsaiverify), which works before the feature is switched on.
+Disabled by default: an administrator must set `ai.enabled: true` and store a working OpenAI API key in system settings (see [System Settings — `ai` block](#system-settings-ai-block) below) before this endpoint returns anything but `503`. To check that the stored key and model actually work — including whether the chosen model can read images at all — use [`POST /system-settings/ai/verify`](#post-system-settingsaiverify), which works before the feature is switched on and can also probe a candidate model before it is saved.
 
 #### GET /ai/status
 
@@ -1536,7 +1536,23 @@ A single 200 therefore proves, all at once:
 
 **Works while `ai.enabled` is still `false`.** Only a stored key is required. The natural order is paste the key → pick a model → check it → then switch the feature on; requiring the flag first would force an admin to expose a possibly-broken feature to every user in order to find out whether it is broken.
 
-**Request Body:** none.
+**Request Body:** optional.
+
+```jsonc
+{ "model": "gpt-5.4-nano" }   // optional; omit to probe the stored model
+```
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `model` | string | No | Probe this model instead of the one stored in system settings. 1–100 characters after trimming. **Not saved** — this tests a name, it does not commit it |
+
+Send **no body at all** to probe the stored model. That is the original behaviour and it is unchanged: a bodyless `POST` (no `Content-Type`, nothing to parse) is valid and means "check what is saved".
+
+**Why the override exists: test a model before you save it.** Without it, an admin who types a new model name into the settings field and presses *Test connection* gets a verdict on the *old, saved* model — the answer to a question they did not ask. Validating a name **before** committing it is exactly when this button is worth pressing, so the alternative is to save a possibly-broken model in order to discover that it is broken, with card scanning pointed at it in the meantime. With the override the loop is: type a candidate → probe it → save only what came back `ok`.
+
+**The name is bounded, never pattern-matched.** The only validation is "a non-empty string of at most 100 characters" (the same bound `ai.model` has in system settings, so anything probeable is storable). There is deliberately **no** regex, prefix rule or allowlist: model naming is provider-controlled — `gpt-4o-mini-2024-07-18`, `o3` and `chatgpt-4o-latest` already share no common shape — and any pattern written today rejects the families released tomorrow. That is the whole reason this endpoint is empirical. A name the provider does not recognise comes back as a truthful `model_not_found` from the provider, which is a better answer than a `400` from a guess. An empty, whitespace-only, oversized or non-string `model` is a `400`.
+
+**The override changes which model is probed, never which credential.** The stored, decrypted API key is still what the probe authenticates with — a key must still be configured, and unknown properties in the body (an `apiKey` among them) are ignored, not honoured. It also does not buy extra allowance: overridden and stored-model checks share one rate-limit bucket.
 
 **Success response (HTTP 200):**
 ```json
@@ -1551,7 +1567,7 @@ A single 200 therefore proves, all at once:
 }
 ```
 
-`model` is what the provider resolved to, which is usually a dated snapshot rather than the alias that was configured. `imageSupport` is only ever `true` and only ever produced by a request that actually carried an image — there is no code path that reports image support without having proven it. `adaptedParameters` lists any parameters the API had to drop for this model to accept the request (see [Adaptive request parameters](#adaptive-request-parameters) below); an empty array means the model took the request as sent.
+`model` always describes the model that was **actually probed** — the override when one was supplied, the stored model otherwise — so a result can never be misread as a verdict on a different model than the one it came from. On success it is what the provider resolved to, which is usually a dated snapshot rather than the alias that was requested. `imageSupport` is only ever `true` and only ever produced by a request that actually carried an image — there is no code path that reports image support without having proven it. `adaptedParameters` lists any parameters the API had to drop for this model to accept the request (see [Adaptive request parameters](#adaptive-request-parameters) below); an empty array means the model took the request as sent.
 
 **Failure response — also HTTP 200:**
 ```json
@@ -1589,13 +1605,14 @@ A single 200 therefore proves, all at once:
 
 | Status | Code | Meaning |
 |--------|------|---------|
+| 400 | — | `model` was present but not a 1–100 character string. Validation failure from the global Zod pipe; no provider call is made and no burst allowance is spent |
 | 429 | `AI_RATE_LIMITED` | Verify burst window exhausted (5 checks / 5 minutes per admin per API replica). Carries `Retry-After` |
 | 503 | `AI_NOT_CONFIGURED` | No API key stored — there is nothing to verify |
 | 503 | `AI_KEY_UNREADABLE` | A key is stored but cannot be decrypted (`VAULT_ENCRYPTION_KEY` missing or rotated) |
 
-**Rate limited on purpose:** each press is an outbound, billable call. The window is separate from the card-extraction one (bucket key `verify:<userId>`), so testing a key can never consume a user's card-scanning allowance, and vice versa.
+**Rate limited on purpose:** each press is an outbound, billable call. The window is separate from the card-extraction one (bucket key `verify:<userId>`), so testing a key can never consume a user's card-scanning allowance, and vice versa. **A model override is charged to the same bucket** — it lets an admin probe arbitrary model names against the organisation's key, so the allowance is what keeps that to a handful of trivial 1×1-pixel calls rather than an open-ended loop.
 
-**Audited** as `ai.model.verify` with `{ model, outcome, durationMs, adaptedParameters }`. The outcome is `ok` or the failure `reason`. The key — and anything derived from it, including its length — is never written. Note the action is deliberately **not** `ai.card.extract`: that action is what the per-user daily extraction budget counts, and an admin testing a key ten times must not consume ten of a user's card scans.
+**Audited** as `ai.model.verify` with `{ model, modelSource, outcome, durationMs, adaptedParameters }`. The outcome is `ok` or the failure `reason`. `model` is the name **as probed** — the candidate the admin typed, not the snapshot id the provider resolved — and `modelSource` is `override` or `stored`, so an admin testing five names leaves five rows that say which five and distinguishes them from checks of the saved configuration. The key — and anything derived from it, including its length — is never written. Note the action is deliberately **not** `ai.card.extract`: that action is what the per-user daily extraction budget counts, and an admin testing a key ten times must not consume ten of a user's card scans.
 
 ---
 
@@ -1672,7 +1689,7 @@ The three states of `apiKey` (absent / `null` / string) are distinguished with `
 
 **Storage:** the key is encrypted with AES-256-GCM via the same `CryptoService` used for secret values, keyed by `VAULT_ENCRYPTION_KEY`. Only the last 4 characters (`apiKeyLast4`) and an update timestamp are ever exposed. **Rotating `VAULT_ENCRYPTION_KEY` makes the stored key permanently undecryptable** — `GET /ai/status` then reports `enabled: false` and card extraction returns `503 AI_KEY_UNREADABLE` until an administrator re-enters the key.
 
-**Neither `model` nor `apiKey` is validated on write, on purpose.** `model` is any 1–100 character string and is never checked against a list of known model names — a hardcoded allowlist would reject every model released after it was written. Whether the stored pair actually works is established empirically with [`POST /system-settings/ai/verify`](#post-system-settingsaiverify), which is also the only way to find out whether the chosen model can read images at all.
+**Neither `model` nor `apiKey` is validated on write, on purpose.** `model` is any 1–100 character string and is never checked against a list of known model names — a hardcoded allowlist would reject every model released after it was written. Whether the stored pair actually works is established empirically with [`POST /system-settings/ai/verify`](#post-system-settingsaiverify), which is also the only way to find out whether the chosen model can read images at all. That endpoint takes an optional `model` in its body, so a candidate name can be probed **before** it is written here rather than after.
 
 Every settings write is audited (`system_settings:patch` / `system_settings:replace`), with the `ai` block redacted to `{ enabled, model, maxCallsPerUserPerDay, apiKeyChanged, apiKeyLast4 }` — neither plaintext nor ciphertext is ever written to the audit log, on either side of the diff.
 

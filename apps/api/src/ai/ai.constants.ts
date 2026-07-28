@@ -51,6 +51,22 @@ export const AI_CARD_EXTRACT_ACTION = 'ai.card.extract';
 export const AI_VERIFY_ACTION = 'ai.model.verify';
 
 /**
+ * Longest accepted model name, in characters.
+ *
+ * Deliberately a length bound and nothing else. It exists to stop an
+ * unbounded string reaching a log line, an audit row and an outbound request
+ * body - NOT to police the shape of a model name. Model naming is
+ * provider-controlled and the next family will not match today's conventions;
+ * a pattern or allowlist here would reject models that do not exist yet, which
+ * is precisely what this feature exists to test empirically.
+ *
+ * Matches the bound on `ai.model` in the system settings schema
+ * (`patchSystemSettingsSchema`), so a name that can be probed is a name that
+ * can then be saved.
+ */
+export const MAX_MODEL_NAME_LENGTH = 100;
+
+/**
  * Largest accepted data URL string, in characters.
  *
  * Base64 inflates by ~4/3, so this is roughly a 2 MB image. Two of these plus

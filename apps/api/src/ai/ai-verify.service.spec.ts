@@ -147,6 +147,112 @@ describe('AiVerifyService', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // Model override
+  // ---------------------------------------------------------------------------
+
+  describe('model override', () => {
+    const CANDIDATE = 'gpt-5.4-nano';
+
+    it('probes the supplied model instead of the stored one', async () => {
+      await service.verify(admin, { model: CANDIDATE });
+
+      expect(vision.verifyModel).toHaveBeenCalledWith({
+        apiKey: API_KEY,
+        model: CANDIDATE,
+        timeoutMs: OPENAI_VERIFY_TIMEOUT_MS,
+      });
+    });
+
+    it('falls back to the stored model when no override is given', async () => {
+      await service.verify(admin, {});
+
+      expect(vision.verifyModel).toHaveBeenCalledWith(
+        expect.objectContaining({ model: MODEL }),
+      );
+    });
+
+    it('falls back to the stored model when there is no body at all', async () => {
+      // The controller's parameter is optional in practice - a bodyless POST
+      // reaches the service as `undefined` if the pipe is ever bypassed.
+      await service.verify(admin);
+
+      expect(vision.verifyModel).toHaveBeenCalledWith(
+        expect.objectContaining({ model: MODEL }),
+      );
+    });
+
+    it('probes the override against the STORED key, not some other credential', async () => {
+      await service.verify(admin, { model: CANDIDATE });
+
+      expect(vision.verifyModel).toHaveBeenCalledWith(
+        expect.objectContaining({ apiKey: API_KEY }),
+      );
+    });
+
+    it('does not persist the override', async () => {
+      // "Test before saving" is the whole point: a probe must leave the stored
+      // configuration untouched, whether it succeeds or fails.
+      await service.verify(admin, { model: CANDIDATE });
+      vision.verifyModel.mockRejectedValue(new AiProviderError('auth', 'no'));
+      await service.verify(admin, { model: CANDIDATE });
+
+      expect(prisma.systemSettings.update).not.toHaveBeenCalled();
+      expect(prisma.systemSettings.upsert).not.toHaveBeenCalled();
+      expect(prisma.systemSettings.create).not.toHaveBeenCalled();
+    });
+
+    it('echoes the model that was actually probed, never the stored one', async () => {
+      // A result that named the stored model while having probed a different
+      // one would be read as a verdict on the wrong model.
+      vision.verifyModel.mockResolvedValue(
+        buildVerifyModelResult({ model: `${CANDIDATE}-2026-05-01` }),
+      );
+
+      const result = await service.verify(admin, { model: CANDIDATE });
+
+      expect(result).toMatchObject({ ok: true, model: `${CANDIDATE}-2026-05-01` });
+      expect((result as any).model).not.toBe(MODEL);
+    });
+
+    it('echoes the overridden name on a failure, not the stored one', async () => {
+      vision.verifyModel.mockRejectedValue(
+        new AiProviderError('unavailable', 'no', undefined, 'model_not_found'),
+      );
+
+      const result = await service.verify(admin, { model: CANDIDATE });
+
+      expect(result).toMatchObject({
+        ok: false,
+        reason: 'model_not_found',
+        model: CANDIDATE,
+      });
+    });
+
+    it('sends an unfamiliar-looking name upstream rather than second-guessing it', async () => {
+      // No pattern, prefix or allowlist check exists in this path on purpose:
+      // the next model family will not look like today's, and an unknown name
+      // deserves the provider's `model_not_found`, not our 400.
+      const odd = 'some-provider::weird_model.v9@preview';
+
+      await service.verify(admin, { model: odd });
+
+      expect(vision.verifyModel).toHaveBeenCalledWith(
+        expect.objectContaining({ model: odd }),
+      );
+    });
+
+    it('spends the same burst allowance as a stored-model check', async () => {
+      for (let i = 0; i < VERIFY_BURST_MAX_IN_WINDOW; i++) {
+        await service.verify(admin, { model: `candidate-${i}` });
+      }
+
+      const error = await rejection(service.verify(admin, { model: CANDIDATE }));
+
+      expect(error.getStatus()).toBe(429);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // Failure reasons
   // ---------------------------------------------------------------------------
 
@@ -282,6 +388,58 @@ describe('AiVerifyService', () => {
       expect(data.action).toBe(AI_VERIFY_ACTION);
       expect(data.meta).toMatchObject({ model: MODEL, outcome: 'ok' });
       expect((data.meta as any).durationMs).toBeGreaterThanOrEqual(0);
+    });
+
+    it('marks a stored-model check as such', async () => {
+      await service.verify(admin);
+
+      const { data } = prisma.auditEvent.create.mock.calls[0][0];
+      expect(data.meta).toMatchObject({ model: MODEL, modelSource: 'stored' });
+    });
+
+    it('records the tested name and flags it as an override', async () => {
+      // An admin trying five candidate names must leave a trail that says
+      // which five, not five rows that look like checks of the saved config.
+      await service.verify(admin, { model: 'gpt-5.4-nano' });
+
+      const { data } = prisma.auditEvent.create.mock.calls[0][0];
+      expect(data.meta).toMatchObject({
+        model: 'gpt-5.4-nano',
+        modelSource: 'override',
+        outcome: 'ok',
+      });
+    });
+
+    it('leaves one distinguishable row per candidate name', async () => {
+      for (const candidate of ['model-a', 'model-b', 'model-c']) {
+        await service.verify(admin, { model: candidate });
+      }
+
+      const audited = prisma.auditEvent.create.mock.calls.map(
+        (call: any) => call[0].data.meta,
+      );
+      expect(audited).toHaveLength(3);
+      expect(audited.map((m: any) => m.model)).toEqual([
+        'model-a',
+        'model-b',
+        'model-c',
+      ]);
+      expect(audited.every((m: any) => m.modelSource === 'override')).toBe(true);
+    });
+
+    it('records the override on a failed check too', async () => {
+      vision.verifyModel.mockRejectedValue(
+        new AiProviderError('unavailable', 'no', undefined, 'model_not_found'),
+      );
+
+      await service.verify(admin, { model: 'gpt-5.4-nano' });
+
+      const { data } = prisma.auditEvent.create.mock.calls[0][0];
+      expect(data.meta).toMatchObject({
+        model: 'gpt-5.4-nano',
+        modelSource: 'override',
+        outcome: 'model_not_found',
+      });
     });
 
     it('records the reason on a failure', async () => {

@@ -1,6 +1,6 @@
-import { Controller, HttpCode, HttpStatus, Post, Res } from '@nestjs/common';
+import { Body, Controller, HttpCode, HttpStatus, Post, Res } from '@nestjs/common';
 import { FastifyReply } from 'fastify';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { Auth } from '../auth/decorators/auth.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -9,6 +9,7 @@ import { PERMISSIONS } from '../common/constants/roles.constants';
 
 import { AiException } from './ai.errors';
 import { AiVerifyService } from './ai-verify.service';
+import { VERIFY_AI_BODY_SCHEMA, VerifyAiDto } from './dto/verify-ai.dto';
 
 /**
  * Routed at `POST /api/system-settings/ai/verify` - it belongs to the settings
@@ -43,8 +44,16 @@ export class AiVerifyController {
       'structured outputs work with it; none of those can be established from a model listing. ' +
       'Costs a fraction of a cent per press and is rate limited. Works while ai.enabled is ' +
       'still false, so a key can be checked before the feature is switched on for users. ' +
+      'Pass an optional `model` in the body to probe a candidate name instead of the stored ' +
+      'one - it is not saved, so a model can be tested before it is committed to settings. ' +
       'Returns 200 with { ok: false, reason } for a provider-side failure - deliberately ' +
       'never 401/403, so a bad upstream key cannot be mistaken for an expired session.',
+  })
+  @ApiBody({
+    required: false,
+    description:
+      'Optional. Omit the body entirely to probe the model stored in system settings.',
+    schema: VERIFY_AI_BODY_SCHEMA,
   })
   @ApiResponse({
     status: 200,
@@ -102,6 +111,13 @@ export class AiVerifyController {
     },
   })
   @ApiResponse({
+    status: 400,
+    description:
+      'The `model` in the body was not a non-empty string of at most 100 characters. ' +
+      'The NAME is never judged - only its length - because an unrecognised name is the ' +
+      "provider's answer to give (`model_not_found`), not ours to guess at.",
+  })
+  @ApiResponse({
     status: 429,
     description: 'AI_RATE_LIMITED - too many checks in a short period',
   })
@@ -112,10 +128,15 @@ export class AiVerifyController {
   })
   async verify(
     @CurrentUser() user: RequestUser,
+    // The global nestjs-zod pipe validates this against `verifyAiSchema`. That
+    // schema defaults a missing body to `{}`, which is what keeps a bodyless
+    // POST - the only kind the web client sends when there is no override -
+    // working as "probe the stored model" rather than failing validation.
+    @Body() body: VerifyAiDto,
     @Res({ passthrough: true }) reply: FastifyReply,
   ) {
     try {
-      const result = await this.aiVerify.verify(user);
+      const result = await this.aiVerify.verify(user, body);
       return { data: result };
     } catch (error) {
       // `HttpException` carries no headers and the global filter writes the

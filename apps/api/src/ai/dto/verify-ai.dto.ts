@@ -1,3 +1,79 @@
+import { createZodDto } from 'nestjs-zod';
+import { z } from 'zod';
+
+import { MAX_MODEL_NAME_LENGTH } from '../ai.constants';
+
+// =============================================================================
+// AI Verify Request
+// =============================================================================
+
+/**
+ * Optional model override.
+ *
+ * VALIDATED FOR LENGTH ONLY, ON PURPOSE. There is no regex, no prefix check
+ * and no allowlist of known model names. Model naming is provider-controlled -
+ * `gpt-4o-mini-2024-07-18`, `o3`, `chatgpt-4o-latest` already share no common
+ * shape - and any pattern written today rejects the families released
+ * tomorrow. Establishing whether a name works is the entire job of this
+ * endpoint, so refusing to send a name because it "looks wrong" would defeat
+ * it. An unknown name comes back as a truthful `model_not_found` from the
+ * provider, which is a better answer than a 400 from a guess.
+ *
+ * `.trim()` runs before the length checks, so `"  "` fails `min(1)` rather
+ * than being sent upstream as whitespace, and a padded name is probed - and
+ * echoed, and audited - in the form it would be stored in.
+ */
+export const modelOverrideSchema = z
+  .string()
+  .trim()
+  .min(1, 'Model must not be empty')
+  .max(
+    MAX_MODEL_NAME_LENGTH,
+    `Model must be ${MAX_MODEL_NAME_LENGTH} characters or less`,
+  );
+
+/**
+ * Body of `POST /api/system-settings/ai/verify`.
+ *
+ * The whole body is optional: `.default({})` makes a request with no body at
+ * all parse to `{}` rather than failing the object check. That path is load
+ * bearing - `apps/web/src/services/api.ts` omits both the body and the
+ * `Content-Type` header when there is nothing to send, so Fastify hands the
+ * pipe `undefined` - and it is what preserves the original behaviour of
+ * probing the stored model.
+ */
+export const verifyAiSchema = z
+  .object({
+    model: modelOverrideSchema.optional(),
+  })
+  .default({});
+
+export type VerifyAiRequest = z.infer<typeof verifyAiSchema>;
+
+export class VerifyAiDto extends createZodDto(verifyAiSchema) {}
+
+/**
+ * OpenAPI body description.
+ *
+ * Written by hand because `patchNestJsSwagger()` is not installed in this
+ * application - a `createZodDto` class is otherwise documented as an empty
+ * schema.
+ */
+export const VERIFY_AI_BODY_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    model: {
+      type: 'string',
+      minLength: 1,
+      maxLength: MAX_MODEL_NAME_LENGTH,
+      description:
+        'Model to probe instead of the one stored in system settings. Omit to probe the stored model. ' +
+        'Not persisted: this tests a name, it does not save it.',
+      example: 'gpt-5.4-nano',
+    },
+  },
+};
+
 // =============================================================================
 // AI Verify Result
 // =============================================================================
@@ -28,7 +104,13 @@ export type AiVerifyFailureReason =
 
 export interface AiVerifySuccess {
   ok: true;
-  /** Model as reported by the provider (often a dated snapshot id). */
+  /**
+   * Model as reported by the provider (often a dated snapshot id).
+   *
+   * Always describes the model that was ACTUALLY probed - the override when
+   * one was supplied, the stored model otherwise. A result must never be
+   * readable as a verdict on a different model than the one it came from.
+   */
   model: string;
   /**
    * Always `true` on success, and only ever produced by a real request that
@@ -54,7 +136,13 @@ export interface AiVerifyFailure {
    * body: OpenAI reflects request fragments back in its errors.
    */
   message: string;
-  /** The model that was tested, echoed so the admin can see what was checked. */
+  /**
+   * The model that was tested, echoed so the admin can see what was checked.
+   *
+   * The override when one was supplied, the stored model otherwise. On this
+   * branch the provider never resolved a snapshot id, so it is the name as
+   * requested.
+   */
   model: string;
   durationMs: number;
   adaptedParameters: string[];
