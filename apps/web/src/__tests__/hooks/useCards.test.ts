@@ -160,6 +160,7 @@ describe('toCardSummary', () => {
           {
             id: 'att-1',
             label: 'front',
+            role: null,
             storageObject: { id: 'obj-1', name: 'front.jpg', mimeType: 'image/jpeg', size: 100 },
             createdAt: new Date('2024-01-01').toISOString(),
           },

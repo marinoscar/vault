@@ -270,7 +270,7 @@ describe('UISettings', () => {
     it('should show "Saving..." text when save is in progress', async () => {
       const user = userEvent.setup();
       const slowSave = vi.fn(
-        () => new Promise((resolve) => setTimeout(resolve, 100))
+        () => new Promise<void>((resolve) => setTimeout(resolve, 100))
       );
 
       render(
@@ -296,7 +296,7 @@ describe('UISettings', () => {
     it('should disable save button while saving', async () => {
       const user = userEvent.setup();
       const slowSave = vi.fn(
-        () => new Promise((resolve) => setTimeout(resolve, 100))
+        () => new Promise<void>((resolve) => setTimeout(resolve, 100))
       );
 
       render(
@@ -386,7 +386,7 @@ describe('UISettings', () => {
     it('should re-enable save button after save completes successfully', async () => {
       const user = userEvent.setup();
       const slowSave = vi.fn(
-        () => new Promise((resolve) => setTimeout(resolve, 50))
+        () => new Promise<void>((resolve) => setTimeout(resolve, 50))
       );
 
       render(

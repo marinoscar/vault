@@ -58,6 +58,9 @@ describe('AllowlistTable', () => {
     mockUseAllowlist.mockReturnValue({
       entries: [],
       total: 0,
+      page: 1,
+      pageSize: 10,
+      totalPages: 0,
       isLoading: false,
       error: null,
       fetchAllowlist: mockFetchAllowlist,
@@ -71,6 +74,9 @@ describe('AllowlistTable', () => {
       mockUseAllowlist.mockReturnValue({
         entries: [mockPendingEntry, mockClaimedEntry],
         total: 2,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
         isLoading: false,
         error: null,
         fetchAllowlist: mockFetchAllowlist,
@@ -92,6 +98,9 @@ describe('AllowlistTable', () => {
       mockUseAllowlist.mockReturnValue({
         entries: [],
         total: 0,
+        page: 1,
+        pageSize: 10,
+        totalPages: 0,
         isLoading: true,
         error: null,
         fetchAllowlist: mockFetchAllowlist,
@@ -110,6 +119,9 @@ describe('AllowlistTable', () => {
       mockUseAllowlist.mockReturnValue({
         entries: [],
         total: 0,
+        page: 1,
+        pageSize: 10,
+        totalPages: 0,
         isLoading: false,
         error: 'Failed to load allowlist',
         fetchAllowlist: mockFetchAllowlist,
@@ -130,6 +142,9 @@ describe('AllowlistTable', () => {
       mockUseAllowlist.mockReturnValue({
         entries: [],
         total: 0,
+        page: 1,
+        pageSize: 10,
+        totalPages: 0,
         isLoading: false,
         error: null,
         fetchAllowlist: mockFetchAllowlist,
@@ -150,6 +165,9 @@ describe('AllowlistTable', () => {
       mockUseAllowlist.mockReturnValue({
         entries: [],
         total: 0,
+        page: 1,
+        pageSize: 10,
+        totalPages: 0,
         isLoading: false,
         error: null,
         fetchAllowlist: mockFetchAllowlist,
@@ -180,6 +198,9 @@ describe('AllowlistTable', () => {
       mockUseAllowlist.mockReturnValue({
         entries: [mockPendingEntry],
         total: 1,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
         isLoading: false,
         error: null,
         fetchAllowlist: mockFetchAllowlist,
@@ -200,6 +221,9 @@ describe('AllowlistTable', () => {
       mockUseAllowlist.mockReturnValue({
         entries: [mockClaimedEntry],
         total: 1,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
         isLoading: false,
         error: null,
         fetchAllowlist: mockFetchAllowlist,
@@ -222,6 +246,9 @@ describe('AllowlistTable', () => {
       mockUseAllowlist.mockReturnValue({
         entries: [mockClaimedEntry],
         total: 1,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
         isLoading: false,
         error: null,
         fetchAllowlist: mockFetchAllowlist,
@@ -239,7 +266,9 @@ describe('AllowlistTable', () => {
 
       // Find delete button (it should be disabled)
       const deleteButtons = screen.getAllByRole('button', { name: '' });
-      const deleteButton = deleteButtons.find((btn) => btn.disabled);
+      const deleteButton = deleteButtons.find(
+        (btn): btn is HTMLButtonElement => (btn as HTMLButtonElement).disabled,
+      );
       expect(deleteButton).toBeDefined();
     });
 
@@ -247,6 +276,9 @@ describe('AllowlistTable', () => {
       mockUseAllowlist.mockReturnValue({
         entries: [mockPendingEntry],
         total: 1,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
         isLoading: false,
         error: null,
         fetchAllowlist: mockFetchAllowlist,
@@ -265,7 +297,7 @@ describe('AllowlistTable', () => {
       // Delete button should be enabled
       const deleteButtons = screen.getAllByRole('button', { name: '' });
       const enabledDeleteButton = deleteButtons.find(
-        (btn) => !btn.disabled && btn.querySelector('svg'),
+        (btn) => !(btn as HTMLButtonElement).disabled && btn.querySelector('svg'),
       );
       expect(enabledDeleteButton).toBeDefined();
     });
@@ -274,6 +306,9 @@ describe('AllowlistTable', () => {
       mockUseAllowlist.mockReturnValue({
         entries: [mockPendingEntry],
         total: 1,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
         isLoading: false,
         error: null,
         fetchAllowlist: mockFetchAllowlist,
@@ -297,7 +332,7 @@ describe('AllowlistTable', () => {
       // Click delete button
       const deleteButtons = screen.getAllByRole('button', { name: '' });
       const deleteButton = deleteButtons.find(
-        (btn) => !btn.disabled && btn.querySelector('svg'),
+        (btn) => !(btn as HTMLButtonElement).disabled && btn.querySelector('svg'),
       );
       await user.click(deleteButton!);
 
@@ -311,6 +346,9 @@ describe('AllowlistTable', () => {
       mockUseAllowlist.mockReturnValue({
         entries: [mockPendingEntry],
         total: 1,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
         isLoading: false,
         error: null,
         fetchAllowlist: mockFetchAllowlist,
@@ -334,7 +372,7 @@ describe('AllowlistTable', () => {
       // Click delete button
       const deleteButtons = screen.getAllByRole('button', { name: '' });
       const deleteButton = deleteButtons.find(
-        (btn) => !btn.disabled && btn.querySelector('svg'),
+        (btn) => !(btn as HTMLButtonElement).disabled && btn.querySelector('svg'),
       );
       await user.click(deleteButton!);
 
@@ -428,6 +466,9 @@ describe('AllowlistTable', () => {
       mockUseAllowlist.mockReturnValue({
         entries: [mockPendingEntry, mockClaimedEntry],
         total: 25,
+        page: 1,
+        pageSize: 10,
+        totalPages: 3,
         isLoading: false,
         error: null,
         fetchAllowlist: mockFetchAllowlist,
@@ -452,6 +493,9 @@ describe('AllowlistTable', () => {
           email: `user${i}@example.com`,
         })),
         total: 25,
+        page: 1,
+        pageSize: 10,
+        totalPages: 3,
         isLoading: false,
         error: null,
         fetchAllowlist: mockFetchAllowlist,
@@ -485,6 +529,9 @@ describe('AllowlistTable', () => {
       mockUseAllowlist.mockReturnValue({
         entries: [mockPendingEntry],
         total: 100,
+        page: 1,
+        pageSize: 10,
+        totalPages: 10,
         isLoading: false,
         error: null,
         fetchAllowlist: mockFetchAllowlist,
@@ -510,6 +557,9 @@ describe('AllowlistTable', () => {
       mockUseAllowlist.mockReturnValue({
         entries: [mockPendingEntry],
         total: 1,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
         isLoading: false,
         error: null,
         fetchAllowlist: mockFetchAllowlist,
@@ -530,6 +580,9 @@ describe('AllowlistTable', () => {
       mockUseAllowlist.mockReturnValue({
         entries: [mockPendingEntry],
         total: 1,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
         isLoading: false,
         error: null,
         fetchAllowlist: mockFetchAllowlist,
@@ -550,6 +603,9 @@ describe('AllowlistTable', () => {
       mockUseAllowlist.mockReturnValue({
         entries: [mockPendingEntry],
         total: 1,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
         isLoading: false,
         error: null,
         fetchAllowlist: mockFetchAllowlist,
@@ -570,6 +626,9 @@ describe('AllowlistTable', () => {
       mockUseAllowlist.mockReturnValue({
         entries: [mockClaimedEntry],
         total: 1,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
         isLoading: false,
         error: null,
         fetchAllowlist: mockFetchAllowlist,
@@ -591,6 +650,9 @@ describe('AllowlistTable', () => {
       mockUseAllowlist.mockReturnValue({
         entries: [mockPendingEntry],
         total: 1,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
         isLoading: false,
         error: null,
         fetchAllowlist: mockFetchAllowlist,

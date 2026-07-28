@@ -1,4 +1,4 @@
-import { Card, CardContent, Typography, Grid, Avatar } from '@mui/material';
+import { Card, CardActionArea, CardContent, Typography, Grid, Avatar } from '@mui/material';
 import {
   AddCircleOutline as CreateIcon,
   CloudUpload as UploadIcon,
@@ -9,7 +9,6 @@ import { alpha, useTheme } from '@mui/material/styles';
 import { useNavigate } from 'react-router-dom';
 
 const cardSx = {
-  cursor: 'pointer',
   textAlign: 'center' as const,
   transition: 'all 0.2s',
   '&:hover': { transform: 'translateY(-2px)', boxShadow: 4 },
@@ -34,19 +33,28 @@ export function QuickActions() {
         <Grid container spacing={2}>
           {actions.map((action) => (
             <Grid item xs={6} sm={3} key={action.path}>
-              <Card variant="outlined" sx={cardSx} onClick={() => navigate(action.path)}>
-                <CardContent sx={{ py: 2.5, px: 1.5 }}>
-                  <Avatar
-                    sx={{
-                      mx: 'auto', mb: 1.5, width: 48, height: 48,
-                      bgcolor: alpha(action.color, 0.12), color: action.color,
-                    }}
-                  >
-                    <action.icon />
-                  </Avatar>
-                  <Typography variant="subtitle2" fontWeight={600}>{action.title}</Typography>
-                  <Typography variant="caption" color="text.secondary">{action.description}</Typography>
-                </CardContent>
+              <Card variant="outlined" sx={cardSx}>
+                {/* CardActionArea renders a real <button>: tab-reachable, activated by
+                    Enter/Space, with a visible focus ring. A Card with a bare onClick
+                    is a div and is invisible to assistive tech as an interactive element. */}
+                <CardActionArea
+                  onClick={() => navigate(action.path)}
+                  aria-label={`${action.title}: ${action.description}`}
+                  sx={{ height: '100%' }}
+                >
+                  <CardContent sx={{ py: 2.5, px: 1.5 }}>
+                    <Avatar
+                      sx={{
+                        mx: 'auto', mb: 1.5, width: 48, height: 48,
+                        bgcolor: alpha(action.color, 0.12), color: action.color,
+                      }}
+                    >
+                      <action.icon />
+                    </Avatar>
+                    <Typography variant="subtitle2" fontWeight={600}>{action.title}</Typography>
+                    <Typography variant="caption" color="text.secondary">{action.description}</Typography>
+                  </CardContent>
+                </CardActionArea>
               </Card>
             </Grid>
           ))}

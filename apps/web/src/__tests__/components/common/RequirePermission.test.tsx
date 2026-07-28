@@ -326,7 +326,7 @@ describe('RequirePermission', () => {
     });
 
     it('should render nothing when permission denied and no fallback provided', () => {
-      const { container } = render(
+      render(
         <div data-testid="wrapper">
           <RequirePermission permission="nonexistent:permission">
             <div>Hidden Content</div>
@@ -492,7 +492,7 @@ describe('RequirePermission', () => {
         hasAnyPermission: vi.fn().mockReturnValue(false),
         hasAllPermissions: vi.fn().mockReturnValue(false),
         hasRole: (role: string) => role === 'guest',
-        hasAnyRole: (roleList: string[]) => roleList.includes('guest'),
+        hasAnyRole: (...roleList: string[]) => roleList.includes('guest'),
         isAdmin: false,
       });
 

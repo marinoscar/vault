@@ -215,14 +215,13 @@ describe('useCardImport save and cleanup', () => {
     const { result } = renderHook(() => useCardImport());
     await waitFor(() => expect(result.current.cardType).not.toBeNull());
 
-    let outcome: Awaited<ReturnType<typeof result.current.saveCard>> = null;
-    await act(async () => {
-      outcome = await result.current.saveCard({
+    const outcome = await act(() =>
+      result.current.saveCard({
         name: 'Visa ••••4242',
         values: { cvv: '123', number: '4242424242424242' },
         images: [FRONT],
-      });
-    });
+      }),
+    );
 
     expect(outcome).toEqual({ secretId: 'secret-1', attachmentWarning: null });
     expect(linked).toEqual([
@@ -249,14 +248,13 @@ describe('useCardImport save and cleanup', () => {
     const { result } = renderHook(() => useCardImport());
     await waitFor(() => expect(result.current.cardType).not.toBeNull());
 
-    let outcome: Awaited<ReturnType<typeof result.current.saveCard>> = null;
-    await act(async () => {
-      outcome = await result.current.saveCard({
+    const outcome = await act(() =>
+      result.current.saveCard({
         name: 'Visa ••••4242',
         values: { cvv: '123' },
         images: [FRONT],
-      });
-    });
+      }),
+    );
 
     // The typed card details are worth more than the photo, so the secret stays.
     expect(outcome?.secretId).toBe('secret-1');

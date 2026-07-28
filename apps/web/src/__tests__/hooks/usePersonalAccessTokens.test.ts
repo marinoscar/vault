@@ -278,21 +278,21 @@ describe('usePersonalAccessTokens', () => {
       const { result } = renderHook(() => usePersonalAccessTokens());
       await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-      let caughtError: Error | null = null;
-      await act(async () => {
+      const caughtError = await act(async (): Promise<Error | null> => {
         try {
           await result.current.createToken({
             name: 'Token',
             durationValue: 30,
             durationUnit: 'days',
           });
+          return null;
         } catch (err) {
-          caughtError = err as Error;
+          return err as Error;
         }
       });
 
       expect(caughtError).not.toBeNull();
-      expect((caughtError as Error).message).toBe('Create failed');
+      expect(caughtError?.message).toBe('Create failed');
       await waitFor(() => expect(result.current.error).toBe('Create failed'));
     });
 
@@ -362,17 +362,17 @@ describe('usePersonalAccessTokens', () => {
       const { result } = renderHook(() => usePersonalAccessTokens());
       await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-      let caughtError: Error | null = null;
-      await act(async () => {
+      const caughtError = await act(async (): Promise<Error | null> => {
         try {
           await result.current.revokeToken('pat-id-1');
+          return null;
         } catch (err) {
-          caughtError = err as Error;
+          return err as Error;
         }
       });
 
       expect(caughtError).not.toBeNull();
-      expect((caughtError as Error).message).toBe('Revoke failed');
+      expect(caughtError?.message).toBe('Revoke failed');
       await waitFor(() => expect(result.current.error).toBe('Revoke failed'));
     });
 
