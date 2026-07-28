@@ -219,6 +219,7 @@ import type {
   AiStatus,
   AiVerifyFailure,
   AiVerifyFailureReason,
+  AiVerifyRequest,
   AiVerifyResult,
   AttachmentRole,
   CardExtractionResult,
@@ -436,20 +437,35 @@ function aiVerifyFailureFromError(err: unknown): AiVerifyFailure {
 
 /**
  * Make one real call to the configured AI provider and report whether the
- * stored key and model can actually do card extraction.
+ * stored key and the given model can actually do card extraction.
  *
  * IMPORTANT: this costs the operator money on every invocation. Call it only
  * from an explicit user action - never from an effect, a blur handler, or a
  * save path.
+ *
+ * `request.model` is an unsaved candidate to probe instead of the stored model.
+ * It is trimmed here, and a name that is empty or only whitespace is dropped
+ * rather than sent: the API validates the trimmed length and answers 400 for a
+ * blank, whereas an admin who has cleared the field means "test what is saved".
+ * Nothing else is ever put in the body - notably not the API key, which the
+ * server already holds and which has no business travelling back up the wire.
  *
  * Expected failures (bad key, wrong model, no quota) come back as a 200 with
  * `ok: false`, because they are answers rather than errors. Transport and
  * HTTP failures are normalised into the same shape here so callers render one
  * thing and nothing gets swallowed. This function does not throw.
  */
-export async function verifyAiConnection(): Promise<AiVerifyResult> {
+export async function verifyAiConnection(
+  request: AiVerifyRequest = {},
+): Promise<AiVerifyResult> {
+  const model = request.model?.trim();
+  // `undefined` (not `{}`) so `api.post` omits the body and the Content-Type
+  // header entirely - which is the path the endpoint's `.default({})` exists to
+  // keep working as "probe the stored model".
+  const body: AiVerifyRequest | undefined = model ? { model } : undefined;
+
   try {
-    const raw = await api.post<unknown>('/system-settings/ai/verify');
+    const raw = await api.post<unknown>('/system-settings/ai/verify', body);
     return normalizeAiVerifyResult(raw);
   } catch (err) {
     return aiVerifyFailureFromError(err);

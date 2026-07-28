@@ -145,6 +145,26 @@ export type AiVerifyFailureReason =
   (typeof AI_VERIFY_FAILURE_REASONS)[number];
 
 /**
+ * Body of `POST /api/system-settings/ai/verify`, mirroring `verifyAiSchema` in
+ * the API.
+ *
+ * `model` overrides the model held in system settings for this one probe. It is
+ * NOT saved - that is the point. An admin typing a candidate name into the
+ * settings form needs to know whether it works *before* committing it, and
+ * without an override the only way to find out would be to save a broken model
+ * and read the failure afterwards.
+ *
+ * Omit `model` to probe the stored one. Do NOT send an empty or whitespace-only
+ * string: the API validates length after trimming and answers 400, where
+ * "nothing typed" should simply mean "test what is saved". The stored key is
+ * always what the probe authenticates with - this field changes which model is
+ * tested, never which credential.
+ */
+export interface AiVerifyRequest {
+  model?: string;
+}
+
+/**
  * A passing connection test.
  *
  * `imageSupport` is part of the success shape rather than a separate check
@@ -157,7 +177,12 @@ export interface AiVerifySuccess {
   ok: true;
   /**
    * Model as reported by the provider, which is often a dated snapshot id
-   * rather than the alias that was configured.
+   * rather than the alias that was requested.
+   *
+   * Always describes the model that was ACTUALLY probed - the override when one
+   * was sent, the stored model otherwise. Since the two can differ, this is the
+   * only trustworthy answer to "what is this result about"; never label a result
+   * with the saved setting.
    */
   model: string;
   imageSupport: true;
@@ -178,7 +203,11 @@ export interface AiVerifyFailure {
    * upstream error body, which can reflect request content back.
    */
   message: string;
-  /** The model that was tested, so the admin can see what was checked. */
+  /**
+   * The model that was tested, so the admin can see what was checked - the
+   * override when one was sent, the stored model otherwise. On this branch the
+   * provider never resolved a snapshot id, so it is the name as requested.
+   */
   model: string;
   durationMs: number;
   adaptedParameters: string[];

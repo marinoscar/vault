@@ -55,6 +55,19 @@ interface VerifyMessage {
 }
 
 /**
+ * The model a result describes.
+ *
+ * The API echoes back what it actually probed, and that is authoritative - on
+ * success it is often the provider's dated snapshot id rather than the alias
+ * that was asked for. `requestedModel` is only a fallback for the paths where
+ * nothing came back at all (a transport failure, or an HTTP error raised before
+ * the probe ran).
+ */
+function probedModelOf(result: AiVerifyResult, requestedModel: string): string {
+  return result.model || requestedModel.trim();
+}
+
+/**
  * Turn a verify result into copy an admin can act on.
  *
  * Every reason gets its own text on purpose. "It didn't work" sends someone
@@ -65,9 +78,9 @@ interface VerifyMessage {
  */
 function describeVerifyResult(
   result: AiVerifyResult,
-  fallbackModel: string,
+  requestedModel: string,
 ): VerifyMessage {
-  const model = result.model || fallbackModel || 'the configured model';
+  const model = probedModelOf(result, requestedModel) || 'the configured model';
 
   if (result.ok) {
     const seconds =
@@ -103,7 +116,8 @@ function describeVerifyResult(
           'The API key works, but OpenAI does not recognise this model name ' +
           'on this account. Model ids are case-sensitive, and some are only ' +
           'available on paid accounts. Check the exact id in the OpenAI ' +
-          'dashboard, save it here, then test again.',
+          'dashboard, correct the Model field above, and test again before ' +
+          'saving.',
       };
     case 'model_no_image_support':
       return {
@@ -155,20 +169,44 @@ function describeVerifyResult(
 
 interface VerifyResultAlertProps {
   result: AiVerifyResult;
-  /** Model from the stored settings, used when the API echoed none back. */
-  fallbackModel: string;
+  /**
+   * The model name this particular run asked for - the Model field as it stood
+   * at the click, or the stored model when that field was blank. Used to label
+   * the result and as a fallback when the API echoed no model back.
+   */
+  requestedModel: string;
   onClose: () => void;
 }
 
 function VerifyResultAlert({
   result,
-  fallbackModel,
+  requestedModel,
   onClose,
 }: VerifyResultAlertProps) {
   const { severity, title, detail } = describeVerifyResult(
     result,
-    fallbackModel,
+    requestedModel,
   );
+
+  // Which model this result is about, stated once, in the same place, for every
+  // outcome. The titles name the model where it is the thing at fault, but
+  // `invalid_key`, `quota` and `network` do not - and now that the button
+  // probes unsaved input, "the model" is no longer a thing the admin can look
+  // up elsewhere on the page. Someone trying four candidate names in a row must
+  // be able to tell at a glance which one an alert belongs to.
+  const probed = probedModelOf(result, requestedModel);
+  const asked = requestedModel.trim();
+  let testedLabel: string;
+  if (!probed) {
+    testedLabel = 'Tested the model saved in system settings.';
+  } else if (asked && asked !== probed) {
+    // The provider resolved the alias to something more specific. Show both:
+    // the name the admin typed is how they recognise the result, the resolved
+    // id is what actually answered.
+    testedLabel = `Tested: ${asked} (OpenAI reported ${probed})`;
+  } else {
+    testedLabel = `Tested: ${probed}`;
+  }
 
   // The server's own words are shown alongside ours rather than instead of
   // them: our copy says what to do, the server's says what actually happened,
@@ -189,6 +227,13 @@ function VerifyResultAlert({
       data-testid="ai-verify-result"
     >
       <AlertTitle>{title}</AlertTitle>
+      <Typography
+        variant="body2"
+        sx={{ fontWeight: 600, mb: 0.5 }}
+        data-testid="ai-verify-tested-model"
+      >
+        {testedLabel}
+      </Typography>
       <Typography variant="body2">{detail}</Typography>
       {serverMessage && (
         <Typography
@@ -239,11 +284,28 @@ export function AiSettings({ disabled = false }: AiSettingsProps) {
   const [formError, setFormError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Result of the last explicit "Test connection" click, or null when there is
-  // nothing trustworthy to show. Deliberately NOT derived from anything that
-  // changes on its own - see `clearVerifyResult`.
-  const [verifyResult, setVerifyResult] = useState<AiVerifyResult | null>(null);
-  const [isVerifying, setIsVerifying] = useState(false);
+  /**
+   * Outcome of the last explicit "Test connection" click.
+   *
+   * The model that was asked for is captured WITH the result rather than read
+   * from `model` at render time. The field is editable while a result is on
+   * screen, so reading it later would relabel an old result with a new name -
+   * exactly the misreading this feature exists to prevent.
+   */
+  const [verifyAttempt, setVerifyAttempt] = useState<{
+    requestedModel: string;
+    result: AiVerifyResult;
+  } | null>(null);
+
+  /**
+   * The model name currently being probed, or null when no check is in flight.
+   *
+   * Held rather than read from `model` at render time for the same reason: the
+   * field stays editable during the call, and the "calling OpenAI with..."
+   * line must keep naming what was actually sent.
+   */
+  const [verifyingModel, setVerifyingModel] = useState<string | null>(null);
+  const isVerifying = verifyingModel !== null;
 
   /**
    * Drop the previous verify result.
@@ -254,7 +316,7 @@ export function AiSettings({ disabled = false }: AiSettingsProps) {
    * model name is worse than no tick at all - it is the reassurance the admin
    * came here for, attached to the wrong thing.
    */
-  const clearVerifyResult = () => setVerifyResult(null);
+  const clearVerifyResult = () => setVerifyAttempt(null);
 
   useEffect(() => {
     setEnabled(ai?.enabled ?? AI_SETTINGS_DEFAULTS.enabled);
@@ -340,14 +402,30 @@ export function AiSettings({ disabled = false }: AiSettingsProps) {
    * nothing else - no effect, no blur, no piggybacking on save.
    * `verifyAiConnection` resolves for every outcome including transport
    * failure, so there is no error path that can end up rendering nothing.
+   *
+   * The Model FIELD is what gets probed, not the saved setting. Testing a name
+   * before committing it is the entire reason this button exists: an admin who
+   * types a candidate and is told about the model they are replacing has been
+   * answered a question they did not ask. Only the model is sent - the stored
+   * key is what it is probed against, and the key never leaves the server.
+   *
+   * A blank field sends no override at all, so the API falls back to the stored
+   * model. `requestedModel` records the stored name in that case so the result
+   * is still labelled with something.
    */
   const handleTestConnection = async () => {
-    setVerifyResult(null);
-    setIsVerifying(true);
+    const candidate = model.trim();
+    const requestedModel = candidate || (ai?.model ?? '');
+
+    setVerifyAttempt(null);
+    setVerifyingModel(requestedModel);
     try {
-      setVerifyResult(await verifyAiConnection());
+      const result = await verifyAiConnection(
+        candidate ? { model: candidate } : {},
+      );
+      setVerifyAttempt({ requestedModel, result });
     } finally {
-      setIsVerifying(false);
+      setVerifyingModel(null);
     }
   };
 
@@ -614,7 +692,7 @@ export function AiSettings({ disabled = false }: AiSettingsProps) {
             <Tooltip
               title={
                 apiKeyConfigured
-                  ? 'Makes one real request to OpenAI using the saved key and model.'
+                  ? 'Makes one real request to OpenAI using the saved key and the model in the field above, even if that model has not been saved yet.'
                   : 'Add an API key first - there is nothing to test yet.'
               }
             >
@@ -626,6 +704,12 @@ export function AiSettings({ disabled = false }: AiSettingsProps) {
                 <Button
                   variant="outlined"
                   onClick={handleTestConnection}
+                  // Deliberately NOT gated on `isDirty` or on the settings
+                  // being valid to save: testing a model the admin has typed
+                  // but not saved is the point of the button. The only gates
+                  // are the ones that make the call impossible or meaningless -
+                  // no stored key to authenticate with, a save in progress
+                  // (`controlsDisabled`), or a check already running.
                   disabled={controlsDisabled || isVerifying || !apiKeyConfigured}
                   aria-busy={isVerifying}
                   startIcon={
@@ -648,14 +732,16 @@ export function AiSettings({ disabled = false }: AiSettingsProps) {
               color="text.secondary"
               data-testid="ai-verify-pending"
             >
-              Calling OpenAI with the saved key and model...
+              {verifyingModel
+                ? `Calling OpenAI with the saved key and ${verifyingModel}...`
+                : 'Calling OpenAI with the saved key and the saved model...'}
             </Typography>
           )}
 
-          {verifyResult && !isVerifying && (
+          {verifyAttempt && !isVerifying && (
             <VerifyResultAlert
-              result={verifyResult}
-              fallbackModel={ai?.model ?? ''}
+              result={verifyAttempt.result}
+              requestedModel={verifyAttempt.requestedModel}
               onClose={clearVerifyResult}
             />
           )}
