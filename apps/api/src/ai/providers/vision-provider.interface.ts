@@ -37,6 +37,12 @@ export interface ExtractCardOptions {
  * credential, so it is never sent to a third party and never returned.
  * `security_code_2` is a DIFFERENT value - the CID / control number printed on
  * the card face (e.g. the 4 digits on an American Express front).
+ *
+ * `notes` carries auxiliary NON-SENSITIVE text printed on the card - customer
+ * service phone numbers, a "Member Since" year, a website, a contactless
+ * indicator, usage instructions - so real information on the card is not
+ * silently dropped just because no dedicated field exists for it. It must
+ * never carry the PAN or any security code.
  */
 export const EXTRACTED_FIELD_NAMES = [
   'cardholder_name',
@@ -47,6 +53,7 @@ export const EXTRACTED_FIELD_NAMES = [
   'card_kind',
   'issuing_bank',
   'security_code_2',
+  'notes',
 ] as const;
 
 export type ExtractedFieldName = (typeof EXTRACTED_FIELD_NAMES)[number];
