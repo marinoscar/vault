@@ -132,19 +132,20 @@ export class OpenAiVisionProvider implements AiVisionProvider {
     model: string,
   ): Record<string, unknown> {
     // Interleaved text/image parts, with the side labels stated as INTENT
-    // rather than fact. The crops come from the client's blind centered crop,
-    // which can miss, tilt, or truncate the card - and users do occasionally
-    // photograph the sides in the wrong order. Telling the model the labels
-    // are best-effort keeps it reading the pixels instead of trusting us.
+    // rather than fact. The photos are full, uncropped frames - the card may
+    // sit anywhere in them - and users do occasionally photograph the sides
+    // in the wrong order. Telling the model the labels are best-effort keeps
+    // it reading the pixels instead of trusting us.
     const content: Array<Record<string, unknown>> = [
       {
         type: 'text',
         text:
-          `You are given ${images.length} photo(s) of ONE payment card. ` +
-          `The crops are automatic and best-effort: the card may be off-centre, ` +
-          `tilted, rotated, or partially cut off, and the user may even have ` +
-          `swapped front and back. Read every value you can find on ANY of the ` +
-          `images and combine them into a single answer.`,
+          `You are given ${images.length} full photo(s) of ONE payment card. ` +
+          `The photos are uncropped: the card may sit anywhere in the frame, ` +
+          `off-centre, tilted, or rotated, and the user may even have swapped ` +
+          `front and back. Read every value you can find on ANY of the images, ` +
+          `combine them into a single answer, and report where the card sits ` +
+          `in each image via front_box/back_box.`,
       },
     ];
 
@@ -337,6 +338,8 @@ export class OpenAiVisionProvider implements AiVisionProvider {
       confidence,
       warnings: data.warnings,
       model: typeof (payload as any)?.model === 'string' ? (payload as any).model : model,
+      frontBox: data.front_box,
+      backBox: data.back_box,
     };
   }
 }

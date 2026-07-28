@@ -69,26 +69,31 @@ export const MAX_MODEL_NAME_LENGTH = 100;
 /**
  * Largest accepted data URL string, in characters.
  *
- * Base64 inflates by ~4/3, so this is roughly a 2 MB image. Two of these plus
- * JSON overhead must fit inside the 8 MiB Fastify `bodyLimit` set in main.ts.
+ * Base64 inflates by ~4/3, so this is roughly a 4.5 MB binary image. The
+ * client now sends FULL, uncropped photos (the AI locates the card itself),
+ * so the cap is sized for whole camera frames: two of these plus JSON
+ * overhead must fit inside the 16 MiB Fastify `bodyLimit` set in main.ts.
  */
-export const MAX_IMAGE_DATA_URL_LENGTH = 2_800_000;
+export const MAX_IMAGE_DATA_URL_LENGTH = 6_000_000;
 
 /**
  * Hard ceiling on a single OpenAI call.
  *
- * 60s, not less: an extraction is ONE combined call carrying up to two ~2 MB
- * high-detail images, and vision models - the mini and reasoning families
- * included - routinely need well over 20s to answer it. The old 20s value was
- * tuned for the previous one-image-per-call flow; against the combined call it
- * made real extractions die at the ceiling and surface as
+ * 90s, not less: an extraction is ONE combined call carrying up to two
+ * ~4.5 MB high-detail images, and vision models - the mini and reasoning
+ * families included - routinely need well over 20s to answer it. The old 20s
+ * value was tuned for the previous one-image-per-call flow; against the
+ * combined call it made real extractions die at the ceiling and surface as
  * AI_UPSTREAM_UNAVAILABLE, while the admin's tiny verify probe kept passing.
+ * The move from 60s to 90s tracks the move from cropped card images to full
+ * uncropped photos: the uploads are roughly twice the bytes, so the upload
+ * leg of the call takes correspondingly longer.
  *
  * Nginx's /api proxy_read_timeout (600s) comfortably exceeds this, so the
  * request cannot be cut off downstream first. The verify probe deliberately
  * keeps its own, shorter OPENAI_VERIFY_TIMEOUT_MS below.
  */
-export const OPENAI_REQUEST_TIMEOUT_MS = 60_000;
+export const OPENAI_REQUEST_TIMEOUT_MS = 90_000;
 
 /**
  * Hard ceiling on the verify probe.

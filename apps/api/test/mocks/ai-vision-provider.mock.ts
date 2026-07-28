@@ -15,7 +15,9 @@ import {
 export function buildRawExtraction(
   fields: Partial<RawCardFields> = {},
   confidence: Partial<RawCardConfidence> = {},
-  overrides: Partial<Pick<RawExtraction, 'warnings' | 'model'>> = {},
+  overrides: Partial<
+    Pick<RawExtraction, 'warnings' | 'model' | 'frontBox' | 'backBox'>
+  > = {},
 ): RawExtraction {
   const baseFields = {} as RawCardFields;
   const baseConfidence = {} as RawCardConfidence;
@@ -30,6 +32,8 @@ export function buildRawExtraction(
     confidence: { ...baseConfidence, ...confidence },
     warnings: overrides.warnings ?? [],
     model: overrides.model ?? 'gpt-4o-mini',
+    frontBox: overrides.frontBox ?? null,
+    backBox: overrides.backBox ?? null,
   };
 }
 

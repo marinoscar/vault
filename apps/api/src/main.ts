@@ -29,9 +29,10 @@ async function bootstrap() {
       // /api/secrets/cards/extract sends card photographs as base64 data URLs
       // in a JSON body, which would be rejected with
       // FST_ERR_CTP_BODY_TOO_LARGE before the controller ever ran.
-      // 8 MiB comfortably fits two ~2 MB images after base64 inflation; the
-      // per-image cap is enforced in the extract schema.
-      bodyLimit: 8 * 1024 * 1024,
+      // 16 MiB comfortably fits two full-photo images (~4.5 MB binary each)
+      // after base64 inflation; the per-image cap is enforced in the extract
+      // schema.
+      bodyLimit: 16 * 1024 * 1024,
     }),
   );
 

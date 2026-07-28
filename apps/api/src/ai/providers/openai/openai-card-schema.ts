@@ -7,7 +7,10 @@ import {
   CARD_NETWORKS,
   CARD_KINDS,
 } from '../../../common/constants/card.constants';
-import { EXTRACTED_FIELD_NAMES } from '../vision-provider.interface';
+import {
+  CardCropBox,
+  EXTRACTED_FIELD_NAMES,
+} from '../vision-provider.interface';
 
 export const OPENAI_CARD_SCHEMA_NAME = 'card_extraction';
 
@@ -34,6 +37,52 @@ const nullableEnum = (values: readonly string[]) => ({
   enum: [...values, null],
 });
 
+/**
+ * A card-locating bounding box under OpenAI structured outputs.
+ *
+ * Nullable at the top (`['object','null']`) because with `strict: true` the
+ * property must always appear; null expresses "that image was not provided or
+ * no card is visible in it". All coordinates are FRACTIONS of the image as
+ * sent, so the client can crop without knowing the pixel dimensions we saw.
+ */
+const cropBoxJsonSchema = (side: 'front' | 'back') => ({
+  type: ['object', 'null'],
+  description:
+    `Tight bounding box around the payment card in the ${side} image, as ` +
+    `fractions of that image's width and height. Use x=0, y=0, width=1, ` +
+    `height=1 when the card fills the image. Null when that image was not ` +
+    `provided or no card is visible in it.`,
+  additionalProperties: false,
+  required: ['x', 'y', 'width', 'height', 'quarter_turns', 'confidence'],
+  properties: {
+    x: {
+      type: 'number',
+      description: 'Left edge of the box, as a fraction (0-1) of the image width.',
+    },
+    y: {
+      type: 'number',
+      description: 'Top edge of the box, as a fraction (0-1) of the image height.',
+    },
+    width: {
+      type: 'number',
+      description: 'Box width, as a fraction (0-1) of the image width.',
+    },
+    height: {
+      type: 'number',
+      description: 'Box height, as a fraction (0-1) of the image height.',
+    },
+    quarter_turns: {
+      type: 'integer',
+      description:
+        'Number of 90-degree CLOCKWISE rotations (0-3) to apply to the cropped rectangle so the card reads upright.',
+    },
+    confidence: {
+      type: 'number',
+      description: 'Confidence in the box placement, 0 (guess) to 1 (certain).',
+    },
+  },
+});
+
 const confidenceProperties = Object.fromEntries(
   EXTRACTED_FIELD_NAMES.map((name) => [
     name,
@@ -55,7 +104,13 @@ const confidenceProperties = Object.fromEntries(
 export const OPENAI_CARD_JSON_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: [...EXTRACTED_FIELD_NAMES, 'confidence', 'warnings'],
+  required: [
+    ...EXTRACTED_FIELD_NAMES,
+    'confidence',
+    'warnings',
+    'front_box',
+    'back_box',
+  ],
   properties: {
     cardholder_name: {
       ...nullableString,
@@ -64,7 +119,7 @@ export const OPENAI_CARD_JSON_SCHEMA = {
     number: {
       ...nullableString,
       description:
-        'The long card number (PAN). Digits only, no spaces. On many modern cards it is printed on the BACK. 15 digits for American Express, usually 16 for other networks. Null only when digits are genuinely unreadable.',
+        'The long card number (PAN). Digits only, no spaces. On many modern cards it is printed on the BACK. 15 digits for American Express, usually 16 for other networks. Give your best-effort reading of the digits with an honest confidence score; null only when no digits are visible at all.',
     },
     exp_month: {
       ...nullableString,
@@ -110,6 +165,8 @@ export const OPENAI_CARD_JSON_SCHEMA = {
       description:
         'Short, human-readable notes about anything that made reading the card unreliable (glare, blur, cropped edge, not a payment card).',
     },
+    front_box: cropBoxJsonSchema('front'),
+    back_box: cropBoxJsonSchema('back'),
   },
 } as const;
 
@@ -124,12 +181,19 @@ export const OPENAI_CARD_JSON_SCHEMA = {
  * `card_kind` is the ONE field the model is allowed to CLASSIFY rather than
  * transcribe, because networks like American Express never print "Credit"
  * anywhere on the card, so a transcription-only rule would return null for
- * every card of theirs. The inference is fenced: its confidence is capped and
- * a warning is mandatory, so the review screen presents it as a suggestion,
- * not a reading.
+ * every card of theirs. The inference is fenced: an inferred kind carries
+ * moderate confidence and a mandatory warning, so the review screen presents
+ * it as a suggestion, not a reading.
+ *
+ * The overall policy is BEST GUESS, HUMAN DECIDES: every answer lands on an
+ * editable review form, so an uncertain reading with honest low confidence
+ * always beats a null. The single exception is the CVV, whose exclusion is
+ * absolute and unaffected by this policy.
  */
 export const OPENAI_CARD_SYSTEM_PROMPT = [
   'You are an expert transcriber of payment card photographs into structured data. You read every card design: embossed plastic, flat-printed plastic, and metal cards with low-contrast laser-engraved text.',
+  '',
+  'Your answer seeds an editable review form; a human verifies every value before anything is saved. So ALWAYS return your best reading of every field, even from poor images - a shaky value with honest low confidence and a warning is far more useful than null. Return null for a field only when you can see nothing for it at all. The one exception with zero tolerance: the CVV rules below are absolute.',
   '',
   'Layout knowledge - use it to know where to look:',
   '- Many modern cards, especially premium and metal cards (for example the American Express Platinum) and many recent bank cards, print the card number, expiry date, and sometimes the cardholder name flat on the BACK. A front carrying only branding and a name is normal; look for the remaining values on the back image.',
@@ -141,14 +205,15 @@ export const OPENAI_CARD_SYSTEM_PROMPT = [
   'Rules:',
   '1. NEVER output a CVV, CVC, CVC2, CVV2 or the 3-digit code printed on the signature panel. Do not output it in any field, and do not mention its digits in warnings. If you can see one, ignore it.',
   '2. `security_code_2` is NOT the CVV. It is only for a separate control / CID number printed flat on the card face, such as the 4-digit CID above the account number on an American Express card. If you are not certain a value is that separate control number, return null.',
-  '3. The card number, expiry, cardholder name and security_code_2 must be READ from the images, character by character. Never derive, complete, or invent them. Transcribe every character you can actually make out, even when the text is faint, low-contrast, or at an angle, and express doubt through the confidence score. Return null for a field ONLY when one or more of its characters are genuinely impossible to read - not merely difficult.',
+  '3. The card number, expiry, cardholder name and security_code_2 must be READ from the images - best-effort. Transcribe what you see as completely as you can; when characters are uncertain, give your best interpretation, lower the confidence, and add a warning naming which part was uncertain. Never fabricate a value for which nothing is visible at all.',
   '4. `card_network`: identify from the brand mark or wordmark anywhere on either side.',
-  '5. `card_kind`: if the card prints Credit, Debit or Prepaid, use that. If it does not, you MAY classify it from unambiguous product knowledge - for example, American Express charge and credit products (Green, Gold, Platinum, Centurion) are "Credit"; classify charge cards as "Credit". Cap the confidence of any card_kind that is not literally printed on the card at 0.6, and add a short warning saying the card type was inferred from the product, not read. If genuinely unsure, return null.',
+  '5. `card_kind`: if the card prints Credit, Debit or Prepaid, use that with high confidence. If it does not, you MAY classify it from unambiguous product knowledge - for example, American Express charge and credit products (Green, Gold, Platinum, Centurion) are "Credit"; classify charge cards as "Credit". Give an inferred card_kind moderate confidence (around 0.6) and add a short warning saying the card type was inferred from the product, not read. If genuinely unsure, return null.',
   '6. `issuing_bank`: the institution named on the card. Networks that issue their own cards (American Express, Discover) are also the issuer - use the network name in that case.',
   '7. `notes`: gather any other useful printed text - customer service phone numbers, a "Member Since" year, a website, a contactless indicator, usage instructions - into `notes`, one item per line. NEVER put the card number or any security code there. Return null when there is nothing beyond the other fields.',
   '8. `card_network` and `card_kind` must be exactly one of the allowed enum values, or null. Do not invent new spellings.',
   '9. Confidence scale: 0.9-1.0 for crisp, unambiguous text; 0.5-0.8 for text that is readable but faint, glared, small, or partially obstructed; below 0.5 only when you are close to guessing. Set the confidence to 0 for every field you return as null.',
-  '10. If the images are not a payment card at all, return null for every field, 0 for every confidence, and add a warning saying so.',
+  '10. For each provided image, return `front_box`/`back_box` as the tight bounding box around the payment card, with x, y, width and height as fractions of THAT image\'s width and height, and quarter_turns as the number of 90-degree clockwise rotations that make the cropped card read upright. The box is used to crop the stored copy of the photo, so prefer a box slightly too large over one that cuts the card off. Return null for the box of an image that was not provided or in which no card is visible.',
+  '11. If the images are not a payment card at all, return null for every field, 0 for every confidence, null for both boxes, and add a warning saying so.',
 ].join('\n');
 
 // -----------------------------------------------------------------------------
@@ -191,6 +256,48 @@ const confidenceValue = z
   .catch(0)
   .transform((v) => (Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0));
 
+const clamp01 = (v: number): number =>
+  Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0;
+
+/**
+ * A card-locating box, re-validated and repaired.
+ *
+ * Deliberately forgiving in a different way from the field values: a
+ * malformed box degrades to null via `.catch(null)` rather than failing the
+ * parse, because a bad box must not cost the user their field data - the
+ * fields are the product, the box only saves a manual crop. Coordinates are
+ * clamped into [0,1]; width/height into (0,1] with a 0.05 floor so a
+ * degenerate sliver cannot produce an unusable crop; quarter_turns is rounded
+ * and wrapped into 0-3 (negatives included, so -1 becomes 3).
+ */
+const cropBoxSchema: z.ZodType<CardCropBox | null, z.ZodTypeDef, unknown> = z
+  .object({
+    x: z.number(),
+    y: z.number(),
+    width: z.number(),
+    height: z.number(),
+    quarter_turns: z.number(),
+    confidence: z.number(),
+  })
+  .transform(
+    (box): CardCropBox => ({
+      x: clamp01(box.x),
+      y: clamp01(box.y),
+      width: Number.isFinite(box.width)
+        ? Math.min(1, Math.max(0.05, box.width))
+        : 1,
+      height: Number.isFinite(box.height)
+        ? Math.min(1, Math.max(0.05, box.height))
+        : 1,
+      quarterTurns: Number.isFinite(box.quarter_turns)
+        ? ((Math.round(box.quarter_turns) % 4) + 4) % 4
+        : 0,
+      confidence: clamp01(box.confidence),
+    }),
+  )
+  .nullable()
+  .catch(null);
+
 /**
  * Zod re-validation of the model's JSON.
  *
@@ -230,6 +337,8 @@ export const openAiCardResponseSchema = z.object({
     .max(20)
     .catch([])
     .transform((list) => list.filter((w) => w.length > 0)),
+  front_box: cropBoxSchema,
+  back_box: cropBoxSchema,
 });
 
 export type OpenAiCardResponse = z.infer<typeof openAiCardResponseSchema>;

@@ -10,6 +10,7 @@ import {
   CARD_NETWORKS,
 } from '../common/constants/card.constants';
 import {
+  CardCropBox,
   EXTRACTED_FIELD_NAMES,
   ExtractedFieldName,
   RawCardConfidence,
@@ -21,7 +22,17 @@ export interface NormalizedExtraction {
   fields: RawCardFields;
   confidence: RawCardConfidence;
   warnings: string[];
-  /** True when the model answered but every field came back null. */
+  /**
+   * Where the model located the card in each supplied image. Not merged like
+   * the fields - a box only makes sense against the one image it was drawn
+   * on, so each comes from the first source that saw that image. Null when
+   * the image was absent or contained no visible card.
+   */
+  crops: { front: CardCropBox | null; back: CardCropBox | null };
+  /**
+   * True when the model answered but every field came back null. About the
+   * FIELD data only - the crop boxes play no part in it.
+   */
   partial: boolean;
 }
 
@@ -243,7 +254,16 @@ export function normalizeExtractions(
     );
   }
 
-  return { fields, confidence, warnings: dedupe(warnings), partial };
+  // Boxes are image-scoped, not card-scoped, so they bypass the confidence
+  // merge entirely: the first source's reading of each image wins. The caller
+  // (CardExtractService) knows how many images were actually sent and forces
+  // `back` to null when there was no back image.
+  const crops = {
+    front: sources[0]?.frontBox ?? null,
+    back: sources[0]?.backBox ?? null,
+  };
+
+  return { fields, confidence, warnings: dedupe(warnings), crops, partial };
 }
 
 function dedupe(values: string[]): string[] {
