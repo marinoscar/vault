@@ -42,6 +42,44 @@ export class AiConfigService {
       throw aiNotConfigured();
     }
 
+    return this.withPlaintextKey(ai);
+  }
+
+  /**
+   * Resolve config for an administrator's connectivity check.
+   *
+   * Deliberately does NOT require `ai.enabled`. The natural order of operations
+   * is "paste the key, pick a model, check it works, then turn the feature on
+   * for users" - requiring the flag first would force an admin to expose a
+   * possibly-broken feature to everyone in order to find out whether it is
+   * broken.
+   *
+   * A stored key is still required: there is nothing to verify without one.
+   *
+   * @throws AiException 503 AI_NOT_CONFIGURED - no key stored
+   * @throws AiException 503 AI_KEY_UNREADABLE - key stored but undecryptable
+   */
+  async resolveForVerification(): Promise<ResolvedAiConfig> {
+    const settings = await this.systemSettings.getSettings();
+    const ai = settings.ai;
+
+    if (!ai || !ai.apiKeyConfigured) {
+      throw aiNotConfigured();
+    }
+
+    return this.withPlaintextKey(ai);
+  }
+
+  /**
+   * Decrypt the stored credential and pair it with the resolved settings.
+   *
+   * Shared by both resolve paths so the credential handling - and its failure
+   * modes - cannot diverge between "verify the key" and "use the key".
+   */
+  private async withPlaintextKey(ai: {
+    model: string;
+    maxCallsPerUserPerDay: number;
+  }): Promise<ResolvedAiConfig> {
     let apiKey: string | null;
     try {
       apiKey = await this.systemSettings.getOpenAiApiKeyPlaintext();

@@ -120,6 +120,63 @@ describe('AiConfigService', () => {
     });
   });
 
+  describe('resolveForVerification', () => {
+    it('resolves the same config as an extraction would', async () => {
+      const { service } = buildService(readyAi, async () => 'sk-live-1234');
+
+      await expect(service.resolveForVerification()).resolves.toEqual({
+        model: 'gpt-4o-mini',
+        maxCallsPerUserPerDay: 50,
+        apiKey: 'sk-live-1234',
+      });
+    });
+
+    it('works while the feature is still switched off', async () => {
+      // The natural order is: paste the key, pick a model, CHECK IT, then turn
+      // the feature on. Requiring `enabled` first would force an admin to
+      // expose a possibly-broken feature to every user in order to find out
+      // whether it is broken.
+      const { service } = buildService(
+        { ...readyAi, enabled: false },
+        async () => 'sk-live-1234',
+      );
+
+      await expect(service.resolveForVerification()).resolves.toMatchObject({
+        apiKey: 'sk-live-1234',
+      });
+    });
+
+    it('AI_NOT_CONFIGURED when there is no key to check', async () => {
+      const { service } = buildService(
+        { ...readyAi, apiKeyConfigured: false },
+        async () => null,
+      );
+
+      await expect(codeOf(service.resolveForVerification())).resolves.toBe(
+        AI_ERROR_CODES.NOT_CONFIGURED,
+      );
+    });
+
+    it('AI_NOT_CONFIGURED when the ai block predates this feature', async () => {
+      const { service } = buildService(null, async () => null);
+
+      await expect(codeOf(service.resolveForVerification())).resolves.toBe(
+        AI_ERROR_CODES.NOT_CONFIGURED,
+      );
+    });
+
+    it('AI_KEY_UNREADABLE when the stored key cannot be decrypted', async () => {
+      const { service } = buildService(
+        readyAi,
+        new ServiceUnavailableException('undecryptable'),
+      );
+
+      await expect(codeOf(service.resolveForVerification())).resolves.toBe(
+        AI_ERROR_CODES.KEY_UNREADABLE,
+      );
+    });
+  });
+
   describe('isReady', () => {
     it('true when enabled with a decryptable key', async () => {
       const { service } = buildService(readyAi, async () => 'sk-live-1234');

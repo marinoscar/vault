@@ -10,6 +10,10 @@ import {
   OPENAI_CARD_JSON_SCHEMA,
   OPENAI_CARD_SYSTEM_PROMPT,
 } from './openai-card-schema';
+import {
+  ONE_PIXEL_PNG_DATA_URL,
+  OPENAI_PROBE_SCHEMA_NAME,
+} from './openai-probe';
 import { CARD_KINDS, CARD_NETWORKS } from '../../../common/constants/card.constants';
 
 // -----------------------------------------------------------------------------
@@ -472,6 +476,433 @@ describe('OpenAiVisionProvider', () => {
       expect(logged).toContain('number');
       expect(logged).not.toContain('4111111111111111');
       expect(logged).not.toContain('ADA LOVELACE');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Adaptive parameter retry
+  //
+  // These tests are the executable specification of the behaviour described in
+  // openai-chat.client.ts. If they are deleted, the retry becomes untested code
+  // that looks removable - which is exactly how a model family that rejects an
+  // explicit temperature ends up failing 100% of extractions in production.
+  // ---------------------------------------------------------------------------
+
+  describe('adaptive parameter retry', () => {
+    const temperatureRejected = () =>
+      errorResponse(
+        400,
+        JSON.stringify({
+          error: {
+            message:
+              "Unsupported value: 'temperature' does not support 0 with this model. Only the default (1) is supported.",
+            type: 'invalid_request_error',
+            param: 'temperature',
+            code: 'unsupported_value',
+          },
+        }),
+      );
+
+    it('retries once without temperature and succeeds', async () => {
+      fetchMock
+        .mockResolvedValueOnce(temperatureRejected())
+        .mockResolvedValueOnce(okResponse(modelJson()));
+
+      const result = await provider.extractCard(images, options);
+
+      expect(result.fields.cardholder_name).toBe('ADA LOVELACE');
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+
+      const first = JSON.parse(fetchMock.mock.calls[0][1].body);
+      const second = JSON.parse(fetchMock.mock.calls[1][1].body);
+      expect(first.temperature).toBe(0);
+      expect(second).not.toHaveProperty('temperature');
+    });
+
+    it('keeps the schema and the image on the retry', async () => {
+      fetchMock
+        .mockResolvedValueOnce(temperatureRejected())
+        .mockResolvedValueOnce(okResponse(modelJson()));
+
+      await provider.extractCard(images, options);
+
+      const second = JSON.parse(fetchMock.mock.calls[1][1].body);
+      expect(second.model).toBe('gpt-4o-mini');
+      expect(second.response_format.json_schema.strict).toBe(true);
+      expect(second.messages[1].content).toContainEqual({
+        type: 'image_url',
+        image_url: { url: IMAGE_DATA, detail: 'high' },
+      });
+    });
+
+    it('logs that it happened, at warn, naming the parameter', async () => {
+      fetchMock
+        .mockResolvedValueOnce(temperatureRejected())
+        .mockResolvedValueOnce(okResponse(modelJson()));
+
+      await provider.extractCard(images, options);
+
+      const logged = logLines.join('\n');
+      expect(logged).toContain("rejected the 'temperature' parameter");
+      expect(logged).toContain('retrying once without it');
+    });
+
+    it('does NOT retry a second time', async () => {
+      // The retried request is rejected again, naming another droppable
+      // parameter. One adaptive retry is the whole budget: a second would make
+      // this a loop, and a loop against a paid API behind a user-facing button
+      // is how a bad config turns into a bill.
+      fetchMock
+        .mockResolvedValueOnce(temperatureRejected())
+        .mockResolvedValueOnce(
+          errorResponse(
+            400,
+            JSON.stringify({
+              error: {
+                message:
+                  "Unsupported parameter: 'top_p' is not supported with this model.",
+                type: 'invalid_request_error',
+                param: 'top_p',
+                code: 'unsupported_parameter',
+              },
+            }),
+          ),
+        );
+
+      await rejection(provider.extractCard(images, options));
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([
+      ['an invalid key', 401, '{"error":{"code":"invalid_api_key","message":"Incorrect API key provided: sk-x."}}'],
+      ['a spent quota', 429, '{"error":{"code":"insufficient_quota","message":"You exceeded your current quota."}}'],
+      ['an unknown model', 404, '{"error":{"code":"model_not_found","message":"The model does not exist."}}'],
+      ['a server error', 500, '{"error":{"message":"internal"}}'],
+    ])('never retries %s', async (_label, status, body) => {
+      fetchMock.mockResolvedValue(errorResponse(status, body));
+
+      await rejection(provider.extractCard(images, options));
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('never retries a model that rejects the response_format', async () => {
+      // Dropping response_format would "succeed" by silently returning free
+      // text instead of schema-validated data.
+      fetchMock.mockResolvedValue(
+        errorResponse(
+          400,
+          JSON.stringify({
+            error: {
+              message:
+                "Invalid parameter: 'response_format' of type 'json_schema' is not supported with this model.",
+              type: 'invalid_request_error',
+              param: 'response_format',
+              code: null,
+            },
+          }),
+        ),
+      );
+
+      await rejection(provider.extractCard(images, options));
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not retry a 400 whose cause it cannot identify', async () => {
+      fetchMock.mockResolvedValue(errorResponse(400, '{"error":{"message":"upstream"}}'));
+
+      const error = await rejection(provider.extractCard(images, options));
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(error.kind).toBe('invalid_output');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Capability probe
+  // ---------------------------------------------------------------------------
+
+  describe('verifyModel', () => {
+    const probeOk = () =>
+      ({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          model: 'gpt-4o-mini-2024-07-18',
+          choices: [
+            { finish_reason: 'stop', message: { content: '{"ok":true}' } },
+          ],
+        }),
+        text: async () => '{"ok":true}',
+        headers: new Headers(),
+      }) as unknown as Response;
+
+    describe('the probe request', () => {
+      it('sends one inline 1x1 PNG - it does not fetch an image from anywhere', async () => {
+        fetchMock.mockResolvedValue(probeOk());
+
+        await provider.verifyModel(options);
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        const [url, init] = fetchMock.mock.calls[0];
+        expect(url).toBe('https://api.openai.com/v1/chat/completions');
+
+        const body = JSON.parse(init.body);
+        const parts = body.messages[0].content;
+        const image = parts.find((p: any) => p.type === 'image_url');
+        expect(image.image_url.url).toBe(ONE_PIXEL_PNG_DATA_URL);
+        expect(image.image_url.url.startsWith('data:image/png;base64,')).toBe(true);
+        // Small enough that the probe costs a fraction of a cent.
+        expect(image.image_url.url.length).toBeLessThan(200);
+      });
+
+      it('exercises the same contract a real extraction depends on', async () => {
+        fetchMock.mockResolvedValue(probeOk());
+
+        await provider.verifyModel(options);
+
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+        expect(body.model).toBe('gpt-4o-mini');
+        expect(body.temperature).toBe(0);
+        expect(body.response_format.type).toBe('json_schema');
+        expect(body.response_format.json_schema.strict).toBe(true);
+        expect(body.response_format.json_schema.name).toBe(
+          OPENAI_PROBE_SCHEMA_NAME,
+        );
+      });
+
+      it('sends no token-limit parameter of either spelling', async () => {
+        // Guessing between max_tokens and max_completion_tokens turns a working
+        // model into a 400. Omitting both is valid everywhere.
+        fetchMock.mockResolvedValue(probeOk());
+
+        await provider.verifyModel(options);
+
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+        expect(body).not.toHaveProperty('max_tokens');
+        expect(body).not.toHaveProperty('max_completion_tokens');
+      });
+
+      it('never mentions the model name in a capability decision', async () => {
+        // Same probe body for any model string. No allowlist, no version sniff.
+        fetchMock.mockResolvedValue(probeOk());
+
+        for (const model of ['gpt-4o-mini', 'gpt-5.4-nano', 'future-model-9']) {
+          fetchMock.mockClear();
+          await provider.verifyModel({ ...options, model });
+          const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+          expect(body.model).toBe(model);
+          expect(Object.keys(body).sort()).toEqual([
+            'messages',
+            'model',
+            'response_format',
+            'temperature',
+          ]);
+        }
+      });
+    });
+
+    describe('success', () => {
+      it('reports the model the provider actually resolved to', async () => {
+        fetchMock.mockResolvedValue(probeOk());
+
+        await expect(provider.verifyModel(options)).resolves.toEqual({
+          model: 'gpt-4o-mini-2024-07-18',
+          droppedParameters: [],
+        });
+      });
+
+      it('falls back to the requested model when the payload omits one', async () => {
+        fetchMock.mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: async () => ({ choices: [{ message: { content: '{}' } }] }),
+          text: async () => '{}',
+          headers: new Headers(),
+        } as unknown as Response);
+
+        const result = await provider.verifyModel(options);
+        expect(result.model).toBe('gpt-4o-mini');
+      });
+
+      it('reports which parameters had to be dropped to make it work', async () => {
+        fetchMock
+          .mockResolvedValueOnce(
+            errorResponse(
+              400,
+              JSON.stringify({
+                error: {
+                  message:
+                    "Unsupported value: 'temperature' does not support 0 with this model.",
+                  param: 'temperature',
+                  code: 'unsupported_value',
+                  type: 'invalid_request_error',
+                },
+              }),
+            ),
+          )
+          .mockResolvedValueOnce(probeOk());
+
+        const result = await provider.verifyModel(options);
+
+        expect(result.droppedParameters).toEqual(['temperature']);
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+      });
+
+      it('rejects a 200 that carried no completion', async () => {
+        fetchMock.mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: async () => ({ model: 'x', choices: [] }),
+          text: async () => '{}',
+          headers: new Headers(),
+        } as unknown as Response);
+
+        const error = await rejection(provider.verifyModel(options));
+        expect(error.kind).toBe('invalid_output');
+      });
+    });
+
+    describe('failure detail', () => {
+      const cases: Array<[string, number, string, string, string | undefined]> = [
+        [
+          'an invalid key',
+          401,
+          '{"error":{"message":"Incorrect API key provided: sk-live-xxx.","code":"invalid_api_key","type":"invalid_request_error","param":null}}',
+          'auth',
+          undefined,
+        ],
+        [
+          'an unknown model',
+          404,
+          '{"error":{"message":"The model \'gpt-5.4-nano\' does not exist or you do not have access to it.","code":"model_not_found","type":"invalid_request_error","param":null}}',
+          'unavailable',
+          'model_not_found',
+        ],
+        [
+          'a model that refuses images',
+          400,
+          '{"error":{"message":"Invalid content type. image_url is only supported by certain models.","code":"invalid_value","type":"invalid_request_error","param":"messages[0].content[1].type"}}',
+          'unavailable',
+          'model_no_image_support',
+        ],
+        [
+          'a model that refuses structured outputs',
+          400,
+          '{"error":{"message":"Invalid parameter: \'response_format\' of type \'json_schema\' is not supported with this model.","code":null,"type":"invalid_request_error","param":"response_format"}}',
+          'unavailable',
+          'model_no_structured_output',
+        ],
+        [
+          'a spent quota',
+          429,
+          '{"error":{"message":"You exceeded your current quota, please check your plan and billing details.","code":"insufficient_quota","type":"insufficient_quota","param":null}}',
+          'rate_limited',
+          'quota',
+        ],
+      ];
+
+      it.each(cases)(
+        'reports %s with a specific kind and detail',
+        async (_label, status, body, kind, detail) => {
+          fetchMock.mockResolvedValue(errorResponse(status, body));
+
+          const error = await rejection(provider.verifyModel(options));
+
+          expect(error.kind).toBe(kind);
+          expect(error.detail).toBe(detail);
+        },
+      );
+
+      it('distinguishes an unknown model from a model that cannot see', async () => {
+        // The whole point of the feature: these two are both 4xx and both
+        // "the model is wrong", but the admin has to change a different thing.
+        fetchMock.mockResolvedValueOnce(
+          errorResponse(
+            404,
+            '{"error":{"code":"model_not_found","message":"The model does not exist."}}',
+          ),
+        );
+        const notFound = await rejection(provider.verifyModel(options));
+
+        fetchMock.mockResolvedValueOnce(
+          errorResponse(
+            400,
+            '{"error":{"message":"Invalid content type. image_url is only supported by certain models.","param":"messages[0].content[1].type"}}',
+          ),
+        );
+        const noVision = await rejection(provider.verifyModel(options));
+
+        expect(notFound.detail).toBe('model_not_found');
+        expect(noVision.detail).toBe('model_no_image_support');
+        expect(notFound.detail).not.toBe(noVision.detail);
+      });
+
+      it('reports a network failure as unavailable with no detail', async () => {
+        fetchMock.mockRejectedValue(new TypeError('fetch failed'));
+
+        const error = await rejection(provider.verifyModel(options));
+        expect(error.kind).toBe('unavailable');
+        expect(error.detail).toBeUndefined();
+        expect(error.message).toContain('network error');
+      });
+
+      it('reports a timeout as unavailable', async () => {
+        const timeout = new Error('The operation was aborted due to timeout');
+        timeout.name = 'TimeoutError';
+        fetchMock.mockRejectedValue(timeout);
+
+        const error = await rejection(provider.verifyModel(options));
+        expect(error.kind).toBe('unavailable');
+        expect(error.message).toContain('timeout');
+      });
+
+      it('leaves an unfamiliar failure without a detail rather than guessing', async () => {
+        fetchMock.mockResolvedValue(
+          errorResponse(400, '{"error":{"message":"something new happened"}}'),
+        );
+
+        const error = await rejection(provider.verifyModel(options));
+        expect(error.kind).toBe('invalid_output');
+        expect(error.detail).toBeUndefined();
+      });
+    });
+
+    describe('credential hygiene', () => {
+      it('never logs or echoes the key, whatever the provider reflects back', async () => {
+        // OpenAI echoes a masked form of the key in its own error text; a
+        // future change or a proxy could echo more. Nothing derived from the
+        // upstream body may carry it into a log line or a thrown message.
+        fetchMock.mockResolvedValue(
+          errorResponse(
+            401,
+            JSON.stringify({
+              error: {
+                message: `Incorrect API key provided: ${API_KEY}.`,
+                code: 'invalid_api_key',
+              },
+            }),
+          ),
+        );
+
+        const error = await rejection(provider.verifyModel(options));
+
+        expect(error.message).not.toContain(API_KEY);
+        expect(error.message).not.toContain('sk-live');
+        expect(logLines.join('\n')).not.toContain(API_KEY);
+      });
+
+      it('sends the key only in the Authorization header, never in the body', async () => {
+        fetchMock.mockResolvedValue(probeOk());
+
+        await provider.verifyModel(options);
+
+        const [, init] = fetchMock.mock.calls[0];
+        expect(init.headers.Authorization).toBe(`Bearer ${API_KEY}`);
+        expect(init.body).not.toContain(API_KEY);
+      });
     });
   });
 });

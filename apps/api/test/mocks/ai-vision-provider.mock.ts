@@ -4,6 +4,7 @@ import {
   RawCardConfidence,
   RawCardFields,
   RawExtraction,
+  VerifyModelResult,
 } from '../../src/ai/providers';
 
 /**
@@ -33,6 +34,22 @@ export function buildRawExtraction(
 }
 
 /**
+ * Default result of a successful capability probe.
+ *
+ * `droppedParameters` is empty, i.e. "the model took our request as sent".
+ * Tests covering the adaptive-parameter path override it.
+ */
+export function buildVerifyModelResult(
+  overrides: Partial<VerifyModelResult> = {},
+): VerifyModelResult {
+  return {
+    model: 'gpt-4o-mini-2024-07-18',
+    droppedParameters: [],
+    ...overrides,
+  };
+}
+
+/**
  * Mock vision provider.
  *
  * Every test binds this at the AI_VISION_PROVIDER token so that no test can
@@ -41,4 +58,5 @@ export function buildRawExtraction(
  */
 export const createMockAiVisionProvider = (): jest.Mocked<AiVisionProvider> => ({
   extractCard: jest.fn().mockResolvedValue(buildRawExtraction()),
+  verifyModel: jest.fn().mockResolvedValue(buildVerifyModelResult()),
 });

@@ -9,6 +9,7 @@ import {
   RawCardConfidence,
   RawCardFields,
   RawExtraction,
+  VerifyModelResult,
   VisionImage,
 } from '../vision-provider.interface';
 import {
@@ -17,22 +18,28 @@ import {
   OPENAI_CARD_SYSTEM_PROMPT,
   openAiCardResponseSchema,
 } from './openai-card-schema';
-
-const OPENAI_CHAT_COMPLETIONS_URL =
-  'https://api.openai.com/v1/chat/completions';
-
-/**
- * Maximum number of characters of an upstream error body kept for debug logs.
- */
-const UPSTREAM_BODY_LOG_LIMIT = 500;
+import {
+  OpenAiChatFailure,
+  sendChatCompletion,
+} from './openai-chat.client';
+import { buildProbeRequestBody } from './openai-probe';
 
 /**
  * OpenAI chat-completions vision provider.
  *
  * Uses Node 20's global `fetch` - this is the only outbound call the API makes,
  * and it is not worth an HTTP client dependency. There is deliberately no retry
- * loop: a card scan is user-initiated and interactive, so a fast, honest 502 is
- * better than silently spending 60 seconds and twice the money.
+ * loop for transient failures: a card scan is user-initiated and interactive,
+ * so a fast, honest 502 is better than silently spending 60 seconds and twice
+ * the money.
+ *
+ * The ONE exception is the adaptive-parameter retry in `sendChatCompletion`,
+ * which fires only on a 400 that names one of our own sampling parameters. See
+ * the extended note there before touching it.
+ *
+ * NO MODEL NAME APPEARS IN THIS FILE'S LOGIC. The model is an opaque string
+ * supplied by the administrator; what it can and cannot do is discovered by
+ * asking the API, never by pattern-matching its name.
  */
 @Injectable()
 export class OpenAiVisionProvider implements AiVisionProvider {
@@ -46,27 +53,84 @@ export class OpenAiVisionProvider implements AiVisionProvider {
       throw new AiProviderError('invalid_output', 'No images supplied');
     }
 
-    const body = this.buildRequestBody(images, options.model);
-
-    const response = await this.post(
-      body,
-      options.apiKey,
-      options.timeoutMs ?? OPENAI_REQUEST_TIMEOUT_MS,
+    const result = await sendChatCompletion(
+      this.buildRequestBody(images, options.model),
+      {
+        apiKey: options.apiKey,
+        timeoutMs: options.timeoutMs ?? OPENAI_REQUEST_TIMEOUT_MS,
+        logger: this.logger,
+      },
     );
 
-    if (!response.ok) {
-      await this.throwForStatus(response);
+    if (!result.ok) {
+      throw this.toProviderError(result);
     }
 
-    const payload = await this.readJson(response);
-    return this.parseExtraction(payload, options.model);
+    return this.parseExtraction(result.payload, options.model);
+  }
+
+  /**
+   * Empirical capability probe behind `POST /system-settings/ai/verify`.
+   *
+   * Sends one minimal request carrying an inline 1x1 PNG and a trivial
+   * `json_schema` response format. A 200 proves, in a single call, that:
+   *   - the credential authenticates
+   *   - the model name resolves for that credential
+   *   - the model accepts image input
+   *   - the model honours strict structured outputs
+   *
+   * None of those four can be established by a lookup - `/v1/models` returns no
+   * capability metadata - which is why this spends a fraction of a cent instead.
+   */
+  async verifyModel(options: ExtractCardOptions): Promise<VerifyModelResult> {
+    const result = await sendChatCompletion(
+      buildProbeRequestBody(options.model),
+      {
+        apiKey: options.apiKey,
+        timeoutMs: options.timeoutMs ?? OPENAI_REQUEST_TIMEOUT_MS,
+        logger: this.logger,
+      },
+    );
+
+    if (!result.ok) {
+      throw this.toProviderError(result);
+    }
+
+    const payload = result.payload as any;
+
+    // A 200 with no choices is not a proof of anything. Treated as an
+    // unfamiliar shape rather than assumed to be a success.
+    if (!Array.isArray(payload?.choices) || payload.choices.length === 0) {
+      throw new AiProviderError(
+        'invalid_output',
+        'The provider accepted the request but returned no completion',
+      );
+    }
+
+    return {
+      model: typeof payload?.model === 'string' ? payload.model : options.model,
+      droppedParameters: result.droppedParameters,
+    };
   }
 
   // ---------------------------------------------------------------------------
   // Request
   // ---------------------------------------------------------------------------
 
-  private buildRequestBody(images: VisionImage[], model: string) {
+  /**
+   * No token-limit parameter is sent.
+   *
+   * `max_tokens` and `max_completion_tokens` are accepted by different model
+   * families, and sending the wrong one is a 400 that fails the whole
+   * extraction. Omitting both is valid everywhere, and the structured-output
+   * schema already bounds the response to a handful of short strings, so a
+   * limit would buy nothing but a truncation risk. If a limit is ever genuinely
+   * needed, add it to ADAPTIVE_DROPPABLE_PARAMS rather than guessing the name.
+   */
+  private buildRequestBody(
+    images: VisionImage[],
+    model: string,
+  ): Record<string, unknown> {
     const content: Array<Record<string, unknown>> = [
       {
         type: 'text',
@@ -85,8 +149,11 @@ export class OpenAiVisionProvider implements AiVisionProvider {
     }
 
     return {
-      model,
       // Transcription, not creativity. Any sampling here is pure downside.
+      // Sent optimistically: a model that rejects an explicit temperature
+      // triggers the adaptive retry in sendChatCompletion, which resends
+      // without it rather than failing every extraction.
+      model,
       temperature: 0,
       messages: [
         { role: 'system', content: OPENAI_CARD_SYSTEM_PROMPT },
@@ -103,123 +170,95 @@ export class OpenAiVisionProvider implements AiVisionProvider {
     };
   }
 
-  private async post(
-    body: unknown,
-    apiKey: string,
-    timeoutMs: number,
-  ): Promise<Response> {
-    try {
-      return await fetch(OPENAI_CHAT_COMPLETIONS_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(timeoutMs),
-      });
-    } catch (error) {
-      // DNS failure, connection reset, or our own AbortSignal.timeout firing.
-      // The message may contain a hostname but never the key or the images.
-      const reason = (error as Error)?.name === 'TimeoutError' ? 'timeout' : 'network error';
-      this.logger.warn(`OpenAI request failed (${reason})`);
-      throw new AiProviderError(
-        'unavailable',
-        `Vision provider unreachable (${reason})`,
-      );
-    }
-  }
-
   // ---------------------------------------------------------------------------
   // Failure classification
   // ---------------------------------------------------------------------------
 
   /**
-   * Always throws. Split out so the status -> kind mapping is readable in one
-   * place, and so the upstream body is handled exactly once.
-   */
-  private async throwForStatus(response: Response): Promise<never> {
-    const bodyText = await this.readBodyForLog(response);
-
-    // Debug level only, and scrubbed. OpenAI echoes fragments of the request
-    // back inside error payloads, and our request contains base64 card images.
-    this.logger.debug(
-      `OpenAI responded ${response.status}: ${this.scrubUpstreamBody(bodyText)}`,
-    );
-
-    if (response.status === 401 || response.status === 403) {
-      // NOT rethrown as 401/403 - see AI_ERROR_CODES.UPSTREAM_AUTH.
-      throw new AiProviderError(
-        'auth',
-        'Vision provider rejected the configured credential',
-      );
-    }
-
-    if (response.status === 429) {
-      throw new AiProviderError(
-        'rate_limited',
-        'Vision provider rate limited the request',
-        this.parseRetryAfter(response.headers.get('retry-after')),
-      );
-    }
-
-    if (response.status >= 500) {
-      throw new AiProviderError(
-        'unavailable',
-        'Vision provider is temporarily unavailable',
-      );
-    }
-
-    // 400/404/422 etc: our request was malformed (bad model name, image the
-    // provider refuses to decode). Not the user's session, not retryable.
-    throw new AiProviderError(
-      'invalid_output',
-      'Vision provider rejected the request',
-    );
-  }
-
-  private parseRetryAfter(header: string | null): number | undefined {
-    if (!header) return undefined;
-    const seconds = Number.parseInt(header, 10);
-    return Number.isFinite(seconds) && seconds > 0 ? seconds : undefined;
-  }
-
-  private async readBodyForLog(response: Response): Promise<string> {
-    try {
-      return await response.text();
-    } catch {
-      return '<unreadable>';
-    }
-  }
-
-  /**
-   * Remove anything that could be a base64 image payload before logging.
+   * Map a classified upstream failure onto the provider error taxonomy.
    *
-   * Belt and braces: the error body is only logged at debug, but debug logs get
-   * turned on in production during incidents, which is exactly when a
-   * reflected card image would be most damaging.
+   * `kind` is what CardExtractService already switches on to pick an HTTP
+   * status, and its meaning is unchanged. `detail` is additive and only carries
+   * the extra precision the verify endpoint reports.
+   *
+   * The three capability/configuration reasons map to `unavailable` (502
+   * AI_UPSTREAM_UNAVAILABLE) rather than `invalid_output` (422
+   * AI_EXTRACTION_FAILED) because they are administrator misconfigurations. A
+   * user told "try a sharper photo" will keep retaking a perfectly good photo
+   * of a card the configured model was never going to be able to read.
+   *
+   * The upstream error body is never echoed into the thrown message. OpenAI
+   * reflects fragments of the request back in its errors, and our request is
+   * two base64 card images.
    */
-  private scrubUpstreamBody(text: string): string {
-    return text
-      .replace(/data:image\/[a-zA-Z]+;base64,[A-Za-z0-9+/=]*/g, '[image redacted]')
-      .replace(/[A-Za-z0-9+/]{120,}={0,2}/g, '[redacted]')
-      .slice(0, UPSTREAM_BODY_LOG_LIMIT);
+  private toProviderError(failure: OpenAiChatFailure): AiProviderError {
+    switch (failure.reason) {
+      case 'auth':
+        // NOT rethrown as 401/403 - see AI_ERROR_CODES.UPSTREAM_AUTH.
+        return new AiProviderError(
+          'auth',
+          'Vision provider rejected the configured credential',
+        );
+
+      case 'quota':
+        return new AiProviderError(
+          'rate_limited',
+          'The vision provider account has no remaining quota',
+          failure.retryAfterSeconds,
+          'quota',
+        );
+
+      case 'rate_limited':
+        return new AiProviderError(
+          'rate_limited',
+          'Vision provider rate limited the request',
+          failure.retryAfterSeconds,
+        );
+
+      case 'unavailable':
+        return new AiProviderError(
+          'unavailable',
+          'Vision provider is temporarily unavailable',
+        );
+
+      case 'model_not_found':
+        return new AiProviderError(
+          'unavailable',
+          'The configured model does not exist or is not available to this credential',
+          undefined,
+          'model_not_found',
+        );
+
+      case 'model_no_image_support':
+        return new AiProviderError(
+          'unavailable',
+          'The configured model does not accept image input',
+          undefined,
+          'model_no_image_support',
+        );
+
+      case 'model_no_structured_output':
+        return new AiProviderError(
+          'unavailable',
+          'The configured model does not support strict structured outputs',
+          undefined,
+          'model_no_structured_output',
+        );
+
+      case 'bad_request':
+      default:
+        // 400/422 with an unfamiliar cause: our request was rejected, but we
+        // will not guess why. Not the user's session, not retryable.
+        return new AiProviderError(
+          'invalid_output',
+          'Vision provider rejected the request',
+        );
+    }
   }
 
   // ---------------------------------------------------------------------------
   // Response parsing
   // ---------------------------------------------------------------------------
-
-  private async readJson(response: Response): Promise<unknown> {
-    try {
-      return await response.json();
-    } catch {
-      throw new AiProviderError(
-        'invalid_output',
-        'Vision provider returned a non-JSON response',
-      );
-    }
-  }
 
   private parseExtraction(payload: unknown, model: string): RawExtraction {
     const choice = (payload as any)?.choices?.[0];

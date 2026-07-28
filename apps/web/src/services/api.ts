@@ -217,11 +217,17 @@ import type {
   MediaFilesResponse,
   AiSettingsUpdate,
   AiStatus,
+  AiVerifyFailure,
+  AiVerifyFailureReason,
+  AiVerifyRequest,
+  AiVerifyResult,
   AttachmentRole,
   CardExtractionResult,
   ExtractCardRequest,
   SystemSettings,
 } from '../types';
+
+import { AI_VERIFY_FAILURE_REASONS } from '../types';
 
 // =============================================================================
 // AI API
@@ -293,6 +299,177 @@ export async function patchSystemSettingsAi(
     { ai: payload },
     { headers: { 'If-Match': String(version) } },
   );
+}
+
+function isAiVerifyFailureReason(
+  value: unknown,
+): value is AiVerifyFailureReason {
+  return (
+    typeof value === 'string' &&
+    (AI_VERIFY_FAILURE_REASONS as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * Coerce whatever the endpoint actually returned into the union the UI
+ * switches on.
+ *
+ * Anything unrecognised becomes an `unknown` failure rather than an
+ * optimistic pass: a malformed response is not evidence that the
+ * configuration works, and rendering a green tick for one would be the exact
+ * false reassurance this feature exists to remove.
+ */
+function normalizeAiVerifyResult(raw: unknown): AiVerifyResult {
+  const value = raw as LooseAiVerifyPayload | null | undefined;
+
+  const model = typeof value?.model === 'string' ? value.model : '';
+  const durationMs =
+    typeof value?.durationMs === 'number' ? value.durationMs : 0;
+  const adaptedParameters: string[] = Array.isArray(value?.adaptedParameters)
+    ? (value.adaptedParameters as unknown[]).filter(
+        (entry): entry is string => typeof entry === 'string',
+      )
+    : [];
+
+  if (value?.ok === true) {
+    // Defensive: success without image support is a failed test for our
+    // purposes, whatever the API chose to call it. Card import sends photos.
+    if (value.imageSupport === false) {
+      return {
+        ok: false,
+        reason: 'model_no_image_support',
+        message: typeof value.message === 'string' ? value.message : '',
+        model,
+        durationMs,
+        adaptedParameters,
+      };
+    }
+
+    return { ok: true, model, imageSupport: true, durationMs, adaptedParameters };
+  }
+
+  if (value?.ok === false) {
+    return {
+      ok: false,
+      reason: isAiVerifyFailureReason(value.reason) ? value.reason : 'unknown',
+      message: typeof value.message === 'string' ? value.message : '',
+      model,
+      durationMs,
+      adaptedParameters,
+    };
+  }
+
+  return {
+    ok: false,
+    reason: 'unknown',
+    message: 'The connection test returned an unrecognised response.',
+    model: '',
+    durationMs: 0,
+    adaptedParameters: [],
+  };
+}
+
+/**
+ * Loosened shape used only while validating an untrusted payload. Every field
+ * is optional and none is narrowed, so the checks above are real checks rather
+ * than assertions TypeScript has already decided the answer to.
+ */
+interface LooseAiVerifyPayload {
+  ok?: boolean;
+  reason?: unknown;
+  message?: unknown;
+  model?: unknown;
+  imageSupport?: unknown;
+  durationMs?: unknown;
+  adaptedParameters?: unknown;
+}
+
+/**
+ * Turn a thrown transport/HTTP failure into the same result union, so no path
+ * out of `verifyAiConnection` is silent.
+ *
+ * A `fetch` rejection means the browser never got an answer - that is
+ * `network`, and explicitly NOT a rejected key. Conflating the two would send
+ * an admin off to reissue a perfectly good credential.
+ */
+function aiVerifyFailureFromError(err: unknown): AiVerifyFailure {
+  if (err instanceof ApiError) {
+    const detailReason = (
+      err.details as { reason?: unknown } | null | undefined
+    )?.reason;
+
+    // Deliberately NOT mapping 5xx to `network`. Our API answering at all
+    // means the browser reached it, and it throws on its own failures - a
+    // stored key it cannot decrypt (503), or too many checks in a row (429).
+    // Calling either of those "could not reach OpenAI" would send an admin to
+    // debug their egress firewall over a problem in their own database.
+    let reason: AiVerifyFailureReason = 'unknown';
+    if (isAiVerifyFailureReason(detailReason)) {
+      reason = detailReason;
+    } else if (isAiVerifyFailureReason(err.code)) {
+      reason = err.code;
+    } else if (err.status === 0) {
+      reason = 'network';
+    }
+
+    return {
+      ok: false,
+      reason,
+      message: err.message,
+      model: '',
+      durationMs: 0,
+      adaptedParameters: [],
+    };
+  }
+
+  return {
+    ok: false,
+    reason: 'network',
+    message:
+      err instanceof Error
+        ? err.message
+        : 'The connection test could not be completed.',
+    model: '',
+    durationMs: 0,
+    adaptedParameters: [],
+  };
+}
+
+/**
+ * Make one real call to the configured AI provider and report whether the
+ * stored key and the given model can actually do card extraction.
+ *
+ * IMPORTANT: this costs the operator money on every invocation. Call it only
+ * from an explicit user action - never from an effect, a blur handler, or a
+ * save path.
+ *
+ * `request.model` is an unsaved candidate to probe instead of the stored model.
+ * It is trimmed here, and a name that is empty or only whitespace is dropped
+ * rather than sent: the API validates the trimmed length and answers 400 for a
+ * blank, whereas an admin who has cleared the field means "test what is saved".
+ * Nothing else is ever put in the body - notably not the API key, which the
+ * server already holds and which has no business travelling back up the wire.
+ *
+ * Expected failures (bad key, wrong model, no quota) come back as a 200 with
+ * `ok: false`, because they are answers rather than errors. Transport and
+ * HTTP failures are normalised into the same shape here so callers render one
+ * thing and nothing gets swallowed. This function does not throw.
+ */
+export async function verifyAiConnection(
+  request: AiVerifyRequest = {},
+): Promise<AiVerifyResult> {
+  const model = request.model?.trim();
+  // `undefined` (not `{}`) so `api.post` omits the body and the Content-Type
+  // header entirely - which is the path the endpoint's `.default({})` exists to
+  // keep working as "probe the stored model".
+  const body: AiVerifyRequest | undefined = model ? { model } : undefined;
+
+  try {
+    const raw = await api.post<unknown>('/system-settings/ai/verify', body);
+    return normalizeAiVerifyResult(raw);
+  } catch (err) {
+    return aiVerifyFailureFromError(err);
+  }
 }
 
 // Allowlist API
