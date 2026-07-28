@@ -19,10 +19,12 @@ import {
 
 import { AiEgressNotice } from '../components/cards/AiEgressNotice';
 import { CardCaptureStep } from '../components/cards/CardCaptureStep';
+import { CardCropReview, type CardSideCrop } from '../components/cards/CardCropReview';
 import { CardReviewForm } from '../components/cards/CardReviewForm';
 import { useAiStatus } from '../hooks/useAiStatus';
 import {
   LOW_CONFIDENCE_THRESHOLD,
+  type CapturedCardPhoto,
   type CapturedCardSide,
 } from '../hooks/useCardImport';
 import {
@@ -31,8 +33,11 @@ import {
   toRenewalValues,
   useCardRenewal,
 } from '../hooks/useCardRenewal';
+import type { CardCropBox } from '../types';
 import {
+  cropImageFileToBox,
   cropImageFileToCard,
+  prepareCardPhoto,
   type CardAdjustments,
   type CroppedCardImage,
 } from '../utils/cardImage';
@@ -43,6 +48,13 @@ type Stage = 'front' | 'back' | 'processing' | 'review';
  * Renew a card in place, creating a new version.
  *
  * Front capture -> back capture -> (optional AI read) -> per-field diff -> renew.
+ *
+ * The capture steps collect FULL photos, exactly as the import wizard now
+ * does: the prepared full frame goes to the extraction endpoint, the AI
+ * returns a bounding box per side, and the stored attachment is cropped from
+ * that box (adjustable on the diff step). With AI off, any photo is cropped by
+ * the centred auto-fit instead — still adjustable. Only the cropped version is
+ * ever uploaded to storage.
  *
  * Three things separate this from the import wizard, and each one is load-bearing:
  *
@@ -83,27 +95,30 @@ export default function RenewCardPage() {
   } = useCardRenewal(secretId);
 
   const [stage, setStage] = useState<Stage>('front');
-  const [frontImage, setFrontImage] = useState<CroppedCardImage | null>(null);
-  const [backImage, setBackImage] = useState<CroppedCardImage | null>(null);
-  const [isCropping, setIsCropping] = useState(false);
+  const [frontPhoto, setFrontPhoto] = useState<CapturedCardPhoto | null>(null);
+  const [backPhoto, setBackPhoto] = useState<CapturedCardPhoto | null>(null);
+  const [frontCrop, setFrontCrop] = useState<CardSideCrop | null>(null);
+  const [backCrop, setBackCrop] = useState<CardSideCrop | null>(null);
+  const [isPreparing, setIsPreparing] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
 
   const [values, setValues] = useState<Record<string, string> | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [editedFields, setEditedFields] = useState<Set<string>>(new Set());
 
-  // Preview object URLs are revoked explicitly, and tracked in a ref so the
-  // unmount cleanup sees the current set rather than a stale closure.
+  // Object URLs (full-photo previews AND crop previews) are revoked
+  // explicitly, and tracked in a ref so the unmount cleanup sees the current
+  // set rather than a stale closure.
   const previewUrlsRef = useRef<Set<string>>(new Set());
 
-  const trackPreview = useCallback((image: CroppedCardImage | null) => {
-    if (image) previewUrlsRef.current.add(image.previewUrl);
+  const trackUrl = useCallback((url: string) => {
+    previewUrlsRef.current.add(url);
   }, []);
 
-  const releasePreview = useCallback((image: CroppedCardImage | null) => {
-    if (!image) return;
-    previewUrlsRef.current.delete(image.previewUrl);
-    URL.revokeObjectURL(image.previewUrl);
+  const releaseUrl = useCallback((url: string | null | undefined) => {
+    if (!url) return;
+    previewUrlsRef.current.delete(url);
+    URL.revokeObjectURL(url);
   }, []);
 
   useEffect(() => {
@@ -131,18 +146,15 @@ export default function RenewCardPage() {
     ? { front: 0, back: 1, processing: 2, review: 3 }[stage]
     : { front: 0, back: 1, processing: 2, review: 2 }[stage];
 
+  // What gets uploaded on renew: the CROPPED images, never the full photos.
   const capturedSides: CapturedCardSide[] = useMemo(() => {
     const sides: CapturedCardSide[] = [];
-    if (frontImage) sides.push({ role: 'card_front', image: frontImage });
-    if (backImage) sides.push({ role: 'card_back', image: backImage });
+    if (frontCrop) sides.push({ role: 'card_front', image: frontCrop.image });
+    if (backCrop) sides.push({ role: 'card_back', image: backCrop.image });
     return sides;
-  }, [frontImage, backImage]);
+  }, [frontCrop, backCrop]);
 
-  const handleFileSelected = async (
-    side: 'front' | 'back',
-    file: File,
-    adjustments: CardAdjustments,
-  ) => {
+  const handleFileSelected = async (side: 'front' | 'back', file: File) => {
     setCaptureError(null);
 
     if (!file.type.startsWith('image/')) {
@@ -150,67 +162,128 @@ export default function RenewCardPage() {
       return;
     }
 
-    setIsCropping(true);
+    setIsPreparing(true);
     try {
-      // Cropped here, with the framing the user confirmed in the adjust stage,
-      // before anything leaves the device — the uncropped frame is never
-      // uploaded and never sent for extraction.
-      const cropped = await cropImageFileToCard(file, {
-        fileName: `card-${side}.jpg`,
-        ...adjustments,
-      });
-      trackPreview(cropped);
+      // Full frame only — the crop for the stored attachment happens after
+      // the AI locates the card (or via the auto-fit when AI is off). The
+      // full photo goes to the extraction endpoint and nowhere else; it is
+      // never uploaded to storage.
+      const prepared = await prepareCardPhoto(file);
+      const previewUrl = URL.createObjectURL(file);
+      trackUrl(previewUrl);
+      const photo: CapturedCardPhoto = { file, prepared, previewUrl };
       if (side === 'front') {
-        releasePreview(frontImage);
-        setFrontImage(cropped);
+        releaseUrl(frontPhoto?.previewUrl);
+        setFrontPhoto(photo);
       } else {
-        releasePreview(backImage);
-        setBackImage(cropped);
+        releaseUrl(backPhoto?.previewUrl);
+        setBackPhoto(photo);
       }
     } catch (err) {
       setCaptureError(
         err instanceof Error ? err.message : 'That photo could not be processed.',
       );
     } finally {
-      setIsCropping(false);
+      setIsPreparing(false);
     }
   };
 
   const handleRetake = (side: 'front' | 'back') => {
     setCaptureError(null);
     if (side === 'front') {
-      releasePreview(frontImage);
-      setFrontImage(null);
+      releaseUrl(frontPhoto?.previewUrl);
+      setFrontPhoto(null);
     } else {
-      releasePreview(backImage);
-      setBackImage(null);
+      releaseUrl(backPhoto?.previewUrl);
+      setBackPhoto(null);
     }
   };
+
+  /**
+   * Render the initial stored-attachment crop for one side: from the AI's box
+   * when one came back, otherwise the centred auto-fit. A failed box crop
+   * falls back to the auto-fit rather than losing the side.
+   */
+  const renderInitialCrop = useCallback(
+    async (
+      side: 'front' | 'back',
+      photo: CapturedCardPhoto,
+      box: CardCropBox | null,
+    ): Promise<CardSideCrop | null> => {
+      const fileName = `card-${side}.jpg`;
+      if (box) {
+        try {
+          const image = await cropImageFileToBox(photo.file, box, { fileName });
+          trackUrl(image.previewUrl);
+          return { image, box, adjustments: null };
+        } catch {
+          // Degenerate or unusable box — fall through to the auto-fit crop.
+        }
+      }
+      try {
+        const image = await cropImageFileToCard(photo.file, { fileName });
+        trackUrl(image.previewUrl);
+        return { image, box: null, adjustments: null };
+      } catch {
+        return null;
+      }
+    },
+    [trackUrl],
+  );
 
   /**
    * Move to the diff, reading the card first when that is possible.
    *
    * The read is skipped — silently and without an error — when the feature is
-   * off or when there is no front photo to read. Either way the form is seeded
-   * from the outgoing card and the user edits by hand.
+   * off or when there is no front photo to read. Either way any photo taken is
+   * cropped for the new version's attachment, the form is seeded from the
+   * outgoing card, and the user edits by hand.
    */
-  const goToReview = async (sides: CapturedCardSide[]) => {
-    const front = sides.find((side) => side.role === 'card_front');
-
-    if (!canExtract || !front) {
-      setValues(toRenewalValues(currentValues, null));
-      setEditedFields(new Set());
-      setFieldErrors({});
-      setStage('review');
-      return;
-    }
-
+  const goToReview = async (
+    front: CapturedCardPhoto | null,
+    back: CapturedCardPhoto | null,
+  ) => {
     setStage('processing');
-    const result = await runExtraction(sides);
+
+    const result =
+      canExtract && front
+        ? await runExtraction({
+            front: front.prepared.dataUrl,
+            back: back?.prepared.dataUrl,
+          })
+        : null;
+
+    const nextFront = front
+      ? await renderInitialCrop('front', front, result?.crops?.front ?? null)
+      : null;
+    const nextBack = back
+      ? await renderInitialCrop('back', back, result?.crops?.back ?? null)
+      : null;
+    releaseUrl(frontCrop?.image.previewUrl);
+    releaseUrl(backCrop?.image.previewUrl);
+    setFrontCrop(nextFront);
+    setBackCrop(nextBack);
+
     setValues(toRenewalValues(currentValues, result));
     setEditedFields(new Set());
     setFieldErrors({});
     setStage('review');
+  };
+
+  /** The user re-cropped a side in the diff step's adjuster. */
+  const handleCropChange = (
+    side: 'front' | 'back',
+    image: CroppedCardImage,
+    adjustments: CardAdjustments,
+  ) => {
+    trackUrl(image.previewUrl);
+    if (side === 'front') {
+      releaseUrl(frontCrop?.image.previewUrl);
+      setFrontCrop((prev) => ({ image, box: prev?.box ?? null, adjustments }));
+    } else {
+      releaseUrl(backCrop?.image.previewUrl);
+      setBackCrop((prev) => ({ image, box: prev?.box ?? null, adjustments }));
+    }
   };
 
   const handleCancel = async () => {
@@ -364,28 +437,26 @@ export default function RenewCardPage() {
             <Alert severity="info" sx={{ mb: 2 }}>
               <AlertTitle>Photos are not read automatically</AlertTitle>
               AI card reading is off, so nothing is sent to OpenAI. Any photo you
-              add is stored with the new version, and you type the new details
-              yourself on the next step.
+              add is cropped to the card and stored with the new version, and
+              you type the new details yourself on the next step.
             </Alert>
           )}
 
           {stage === 'front' ? (
             <CardCaptureStep
               side="front"
-              image={frontImage}
-              isProcessing={isCropping}
+              photo={frontPhoto}
+              isProcessing={isPreparing}
               error={captureError}
               heading="Photograph the front of the new card (optional)"
               helpText={
                 canExtract
-                  ? 'The new photo replaces the front image on this card. The old version keeps its own. Skip it to type the details instead.'
-                  : 'The new photo replaces the front image on this card. The old version keeps its own. Skip it if you are only updating the details.'
+                  ? 'Make sure every corner of the card is in the shot and the text is readable. The new photo replaces the front image on this card; the old version keeps its own. Skip it to type the details instead.'
+                  : 'Make sure every corner of the card is in the shot and the text is readable. The new photo replaces the front image on this card; the old version keeps its own. Skip it if you are only updating the details.'
               }
               continueLabel="Continue"
               skipLabel="Skip the photo"
-              onFileSelected={(file, adjustments) =>
-                void handleFileSelected('front', file, adjustments)
-              }
+              onFileSelected={(file) => void handleFileSelected('front', file)}
               onRetake={() => handleRetake('front')}
               onContinue={() => setStage('back')}
               // Present on the FRONT step too, unlike import: a renewal with no
@@ -394,8 +465,8 @@ export default function RenewCardPage() {
               // it), and it is the only way the flow works with AI off and no
               // camera to hand.
               onSkip={() => {
-                releasePreview(frontImage);
-                setFrontImage(null);
+                releaseUrl(frontPhoto?.previewUrl);
+                setFrontPhoto(null);
                 setStage('back');
               }}
               onCancel={() => void handleCancel()}
@@ -403,24 +474,20 @@ export default function RenewCardPage() {
           ) : (
             <CardCaptureStep
               side="back"
-              image={backImage}
-              isProcessing={isCropping}
+              photo={backPhoto}
+              isProcessing={isPreparing}
               error={captureError}
               heading="Photograph the back of the new card (optional)"
-              helpText="The new photo replaces the back image on this card. The old version keeps its own."
-              continueLabel={canExtract && frontImage ? 'Read the card' : 'Continue'}
+              helpText="Make sure every corner of the card is in the shot. The new photo replaces the back image on this card; the old version keeps its own."
+              continueLabel={canExtract && frontPhoto ? 'Read the card' : 'Continue'}
               skipLabel="Skip the photo"
-              onFileSelected={(file, adjustments) =>
-                void handleFileSelected('back', file, adjustments)
-              }
+              onFileSelected={(file) => void handleFileSelected('back', file)}
               onRetake={() => handleRetake('back')}
-              onContinue={() => void goToReview(capturedSides)}
+              onContinue={() => void goToReview(frontPhoto, backPhoto)}
               onSkip={() => {
-                releasePreview(backImage);
-                setBackImage(null);
-                void goToReview(
-                  frontImage ? [{ role: 'card_front', image: frontImage }] : [],
-                );
+                releaseUrl(backPhoto?.previewUrl);
+                setBackPhoto(null);
+                void goToReview(frontPhoto, null);
               }}
               onCancel={() => void handleCancel()}
             />
@@ -430,12 +497,12 @@ export default function RenewCardPage() {
         <Paper sx={{ p: 4, textAlign: 'center' }}>
           <CircularProgress sx={{ mb: 2 }} />
           <Typography variant="h6" gutterBottom>
-            Reading the new card…
+            {isExtracting ? 'Reading the new card…' : 'Preparing the photos…'}
           </Typography>
           <Typography variant="body2" color="text.secondary">
             {isExtracting
-              ? 'Your cropped photos have been sent to OpenAI. This usually takes a few seconds.'
-              : 'Preparing the comparison…'}
+              ? 'Your photos have been sent to OpenAI, which locates the card and reads the printed details. This usually takes a few seconds.'
+              : 'Cropping the photos to the card…'}
           </Typography>
         </Paper>
       ) : (
@@ -468,7 +535,7 @@ export default function RenewCardPage() {
                   <Button
                     color="inherit"
                     size="small"
-                    onClick={() => void goToReview(capturedSides)}
+                    onClick={() => void goToReview(frontPhoto, backPhoto)}
                   >
                     Try again
                   </Button>
@@ -496,6 +563,19 @@ export default function RenewCardPage() {
               {submitError}
             </Alert>
           )}
+
+          <CardCropReview
+            sides={[
+              ...(frontPhoto
+                ? [{ side: 'front' as const, file: frontPhoto.file, crop: frontCrop }]
+                : []),
+              ...(backPhoto
+                ? [{ side: 'back' as const, file: backPhoto.file, crop: backCrop }]
+                : []),
+            ]}
+            disabled={isSubmitting}
+            onCropChange={handleCropChange}
+          />
 
           <CardReviewForm
             fields={fields}

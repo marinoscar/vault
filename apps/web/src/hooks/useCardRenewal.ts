@@ -10,6 +10,7 @@ import {
 import {
   EXTRACTED_CARD_FIELD_NAMES,
   type CardExtractionResult,
+  type ExtractCardRequest,
   type FieldDefinition,
   type RenewSecretAttachment,
   type SecretDetail,
@@ -180,9 +181,12 @@ interface UseCardRenewalResult {
   extraction: CardExtractionResult | null;
   extractionError: CardExtractionMessage | null;
   isExtracting: boolean;
-  /** Never rejects: a failure resolves to `null` and lands in `extractionError`. */
+  /**
+   * Run the extraction on the prepared FULL photos. Never rejects: a failure
+   * resolves to `null` and lands in `extractionError`.
+   */
   runExtraction: (
-    images: CapturedCardSide[],
+    photos: ExtractCardRequest,
   ) => Promise<CardExtractionResult | null>;
 
   isSubmitting: boolean;
@@ -277,21 +281,12 @@ export function useCardRenewal(secretId: string | undefined): UseCardRenewalResu
   }, [cleanup]);
 
   const runExtraction = useCallback(
-    async (images: CapturedCardSide[]): Promise<CardExtractionResult | null> => {
+    async (photos: ExtractCardRequest): Promise<CardExtractionResult | null> => {
       setIsExtracting(true);
       setExtractionError(null);
       setExtraction(null);
       try {
-        const front = images.find((side) => side.role === 'card_front');
-        if (!front) {
-          throw new Error('A photo of the front of the card is required.');
-        }
-        const back = images.find((side) => side.role === 'card_back');
-
-        const result = await extractCardFromImages({
-          front: front.image.dataUrl,
-          back: back?.image.dataUrl,
-        });
+        const result = await extractCardFromImages(photos);
         setExtraction(result);
         return result;
       } catch (err) {

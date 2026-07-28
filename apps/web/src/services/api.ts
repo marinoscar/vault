@@ -245,13 +245,15 @@ export async function getAiStatus(): Promise<AiStatus> {
 }
 
 /**
- * Read card fields from already-cropped images.
+ * Locate a card in FULL photos and read its fields.
  *
  * The transport is base64 JSON rather than multipart because `request()` above
  * force-sets `Content-Type: application/json` whenever a body is present — a
- * multipart endpoint would be unreachable through this client. Cropping is the
- * caller's job (see `utils/cardImage.ts`); whatever is passed here is what
- * leaves the device.
+ * multipart endpoint would be unreachable through this client. Preparing the
+ * photos (downscale, size cap — see `prepareCardPhoto` in `utils/cardImage.ts`)
+ * is the caller's job; whatever is passed here is what leaves the device. The
+ * response's `crops` boxes are what the client then crops the stored
+ * attachments from — the full photos themselves are never uploaded to storage.
  *
  * The response never contains a CVV. The API does not ask the model for one.
  */

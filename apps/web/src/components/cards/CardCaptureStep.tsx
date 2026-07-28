@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useRef, type ChangeEvent } from 'react';
 import {
   Alert,
   Box,
@@ -12,21 +12,18 @@ import {
   Refresh as RetakeIcon,
 } from '@mui/icons-material';
 
-import {
-  CARD_ASPECT_RATIO,
-  type CardAdjustments,
-  type CroppedCardImage,
-} from '../../utils/cardImage';
-import { CardCropAdjuster } from './CardCropAdjuster';
+import { CARD_ASPECT_RATIO } from '../../utils/cardImage';
 
 interface CardCaptureStepProps {
   side: 'front' | 'back';
-  image: CroppedCardImage | null;
   /**
-   * Called with the raw file and the framing the user confirmed in the adjust
-   * stage; the caller crops it.
+   * The captured photo, set by the caller once the pick has been prepared.
+   * Only the preview matters here; the caller owns the file and the object
+   * URL's lifetime.
    */
-  onFileSelected: (file: File, adjustments: CardAdjustments) => void;
+  photo: { previewUrl: string } | null;
+  /** Called with the raw file the user picked; the caller prepares it. */
+  onFileSelected: (file: File) => void;
   onRetake: () => void;
   onContinue: () => void;
   /** Present only on the back step, where the shot is optional. */
@@ -59,12 +56,12 @@ interface CardCaptureStepProps {
 const COPY = {
   front: {
     heading: 'Photograph the front of the card',
-    help: 'Lay the card on a flat, plain surface in good light and fill the frame. The photo is cropped to the card automatically.',
+    help: 'Make sure every corner of the card is in the shot and the text is readable.',
     action: 'Take a photo of the front',
   },
   back: {
     heading: 'Photograph the back of the card (optional)',
-    help: 'The back often carries the issuing bank. Skip it if you would rather not photograph the signature strip.',
+    help: 'Make sure every corner of the card is in the shot and the text is readable. Skip it if you would rather not photograph the signature strip.',
     action: 'Take a photo of the back',
   },
 } as const;
@@ -76,15 +73,16 @@ const COPY = {
  * directly; on a desktop browser the same input degrades to an ordinary file
  * picker, which is why this is a file input rather than a getUserMedia preview.
  *
- * Picking a photo no longer crops it immediately: the raw file first goes
- * through an adjust stage ({@link CardCropAdjuster}) where the user zooms,
- * pans and rotates until the card fills the frame, and only their confirmed
- * framing is handed to `onFileSelected`. The raw frame still never leaves the
- * device — the adjuster draws locally and the caller crops before uploading.
+ * No cropping happens here: the FULL photo is shown as-is for a use-it-or-
+ * retake decision, and the full frame is what the extraction endpoint receives
+ * — the AI locates the card and returns its bounding box. Cropping to the card
+ * (for the stored attachment) happens after extraction, seeded from that box
+ * and adjustable on the review step; the full photo itself is never uploaded
+ * to storage.
  */
 export function CardCaptureStep({
   side,
-  image,
+  photo,
   onFileSelected,
   onRetake,
   onContinue,
@@ -100,25 +98,12 @@ export function CardCaptureStep({
   const inputRef = useRef<HTMLInputElement>(null);
   const copy = COPY[side];
 
-  // The picked-but-not-yet-confirmed capture being framed in the adjuster.
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
-
-  // The caller reports a successful crop by setting `image`; that is the
-  // signal the adjust stage is over. On a failed crop `image` stays null and
-  // the adjuster remains up with the error above it, so the user can re-frame
-  // or retake instead of losing the shot.
-  useEffect(() => {
-    if (image) setPendingFile(null);
-  }, [image]);
-
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     // Reset so retaking with the same file name still fires a change event.
     event.target.value = '';
-    if (file) setPendingFile(file);
+    if (file) onFileSelected(file);
   };
-
-  const isAdjusting = pendingFile !== null && !image;
 
   return (
     <Paper sx={{ p: { xs: 2, md: 3 } }}>
@@ -146,18 +131,7 @@ export function CardCaptureStep({
         aria-label={copy.action}
       />
 
-      {isAdjusting && pendingFile ? (
-        <CardCropAdjuster
-          file={pendingFile}
-          side={side}
-          isProcessing={isProcessing}
-          onConfirm={(adjustments) => onFileSelected(pendingFile, adjustments)}
-          onRetake={() => {
-            setPendingFile(null);
-            inputRef.current?.click();
-          }}
-        />
-      ) : image ? (
+      {photo ? (
         <Box
           sx={{
             mb: 2,
@@ -170,8 +144,8 @@ export function CardCaptureStep({
         >
           <Box
             component="img"
-            src={image.previewUrl}
-            alt={`Cropped ${side} of the card`}
+            src={photo.previewUrl}
+            alt={`Photo of the ${side} of the card`}
             sx={{ display: 'block', width: '100%', height: 'auto' }}
           />
         </Box>
@@ -200,38 +174,35 @@ export function CardCaptureStep({
       )}
 
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-        {/* While adjusting, the primary actions (Use this photo / Retake) live
-            inside the adjuster; only Skip and Cancel remain down here. */}
-        {!isAdjusting &&
-          (image ? (
-            <>
-              <Button
-                variant="outlined"
-                startIcon={<RetakeIcon />}
-                onClick={() => {
-                  onRetake();
-                  inputRef.current?.click();
-                }}
-                disabled={isProcessing}
-              >
-                Retake
-              </Button>
-              <Button variant="contained" onClick={onContinue} disabled={isProcessing}>
-                {continueLabel ?? (side === 'front' ? 'Continue' : 'Read the card')}
-              </Button>
-            </>
-          ) : (
+        {photo ? (
+          <>
             <Button
-              variant="contained"
-              startIcon={<CameraIcon />}
-              onClick={() => inputRef.current?.click()}
+              variant="outlined"
+              startIcon={<RetakeIcon />}
+              onClick={() => {
+                onRetake();
+                inputRef.current?.click();
+              }}
               disabled={isProcessing}
             >
-              {copy.action}
+              Retake
             </Button>
-          ))}
+            <Button variant="contained" onClick={onContinue} disabled={isProcessing}>
+              {continueLabel ?? (side === 'front' ? 'Continue' : 'Read the card')}
+            </Button>
+          </>
+        ) : (
+          <Button
+            variant="contained"
+            startIcon={<CameraIcon />}
+            onClick={() => inputRef.current?.click()}
+            disabled={isProcessing}
+          >
+            {copy.action}
+          </Button>
+        )}
 
-        {onSkip && !isAdjusting && (
+        {onSkip && (
           <Button onClick={onSkip} disabled={isProcessing}>
             {skipLabel}
           </Button>

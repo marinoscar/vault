@@ -17,12 +17,15 @@ import {
 import {
   CARD_ASPECT_RATIO,
   CARD_IMAGE_MAX_ZOOM,
+  adjustmentsFromCropBox,
   clamp,
   computeAdjustedCropRect,
   computeMaxPan,
   drawCardCrop,
   effectiveSourceSize,
+  normalizeQuarterTurns,
   type CardAdjustments,
+  type FractionalCropBox,
 } from '../../utils/cardImage';
 
 /** The adjustments as the adjuster holds them: every knob resolved. */
@@ -49,25 +52,40 @@ interface CardCropAdjusterProps {
   side: 'front' | 'back';
   /** Fired with the final adjustments when the user accepts the framing. */
   onConfirm: (adjustments: CardAdjustments) => void;
-  /** The user rejected the capture outright; the caller reopens the picker. */
+  /** The user backed out; the caller reopens the picker (or closes the stage). */
   onRetake: () => void;
   /** True while the caller is encoding the confirmed crop. */
   isProcessing?: boolean;
+  /**
+   * Seed the knobs from a previously confirmed adjustment, so reopening the
+   * adjuster resumes where the user left off. Takes precedence over
+   * `initialBox`.
+   */
+  initialAdjustments?: CardAdjustments;
+  /**
+   * Seed the knobs from the AI-returned fractional box, so the adjuster opens
+   * showing the crop the box produced rather than the centred auto-fit. Used
+   * when the user has not adjusted this side yet.
+   */
+  initialBox?: FractionalCropBox;
+  /** Label of the confirm button. Defaults to 'Use this photo'. */
+  confirmLabel?: string;
+  /** Label of the secondary (back-out) button. Defaults to 'Retake'. */
+  retakeLabel?: string;
 }
 
 /**
- * Interactive framing stage between "photo picked" and "photo encoded".
+ * Interactive crop override.
  *
- * The automatic centred crop is only a starting point: a card that occupies
- * half the frame, or was shot upside down, produces a crop the vision model
- * cannot read. This stage lets the user rotate (90° steps), zoom (1-4x) and
- * drag the picture until the card fills the card-shaped viewport, then
- * confirms. The preview is drawn by the SAME `drawCardCrop` routine that
- * later encodes the upload, so what the user approves is what gets sent.
+ * The AI locates the card and its box seeds the stored-attachment crop; this
+ * stage exists for when that box (or, with AI unavailable, the centred
+ * auto-fit) is wrong. The user rotates (90° steps), zooms (1-4x) and drags the
+ * picture until the card fills the card-shaped viewport, then confirms. The
+ * preview is drawn by the SAME `drawCardCrop` routine that later encodes the
+ * stored crop, so what the user approves is what gets kept.
  *
- * Everything happens on-device: the raw file is only ever drawn to a local
- * canvas here, and nothing leaves the browser until the caller encodes and
- * sends the confirmed crop.
+ * The raw file is only ever drawn to a local canvas here; only the confirmed
+ * crop, encoded by the caller, is uploaded to storage.
  */
 export function CardCropAdjuster({
   file,
@@ -75,11 +93,47 @@ export function CardCropAdjuster({
   onConfirm,
   onRetake,
   isProcessing = false,
+  initialAdjustments,
+  initialBox,
+  confirmLabel = 'Use this photo',
+  retakeLabel = 'Retake',
 }: CardCropAdjusterProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [adjust, setAdjust] = useState<ResolvedAdjustments>(INITIAL_ADJUSTMENTS);
+
+  // The seeds are read once per decoded file, inside the decode effect. A ref
+  // keeps them out of that effect's dependencies: pages pass fresh object
+  // literals every render, and re-running the decode on each would reset the
+  // user's in-progress adjustment.
+  const seedRef = useRef({ initialAdjustments, initialBox });
+  seedRef.current = { initialAdjustments, initialBox };
+
+  /** Resolve the starting knobs for a freshly decoded image. */
+  const resolveSeed = (element: HTMLImageElement): ResolvedAdjustments => {
+    const { initialAdjustments: seedAdjust, initialBox: seedBox } = seedRef.current;
+    if (seedAdjust) {
+      return {
+        zoom: clamp(seedAdjust.zoom ?? 1, 1, CARD_IMAGE_MAX_ZOOM),
+        panX: seedAdjust.panX ?? 0,
+        panY: seedAdjust.panY ?? 0,
+        quarterTurns: normalizeQuarterTurns(seedAdjust.quarterTurns),
+      };
+    }
+    if (seedBox) {
+      try {
+        return adjustmentsFromCropBox(
+          element.naturalWidth || element.width,
+          element.naturalHeight || element.height,
+          seedBox,
+        );
+      } catch {
+        // A degenerate box seeds nothing; fall through to the auto-fit start.
+      }
+    }
+    return INITIAL_ADJUSTMENTS;
+  };
 
   // One active drag at a time; a second touch while dragging is ignored rather
   // than making the pan jump between fingers.
@@ -100,7 +154,10 @@ export function CardCropAdjuster({
     const element = new Image();
     element.onload = () => {
       URL.revokeObjectURL(url);
-      if (!cancelled) setImage(element);
+      if (!cancelled) {
+        setImage(element);
+        setAdjust(resolveSeed(element));
+      }
     };
     element.onerror = () => {
       URL.revokeObjectURL(url);
@@ -306,8 +363,9 @@ export function CardCropAdjuster({
         <Box
           sx={{ mb: 1.5, typography: 'body2', color: 'text.secondary' }}
         >
-          Zoom and drag until the card fills the frame — sharper crops read
-          better. Rotate if the card is on its side or upside down.
+          Zoom and drag until the card fills the frame — this crop is what gets
+          stored with the card. Rotate if the card is on its side or upside
+          down.
         </Box>
 
         <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
@@ -345,7 +403,7 @@ export function CardCropAdjuster({
             onClick={() => onConfirm(adjust)}
             disabled={isProcessing || !image}
           >
-            {isProcessing ? 'Cropping…' : 'Use this photo'}
+            {isProcessing ? 'Cropping…' : confirmLabel}
           </Button>
           <Button
             variant="outlined"
@@ -353,7 +411,7 @@ export function CardCropAdjuster({
             onClick={onRetake}
             disabled={isProcessing}
           >
-            Retake
+            {retakeLabel}
           </Button>
         </Box>
       </Box>

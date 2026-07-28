@@ -242,10 +242,35 @@ export const EXTRACTED_CARD_FIELD_NAMES = [
 
 export type ExtractedCardFieldName = (typeof EXTRACTED_CARD_FIELD_NAMES)[number];
 
-/** Body of `POST /api/secrets/cards/extract`: already-cropped base64 data URLs. */
+/**
+ * Body of `POST /api/secrets/cards/extract`: FULL, uncropped photos as base64
+ * data URLs (downscaled client-side only when very large — see
+ * `prepareCardPhoto` in `utils/cardImage.ts`). The model locates the card in
+ * each frame and reports where in {@link CardExtractionResult.crops}; the
+ * client crops the stored attachment from those boxes afterwards. The full
+ * photos go to the AI only — they are never uploaded to storage.
+ */
 export interface ExtractCardRequest {
   front: string;
   back?: string;
+}
+
+/**
+ * Where the model found the card in one submitted photo.
+ *
+ * `x`/`y`/`width`/`height` are fractions (0-1) of the image EXACTLY as it was
+ * sent — they apply to the prepared (possibly downscaled) photo, and equally
+ * to the raw capture, since fractions survive uniform scaling.
+ */
+export interface CardCropBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  /** Clockwise 90° rotations (0-3) that make the card upright. */
+  quarterTurns: number;
+  /** 0-1 confidence that the box tightly bounds a card. */
+  confidence: number;
 }
 
 /**
@@ -262,6 +287,14 @@ export interface CardExtractionResult {
   model: string;
   /** True when the call succeeded but nothing legible came back. */
   partial: boolean;
+  /**
+   * Card locations, one per submitted side. A side is `null` when no image
+   * was sent for it or no card was visible in the frame.
+   */
+  crops: {
+    front: CardCropBox | null;
+    back: CardCropBox | null;
+  };
 }
 
 export interface SystemSettings {

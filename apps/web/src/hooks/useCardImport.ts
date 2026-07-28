@@ -16,9 +16,10 @@ import {
   type AiErrorCode,
   type AttachmentRole,
   type CardExtractionResult,
+  type ExtractCardRequest,
   type SecretType,
 } from '../types';
-import type { CroppedCardImage } from '../utils/cardImage';
+import type { CroppedCardImage, PreparedCardPhoto } from '../utils/cardImage';
 import { CARD_TYPE_NAME } from './useCards';
 
 /**
@@ -29,7 +30,18 @@ import { CARD_TYPE_NAME } from './useCards';
  */
 export const LOW_CONFIDENCE_THRESHOLD = 0.7;
 
-/** A captured card side, cropped and ready to send/upload. */
+/**
+ * A captured photo of one card side: the raw file, the prepared full-frame
+ * data URL that goes to the extraction endpoint, and a preview object URL.
+ * The page that creates it owns (and must revoke) the preview URL.
+ */
+export interface CapturedCardPhoto {
+  file: File;
+  prepared: PreparedCardPhoto;
+  previewUrl: string;
+}
+
+/** A captured card side, cropped to the card and ready to upload/attach. */
 export interface CapturedCardSide {
   role: AttachmentRole;
   image: CroppedCardImage;
@@ -271,11 +283,12 @@ interface UseCardImportResult {
   extractionError: CardExtractionMessage | null;
   isExtracting: boolean;
   /**
-   * Run the extraction. NEVER REJECTS — a failure resolves to `null` and lands
-   * in `extractionError`, so the caller always advances to review.
+   * Run the extraction on the prepared FULL photos. NEVER REJECTS — a failure
+   * resolves to `null` and lands in `extractionError`, so the caller always
+   * advances to review.
    */
   runExtraction: (
-    images: CapturedCardSide[],
+    photos: ExtractCardRequest,
   ) => Promise<CardExtractionResult | null>;
 
   isSaving: boolean;
@@ -374,21 +387,12 @@ export function useCardImport(): UseCardImportResult {
   }, [cleanup]);
 
   const runExtraction = useCallback(
-    async (images: CapturedCardSide[]): Promise<CardExtractionResult | null> => {
+    async (photos: ExtractCardRequest): Promise<CardExtractionResult | null> => {
       setIsExtracting(true);
       setExtractionError(null);
       setExtraction(null);
       try {
-        const front = images.find((side) => side.role === 'card_front');
-        if (!front) {
-          throw new Error('A photo of the front of the card is required.');
-        }
-        const back = images.find((side) => side.role === 'card_back');
-
-        const result = await extractCardFromImages({
-          front: front.image.dataUrl,
-          back: back?.image.dataUrl,
-        });
+        const result = await extractCardFromImages(photos);
         setExtraction(result);
         return result;
       } catch (err) {
