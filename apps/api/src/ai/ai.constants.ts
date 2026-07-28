@@ -30,7 +30,7 @@ export const AI_ERROR_CODES = {
   UPSTREAM_AUTH: 'AI_UPSTREAM_AUTH',
   /** OpenAI rate limited us (upstream 429). */
   UPSTREAM_RATE_LIMITED: 'AI_UPSTREAM_RATE_LIMITED',
-  /** OpenAI 5xx, network failure, or our 20s timeout. */
+  /** OpenAI 5xx, network failure, or our request timeout. */
   UPSTREAM_UNAVAILABLE: 'AI_UPSTREAM_UNAVAILABLE',
   /** Call succeeded but the model refused, or its output did not validate. */
   EXTRACTION_FAILED: 'AI_EXTRACTION_FAILED',
@@ -74,8 +74,21 @@ export const MAX_MODEL_NAME_LENGTH = 100;
  */
 export const MAX_IMAGE_DATA_URL_LENGTH = 2_800_000;
 
-/** Hard ceiling on a single OpenAI call. */
-export const OPENAI_REQUEST_TIMEOUT_MS = 20_000;
+/**
+ * Hard ceiling on a single OpenAI call.
+ *
+ * 60s, not less: an extraction is ONE combined call carrying up to two ~2 MB
+ * high-detail images, and vision models - the mini and reasoning families
+ * included - routinely need well over 20s to answer it. The old 20s value was
+ * tuned for the previous one-image-per-call flow; against the combined call it
+ * made real extractions die at the ceiling and surface as
+ * AI_UPSTREAM_UNAVAILABLE, while the admin's tiny verify probe kept passing.
+ *
+ * Nginx's /api proxy_read_timeout (600s) comfortably exceeds this, so the
+ * request cannot be cut off downstream first. The verify probe deliberately
+ * keeps its own, shorter OPENAI_VERIFY_TIMEOUT_MS below.
+ */
+export const OPENAI_REQUEST_TIMEOUT_MS = 60_000;
 
 /**
  * Hard ceiling on the verify probe.

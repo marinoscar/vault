@@ -1511,7 +1511,7 @@ Fields are `null` (with confidence `0`) when unread. `cvv` never appears in `fie
 | 429 | `AI_QUOTA_EXCEEDED` | Per-user durable daily budget exhausted (default 50/day, admin-configurable via `ai.maxCallsPerUserPerDay`) |
 | 429 | `AI_UPSTREAM_RATE_LIMITED` | OpenAI itself rate-limited the request |
 | 502 | `AI_UPSTREAM_AUTH` | OpenAI rejected the configured API key |
-| 502 | `AI_UPSTREAM_UNAVAILABLE` | OpenAI 5xx, network failure, or the API's own 20s timeout |
+| 502 | `AI_UPSTREAM_UNAVAILABLE` | OpenAI 5xx, network failure, or the API's own request timeout (60s) |
 | 503 | `AI_NOT_CONFIGURED` | Feature disabled, or no key stored |
 | 503 | `AI_KEY_UNREADABLE` | Key is stored but cannot be decrypted (`VAULT_ENCRYPTION_KEY` missing or rotated) |
 
