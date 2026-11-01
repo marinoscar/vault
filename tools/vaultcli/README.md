@@ -490,6 +490,223 @@ The non-zero exit on errors makes the job alertable via standard cron mail or ex
 
 ---
 
+### `backup` — Password-Protected Backup
+
+Downloads an **AES-256 encrypted zip** of the secrets you own (decrypted values, a readable `secrets.html` report, `secrets.json`, and attachments), protected by a password you choose. It calls `POST /api/secrets/export`, so it produces exactly the same file as **Settings > Back up my data** in the web app. What is inside the archive, the password trade-offs and the warnings: [docs/SECRETS.md § Backup and export](../../docs/SECRETS.md#backup-and-export).
+
+Open the file with 7-Zip (Windows), Keka or The Unarchiver (macOS), or `7z x` / File Roller (Linux). The built-in Windows and macOS zip tools cannot open AES zips.
+
+```bash
+vaultcli backup                                   # prompts for a password, writes ./vault-backup-<datetime>.zip
+vaultcli backup -o "~/backups/{year}/{month}/vault-{datetime}.zip"
+VAULTCLI_BACKUP_PASSWORD='blue tiger river' vaultcli backup --json
+vaultcli backup --password-file ~/.vault-backup-pw --include-versions --no-attachments
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-o, --output <template>` | Output path template (see tokens below) | `vault-backup-{datetime}.zip` |
+| `--password-env <VAR>` | Read the password from this environment variable | `VAULTCLI_BACKUP_PASSWORD` |
+| `--password-file <path>` | Read the password from a file (first line, trimmed) | - |
+| `-p, --password <pw>` | Password on the command line (warns: visible in the process list and shell history) | - |
+| `--no-attachments` | Exclude attachments | attachments included |
+| `--include-versions` | Include every version of each secret | current versions only |
+| `--overwrite` | Replace an existing file instead of adding `-1`, `-2` ... | off |
+| `--utc` | Use UTC for the date/time tokens | local time |
+| `--json` | Machine-readable result (global flag) | off |
+
+#### Password sources and order
+
+The first source that is present wins:
+
+1. `--password`
+2. `--password-file` (first line, trimmed; fails if unreadable or empty)
+3. Environment variable: the one named by `--password-env`, otherwise `VAULTCLI_BACKUP_PASSWORD`. An explicit `--password-env` whose variable is unset or empty is an error; the default variable being unset just moves on.
+4. A hidden interactive prompt with confirmation, only when stdin is a terminal.
+5. Otherwise the command **fails immediately** with a message naming the options; it never hangs waiting for input, so scheduled runs are safe.
+
+The password must be 6 to 256 characters; this is checked locally before any request. There are no complexity rules, but a longer passphrase is much safer: see the [password trade-off](../../docs/SECRETS.md#password-policy-and-the-honest-trade-off). There is no password recovery. Prefer `--password-file` (mode `0600`) or the environment variable over `--password`.
+
+#### Output template tokens
+
+The `-o` value may contain directories; missing folders are created. A leading `~` expands to your home directory. An unknown `{token}` is an error that lists the valid ones (checked before you are asked for a password). Token values only use filesystem-safe characters (no `:`), so the names work on Windows.
+
+| Token | Meaning | Example |
+|-------|---------|---------|
+| `{date}` | `YYYY-MM-DD` | `2026-11-01` |
+| `{time}` | `HHmmss` | `203015` |
+| `{datetime}` | `YYYY-MM-DD_HHmmss` | `2026-11-01_203015` |
+| `{timestamp}` | Unix seconds | `1793564415` |
+| `{year}` `{month}` `{day}` | Zero-padded date parts | `2026` `11` `01` |
+| `{hour}` `{minute}` `{second}` | Zero-padded time parts | `20` `30` `15` |
+| `{host}` | This machine's host name, sanitized | `build-server-1` |
+| `{user}` | Local part of the signed-in user's email, sanitized (looked up from the server only if the template uses it) | `person.a` for `person.a@example.test` |
+
+Date/time tokens use local time unless `--utc` is given. Examples:
+
+```bash
+vaultcli backup -o "/srv/backups/vault-{host}-{date}.zip"      # /srv/backups/vault-build-server-1-2026-11-01.zip
+vaultcli backup -o "~/backups/{year}/{month}/{user}-{datetime}.zip"
+vaultcli backup -o "vault-{timestamp}.zip" --utc
+```
+
+#### Existing files, partial files and permissions
+
+- **Never silently overwrites.** If the target exists, `-1`, `-2`, ... is added before the extension (`vault-2026-11-01-1.zip`, then `-2`). `--overwrite` replaces the existing file instead.
+- The download is written to `<target>.partial` first and renamed into place only after it completes. On any failure, or on Ctrl-C / SIGTERM, the `.partial` file is deleted, so a half-written backup is never left under the final name.
+- The file is created with mode `0600` (owner read/write only). Windows filesystems do not honour Unix modes, so keep the destination folder private there.
+
+#### Output and exit codes
+
+Human mode prints the path, size, secret and attachment counts (from the `X-Vault-Export-*` headers), the version scope, and a reminder to keep the password safe. With `--json` the result is wrapped in the usual envelope:
+
+```json
+{
+  "success": true,
+  "data": {
+    "path": "/home/user/backups/vault-backup-2026-11-01_203015.zip",
+    "size": 48213,
+    "secrets": 12,
+    "attachments": 5,
+    "includeAttachments": true,
+    "includeVersions": false,
+    "overwritten": false
+  }
+}
+```
+
+`secrets` / `attachments` are `null` if the server did not send the count headers. In `-q` mode only the path is printed.
+
+| Exit code | Meaning |
+|-----------|---------|
+| `0` | Backup saved |
+| `1` | Any failure: not authenticated, bad template or password, server error, or an incomplete or empty download. With `--json` the error goes to stderr as `{"success": false, "error": "...", "code": "backup_failed"}` |
+| `130` | Interrupted by SIGINT / SIGTERM (the partial file is removed) |
+
+Warnings about attachments that could not be exported are inside the archive (`README.txt`, `secrets.json`), not on the CLI's output: check them occasionally.
+
+---
+
+### Scheduled Backups
+
+`backup` is built for unattended use: it never prompts when stdin is not a terminal, it exits non-zero on failure, and it never leaves a partial file behind.
+
+**Authentication for unattended runs.** The CLI authenticates with the Personal Access Token stored by `vaultcli auth login` in `auth.json` (long-lived; there is no token environment variable). Run `vaultcli auth login` once, interactively, as the same OS user the scheduler will run as, and make sure the job can find that config: set `HOME` (`USERPROFILE` on Windows) and, if needed, `VAULTCLI_CONFIG_DIR`. Consider creating a dedicated PAT for the job so it can be revoked on its own. If the PAT is revoked, scheduled runs fail with exit code 1.
+
+**Password for unattended runs.** Store the password in a file readable only by the job's user:
+
+```bash
+umask 077
+printf '%s\n' 'blue tiger river' > ~/.config/vaultcli/backup-password   # use your own passphrase
+chmod 600 ~/.config/vaultcli/backup-password
+```
+
+Or set `VAULTCLI_BACKUP_PASSWORD` in the scheduler's environment. A password stored next to the job is only as safe as that machine: anyone who can read both the backup and the password file can open the backup, so copy backups off-host where you can.
+
+#### Linux (cron)
+
+Daily at 02:30, with `HOME` and `PATH` set explicitly because cron runs with a minimal environment:
+
+```cron
+30 2 * * * HOME=/home/USER PATH=/usr/local/bin:/usr/bin:/bin vaultcli backup --password-file /home/USER/.config/vaultcli/backup-password -o "/home/USER/backups/vault-{date}.zip" --json >> /home/USER/.local/state/vaultcli-backup.log 2>&1
+```
+
+With an environment variable instead of a password file (a crontab is often readable by more people than you expect, so prefer the file):
+
+```cron
+30 2 * * * HOME=/home/USER PATH=/usr/local/bin:/usr/bin:/bin VAULTCLI_BACKUP_PASSWORD='blue tiger river' vaultcli backup -o "/home/USER/backups/vault-{date}.zip" --json >> /home/USER/.local/state/vaultcli-backup.log 2>&1
+```
+
+The non-zero exit code makes failures detectable by an external monitor; the log file keeps the error message.
+
+#### macOS (launchd)
+
+Save as `~/Library/LaunchAgents/test.example.vaultcli-backup.plist`, adjust the paths and user, then load it with `launchctl load ~/Library/LaunchAgents/test.example.vaultcli-backup.plist`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>test.example.vaultcli-backup</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/vaultcli</string>
+    <string>backup</string>
+    <string>--password-file</string>
+    <string>/Users/USER/.config/vaultcli/backup-password</string>
+    <string>-o</string>
+    <string>/Users/USER/Backups/vault-{date}.zip</string>
+    <string>--json</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/Users/USER</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>2</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Users/USER/Library/Logs/vaultcli-backup.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/USER/Library/Logs/vaultcli-backup.log</string>
+</dict>
+</plist>
+```
+
+If the Mac was asleep at 02:30, launchd runs the job when it wakes. Check the last result with `launchctl list | grep vaultcli-backup` (the second column is the last exit status).
+
+#### Windows (Task Scheduler)
+
+Store the password in a file only your account can read, then register a daily task for your own user. In PowerShell:
+
+```powershell
+# One-time: save the password (use your own passphrase) and restrict the file to your account
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.config\vaultcli", "$env:USERPROFILE\Backups" | Out-Null
+Set-Content -Path "$env:USERPROFILE\.config\vaultcli\backup-password" -Value "blue tiger river"
+icacls "$env:USERPROFILE\.config\vaultcli\backup-password" /inheritance:r /grant:r "${env:USERNAME}:(R)"
+
+# Register the task: daily at 02:30
+$cliArgs = "backup --password-file `"$env:USERPROFILE\.config\vaultcli\backup-password`" -o `"$env:USERPROFILE\Backups\vault-{date}.zip`" --json"
+$action  = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c vaultcli $cliArgs >> `"$env:USERPROFILE\Backups\vaultcli-backup.log`" 2>&1"
+$trigger = New-ScheduledTaskTrigger -Daily -At 2:30am
+Register-ScheduledTask -TaskName "VaultCLI Backup" -Action $action -Trigger $trigger
+```
+
+The same with `schtasks` from a Command Prompt:
+
+```bat
+schtasks /Create /SC DAILY /ST 02:30 /TN "VaultCLI Backup" /TR "cmd /c vaultcli backup --password-file %USERPROFILE%\.config\vaultcli\backup-password -o %USERPROFILE%\Backups\vault-{date}.zip --json >> %USERPROFILE%\Backups\vaultcli-backup.log 2>&1"
+```
+
+The task must run as the user who ran `vaultcli auth login`, and the `Backups` folder must exist for the log file (the CLI creates missing folders for the backup itself). Check the result with `schtasks /Query /TN "VaultCLI Backup" /V /FO LIST`: a "Last Result" of `0` means success. Open the zip with 7-Zip.
+
+#### Retention is not automatic
+
+`vaultcli backup` only creates files; it never deletes old ones, so a daily schedule grows without limit. Add your own cleanup. On Linux, delete backups older than 30 days:
+
+```cron
+45 2 * * * find /home/USER/backups -name 'vault-*.zip' -mtime +30 -delete
+```
+
+The same `find` works on macOS (for example from a second launchd job). On Windows:
+
+```powershell
+Get-ChildItem "$env:USERPROFILE\Backups\vault-*.zip" | Where-Object LastWriteTime -lt (Get-Date).AddDays(-30) | Remove-Item
+```
+
+Test a restore occasionally: open one backup with 7-Zip using the password and check that `secrets.html` looks right.
+
+---
+
 ## AI Agent Integration
 
 The CLI is designed for seamless AI agent integration with `--json` and `-q` modes.
@@ -589,10 +806,12 @@ tools/vaultcli/
 │   │   ├── types.ts         # secret types
 │   │   ├── health.ts        # health checks
 │   │   ├── config.ts        # config management
-│   │   └── sync.ts          # sync add/add-dir/remove/list/status/run/where
+│   │   ├── sync.ts          # sync add/add-dir/remove/list/status/run/where
+│   │   └── backup.ts        # backup (encrypted zip download)
 │   ├── lib/                 # Core libraries
 │   │   ├── api-client.ts    # HTTP client
 │   │   ├── auth-store.ts    # Token persistence
+│   │   ├── backup-filename.ts # Output path template expansion
 │   │   ├── formatters.ts    # Human-readable output
 │   │   └── sync-store.ts    # Sync registry persistence
 │   └── utils/               # Shared utilities
@@ -642,3 +861,4 @@ npm run typecheck     # Type check only
 | `sync run` (update) | `PUT` | `/api/secrets/:id` |
 | `sync run` (read) | `GET` | `/api/secrets/by-name/:name` |
 | `sync run` (attachment) | `POST` | `/api/storage/objects` |
+| `backup` | `POST` | `/api/secrets/export` |

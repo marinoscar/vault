@@ -11,6 +11,7 @@ This document describes the secrets management feature of the Vault application:
 - [Versioning](#versioning)
 - [Rollback](#rollback)
 - [Attachments](#attachments)
+- [Backup and export](#backup-and-export)
 - [API Reference](#api-reference)
 - [RBAC Permissions](#rbac-permissions)
 - [Data Validation](#data-validation)
@@ -234,6 +235,115 @@ The `FOR UPDATE` lock is what makes step 3 correct under concurrency: without it
 
 ---
 
+## Backup and export
+
+Any user with `secrets:read` can download a password-protected copy of their own secrets, from **Settings > Back up my data** in the web app or with [`vaultcli backup`](../tools/vaultcli/README.md#backup--password-protected-backup). Both call `POST /api/secrets/export` ([API.md](API.md#post-secretsexport)), so the web app and the CLI produce the identical format.
+
+**Scope.** Only secrets the caller created are exported, even if they hold `secrets:read_any`. By default the archive holds the current version of each secret plus its attachments; the options `includeVersions` (all versions) and `includeAttachments: false` change that. Values are decrypted on the server and re-protected with the user's backup password, so the file is readable without Vault.
+
+### What is in the zip
+
+The download is `vault-backup-YYYY-MM-DD.zip` (server UTC date):
+
+```
+vault-backup-2026-11-01.zip   (AES-256)
+├── README.txt        what this is, how to open it, counts, warnings
+├── secrets.html      readable report, one section per secret
+├── secrets.json      machine-readable data (formatVersion 1)
+└── attachments/
+    ├── 0001-01.jpg
+    └── 0002-01.pdf
+```
+
+- `README.txt` explains how to open the archive and lists the summary and any warnings (CRLF line endings, so it reads in Windows Notepad).
+- `secrets.html` is a self-contained report: inline CSS, no scripts, nothing loaded from the internet, every value HTML-escaped. Each secret shows its type's field labels in order, timestamps and an attachment list linking to `attachments/...`; browser-renderable images (JPEG, PNG, GIF, WebP) are embedded. With `includeVersions`, older versions sit in collapsed `<details>` blocks. HEIC/HEIF files are linked, not embedded, because most browsers cannot display them.
+- `secrets.json` is the data of record. Opening it shows exactly what `secrets.html` shows.
+
+**`secrets.json` shape (formatVersion 1):**
+
+```json
+{
+  "formatVersion": 1,
+  "exportedAt": "2026-11-01T20:15:38.000Z",
+  "app": "vault",
+  "owner": { "id": "<user-uuid>", "email": "person.a@example.test" },
+  "options": { "includeAttachments": true, "includeVersions": false },
+  "counts": { "secrets": 1, "attachments": 1 },
+  "warnings": [],
+  "secrets": [
+    {
+      "id": "<secret-uuid>",
+      "name": "Example Card",
+      "description": null,
+      "type": { "id": "<type-uuid>", "name": "Card", "fields": [ { "name": "number", "label": "Card Number", "type": "string", "sensitive": true } ] },
+      "createdAt": "2026-10-01T09:00:00.000Z",
+      "updatedAt": "2026-10-20T09:00:00.000Z",
+      "current": {
+        "versionId": "<version-uuid>",
+        "versionNumber": 2,
+        "createdAt": "2026-10-20T09:00:00.000Z",
+        "data": { "number": "4111111111111111" },
+        "attachments": [
+          { "file": "attachments/0001-01.jpg", "role": "card_front", "label": null, "originalName": "front.jpg", "mimeType": "image/jpeg", "size": 123456 }
+        ]
+      },
+      "versions": []
+    }
+  ]
+}
+```
+
+`versions` is present only with `includeVersions` and lists every version oldest first, each in the same shape as `current`. When several versions (or secrets) point at the same stored file, the blob is written once and the entries share the same `file` path. `current` is `null` only for a secret with no version at all, which does not normally happen.
+
+### Opaque attachment names
+
+Zip entry names are stored in clear text even when every file is encrypted: anyone holding the file can list them without the password. For that reason attachments are named only by position, `attachments/<secret index, 4 digits>-<attachment index, 2 digits>.<ext>` (for example `0003-02.png`), where the extension comes from the MIME type (`bin` when unknown). Secret names, roles, labels and original file names never appear in an entry name; they exist only inside the encrypted `secrets.json` and `secrets.html`, which map each file to its secret. The same reasoning applies to the zip's file count: the number of entries is visible without the password.
+
+### Encryption and the tools that open it
+
+The archive uses **AES-256 (WinZip AE-2)**, never legacy ZipCrypto. The built-in zip support in Windows Explorer and the macOS Archive Utility does not handle AES and reports the file as damaged or rejects the right password. Use:
+
+| OS | Tools |
+|----|-------|
+| Windows | 7-Zip |
+| macOS | Keka, The Unarchiver |
+| Linux | `7z x <file>` (p7zip / 7zip package), File Roller (file-roller) |
+
+Note that `unzip` on many Linux distributions also cannot open AES zips; use `7z`.
+
+### Password policy and the honest trade-off
+
+- Any password of 6 to 256 characters is accepted. There are no complexity rules, and the password is not trimmed (a trailing space must be typed again when opening the file).
+- The web app shows a **soft, non-blocking warning** when the password is under 12 characters or is a single word. The CLI enforces only the 6-character minimum.
+- The web card offers a "Suggest one for me" button: three random words from a small built-in list, picked with `crypto.getRandomValues`. That list is only about a hundred words, so a suggestion is a convenient passphrase, not a strong one (roughly a million combinations); add a word or two, or pick your own, if the file is sensitive.
+
+**A short password is weak, and this is a property of the zip format.** Zip AES derives its key with PBKDF2-HMAC-SHA1 at only 1000 iterations, which is cheap to attack. If the file is stolen, an attacker can test passwords offline at very high speed, and a single dictionary word or short password falls quickly. Therefore:
+
+1. Keep the file private, and store the file and its password in different places.
+2. Prefer a passphrase of several unrelated words (for example "blue tiger river" is the minimum we would suggest; more is better) over one word.
+3. Delete the extracted files when you are done; once extracted they are not encrypted.
+
+**There is no password recovery.** The password is never stored, logged or recorded in the audit event, so neither an administrator nor the server can open or repair a backup whose password is lost. The web app and the CLI both say so after a successful download.
+
+### Unreadable attachments (warnings)
+
+An export never fails because of one bad file. An attachment is skipped, and a warning is recorded in `secrets.json` (`warnings[]`) and in `README.txt`, when:
+
+- its storage object never finished uploading (status is not `ready`), or
+- its blob cannot be read from storage at export time (checked before streaming starts, or while streaming).
+
+The skipped attachment keeps its entry in `secrets.json` with `"file": null`, and `counts.attachments` and the `X-Vault-Export-Attachments` header count only files actually written. A version that cannot be decrypted is exported with empty `data` and a warning. Warnings name secrets and file names, so they live only inside the encrypted archive; the server logs just ids, never secret data. Check the WARNINGS section of `README.txt` after a backup you depend on.
+
+### Audit
+
+Each export writes an `audit_events` row with action `secrets.export` before the first byte is sent, so an export interrupted half way is still on the record. See [Audit Trail](#audit-trail).
+
+### Streaming
+
+The archive is streamed to the client; it is not assembled in memory. If streaming fails after the response has started, the connection is aborted and the download ends truncated, so clients (the CLI writes to a `.partial` file and deletes it) must treat an aborted download as a failure.
+
+---
+
 ## API Reference
 
 All endpoints require a valid JWT Bearer token. Ownership checks are enforced at the service layer: non-admin users can only access their own secrets. Admins with `*_any` permissions can access all secrets.
@@ -247,6 +357,7 @@ All endpoints require a valid JWT Bearer token. Ownership checks are enforced at
 | `GET` | `/secrets/:id` | `secrets:read` | Get a secret with the decrypted current version |
 | `PUT` | `/secrets/:id` | `secrets:write` | Update a secret; creates a new version if data changed |
 | `DELETE` | `/secrets/:id` | `secrets:delete` | Delete a secret and all its versions |
+| `POST` | `/secrets/export` | `secrets:read` | Download a password-protected zip of your own secrets (see [Backup and export](#backup-and-export)) |
 
 **List query parameters:**
 
@@ -363,6 +474,7 @@ Every secret and secret type operation is written to the `audit_events` table. T
 | `secret.rollback` | `{ fromVersion, carriedAttachments }` |
 | `secret.renew` | `{ fromVersionId, version, carriedAttachments, replacedAttachments, replacedRoles, extractionMethod }` — `extractionMethod` is `'ai_assisted'` or `'manual'`, from the request's `aiAssisted` flag |
 | `secret.attachment.unlink` | `{ attachmentId, storageObjectId, storageObjectDeleted }` |
+| `secrets.export` | `{ secretCount, attachmentCount, includeVersions, includeAttachments, warningCount }` — target is the exporting user; never contains the password |
 | `secret_type.create` | `{ name }` |
 | `secret_type.update` | `{ name }` |
 | `secret_type.delete` | `{ name }` |
@@ -382,6 +494,7 @@ Audit records include the acting user's ID and a timestamp, providing a forensic
 
 - `/secrets` — Paginated list view with search, type filter, and sort controls. Includes a create dialog for adding new secrets.
 - `/secrets/:id` — Tabbed detail view with three tabs: Details (decrypted current version), Version History (timeline with rollback controls), and Attachments (only present when the type allows attachments).
+- `/settings` — Includes the **Back up my data** card (shown to users with `secrets:read`): password and confirmation, a passphrase suggester, include-attachments / include-old-versions options, and a download button. See [Backup and export](#backup-and-export).
 - `/secret-types` — Management page for viewing system types (read-only) and creating, editing, or deleting custom types.
 
 ### Key Behaviors
@@ -400,6 +513,8 @@ Document-type secrets can be created and updated programmatically using the `vau
 
 The `vaultcli sync` command automates this for local `.env` files (or any UTF-8 text file): it registers files or directories locally and, on each `sync run`, compares local content to the Vault copy via client-side SHA-256 hashing, then pushes only changed files as new versions of their corresponding Document secrets. This makes it straightforward to keep server environment files backed up in Vault with full version history, safe to call from cron. See [ENV-SYNC.md](ENV-SYNC.md) for the full guide.
 
+`vaultcli backup` downloads the encrypted backup zip described in [Backup and export](#backup-and-export), with file-name templates, a non-interactive password source and a non-zero exit code on failure, so it can run from cron, launchd or Task Scheduler. Scheduling recipes are in the [vaultcli README](../tools/vaultcli/README.md#scheduled-backups).
+
 ---
 
 ## Security Considerations
@@ -415,6 +530,8 @@ The `vaultcli sync` command automates this for local `.env` files (or any UTF-8 
 **Service-layer ownership enforcement.** Access control is not limited to HTTP guards and decorators. The service layer independently verifies that the requesting user owns the resource (or holds an `*_any` permission) before performing any read, write, or delete operation.
 
 **Audit coverage.** All mutations and rollbacks are logged to `audit_events` with user ID and timestamp. This log should be treated as append-only and protected from modification. Note the gap above: attachment *linking* is not currently audited, only unlinking and the version-level events that record carry-forward counts.
+
+**A backup file leaves the server's encryption boundary.** Everything else in this document protects data with `VAULT_ENCRYPTION_KEY`. An export (`POST /api/secrets/export`) decrypts the user's secrets and re-protects them with a password the user chose, so once downloaded the file's safety rests entirely on that password and on where the file is kept. Because zip AES uses PBKDF2-SHA1 with 1000 iterations, a weak password can be broken offline quickly. See [Backup and export](#backup-and-export). Exports are audited (`secrets.export`) but the server cannot see or limit what happens to the file afterwards.
 
 **Card images are card data, not incidental files.** A `card_front` / `card_back` attachment is a photograph of a physical payment card — it can show the full PAN, expiry, cardholder name, and (depending on framing) the CVV printed on the back. It should be handled with the same sensitivity as the `number` field itself: access to it is gated by the same secret-level ownership/`*_any` permission check as the rest of the secret, and it is refcount-deleted like any other attachment (see [Attachments](#attachments)) — but nothing about the storage layer encrypts the image bytes at rest beyond whatever the S3-compatible provider does. Unlike `number` and `cvv`, the image is not passed through `CryptoService`.
 
