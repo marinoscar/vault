@@ -51,6 +51,10 @@ program
   .option(
     '-v, --verbose',
     'Enable verbose logging. Shows HTTP request details and debug info.',
+  )
+  .option(
+    '-i, --interactive',
+    'Open the interactive menu (also the default when vaultcli is run with no arguments in a terminal).',
   );
 
 // Apply global options before any command action runs
@@ -116,6 +120,10 @@ ${chalk.bold('Examples:')}
   $ vaultcli backup                                              ${chalk.dim('# Prompts for a password')}
   $ vaultcli backup -o "~/backups/{year}/vault-{datetime}.zip"   ${chalk.dim('# Templated path')}
 
+  $ vaultcli backup config set --keep-days 30                    ${chalk.dim('# Delete backups older than 30 days')}
+  $ vaultcli backup prune --dry-run                              ${chalk.dim('# Preview retention')}
+  $ vaultcli -i                                                  ${chalk.dim('# Interactive menu (also: vaultcli with no args)')}
+
   ${chalk.dim('# Server health (no auth needed)')}
   $ vaultcli health live                                      ${chalk.dim('# Liveness check')}
   $ vaultcli health ready                                     ${chalk.dim('# Readiness check')}
@@ -146,4 +154,39 @@ process.on('unhandledRejection', (reason) => {
   process.exit(1);
 });
 
-program.parse(process.argv);
+/**
+ * Decide whether to open the interactive menu: `vaultcli` with no command in
+ * a terminal, or `vaultcli -i` (optionally with --server/--no-color/-v).
+ * Returns null when the normal command parser should run.
+ */
+function interactiveRequest(args: string[]): { server?: string; noColor: boolean; forced: boolean } | null {
+  let server: string | undefined;
+  let noColor = false;
+  let forced = false;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '-i' || a === '--interactive') forced = true;
+    else if (a === '--no-color') noColor = true;
+    else if (a === '-v' || a === '--verbose') continue;
+    else if (a === '--server' && i + 1 < args.length) server = args[++i];
+    else if (a.startsWith('--server=')) server = a.slice('--server='.length);
+    else return null; // a command, --help, --version, ... → normal parsing
+  }
+  if (!forced && args.length > 0) return null;
+  return { server, noColor, forced };
+}
+
+const canRunInteractive = (): boolean => process.stdin.isTTY === true && process.stdout.isTTY === true;
+const interactive = interactiveRequest(process.argv.slice(2));
+if (interactive && (interactive.forced || canRunInteractive())) {
+  if (!canRunInteractive()) {
+    console.error(chalk.red('The interactive menu needs a terminal (stdin and stdout must be a TTY). Run: vaultcli --help'));
+    process.exit(1);
+  }
+  if (interactive.server) process.env.VAULTCLI_SERVER_URL = interactive.server;
+  if (interactive.noColor) chalk.level = 0;
+  const { launchInteractive } = await import('./interactive/index.js');
+  await launchInteractive();
+} else {
+  program.parse(process.argv);
+}

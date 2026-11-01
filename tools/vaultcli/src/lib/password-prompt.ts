@@ -66,3 +66,19 @@ export async function promptNewPassword(
   }
   throw new Error('No valid password entered');
 }
+
+/** Ask a yes/no question on the terminal (stderr); only "y"/"yes" is yes. */
+export function promptConfirm(question: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const rl = createInterface({ input: process.stdin, output: process.stderr, terminal: true });
+    let answered = false;
+    rl.on('close', () => {
+      if (!answered) resolve(false);
+    });
+    rl.question(question, (answer) => {
+      answered = true;
+      rl.close();
+      resolve(/^(y|yes)$/i.test(answer.trim()));
+    });
+  });
+}
