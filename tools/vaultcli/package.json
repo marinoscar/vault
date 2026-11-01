@@ -11,8 +11,9 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "start": "node bin/vaultcli.js",
-    "clean": "rimraf dist",
-    "typecheck": "tsc --noEmit"
+    "clean": "rimraf dist .test-dist",
+    "typecheck": "tsc --noEmit",
+    "test": "tsc -p tsconfig.test.json && node --test .test-dist/test/backup-filename.test.js"
   },
   "keywords": [
     "cli",
