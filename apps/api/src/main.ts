@@ -56,6 +56,13 @@ async function bootstrap() {
   app.enableCors({
     origin: process.env.CORS_ORIGIN || true,
     credentials: true,
+    // Response headers a cross-origin client may read. The backup download
+    // (POST /api/secrets/export) reports its file name and counts in these.
+    exposedHeaders: [
+      'Content-Disposition',
+      'X-Vault-Export-Secrets',
+      'X-Vault-Export-Attachments',
+    ],
   });
 
   // Swagger/OpenAPI setup

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { SecretsController } from './secrets.controller';
 import { SecretsService } from './secrets.service';
+import { SecretsExportService } from './export/secrets-export.service';
 import { CommonModule } from '../common/common.module';
 import { StorageProvidersModule } from '../storage/providers';
 
@@ -11,7 +12,7 @@ import { StorageProvidersModule } from '../storage/providers';
   // delete() applies an uploader-ownership check this path must not inherit.
   imports: [CommonModule, StorageProvidersModule],
   controllers: [SecretsController],
-  providers: [SecretsService],
+  providers: [SecretsService, SecretsExportService],
   exports: [SecretsService],
 })
 export class SecretsModule {}
