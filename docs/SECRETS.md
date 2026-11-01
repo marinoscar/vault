@@ -237,7 +237,7 @@ The `FOR UPDATE` lock is what makes step 3 correct under concurrency: without it
 
 ## Backup and export
 
-Any user with `secrets:read` can download a password-protected copy of their own secrets, from **Settings > Back up my data** in the web app or with [`vaultcli backup`](../tools/vaultcli/README.md#backup--password-protected-backup). Both call `POST /api/secrets/export` ([API.md](API.md#post-secretsexport)), so the web app and the CLI produce the identical format.
+Any user with `secrets:read` can download a password-protected copy of their own secrets, from **Settings > Back up my data** in the web app or with [`vaultcli backup`](../tools/vaultcli/README.md#backup--password-protected-backup). Both call `POST /api/secrets/export` ([API.md](API.md#post-secretsexport)), so the web app and the CLI produce the identical format. The CLI adds local conveniences around that one call: saved settings, retention of old backup files, and a guided terminal menu; see the [vaultcli backup guide](../tools/vaultcli/README.md#backup--password-protected-backup). Retention only deletes local files that match the CLI's output template and never changes what the server exports.
 
 **Scope.** Only secrets the caller created are exported, even if they hold `secrets:read_any`. By default the archive holds the current version of each secret plus its attachments; the options `includeVersions` (all versions) and `includeAttachments: false` change that. Values are decrypted on the server and re-protected with the user's backup password, so the file is readable without Vault.
 
@@ -513,7 +513,7 @@ Document-type secrets can be created and updated programmatically using the `vau
 
 The `vaultcli sync` command automates this for local `.env` files (or any UTF-8 text file): it registers files or directories locally and, on each `sync run`, compares local content to the Vault copy via client-side SHA-256 hashing, then pushes only changed files as new versions of their corresponding Document secrets. This makes it straightforward to keep server environment files backed up in Vault with full version history, safe to call from cron. See [ENV-SYNC.md](ENV-SYNC.md) for the full guide.
 
-`vaultcli backup` downloads the encrypted backup zip described in [Backup and export](#backup-and-export), with file-name templates, a non-interactive password source and a non-zero exit code on failure, so it can run from cron, launchd or Task Scheduler. Scheduling recipes are in the [vaultcli README](../tools/vaultcli/README.md#scheduled-backups).
+`vaultcli backup` downloads the encrypted backup zip described in [Backup and export](#backup-and-export), with file-name templates, a non-interactive password source and a non-zero exit code on failure, so it can run from cron, launchd or Task Scheduler. It can also keep its choices in saved settings (`<config dir>/backup.json`; the password itself is never saved), delete old backups after each successful run (`--keep-days`, `--keep-last`, `vaultcli backup prune`; off until configured), and be set up from a terminal menu (`vaultcli` with no arguments). Scheduling recipes are in the [vaultcli README](../tools/vaultcli/README.md#scheduled-backups).
 
 ---
 
