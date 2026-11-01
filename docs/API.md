@@ -1331,6 +1331,67 @@ The secrets feature (encrypted credential/card/document storage, versioning, rol
 
 Base paths: `/api/secrets` and `/api/secret-types`.
 
+The backup download, [`POST /secrets/export`](#post-secretsexport), returns a raw `application/zip` stream rather than the JSON envelope.
+
+#### POST /secrets/export
+
+**Requires Authentication** (`secrets:read`) - Download a password-protected backup of the secrets **you own**. The response is a streamed AES-256 encrypted zip (WinZip AE-2), not JSON. For what is inside the archive, how to open it and the password trade-offs, see [SECRETS.md § Backup and export](SECRETS.md#backup-and-export).
+
+Only secrets the caller created (`createdById`) are exported, even for a user holding `secrets:read_any`. There is no admin or all-users variant.
+
+**Request Body:**
+```json
+{
+  "password": "blue tiger river",
+  "includeAttachments": true,
+  "includeVersions": false
+}
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `password` | string | required | 6 to 256 characters, no complexity rules. Used as-is (not trimmed). Never stored or logged; it cannot be recovered. |
+| `includeAttachments` | boolean | `true` | Include attachment files (card images and other files). |
+| `includeVersions` | boolean | `false` | Include every version of each secret, not just the current one. |
+
+**Success Response (200 OK):**
+
+The body is the raw zip. It is **not** wrapped in `{ "data": ... }` and has no `meta` envelope (the response interceptor passes streamed files through untouched).
+
+| Header | Value |
+|--------|-------|
+| `Content-Type` | `application/zip` |
+| `Content-Disposition` | `attachment; filename="vault-backup-YYYY-MM-DD.zip"` (date is the server's UTC date) |
+| `X-Vault-Export-Secrets` | Number of secrets in the archive |
+| `X-Vault-Export-Attachments` | Number of attachment files in the archive |
+| `Cache-Control` | `no-store` |
+
+`Content-Disposition` and both `X-Vault-Export-*` headers are exposed through CORS, so a cross-origin browser client can read them.
+
+**Example:**
+```bash
+curl -sS -X POST http://localhost:3535/api/secrets/export \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"password":"blue tiger river"}' \
+  -o vault-backup.zip -D -
+```
+
+**Error Cases:**
+- `400 Bad Request` - the body failed validation. The `message` is the first specific problem (for example `Password must be at least 6 characters`, `Password must be at most 256 characters`, `Password is required`, `includeVersions must be a boolean`); `details` lists every problem as `{ "field", "message" }`. Messages never echo the submitted value.
+- `401 Unauthorized` - missing or invalid token
+- `403 Forbidden` - caller lacks `secrets:read`
+
+All of these are ordinary JSON error responses; they are sent before any zip byte. Once streaming has started, a server-side failure aborts the connection instead (the download ends truncated, so a client must not treat a dropped stream as a complete file).
+
+**Warnings:** an attachment that cannot be read from storage (never finished uploading, or missing from the bucket) does not fail the request. It is skipped and listed under `warnings` in the archive's `secrets.json` and `README.txt`; the response headers count only attachments actually written. A version whose values cannot be decrypted is exported with empty values and a warning.
+
+**Audit:** a `secrets.export` event is written before the first byte is sent, with metadata `{ secretCount, attachmentCount, includeVersions, includeAttachments, warningCount }`. The password is never part of it. See [SECRETS.md § Audit Trail](SECRETS.md#audit-trail).
+
+**Rate limits:** none specific to this endpoint (see [Rate Limits](#rate-limits)). It reads and decrypts every owned secret, so avoid calling it in a tight loop.
+
+---
+
 #### POST /secrets/:id/renew
 
 **Requires Authentication** (`secrets:write`) - Renew a secret with a new set of field values, optionally replacing individual attachment roles (e.g. the front/back images of a reissued card). See [SECRETS.md § Renewal](SECRETS.md#renewal-post-secretsidrenew) for the full semantics — in short: this mints the next version from **replacement** data (not a merge of the old and new), carries every attachment forward except the roles/objects the request replaces, and does all of it in one transaction.

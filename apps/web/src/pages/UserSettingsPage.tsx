@@ -9,6 +9,8 @@ import { useState } from 'react';
 import { ThemeSettings } from '../components/settings/ThemeSettings';
 import { ProfileSettings } from '../components/settings/ProfileSettings';
 import { PersonalAccessTokens } from '../components/settings/PersonalAccessTokens';
+import { DataBackup } from '../components/settings/DataBackup';
+import { RequirePermission } from '../components/common/RequirePermission';
 import { useUserSettings } from '../hooks/useUserSettings';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 
@@ -83,6 +85,11 @@ export default function UserSettingsPage() {
 
             {/* Personal Access Tokens */}
             <PersonalAccessTokens />
+
+            {/* Data Backup (owned secrets, encrypted zip) */}
+            <RequirePermission permission="secrets:read">
+              <DataBackup />
+            </RequirePermission>
           </Box>
         )}
 

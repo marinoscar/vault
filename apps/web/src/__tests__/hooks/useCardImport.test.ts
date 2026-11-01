@@ -417,7 +417,7 @@ describe('useCardImport save and cleanup', () => {
 
     let extracted: CardExtractionResult | null = { partial: false } as CardExtractionResult;
     await act(async () => {
-      extracted = await result.current.runExtraction([FRONT]);
+      extracted = await result.current.runExtraction({ front: FRONT.image.dataUrl });
     });
 
     expect(extracted).toBeNull();

@@ -10,6 +10,8 @@ import {
   ParseUUIDPipe,
   HttpCode,
   HttpStatus,
+  Res,
+  StreamableFile,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -17,8 +19,11 @@ import {
   ApiParam,
   ApiQuery,
   ApiResponse,
+  ApiBody,
+  ApiProduces,
 } from '@nestjs/swagger';
 import { ZodValidationPipe } from 'nestjs-zod';
+import { FastifyReply } from 'fastify';
 
 import { Auth } from '../auth/decorators/auth.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -26,6 +31,11 @@ import { RequestUser } from '../auth/interfaces/authenticated-user.interface';
 import { PERMISSIONS } from '../common/constants/roles.constants';
 
 import { SecretsService } from './secrets.service';
+import { SecretsExportService } from './export/secrets-export.service';
+import {
+  EXPORT_SECRETS_BODY_SCHEMA,
+  parseExportSecretsBody,
+} from './dto/export-secrets.dto';
 import { CreateSecretDto } from './dto/create-secret.dto';
 import { UpdateSecretDto } from './dto/update-secret.dto';
 import { RenewSecretDto } from './dto/renew-secret.dto';
@@ -42,7 +52,75 @@ import {
 @ApiTags('Secrets')
 @Controller('secrets')
 export class SecretsController {
-  constructor(private readonly secretsService: SecretsService) {}
+  constructor(
+    private readonly secretsService: SecretsService,
+    private readonly secretsExportService: SecretsExportService,
+  ) {}
+
+  // ---------------------------------------------------------------------------
+  // Backup export
+  // ---------------------------------------------------------------------------
+
+  @Post('export')
+  @Auth({ permissions: [PERMISSIONS.SECRETS_READ] })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Download a password-protected backup of the secrets you own',
+    description:
+      'Streams an AES-256 encrypted zip (WinZip AE-2) holding README.txt, ' +
+      'secrets.html, secrets.json and, unless excluded, the attachment files. ' +
+      'Only secrets the caller owns are exported, even with secrets:read_any. ' +
+      'The password is never stored or logged and cannot be recovered. ' +
+      'Requires secrets:read.',
+  })
+  @ApiBody({ schema: EXPORT_SECRETS_BODY_SCHEMA })
+  @ApiProduces('application/zip')
+  @ApiResponse({
+    status: 200,
+    description: 'The encrypted zip archive',
+    content: { 'application/zip': { schema: { type: 'string', format: 'binary' } } },
+    headers: {
+      'Content-Disposition': {
+        description: 'attachment; filename="vault-backup-YYYY-MM-DD.zip" (UTC date)',
+        schema: { type: 'string' },
+      },
+      'X-Vault-Export-Secrets': {
+        description: 'Number of secrets in the archive',
+        schema: { type: 'integer' },
+      },
+      'X-Vault-Export-Attachments': {
+        description: 'Number of attachment files in the archive',
+        schema: { type: 'integer' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Validation error (e.g. "Password must be at least 6 characters")',
+  })
+  @ApiResponse({ status: 403, description: 'Missing secrets:read' })
+  async exportSecrets(
+    // Parsed by hand (not via the global ZodValidationPipe) so a failure
+    // returns the specific message the contract promises; see
+    // parseExportSecretsBody. The body is never logged.
+    @Body() body: unknown,
+    @CurrentUser() user: RequestUser,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<StreamableFile> {
+    const options = parseExportSecretsBody(body);
+    const result = await this.secretsExportService.createExport(user, options);
+
+    reply.header('Cache-Control', 'no-store');
+    reply.header('X-Vault-Export-Secrets', String(result.secretCount));
+    reply.header('X-Vault-Export-Attachments', String(result.attachmentCount));
+
+    // Returned as a StreamableFile so the platform adapter pipes the raw zip;
+    // TransformInterceptor passes StreamableFile through unwrapped.
+    return new StreamableFile(result.stream, {
+      type: 'application/zip',
+      disposition: `attachment; filename="${result.fileName}"`,
+    });
+  }
 
   // ---------------------------------------------------------------------------
   // Secrets CRUD

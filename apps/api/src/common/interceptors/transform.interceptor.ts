@@ -3,6 +3,7 @@ import {
   NestInterceptor,
   ExecutionContext,
   CallHandler,
+  StreamableFile,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
@@ -25,6 +26,13 @@ export class TransformInterceptor<T>
   ): Observable<ApiResponse<T>> {
     return next.handle().pipe(
       map((data) => {
+        // A file/stream response (e.g. the secrets backup zip) is sent as raw
+        // bytes by the platform adapter; wrapping it in `{ data }` would turn
+        // it into a JSON-serialized object and break the download.
+        if (data instanceof StreamableFile) {
+          return data;
+        }
+
         // If already wrapped, return as-is
         if (data && typeof data === 'object' && 'data' in data) {
           return data;

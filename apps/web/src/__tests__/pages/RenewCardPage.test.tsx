@@ -10,7 +10,6 @@ import type { CardCropBox } from '../../types';
 import {
   cropImageFileToBox,
   cropImageFileToCard,
-  prepareCardPhoto,
 } from '../../utils/cardImage';
 
 const API_BASE = '*/api';

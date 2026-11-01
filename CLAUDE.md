@@ -315,6 +315,7 @@ cd apps/api && npm run prisma:migrate
 - `GET /api/secrets/{id}/versions` - List version history (metadata only)
 - `GET /api/secrets/{id}/versions/{versionId}` - Get a specific version, decrypted, with that version's attachments
 - `POST /api/secrets/{id}/versions/{versionId}/rollback` - Rollback to a version (restores its attachment set)
+- `POST /api/secrets/export` - Download a password-protected (AES-256 zip) backup of the caller's own secrets (`secrets:read`); body `{ password (6-256 chars), includeAttachments?, includeVersions? }`; response is the raw zip (not wrapped in `{data}`), audited as `secrets.export`. See `docs/SECRETS.md`
 - `POST /api/secrets/{id}/renew` - Renew with new field values, swapping only the attachment roles supplied (e.g. reissued card front/back)
 - `POST /api/secrets/{id}/attachments` - Link a storage object to the secret's current version
 - `GET /api/secrets/{id}/attachments` - List attachments (`versionId`, `role` query filters)
@@ -362,7 +363,7 @@ cd apps/api && npm run prisma:migrate
 - `user_roles` - User-to-role assignments
 - `system_settings` - Global app settings (JSONB); as of the card epic, includes a write-only `ai` block (enabled flag, model, daily budget, AES-256-GCM-encrypted OpenAI API key)
 - `user_settings` - Per-user settings (JSONB)
-- `audit_events` - Action audit log; also backs the AI card-extraction daily budget (counts `ai.card.extract` rows in the trailing 24h) — see `docs/SECRETS.md`
+- `audit_events` - Action audit log; also backs the AI card-extraction daily budget (counts `ai.card.extract` rows in the trailing 24h); also records `secrets.export` (backup downloads) — see `docs/SECRETS.md`
 - `refresh_tokens` - JWT refresh tokens (hashed)
 - `allowed_emails` - Allowlist for access control
 - `device_codes` - Device authorization codes (RFC 8628)

@@ -49,6 +49,7 @@ function extraction(
     warnings: [],
     model: 'gpt-4o-mini',
     partial: false,
+    crops: { front: null, back: null },
   };
 }
 
