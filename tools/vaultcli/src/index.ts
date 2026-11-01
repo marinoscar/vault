@@ -7,6 +7,7 @@ import { registerTypeCommands } from './commands/types.js';
 import { registerHealthCommands } from './commands/health.js';
 import { registerConfigCommands } from './commands/config.js';
 import { registerSyncCommands } from './commands/sync.js';
+import { registerBackupCommands } from './commands/backup.js';
 import { VERSION } from './version.js';
 
 const program = new Command();
@@ -73,6 +74,7 @@ registerTypeCommands(program);
 registerHealthCommands(program);
 registerConfigCommands(program);
 registerSyncCommands(program);
+registerBackupCommands(program);
 
 // Help examples
 program.addHelpText(
@@ -109,6 +111,10 @@ ${chalk.bold('Examples:')}
   $ vaultcli sync run                                            ${chalk.dim('# Push only changed files')}
   $ vaultcli sync status                                         ${chalk.dim('# Preview what would change')}
   $ vaultcli sync list                                          ${chalk.dim('# Show registered files')}
+
+  ${chalk.dim('# Encrypted backup (AES-256 zip of the secrets you own)')}
+  $ vaultcli backup                                              ${chalk.dim('# Prompts for a password')}
+  $ vaultcli backup -o "~/backups/{year}/vault-{datetime}.zip"   ${chalk.dim('# Templated path')}
 
   ${chalk.dim('# Server health (no auth needed)')}
   $ vaultcli health live                                      ${chalk.dim('# Liveness check')}

@@ -316,3 +316,76 @@ export async function healthReady(): Promise<HealthResponse> {
   if (!res.ok) throw new Error(`Readiness check failed: ${res.status}`);
   return (await res.json()) as HealthResponse;
 }
+
+// ---------------------------------------------------------------------------
+// Raw / streaming requests
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract a human-readable message from an API error response. Understands the
+ * standard `{ code, message, details }` body (and a `{ error: {...} }` wrapper);
+ * falls back to the status line. Consumes the response body.
+ */
+export async function readApiErrorMessage(res: Response): Promise<string> {
+  const fallback = `HTTP ${res.status}${res.statusText ? ' ' + res.statusText : ''}`;
+  let text = '';
+  try {
+    text = await res.text();
+  } catch {
+    return fallback;
+  }
+  if (!text) return fallback;
+  try {
+    const body = JSON.parse(text) as Record<string, unknown>;
+    const src = (body.error && typeof body.error === 'object' ? body.error : body) as Record<string, unknown>;
+    const msg = src.message ?? body.message;
+    if (Array.isArray(msg)) return msg.map(String).join('; ');
+    if (typeof msg === 'string' && msg) return msg;
+    if (typeof body.error === 'string' && body.error) return body.error;
+  } catch {
+    // Not JSON; ignore the body (it may be HTML from a proxy).
+  }
+  return fallback;
+}
+
+/**
+ * Like {@link apiRequest} (same URL resolution, Bearer auth and 401 handling)
+ * but intended for binary/streaming responses: the body is never read here.
+ * On a non-2xx status it throws with the API's error message, so a returned
+ * Response is always ok and its `body` is ready to stream.
+ */
+export async function apiStreamRequest(
+  path: string,
+  options: ApiRequestOptions = {},
+): Promise<Response> {
+  const res = await apiRequest(path, options);
+  if (!res.ok) {
+    throw new Error(await readApiErrorMessage(res));
+  }
+  return res;
+}
+
+export interface SecretsExportRequest {
+  password: string;
+  includeAttachments?: boolean;
+  includeVersions?: boolean;
+}
+
+/**
+ * POST /api/secrets/export. Returns the ok streaming Response whose body is
+ * the AES-256 encrypted zip; counts are in the X-Vault-Export-* headers.
+ * The password travels only in the request body.
+ */
+export async function exportSecretsBackup(dto: SecretsExportRequest): Promise<Response> {
+  try {
+    return await apiStreamRequest('/secrets/export', {
+      method: 'POST',
+      body: JSON.stringify(dto),
+      headers: { Accept: 'application/zip, application/json' },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.startsWith('Authentication failed')) throw err;
+    throw new Error(`Backup failed: ${message}`);
+  }
+}
