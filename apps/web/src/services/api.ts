@@ -16,10 +16,17 @@ class ApiService {
     return this.accessToken;
   }
 
-  private async request<T>(
+  /**
+   * Perform a fetch with the bearer token attached, refreshing the access
+   * token and retrying ONCE on a 401. Resolves only with an OK response;
+   * any non-2xx status is thrown as an ApiError built from the JSON error
+   * body. Shared by the JSON (`request`) and binary (`requestBlob`) paths so
+   * the refresh flow exists exactly once.
+   */
+  private async fetchWithAuth(
     endpoint: string,
     options: RequestOptions = {},
-  ): Promise<T> {
+  ): Promise<Response> {
     const { skipAuth = false, ...fetchOptions } = options;
 
     const headers: HeadersInit = {
@@ -59,34 +66,25 @@ class ApiService {
         });
 
         if (!retryResponse.ok) {
-          const error = await retryResponse.json().catch(() => ({}));
-          throw new ApiError(
-            error.message || 'Request failed',
-            retryResponse.status,
-            error.code,
-            error.details,
-          );
+          throw await toApiError(retryResponse);
         }
-
-        if (retryResponse.status === 204) {
-          return undefined as T;
-        }
-
-        const data = await retryResponse.json();
-        return data.data ?? data;
+        return retryResponse;
       }
       throw new ApiError('Unauthorized', 401);
     }
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new ApiError(
-        error.message || 'Request failed',
-        response.status,
-        error.code,
-        error.details,
-      );
+      throw await toApiError(response);
     }
+
+    return response;
+  }
+
+  private async request<T>(
+    endpoint: string,
+    options: RequestOptions = {},
+  ): Promise<T> {
+    const response = await this.fetchWithAuth(endpoint, options);
 
     // Handle 204 No Content
     if (response.status === 204) {
@@ -95,6 +93,19 @@ class ApiService {
 
     const data = await response.json();
     return data.data ?? data;
+  }
+
+  /**
+   * POST a JSON body and return the raw response (body unread) for binary
+   * downloads. Same auth + refresh-and-retry-once behavior as `post`; the
+   * caller reads the body (e.g. `response.blob()`) and any headers.
+   */
+  postForResponse(endpoint: string, body?: unknown, options?: RequestOptions) {
+    return this.fetchWithAuth(endpoint, {
+      ...options,
+      method: 'POST',
+      body: body ? JSON.stringify(body) : undefined,
+    });
   }
 
   async refreshToken(): Promise<boolean> {
@@ -187,6 +198,16 @@ export class ApiError extends Error {
     super(message);
     this.name = 'ApiError';
   }
+}
+
+async function toApiError(response: Response): Promise<ApiError> {
+  const error = await response.json().catch(() => ({}));
+  return new ApiError(
+    error.message || 'Request failed',
+    response.status,
+    error.code,
+    error.details,
+  );
 }
 
 export const api = new ApiService();
@@ -852,4 +873,83 @@ export async function simpleStorageUpload(
   }
   const data = await response.json();
   return data.data ?? data;
+}
+
+// =============================================================================
+// Data backup API
+// =============================================================================
+
+export interface SecretsBackupOptions {
+  password: string;
+  includeAttachments?: boolean;
+  includeVersions?: boolean;
+}
+
+export interface SecretsBackupResult {
+  blob: Blob;
+  filename: string;
+  secretCount: number | null;
+  attachmentCount: number | null;
+}
+
+/** `vault-backup-YYYY-MM-DD.zip` for the given date (UTC, matching the server). */
+export function defaultBackupFilename(date: Date = new Date()): string {
+  return `vault-backup-${date.toISOString().slice(0, 10)}.zip`;
+}
+
+/**
+ * Extract the file name from a Content-Disposition header. Supports the
+ * RFC 5987 `filename*=UTF-8''...` form and quoted/unquoted `filename=`.
+ * Path separators are stripped so the value can only name a file.
+ */
+export function parseContentDispositionFilename(
+  header: string | null | undefined,
+): string | null {
+  if (!header) return null;
+  let name: string | null = null;
+  const star = /filename\*\s*=\s*(?:UTF-8|utf-8)?''([^;]+)/i.exec(header);
+  if (star) {
+    try {
+      name = decodeURIComponent(star[1].trim().replace(/^"|"$/g, ''));
+    } catch {
+      name = null;
+    }
+  }
+  if (!name) {
+    const plain = /filename\s*=\s*(?:"([^"]*)"|([^;]+))/i.exec(header);
+    if (plain) name = (plain[1] ?? plain[2] ?? '').trim();
+  }
+  if (!name) return null;
+  const base = name.split(/[\\/]/).pop()?.trim() ?? '';
+  return base.length > 0 ? base : null;
+}
+
+function parseCountHeader(value: string | null): number | null {
+  if (value === null) return null;
+  const n = Number.parseInt(value, 10);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+/**
+ * Download a password-protected (AES-256 zip) backup of the secrets the
+ * current user owns. The password travels only in the request body; it is
+ * never logged or stored here.
+ */
+export async function downloadSecretsBackup(
+  options: SecretsBackupOptions,
+): Promise<SecretsBackupResult> {
+  const response = await api.postForResponse('/secrets/export', {
+    password: options.password,
+    includeAttachments: options.includeAttachments ?? true,
+    includeVersions: options.includeVersions ?? false,
+  });
+  const blob = await response.blob();
+  return {
+    blob,
+    filename:
+      parseContentDispositionFilename(response.headers.get('Content-Disposition')) ??
+      defaultBackupFilename(),
+    secretCount: parseCountHeader(response.headers.get('X-Vault-Export-Secrets')),
+    attachmentCount: parseCountHeader(response.headers.get('X-Vault-Export-Attachments')),
+  };
 }
