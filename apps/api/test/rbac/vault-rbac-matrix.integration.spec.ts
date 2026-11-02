@@ -96,8 +96,19 @@ const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
     'push:write',
     'org_broadcasts:read',
     'org_broadcasts:write',
+    // E9.2: the telemetry slice (system, admin only)
+    'telemetry:read',
+    'telemetry:write',
+    'telemetry:query',
+    // The platform AI slice's permissions, registered for the telemetry assistant route (`ai:use`);
+    // `ai_config:*` is system (admin), the rest come from `org_admin`.
+    'ai_config:read',
+    'ai_config:write',
+    'ai:use',
+    'org_ai_config:read',
+    'org_ai_config:write',
   ],
-  contributor: [...SECRETS_RW, ...USER_SETTINGS, 'storage:read', 'storage:write'],
+  contributor: [...SECRETS_RW, ...USER_SETTINGS, 'storage:read', 'storage:write', 'ai:use'],
   viewer: ['secrets:read', 'secret_types:read', 'media:read', ...USER_SETTINGS, 'storage:read'],
 };
 
@@ -125,6 +136,11 @@ const SYSTEM_PERMISSIONS = new Set([
   'broadcasts:write',
   'push:read',
   'push:write',
+  'telemetry:read',
+  'telemetry:write',
+  'telemetry:query',
+  'ai_config:read',
+  'ai_config:write',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -272,6 +288,33 @@ const ROUTES: readonly Route[] = [
   ['POST', `/api/admin/broadcasts/${ID}/cancel`, BROADCAST_WRITE],
   ['POST', `/api/admin/broadcasts/${ID}/resume`, BROADCAST_WRITE],
   ['DELETE', `/api/admin/broadcasts/${ID}`, BROADCAST_WRITE],
+  // Telemetry (E9.2, #90): the export gate and status, the GreptimeDB connection and store, the explorer,
+  // the dashboard (all system, admin only); the stack routes reuse the settings permissions; the public
+  // config answers any signed-in user; the assistant route is in `KILL_SWITCH_ROUTES` below
+  ['GET', '/api/telemetry/config', null],
+  ['GET', '/api/admin/telemetry/config', 'telemetry:read'],
+  ['PUT', '/api/admin/telemetry/config', 'telemetry:write'],
+  ['GET', '/api/admin/telemetry/status', 'telemetry:read'],
+  ['GET', '/api/admin/telemetry/connection', 'telemetry:read'],
+  ['PUT', '/api/admin/telemetry/connection', 'telemetry:write'],
+  ['DELETE', '/api/admin/telemetry/connection', 'telemetry:write'],
+  ['POST', '/api/admin/telemetry/connection/test', 'telemetry:write'],
+  ['GET', '/api/admin/telemetry/store', 'telemetry:read'],
+  ['PUT', '/api/admin/telemetry/store', 'telemetry:write'],
+  ['POST', '/api/admin/telemetry/query', 'telemetry:query'],
+  ['GET', '/api/admin/telemetry/schema', 'telemetry:query'],
+  ['POST', '/api/admin/telemetry/export', 'telemetry:query'],
+  ['GET', '/api/admin/telemetry/stack', 'system_settings:read'],
+  ['POST', '/api/admin/telemetry/stack/deploy', 'system_settings:write'],
+  ['GET', '/api/admin/telemetry/dashboard/summary', 'telemetry:query'],
+  ['GET', '/api/admin/telemetry/dashboard/timeseries', 'telemetry:query'],
+  ['GET', '/api/admin/telemetry/dashboard/top', 'telemetry:query'],
+  ['GET', '/api/admin/telemetry/dashboard/events', 'telemetry:query'],
+  ['GET', '/api/admin/telemetry/dashboard/filters', 'telemetry:query'],
+  ['GET', '/api/admin/telemetry/dashboard/metrics', 'telemetry:query'],
+  ['GET', '/api/admin/telemetry/dashboard/metric-groups', 'telemetry:query'],
+  ['GET', '/api/admin/telemetry/dashboard/panels', 'telemetry:query'],
+  ['GET', `/api/admin/telemetry/dashboard/panels/${ID}`, 'telemetry:query'],
 ];
 
 /**
@@ -280,6 +323,14 @@ const ROUTES: readonly Route[] = [
  * count for the coverage test.
  */
 const STREAM_ROUTES: readonly Route[] = [['GET', '/api/notifications/stream', null]];
+
+/**
+ * Routes behind a class guard that runs BEFORE authentication (the AI kill switch: 503
+ * `AI_NOT_CONFIGURED` while AI is off, whoever asks), so the 401/403 oracle cannot be exercised
+ * here. They still count for the coverage test (the permission is the first one the route names;
+ * it also needs `ai:use`). Their permissions are held by the `telemetry` conformance suite.
+ */
+const KILL_SWITCH_ROUTES: readonly Route[] = [['POST', '/api/admin/telemetry/assistant/stream', 'telemetry:query']];
 
 // ---------------------------------------------------------------------------
 // Principal graphs, as production loads them
@@ -395,6 +446,14 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
         'NotificationsController',
         'PushConfigController',
         'BroadcastsController',
+        'TelemetryAdminController',
+        'TelemetryConfigController',
+        'TelemetryConnectionController',
+        'TelemetryStoreController',
+        'TelemetryExplorerController',
+        'TelemetryAssistantController',
+        'TelemetryStackController',
+        'TelemetryDashboardController',
       ]);
       const discovered = new Map<string, RoutePermission>();
       for (const controller of discoverControllers(AppModule)) {
@@ -419,7 +478,7 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
       }
 
       const normalised = (path: string) => path.split(ID).join(':id').replace(/\/by-name\/[^/]+/, '/by-name/:name');
-      const declared = new Map([...ROUTES, ...STREAM_ROUTES].map(([m, p, perm]) => [`${m} ${normalised(p)}`, perm] as const));
+      const declared = new Map([...ROUTES, ...STREAM_ROUTES, ...KILL_SWITCH_ROUTES].map(([m, p, perm]) => [`${m} ${normalised(p)}`, perm] as const));
 
       // Compare shapes: parameter names differ (`:folderId`), so collapse every `:param`.
       const shape = (key: string) => key.replace(/:[A-Za-z]+/g, ':p');
@@ -437,7 +496,7 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
       const grants = catalogGrants(buildPermissionCatalog());
       const heldBy = (roleNames: string[]) =>
         grants.filter((g) => roleNames.includes(g.role)).map((g) => g.permission);
-      const mine = (permissions: readonly string[]) => permissions.filter((p) => /^(secrets|secret_types|media|jobs|nodes|broadcasts|org_broadcasts|push):/.test(p));
+      const mine = (permissions: readonly string[]) => permissions.filter((p) => /^(secrets|secret_types|media|jobs|nodes|broadcasts|org_broadcasts|push|telemetry|ai|ai_config|org_ai_config):/.test(p));
 
       expect(mine(heldBy(['admin', 'org_admin'])).sort()).toEqual(mine(ROLE_PERMISSIONS.admin).sort());
       expect(mine(heldBy(['contributor'])).sort()).toEqual(mine(ROLE_PERMISSIONS.contributor).sort());

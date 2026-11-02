@@ -210,5 +210,6 @@ Note: `DATABASE_URL` is constructed automatically from these variables at runtim
 **Observability:**
 - `OTEL_ENABLED` - Enable OpenTelemetry (default: true)
 - `OTEL_EXPORTER_OTLP_ENDPOINT` - OTEL Collector endpoint
-- `UPTRACE_DSN` - Uptrace connection string
+- `OTEL_SERVICE_NAME` - service name (default `vault-api`)
+- `GREPTIME_*`, `STACK_AGENT_URL`, `STACK_AGENT_TOKEN` - deployment defaults for the telemetry store connection and the VPS stack agent; the connection saved at `/admin/settings/telemetry` overrides `GREPTIME_*`. Whether anything is exported is a runtime setting (`telemetry.enabled`), not a variable. See [runbooks/telemetry.md](runbooks/telemetry.md)
 

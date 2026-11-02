@@ -41,6 +41,9 @@ const PINNED_JOB_TYPES = [
   // admin broadcasts (`BroadcastsModule`, E7.1): the fan-out of one broadcast, in chunks
   'admin.broadcast.start',
   'admin.broadcast.chunk',
+  // telemetry slice (`TelemetryModule.forRoot`, E9.2): store retention (TTL) and the stack deploy; both server-only
+  'telemetry.retention.apply',
+  'telemetry.stack.deploy',
 ] as const;
 
 describe('job type snapshot (issue #81)', () => {

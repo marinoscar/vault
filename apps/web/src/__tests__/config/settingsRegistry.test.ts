@@ -28,6 +28,7 @@ import rolesSource from '../../../../api/src/common/constants/roles.constants.ts
 import settingsPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/settings/settings.permissions.js?raw';
 import usersPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/identity/users/users.permissions.js?raw';
 import allowlistPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/identity/allowlist/allowlist.permissions.js?raw';
+import telemetryPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/telemetry/telemetry.permissions.js?raw';
 
 const cardsOf = (sections: SettingsSectionDef[]): SettingsCardDef[] => sections.flatMap((s) => s.cards);
 const ADMIN_CARDS = cardsOf(ADMIN_SECTIONS);
@@ -48,6 +49,7 @@ const API_PERMISSIONS = new Set([
   ...declaredIds(settingsPermissionsSource),
   ...declaredIds(usersPermissionsSource),
   ...declaredIds(allowlistPermissionsSource),
+  ...declaredIds(telemetryPermissionsSource),
 ]);
 
 /**
@@ -69,6 +71,12 @@ const CONTROLLER_MIRROR: Record<string, string | undefined> = {
   '/admin/settings/doctor': 'system_settings:read',
   // platform about controller GET /api/admin/about (default)
   '/admin/settings/about': 'system_settings:read',
+  // telemetry-admin.controller.ts GET /api/admin/telemetry/config (E9.2)
+  '/admin/settings/telemetry': 'telemetry:read',
+  // telemetry-explorer.controller.ts POST /api/admin/telemetry/query and the schema (E9.2)
+  '/admin/settings/telemetry/explorer': 'telemetry:query',
+  // telemetry-dashboard.controller.ts GET /api/admin/telemetry/dashboard/* (E9.2)
+  '/admin/settings/telemetry/dashboard': 'telemetry:query',
   // user-settings.controller.ts GET /api/user-settings
   '/settings/profile': 'user_settings:read',
   '/settings/appearance': 'user_settings:read',
@@ -118,7 +126,12 @@ describe.each([
     for (const path of paths) {
       expect(path).toBeDefined();
       expect(path!.startsWith(`${hubPath}/`)).toBe(true);
-      expect(path!.slice(hubPath.length + 1)).not.toContain('/');
+      // One segment under the hub, except the packaged telemetry Explorer and Dashboard cards, which
+      // nest under the Telemetry card (`/telemetry/explorer`, `/telemetry/dashboard`) as the platform
+      // declares them, so the longest-prefix title resolver names them correctly (E9.2, #90).
+      const rest = path!.slice(hubPath.length + 1);
+      if (/^telemetry\/(explorer|dashboard)$/.test(rest)) expect(paths).toContain(`${hubPath}/telemetry`);
+      else expect(rest).not.toContain('/');
       expect(GATES.has(path!)).toBe(true);
     }
   });
@@ -140,7 +153,10 @@ describe.each([
   it('owns every settings route in App.tsx (a card path or a page beneath one)', () => {
     const routes = [...GATES.keys()].filter((path) => path.startsWith(`${hubPath}/`));
     for (const route of routes) {
-      const owner = cards.find((card) => route === card.path || route.startsWith(`${card.path}/`));
+      // The longest matching card path owns the route (the title resolver's rule).
+      const owner = cards
+        .filter((card) => route === card.path || route.startsWith(`${card.path}/`))
+        .sort((x, y) => (y.path ?? '').length - (x.path ?? '').length)[0];
       expect(owner, route).toBeDefined();
       // A page beneath a card is gated like the card.
       expect(GATES.get(route)).toBe(owner!.permission ?? null);
@@ -166,6 +182,9 @@ describe('the registries as a whole', () => {
       'Maintenance',
       'Doctor',
       'About',
+      'Telemetry',
+      'Telemetry Explorer',
+      'Telemetry Dashboard',
     ]);
     expect(USER_CARDS.map((card) => card.title)).toEqual([
       'Profile',
@@ -187,7 +206,11 @@ describe('the registries as a whole', () => {
     const perms = [...hubRoute![1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
     expect(perms).toEqual(consoleDest.anyPermission);
     // Every admin card is reachable by some holder of the hub gate.
-    for (const card of ADMIN_CARDS) expect(perms).toContain(card.permission);
+    // The `telemetry:*` cards are held by the admin role only, which also holds the hub gate's
+    // `system_settings:read`: the page gate (not the hub gate) is what checks the telemetry string.
+    for (const card of ADMIN_CARDS.filter((c) => !/^telemetry:/.test(String(c.permission ?? '')))) {
+      expect(perms).toContain(card.permission as string);
+    }
   });
 
   it('leaves the per-user hub ungated (every user owns their settings)', () => {
@@ -229,6 +252,10 @@ describe('the registries as a whole', () => {
     );
     expect(declaredIds(usersPermissionsSource)).toContain('users:read');
     expect(declaredIds(allowlistPermissionsSource)).toContain('allowlist:read');
+    expect(declaredIds(telemetryPermissionsSource)).toEqual(
+      expect.arrayContaining(['telemetry:read', 'telemetry:write', 'telemetry:query']),
+    );
+    expect(slices).toContain("'telemetry'");
     // No invented string sneaks in through a loose pattern.
     for (const id of API_PERMISSIONS) expect(id).toMatch(/^[a-z_]+:[a-z_]+$/);
   });

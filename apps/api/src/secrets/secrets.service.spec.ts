@@ -316,6 +316,22 @@ describe('SecretsService', () => {
       expect(result.id).toBe(secretId);
     });
 
+    it('records one secret and one version metric, labelled by type kind only (E9.2)', async () => {
+      const metrics = { secretCreated: jest.fn(), secretVersionCreated: jest.fn() };
+      (service as unknown as { vaultMetrics: typeof metrics }).vaultMetrics = metrics;
+
+      await service.create(createDto, userId, ownerPerms);
+
+      expect(metrics.secretCreated).toHaveBeenCalledTimes(1);
+      expect(metrics.secretVersionCreated).toHaveBeenCalledWith('create');
+      // Whatever the type row says, the label is one of the closed kinds, never a name or id.
+      expect(['credential', 'api_key', 'card', 'token', 'note', 'document', 'custom']).toContain(
+        metrics.secretCreated.mock.calls[0][0],
+      );
+      expect(JSON.stringify(metrics.secretCreated.mock.calls)).not.toContain(userId);
+      expect(JSON.stringify(metrics.secretCreated.mock.calls)).not.toContain(createDto.name);
+    });
+
     it('should throw NotFoundException when the secret type does not exist', async () => {
       mockPrisma.secretType.findUnique.mockResolvedValue(null);
 

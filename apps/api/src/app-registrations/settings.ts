@@ -34,6 +34,8 @@ import {
   type UserSettingsNamespace,
 } from '@marinoscar/platform-api/settings';
 
+import { TELEMETRY_SYSTEM_SETTINGS } from '../platform/telemetry/telemetry.system-settings';
+
 // -----------------------------------------------------------------------------
 // ui
 // -----------------------------------------------------------------------------
@@ -212,6 +214,8 @@ export const APP_SYSTEM_SETTINGS_NAMESPACES: readonly SystemSettingsNamespace[] 
   VAULT_AI_SYSTEM_SETTINGS as SystemSettingsNamespace,
   VAULT_CARDS_SYSTEM_SETTINGS as SystemSettingsNamespace,
   VAULT_BACKUPS_SYSTEM_SETTINGS as SystemSettingsNamespace,
+  // The platform telemetry slice's policy (E9.2, #90): off and inert by default.
+  TELEMETRY_SYSTEM_SETTINGS as SystemSettingsNamespace,
 ];
 
 /** Vault's own user namespaces (none; `dataTables` and `navigation` are the platform's). */

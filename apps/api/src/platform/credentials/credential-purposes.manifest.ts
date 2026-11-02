@@ -32,6 +32,7 @@ import {
 } from '@marinoscar/platform-api/credentials';
 import { SES_CREDENTIAL_PURPOSE_DEF, SMTP_CREDENTIAL_PURPOSE_DEF } from '@marinoscar/platform-api/email';
 import { PUSH_VAPID_CREDENTIAL_PURPOSE_DEF } from '@marinoscar/platform-api/notifications';
+import { TELEMETRY_GREPTIME_CREDENTIAL_PURPOSE } from '@marinoscar/platform-api/telemetry';
 
 /** Purpose of the deployment's AI provider keys (also the cipher sub-key domain). */
 export const AI_CREDENTIAL_PURPOSE = 'ai';
@@ -52,3 +53,12 @@ registerCredentialPurpose(AI_CREDENTIAL_PURPOSE_DEF);
 registerCredentialPurpose(SMTP_CREDENTIAL_PURPOSE_DEF);
 registerCredentialPurpose(SES_CREDENTIAL_PURPOSE_DEF);
 registerCredentialPurpose(PUSH_VAPID_CREDENTIAL_PURPOSE_DEF);
+
+// E9.2 (#90): the telemetry slice's two GreptimeDB passwords (names `reader` and `admin`).
+// The `GREPTIME_*` environment values are only the deployment default for the first connection.
+registerCredentialPurpose({
+  purpose: TELEMETRY_GREPTIME_CREDENTIAL_PURPOSE,
+  owner: 'telemetry',
+  label: 'GreptimeDB passwords',
+  tiers: ['system'],
+});

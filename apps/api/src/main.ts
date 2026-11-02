@@ -15,6 +15,7 @@ import fastifyCookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
 import { buildCorsOptions, registerPlatformDocs } from '@marinoscar/platform-api/host';
 import { verifyEncryptionKeyAtStartup } from '@marinoscar/platform-api/core';
+import { registerRequestSpanAttributes } from '@marinoscar/platform-api/otel-core';
 import { PrismaService } from './prisma/prisma.service';
 import { AppModule } from './app.module';
 import { APP_OPENAPI } from './openapi/document';
@@ -42,6 +43,11 @@ async function bootstrap() {
       bodyLimit: 16 * 1024 * 1024,
     }),
   );
+
+  // Request attributes (`http.route`, caller kind) on the HTTP server span. FIRST, before any
+  // plugin or route, so it runs ahead of every other onRequest hook; a no-op unless the SDK
+  // is installed (`OTEL_ENABLED=true`). See `@marinoscar/platform-api/otel-core`.
+  registerRequestSpanAttributes(app.getHttpAdapter().getInstance(), process.env.OTEL_ENABLED === 'true');
 
   // SECRETS_ENCRYPTION_KEY (the platform credential store's key, not
   // VAULT_ENCRYPTION_KEY): validated before the port is bound. A malformed key

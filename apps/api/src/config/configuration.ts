@@ -1,6 +1,7 @@
 import { identityConfiguration } from '@marinoscar/platform-api/identity';
 
 import { buildDatabaseUrl } from '../common/database-url';
+import { resolveServiceName } from '../common/otel/telemetry-identity';
 
 export default () => {
   // Construct DATABASE_URL from individual PostgreSQL variables
@@ -40,7 +41,40 @@ export default () => {
   otel: {
     enabled: process.env.OTEL_ENABLED === 'true',
     endpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
-    serviceName: process.env.OTEL_SERVICE_NAME || 'vault-api',
+    serviceName: resolveServiceName(),
+  },
+
+  // GreptimeDB: the telemetry store's SQL read side (E9.2, #90).
+  //
+  // THE DEPLOYMENT DEFAULT, not the only source. An administrator can save a
+  // connection at /admin/settings/telemetry (a `telemetry_connection` system-settings
+  // row plus two passwords in the encrypted credential store); when one is stored it
+  // is used WHOLLY in place of this block. `TelemetryConnectionService` is the one
+  // resolver; nothing else reads this block. The writer login and the HTTP port are
+  // the collector's, never the API's. Credentials default to '' (no guessable default).
+  // `available` means "this default names a usable reader connection".
+  greptime: {
+    host: process.env.GREPTIME_HOST || '',
+    pgPort: parseInt(process.env.GREPTIME_PG_PORT || '4003', 10),
+    database: process.env.GREPTIME_DB || 'public',
+    readerUser: process.env.GREPTIME_READER_USER || '',
+    readerPassword: process.env.GREPTIME_READER_PASSWORD || '',
+    adminUser: process.env.GREPTIME_ADMIN_USER || '',
+    adminPassword: process.env.GREPTIME_ADMIN_PASSWORD || '',
+    available: Boolean(
+      process.env.GREPTIME_HOST &&
+        process.env.GREPTIME_READER_USER &&
+        process.env.GREPTIME_READER_PASSWORD,
+    ),
+  },
+
+  // stack-agent: the VPS sidecar that can start the telemetry services on request.
+  // Deployment infrastructure (both default to '': the feature reports
+  // `not_configured`, the normal state on a development machine). The token is read
+  // only by `StackAgentClient` and never logged.
+  stackAgent: {
+    url: (process.env.STACK_AGENT_URL || '').trim(),
+    token: (process.env.STACK_AGENT_TOKEN || '').trim(),
   },
 
   // Storage Configuration
