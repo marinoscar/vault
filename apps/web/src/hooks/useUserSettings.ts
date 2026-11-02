@@ -3,6 +3,37 @@ import { api, ApiError } from '../services/api';
 import { UserSettings } from '../types';
 import { useOptionalShellTheme } from '@marinoscar/platform-web/shell/headless';
 
+/**
+ * PLATFORM-ADOPTION-SHIM(E4.1): the API's `profile` is the platform's
+ * (`imageSource: 'none' | 'provider'`, `customImageUrl`); the profile card still
+ * works in terms of `useProviderImage`. These two functions translate at the
+ * boundary and go away with `ProfileSettings` (the platform `UserProfilePage`, E10).
+ */
+type WireProfile = Partial<UserSettings['profile']> & { imageSource?: 'none' | 'provider' | 'upload' };
+
+function fromWire(data: UserSettings): UserSettings {
+  const profile = (data.profile ?? {}) as WireProfile;
+  const { imageSource, ...rest } = profile;
+  return {
+    ...data,
+    profile: { ...rest, useProviderImage: rest.useProviderImage ?? imageSource !== 'none' },
+  };
+}
+
+function toWire(updates: Partial<UserSettings>): Record<string, unknown> {
+  if (!updates.profile) return updates;
+  const { useProviderImage, customImageUrl, ...rest } = updates.profile;
+  return {
+    ...updates,
+    profile: {
+      ...rest,
+      imageSource: useProviderImage === false ? 'none' : 'provider',
+      // `null` deletes the stored URL (JSON Merge Patch).
+      customImageUrl: customImageUrl ? customImageUrl : null,
+    },
+  };
+}
+
 interface UseUserSettingsReturn {
   settings: UserSettings | null;
   isLoading: boolean;
@@ -29,7 +60,7 @@ export function useUserSettings(): UseUserSettingsReturn {
     try {
       setIsLoading(true);
       setError(null);
-      const data = await api.get<UserSettings>('/user-settings');
+      const data = fromWire(await api.get<UserSettings>('/user-settings'));
       setSettings(data);
       // Sync theme with settings
       setMode(data.theme);
@@ -53,11 +84,11 @@ export function useUserSettings(): UseUserSettingsReturn {
         setIsSaving(true);
         setError(null);
 
-        const data = await api.patch<UserSettings>('/user-settings', updates, {
+        const data = fromWire(await api.patch<UserSettings>('/user-settings', toWire(updates), {
           headers: {
             'If-Match': settings.version.toString(),
           },
-        });
+        }));
 
         setSettings(data);
 

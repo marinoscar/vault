@@ -168,6 +168,8 @@ function setup(schedule: Record<string, unknown>) {
     }),
     delete: jest.fn().mockResolvedValue(undefined),
   };
+  // AiConfigService: whether an AI key is stored.
+  const aiConfig = { isKeyConfigured: jest.fn(async () => true) };
   const systemSettings = {
     // What SystemSettingsService.getSettings() returns: already masked, but
     // still carrying apiKeyLast4, which the backup drops too.
@@ -196,6 +198,7 @@ function setup(schedule: Record<string, unknown>) {
     storage as never,
     exportService,
     systemSettings as never,
+    aiConfig as never,
   );
   return { runner, prisma, storage, uploads, systemSettings };
 }

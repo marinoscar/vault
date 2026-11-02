@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# DEPRECATED (E11): this script is the pre-platform deploy and is kept only until
+# the platform CLI deploy replaces it. Use `vault deploy` (apps/cli, the platform
+# engine); see docs/runbooks/infra-sync.md and docs/specs/vps-deploy.md. Do not
+# extend it. Its compose and nginx inputs are the generated files of infra/.
 # =============================================================================
 # install-vault.sh — Install Vault on VPS (end-to-end)
 # =============================================================================

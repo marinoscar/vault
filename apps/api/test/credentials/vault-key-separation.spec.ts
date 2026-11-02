@@ -64,7 +64,7 @@ describe('secret values stay under VAULT_ENCRYPTION_KEY', () => {
     expect(readers).toEqual([
       'ai/ai-config.service.ts',
       'ai/ai-key-migration.ts',
-      'settings/system-settings/system-settings.service.ts',
+      'platform/settings/ai-key-projection.interceptor.ts',
     ]);
   });
 });

@@ -30,12 +30,14 @@ A compact map of the endpoint groups, RBAC, tables, allowlist and environment va
 - `PUT /api/users/{id}/roles` - Update user roles
 
 ### Settings
+The platform settings slice serves these (E4.1); Vault's namespaces are `ui`, `features`, `ai`, `vaultCards`, `vaultBackups` (system) and the platform's `dataTables`, `navigation` (user). `/api/org-settings` (`org_settings:read|write`) is mounted and unused in single-organization mode.
 - `GET /api/user-settings` - Get current user's settings
 - `PUT /api/user-settings` - Replace user settings
 - `PATCH /api/user-settings` - Partial update user settings
 - `GET /api/system-settings` - Get system settings
 - `PUT /api/system-settings` - Replace system settings (Admin)
-- `PATCH /api/system-settings` - Partial update system settings (Admin)
+- `PATCH /api/system-settings` - Partial update system settings (Admin); `ai.apiKey` is write-only (credential store)
+- `GET /api/org-settings`, `PATCH /api/org-settings` - Organization overrides (`org_settings:*`; only namespaces with an org layer, none today)
 
 ### Allowlist (Admin-only)
 - `GET /api/allowlist` - List allowlisted emails (paginated, filterable)

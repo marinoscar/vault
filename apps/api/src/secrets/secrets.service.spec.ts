@@ -7,7 +7,7 @@ import {
   BadRequestException,
   ConflictException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { SystemSettingsService } from '@marinoscar/platform-api/settings';
 
 import { SecretsService } from './secrets.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -110,7 +110,7 @@ describe('SecretsService', () => {
   let mockPrisma: MockPrismaService;
   let mockCrypto: jest.Mocked<Pick<CryptoService, 'encrypt' | 'decrypt'>>;
   let mockStorage: jest.Mocked<StorageProvider>;
-  let mockConfig: { get: jest.Mock };
+  let mockSettings: { getNamespace: jest.Mock };
 
   const userId = 'user-aaa';
   const otherUserId = 'user-bbb';
@@ -229,9 +229,11 @@ describe('SecretsService', () => {
     // Tests that care about the bytes override this.
     mockStorage.download.mockImplementation(async () => imageBlob(MAGIC.png));
 
-    // Unset by default, so the service falls back to its built-in card image
-    // size cap unless a test opts into an override.
-    mockConfig = { get: jest.fn().mockReturnValue(undefined) };
+    // The `vaultCards` namespace at its defaults (5 MB cap) unless a test opts
+    // into another value.
+    mockSettings = {
+      getNamespace: jest.fn().mockResolvedValue({ imageMaxBytes: 5 * 1024 * 1024, expiryWarningDays: 30 }),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -239,7 +241,7 @@ describe('SecretsService', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: CryptoService, useValue: mockCrypto },
         { provide: STORAGE_PROVIDER, useValue: mockStorage },
-        { provide: ConfigService, useValue: mockConfig },
+        { provide: SystemSettingsService, useValue: mockSettings },
       ],
     }).compile();
 
@@ -1240,10 +1242,8 @@ describe('SecretsService', () => {
 
       // ---- operator-tunable limit ------------------------------------------
 
-      it('should honour a CARD_IMAGE_MAX_BYTES override', async () => {
-        mockConfig.get.mockImplementation((key: string) =>
-          key === 'CARD_IMAGE_MAX_BYTES' ? '1024' : undefined,
-        );
+      it('should honour the vaultCards.imageMaxBytes setting', async () => {
+        mockSettings.getNamespace.mockResolvedValue({ imageMaxBytes: 1024, expiryWarningDays: 30 });
         mockPrisma.storageObject.findUnique.mockResolvedValue(
           objectWith({ mimeType: 'image/jpeg', size: BigInt(2048) }) as any,
         );
@@ -1262,25 +1262,6 @@ describe('SecretsService', () => {
 
         expect(caught).toBeInstanceOf(BadRequestException);
         expect(caught!.message).toContain('1024');
-      });
-
-      it('should ignore an unparseable CARD_IMAGE_MAX_BYTES and keep the default', async () => {
-        mockConfig.get.mockImplementation((key: string) =>
-          key === 'CARD_IMAGE_MAX_BYTES' ? '5MB' : undefined,
-        );
-        mockPrisma.storageObject.findUnique.mockResolvedValue(
-          objectWith({ mimeType: 'image/jpeg', size: BigInt(6 * MB) }) as any,
-        );
-
-        // NaN must not disable the check: 6 MB is still over the 5 MB default.
-        await expect(
-          service.linkAttachment(
-            secretId,
-            { storageObjectId, role: 'card_front' } as any,
-            userId,
-            writePerms,
-          ),
-        ).rejects.toThrow(BadRequestException);
       });
 
       // ---- magic-number verification (issue #37) ---------------------------

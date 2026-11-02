@@ -60,7 +60,7 @@ export const AI_VERIFY_ACTION = 'ai.model.verify';
  * a pattern or allowlist here would reject models that do not exist yet, which
  * is precisely what this feature exists to test empirically.
  *
- * Matches the bound on `ai.model` in the system settings schema
+ * Matches the bound on `ai.model` in the `ai` settings namespace (`app-registrations/settings.ts`)
  * (`patchSystemSettingsSchema`), so a name that can be probed is a name that
  * can then be saved.
  */
