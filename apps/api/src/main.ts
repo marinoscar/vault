@@ -62,6 +62,8 @@ async function bootstrap() {
       'Content-Disposition',
       'X-Vault-Export-Secrets',
       'X-Vault-Export-Attachments',
+      'X-Vault-Export-Media-Files',
+      'X-Vault-Export-Users',
     ],
   });
 

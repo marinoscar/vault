@@ -311,6 +311,7 @@ export class S3StorageProvider implements StorageProvider {
         Bucket: this.bucket,
         Key: key,
         ResponseContentDisposition: options?.responseContentDisposition,
+        ResponseContentType: options?.responseContentType,
       });
 
       const signedUrl = await getSignedUrl(this.s3Client, command, {

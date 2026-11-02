@@ -4,7 +4,14 @@
  * password-source descriptions and per-OS schedule instructions.
  */
 import { BACKUP_FILENAME_TOKENS, expandBackupFilename, templateUsesUser } from '../lib/backup-filename.js';
-import { DEFAULT_PASSWORD_ENV, type BackupSettings } from '../lib/backup-settings.js';
+import {
+  BACKUP_CONTENT_KEYS,
+  DEFAULT_PASSWORD_ENV,
+  contentsFromKeys,
+  type BackupContentKey,
+  type BackupContents,
+  type BackupSettings,
+} from '../lib/backup-settings.js';
 
 export type TemplatePreview = { ok: true; path: string } | { ok: false; error: string };
 
@@ -217,4 +224,37 @@ export function buildScheduleInstructions(input: ScheduleInput): ScheduleInstruc
     warnings,
     steps: ['Open your crontab: crontab -e', 'Add the line below and save', 'Check it: crontab -l'],
   };
+}
+
+const CONTENT_CHOICE_LABELS: Record<BackupContentKey, { name: string; description: string }> = {
+  secrets: { name: 'Secrets (current values)', description: 'Every secret you own, decrypted' },
+  attachments: { name: '  Secret attachments (card photos, files)', description: 'Needs Secrets' },
+  versions: { name: '  Old secret versions', description: 'Needs Secrets' },
+  media: { name: 'Media library (folders and files)', description: 'Your own media folders' },
+};
+
+/**
+ * Checkbox choices for "What do you want to back up?", checked from the
+ * current settings (defaults: secrets and attachments). Pure.
+ */
+export function backupContentChoices(
+  current: BackupContents,
+): { name: string; value: BackupContentKey; description: string; checked: boolean }[] {
+  const checked: Record<BackupContentKey, boolean> = {
+    secrets: current.includeSecrets,
+    attachments: current.includeSecrets && current.includeAttachments,
+    versions: current.includeSecrets && current.includeVersions,
+    media: current.includeMedia,
+  };
+  return BACKUP_CONTENT_KEYS.map((key) => ({ ...CONTENT_CHOICE_LABELS[key], value: key, checked: checked[key] }));
+}
+
+/** Checkbox validator: true, or the error message to show. Pure. */
+export function validateContentSelection(keys: readonly string[]): true | string {
+  try {
+    contentsFromKeys(keys, 'selection');
+    return true;
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err);
+  }
 }

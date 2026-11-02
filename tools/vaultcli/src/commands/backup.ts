@@ -9,10 +9,14 @@ import {
   BACKUP_SETTING_KEYS,
   DEFAULT_PASSWORD_ENV,
   assertValidTemplate,
+  BACKUP_CONTENT_KEYS,
   choosePasswordSource,
+  describeContents,
+  effectiveContents,
   getBackupSettingsPath,
   loadBackupSettings,
   normalizeSettingKey,
+  parseContentsOption,
   parsePositiveInt,
   resetBackupSettings,
   resolveBackupSettings,
@@ -80,6 +84,8 @@ function expandHome(p: string): string {
 /**
  * Settings given as flags on `backup`, `backup prune` or `backup config set`.
  * Only options actually typed are returned, so saved settings can fill the rest.
+ * `--contents` sets all four content settings and overrides `--[no-]secrets`,
+ * `--[no-]attachments`, `--[no-]include-versions` and `--[no-]media`.
  */
 function settingsFlags(cmd: Command): BackupSettings {
   const flags: BackupSettings = {};
@@ -92,10 +98,16 @@ function settingsFlags(cmd: Command): BackupSettings {
   if (passwordEnv !== undefined) flags.passwordEnv = passwordEnv;
   const passwordFile = fromCli<string>(cmd, 'passwordFile');
   if (passwordFile !== undefined) flags.passwordFile = passwordFile;
+  const secrets = fromCli<boolean>(cmd, 'secrets');
+  if (secrets !== undefined) flags.includeSecrets = secrets;
   const attachments = fromCli<boolean>(cmd, 'attachments');
   if (attachments !== undefined) flags.includeAttachments = attachments;
   const includeVersions = fromCli<boolean>(cmd, 'includeVersions');
   if (includeVersions !== undefined) flags.includeVersions = includeVersions;
+  const media = fromCli<boolean>(cmd, 'media');
+  if (media !== undefined) flags.includeMedia = media;
+  const contents = fromCli<string>(cmd, 'contents');
+  if (contents !== undefined) Object.assign(flags, parseContentsOption(contents));
   const utc = fromCli<boolean>(cmd, 'utc');
   if (utc !== undefined) flags.utc = utc;
   const keepDays = fromCli<string>(cmd, 'keepDays');
@@ -154,7 +166,9 @@ async function runBackupCommand(cmd: Command, output: OutputManager): Promise<bo
   const opts = cmd.opts();
   const flags = settingsFlags(cmd);
   const saved = loadBackupSettings();
-  const { settings } = resolveBackupSettings(flags, saved);
+  const { settings, sources } = resolveBackupSettings(flags, saved);
+  // Fail on an impossible selection before asking for a password.
+  const contents = effectiveContents(settings, sources);
   const verbose = cmd.optsWithGlobals().verbose === true;
 
   const now = new Date();
@@ -179,6 +193,7 @@ async function runBackupCommand(cmd: Command, output: OutputManager): Promise<bo
 
   const result = await performBackup({
     settings,
+    contents,
     password,
     overwrite: opts.overwrite === true,
     now,
@@ -232,9 +247,13 @@ export function printBackupResult(r: BackupResult): void {
   success('Backup saved.');
   keyValue('Path', r.path);
   keyValue('Size', `${formatBytes(r.size)} (${r.size} bytes)`);
-  keyValue('Secrets', r.secrets === null ? 'unknown' : String(r.secrets));
-  keyValue('Attachments', r.includeAttachments ? (r.attachments === null ? 'unknown' : String(r.attachments)) : 'excluded');
-  keyValue('Versions', r.includeVersions ? 'all' : 'current only');
+  keyValue('Contents', describeContents(r));
+  keyValue('Secrets', r.includeSecrets ? (r.secrets === null ? 'unknown' : String(r.secrets)) : 'excluded');
+  if (r.includeSecrets) {
+    keyValue('Attachments', r.includeAttachments ? (r.attachments === null ? 'unknown' : String(r.attachments)) : 'excluded');
+    keyValue('Versions', r.includeVersions ? 'all' : 'current only');
+  }
+  keyValue('Media files', r.includeMedia ? String(r.mediaFiles) : 'excluded');
 }
 
 function describeValue(key: BackupSettingKey, value: unknown): string {
@@ -252,18 +271,24 @@ export function registerBackupCommands(program: Command): void {
   const backup = program
     .command('backup')
     .description(
-      'Download a password-protected (AES-256 zip) backup of the secrets you own, ' +
-        'including decrypted values and attachments. Open it with 7-Zip (Windows), ' +
+      'Download a password-protected (AES-256 zip) backup of what you own: your secrets ' +
+        '(decrypted values and attachments) by default, and optionally old versions and ' +
+        'your media library. Open it with 7-Zip (Windows), ' +
         'Keka / The Unarchiver (macOS) or 7z / file-roller (Linux).',
     )
     .option('-o, --output <template>', `Output path template (default "${DEFAULT_BACKUP_TEMPLATE}"). Tokens: ${tokenList}`)
     .option('--password-env <VAR>', `Read the password from this environment variable (default ${DEFAULT_PASSWORD_ENV})`)
     .option('--password-file <path>', 'Read the password from a file (first line, trimmed)')
     .option('-p, --password <pw>', 'Password on the command line (visible in the process list and shell history)')
-    .option('--attachments', 'Include attachments (default)')
+    .option('--contents <list>', `What to back up, comma separated: ${BACKUP_CONTENT_KEYS.join('|')} (overrides the four flags below)`)
+    .option('--secrets', 'Include secrets (default)')
+    .option('--no-secrets', 'Exclude secrets (then also their attachments and versions)')
+    .option('--attachments', 'Include secret attachments (default)')
     .option('--no-attachments', 'Exclude attachments')
     .option('--include-versions', 'Include all versions, not only the current one')
     .option('--no-include-versions', 'Only current versions (overrides a saved setting)')
+    .option('--media', 'Include your media library (folders and files)')
+    .option('--no-media', 'Exclude the media library (default; overrides a saved setting)')
     .option('--overwrite', 'Replace an existing file instead of adding a -1, -2 ... suffix')
     .option('--utc', 'Use UTC for date/time tokens (default: local time)')
     .option('--no-utc', 'Use local time (overrides a saved setting)')
@@ -277,6 +302,16 @@ export function registerBackupCommands(program: Command): void {
       `
 Settings: flags override saved settings (vaultcli backup config ...), which
 override the defaults. Saved settings live in ${'<config dir>'}/backup.json.
+
+Contents (default: secrets with attachments, no old versions, no media):
+  secrets      current secret values
+  attachments  files attached to secrets (needs secrets)
+  versions     old secret versions (needs secrets)
+  media        your media library folders and files
+  --contents lists exactly what to include; keys not listed are left out, e.g.
+  --contents secrets,attachments,media or --contents media. At least secrets or
+  media must be selected. With --no-secrets, saved attachment/version settings
+  are ignored.
 
 Password resolution order:
   --password, --password-file, --password-env, saved passwordFile, saved
@@ -303,6 +338,8 @@ Exit code: 0 on success, 1 on failure, 130 when interrupted.
 Examples:
   $ vaultcli backup
   $ vaultcli backup -o "~/backups/{year}/{month}/vault-{datetime}.zip" --keep-days 30
+  $ vaultcli backup --media                      ${'# secrets, attachments and media'}
+  $ vaultcli backup --contents media             ${'# only the media library'}
   $ VAULTCLI_BACKUP_PASSWORD=... vaultcli backup -o "/srv/backups/vault-{host}-{date}.zip" --json
   $ vaultcli backup config set --output "~/backups/vault-{datetime}.zip" --password-file ~/.vault-pw --keep-last 10
   $ vaultcli backup prune --dry-run
@@ -426,10 +463,15 @@ Examples:
     .option('-o, --output <template>', 'Output path template')
     .option('--password-env <VAR>', 'Read the password from this environment variable')
     .option('--password-file <path>', 'Read the password from this file (stored as an absolute path)')
+    .option('--contents <list>', `What to back up, comma separated: ${BACKUP_CONTENT_KEYS.join('|')} (sets all four content settings)`)
+    .option('--secrets', 'Include secrets')
+    .option('--no-secrets', 'Exclude secrets')
     .option('--attachments', 'Include attachments')
     .option('--no-attachments', 'Exclude attachments')
     .option('--include-versions', 'Include all versions')
     .option('--no-include-versions', 'Only current versions')
+    .option('--media', 'Include the media library')
+    .option('--no-media', 'Exclude the media library')
     .option('--utc', 'Use UTC for date/time tokens')
     .option('--no-utc', 'Use local time for date/time tokens')
     .option('--keep-days <n>', 'Retention: delete backups older than n days (unset to turn off)')
@@ -438,7 +480,10 @@ Examples:
     .action((_opts, cmd: Command) => {
       const output = getOutput(cmd);
       try {
-        assertOnlyOptions(cmd, ['output', 'passwordEnv', 'passwordFile', 'attachments', 'includeVersions', 'utc', 'keepDays', 'keepLast']);
+        assertOnlyOptions(cmd, [
+          'output', 'passwordEnv', 'passwordFile', 'contents', 'secrets', 'attachments', 'includeVersions', 'media',
+          'utc', 'keepDays', 'keepLast',
+        ]);
         const changes = settingsFlags(cmd);
         if (Object.keys(changes).length === 0) {
           throw new Error('Nothing to set. Pass at least one option (see: vaultcli backup config set --help)');
@@ -448,6 +493,9 @@ Examples:
         // One password source at a time: setting one replaces the other.
         if (changes.passwordFile !== undefined && changes.passwordEnv === undefined) next = unsetBackupSettings(next, ['passwordEnv']);
         if (changes.passwordEnv !== undefined && changes.passwordFile === undefined) next = unsetBackupSettings(next, ['passwordFile']);
+        // Never save a selection a later backup would reject.
+        const merged = resolveBackupSettings(changes, next);
+        effectiveContents(merged.settings, merged.sources);
         const file = saveBackupSettings(next);
         output.result(
           { file, saved: next },

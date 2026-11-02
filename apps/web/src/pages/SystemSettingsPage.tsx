@@ -17,6 +17,7 @@ import { SystemSettingsEditor } from '../components/admin/SystemSettingsEditor';
 import { FeatureFlagsList } from '../components/admin/FeatureFlagsList';
 import { UISettings } from '../components/admin/UISettings';
 import { AiSettings } from '../components/settings/AiSettings';
+import { ScheduledBackups } from '../components/admin/ScheduledBackups';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -96,11 +97,15 @@ export default function SystemSettingsPage() {
             <Tabs
               value={tabIndex}
               onChange={(_, newValue) => setTabIndex(newValue)}
+              variant="scrollable"
+              scrollButtons="auto"
+              allowScrollButtonsMobile
               sx={{ borderBottom: 1, borderColor: 'divider' }}
             >
               <Tab label="UI Settings" />
               <Tab label="Feature Flags" />
               <Tab label="AI" />
+              <Tab label="Backups" />
               <Tab label="Advanced (JSON)" />
             </Tabs>
 
@@ -128,7 +133,14 @@ export default function SystemSettingsPage() {
                 <AiSettings disabled={!canWrite} />
               </TabPanel>
 
+              {/* ScheduledBackups loads and saves its own data (the backup
+                  schedule and run history live in their own API, not in the
+                  system settings object) and reads write access itself. */}
               <TabPanel value={tabIndex} index={3}>
+                <ScheduledBackups />
+              </TabPanel>
+
+              <TabPanel value={tabIndex} index={4}>
                 <SystemSettingsEditor
                   settings={settings}
                   onSave={updateSettings}

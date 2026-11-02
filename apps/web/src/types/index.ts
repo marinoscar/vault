@@ -558,3 +558,123 @@ export interface MediaFilesResponse {
   items: MediaFile[];
   meta: { page: number; pageSize: number; totalItems: number; totalPages: number };
 }
+
+// =============================================================================
+// Scheduled Backups (admin)
+// =============================================================================
+
+export type BackupFrequency = 'hourly' | 'daily' | 'weekly' | 'monthly';
+
+export type BackupRunStatus = 'running' | 'succeeded' | 'failed';
+
+export type BackupRunTrigger = 'schedule' | 'manual';
+
+/** Editable fields of the backup schedule (PUT /admin/backups/schedule). */
+export interface BackupScheduleFields {
+  enabled: boolean;
+  frequency: BackupFrequency;
+  /** Hourly only: 1, 2, 3, 4, 6, 8 or 12. */
+  intervalHours: number | null;
+  /** 'HH:mm' wall-clock time in `timezone` (daily, weekly, monthly). */
+  timeOfDay: string;
+  /** Weekly only: 0-6, 0 = Sunday. */
+  dayOfWeek: number | null;
+  /** Monthly only: 1-28. */
+  dayOfMonth: number | null;
+  /** IANA time zone. */
+  timezone: string;
+  /** How many successful backups to keep (1-365). */
+  keepCount: number;
+  /** Back up every user's current secret values. */
+  includeSecrets: boolean;
+  /** Requires includeSecrets. */
+  includeAttachments: boolean;
+  /** Requires includeSecrets. */
+  includeVersions: boolean;
+  /** Every user's media library (folders and files). */
+  includeMedia: boolean;
+  /** Users and roles, allowlist, custom secret types, redacted system settings. */
+  includeSystem: boolean;
+}
+
+/** GET/PUT /admin/backups/schedule response. Never carries the password. */
+export interface BackupSchedule extends BackupScheduleFields {
+  passwordConfigured: boolean;
+  passwordUpdatedAt: string | null;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+  storageConfigured: boolean;
+  /** Null when no schedule has been saved yet (server defaults). */
+  updatedAt: string | null;
+}
+
+/**
+ * PUT body. `password` is write-only: omit it to keep the stored password,
+ * send a 6-256 character string to replace it.
+ */
+export interface UpdateBackupScheduleRequest extends BackupScheduleFields {
+  password?: string;
+}
+
+export interface BackupRun {
+  id: string;
+  status: BackupRunStatus;
+  trigger: BackupRunTrigger;
+  triggeredBy: { id: string; email: string; displayName: string | null } | null;
+  sizeBytes: number | null;
+  userCount: number;
+  secretCount: number;
+  attachmentCount: number;
+  mediaFileCount: number;
+  /**
+   * Content keys selected for this run: 'secrets', 'attachments',
+   * 'versions', 'media', 'system'. Empty for runs from before the choice existed.
+   */
+  contents: string[];
+  warningCount: number;
+  error: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+  deletedAt: string | null;
+  /** succeeded && !deletedAt */
+  downloadable: boolean;
+}
+
+export interface BackupRunsResponse {
+  items: BackupRun[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface BackupDownloadLink {
+  url: string;
+  expiresAt: string;
+  fileName: string;
+}
+
+// =============================================================================
+// Saved backups (per user) and the admin download
+// =============================================================================
+
+/** GET /backups/me/config: whether "Save to the storage account" can be offered. */
+export interface MyBackupsConfig {
+  storageConfigured: boolean;
+  /** How many saved backups are kept per user (newest first). */
+  keepCount: number;
+}
+
+/**
+ * POST /admin/backups/export body. Exactly one of `password` (6-256
+ * characters) or `useScheduledPassword: true` is sent.
+ */
+export interface AdminBackupExportRequest {
+  password?: string;
+  useScheduledPassword?: boolean;
+  includeSecrets: boolean;
+  includeAttachments: boolean;
+  includeVersions: boolean;
+  includeMedia: boolean;
+  includeSystem: boolean;
+}

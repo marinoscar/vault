@@ -19,6 +19,7 @@ import { SecretTypesModule } from './secret-types/secret-types.module';
 import { SecretsModule } from './secrets/secrets.module';
 import { MediaModule } from './media/media.module';
 import { AiModule } from './ai/ai.module';
+import { BackupsModule } from './backups/backups.module';
 import { LoggerModule } from './common/logger/logger.module';
 import { TestAuthModule } from './test-auth/test-auth.module';
 
@@ -63,6 +64,7 @@ import configuration from './config/configuration';
     SecretsModule,
     MediaModule,
     AiModule,
+    BackupsModule,
 
     // Test modules (non-production only)
     ...(process.env.NODE_ENV !== 'production' ? [TestAuthModule] : []),

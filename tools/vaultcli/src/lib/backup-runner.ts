@@ -14,6 +14,10 @@ import { loadAuth } from './auth-store.js';
 import { expandBackupFilename, templateUsesUser, withCollisionSuffix } from './backup-filename.js';
 import {
   DEFAULT_PASSWORD_ENV,
+  buildExportBody,
+  contentKeys,
+  type BackupContentKey,
+  type BackupContents,
   type PasswordSource,
   type ResolvedBackupSettings,
 } from './backup-settings.js';
@@ -124,13 +128,25 @@ export interface BackupResult {
   size: number;
   secrets: number | null;
   attachments: number | null;
+  /** Media files in the zip (0 when media was not included or the server sent no count). */
+  mediaFiles: number;
+  /** Selected content keys, e.g. ["secrets", "attachments", "media"]. */
+  contents: BackupContentKey[];
+  includeSecrets: boolean;
   includeAttachments: boolean;
   includeVersions: boolean;
+  includeMedia: boolean;
   overwritten: boolean;
 }
 
 export interface PerformBackupInput {
   settings: ResolvedBackupSettings;
+  /**
+   * What to request (from {@link effectiveContents}). Defaults to the
+   * settings' own content flags, with attachments / versions dropped when
+   * secrets are off.
+   */
+  contents?: BackupContents;
   password: string;
   overwrite: boolean;
   /** Fixed time for template tokens (default: now). */
@@ -175,7 +191,7 @@ function firstFreePath(target: string, startAttempt = 0): { path: string; attemp
  * link to the first free name (atomic EEXIST → next suffix), falling back to
  * check-then-rename on filesystems without hard links.
  */
-async function commitPartial(partial: string, target: string, overwrite: boolean): Promise<string> {
+export async function commitPartial(partial: string, target: string, overwrite: boolean): Promise<string> {
   if (overwrite) {
     await rename(partial, target);
     return target;
@@ -234,12 +250,15 @@ export async function performBackup(input: PerformBackupInput): Promise<BackupRe
     throw new Error(`Output path ${target} is a directory`);
   }
 
+  const contents: BackupContents = input.contents ?? {
+    includeSecrets: settings.includeSecrets,
+    includeAttachments: settings.includeSecrets && settings.includeAttachments,
+    includeVersions: settings.includeSecrets && settings.includeVersions,
+    includeMedia: settings.includeMedia,
+  };
+
   input.progress?.('Requesting encrypted backup from the server...');
-  const res = await exportSecretsBackup({
-    password,
-    includeAttachments: settings.includeAttachments,
-    includeVersions: settings.includeVersions,
-  });
+  const res = await exportSecretsBackup(buildExportBody(contents, password));
 
   const contentType = (res.headers.get('content-type') || '').toLowerCase();
   if (!contentType.includes('zip') && !contentType.includes('octet-stream')) {
@@ -250,6 +269,8 @@ export async function performBackup(input: PerformBackupInput): Promise<BackupRe
 
   const secretCount = parseCountHeader(res, 'x-vault-export-secrets');
   const attachmentCount = parseCountHeader(res, 'x-vault-export-attachments');
+  // Older servers do not send it: treat a missing header as 0.
+  const mediaFileCount = parseCountHeader(res, 'x-vault-export-media-files') ?? 0;
 
   const partial = `${target}.partial`;
   let partialCreated = false;
@@ -283,8 +304,12 @@ export async function performBackup(input: PerformBackupInput): Promise<BackupRe
       size,
       secrets: secretCount,
       attachments: attachmentCount,
-      includeAttachments: settings.includeAttachments,
-      includeVersions: settings.includeVersions,
+      mediaFiles: mediaFileCount,
+      contents: contentKeys(contents),
+      includeSecrets: contents.includeSecrets,
+      includeAttachments: contents.includeAttachments,
+      includeVersions: contents.includeVersions,
+      includeMedia: contents.includeMedia,
       overwritten: overwrite && finalPath === target,
     };
   } catch (err) {

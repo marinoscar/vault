@@ -315,11 +315,18 @@ cd apps/api && npm run prisma:migrate
 - `GET /api/secrets/{id}/versions` - List version history (metadata only)
 - `GET /api/secrets/{id}/versions/{versionId}` - Get a specific version, decrypted, with that version's attachments
 - `POST /api/secrets/{id}/versions/{versionId}/rollback` - Rollback to a version (restores its attachment set)
-- `POST /api/secrets/export` - Download a password-protected (AES-256 zip) backup of the caller's own secrets (`secrets:read`); body `{ password (6-256 chars), includeAttachments?, includeVersions? }`; response is the raw zip (not wrapped in `{data}`), audited as `secrets.export`. See `docs/SECRETS.md`
+- `POST /api/secrets/export` - Download a password-protected (AES-256 zip) backup of the caller's own secrets (`secrets:read`); body `{ password (6-256 chars), includeSecrets? (default true), includeAttachments? (true), includeVersions? (false), includeMedia? (false) }`; `includeSystem` is a 400; response is the raw zip (not wrapped in `{data}`; headers `X-Vault-Export-Secrets`, `-Attachments`, `-Media-Files`), audited as `secrets.export`. 400 messages for the content rules are in `docs/API.md` (Backup content validation). See `docs/SECRETS.md`
 - `POST /api/secrets/{id}/renew` - Renew with new field values, swapping only the attachment roles supplied (e.g. reissued card front/back)
 - `POST /api/secrets/{id}/attachments` - Link a storage object to the secret's current version
 - `GET /api/secrets/{id}/attachments` - List attachments (`versionId`, `role` query filters)
 - `DELETE /api/secrets/{id}/attachments/{attachmentId}` - Unlink; underlying storage object is refcount-deleted, not always deleted
+
+### My Backups (saved user backups)
+- `GET /api/backups/me/config` - `{ storageConfigured, keepCount: 10 }` (`secrets:read`)
+- `POST /api/backups/me` - Save a backup to storage; body as `POST /api/secrets/export`; 202 run; 400 if storage is not configured, 409 if one is already running. Password used in memory only, never stored. Stored as `user-backups/<userId>/vault-backup-<UTC datetime>.zip`, newest 10 kept (`secrets:read`)
+- `GET /api/backups/me` - List own saved backups, newest first, paginated (`secrets:read`)
+- `GET /api/backups/me/{id}/download` - Signed URL (300 s) `{url, expiresAt, fileName}`; 404 if not own (`secrets:read`)
+- `DELETE /api/backups/me/{id}` - Delete own saved backup, 204 (404 if not own, 409 while running) (`secrets:read`). Admins do not see these in the admin list
 
 ### Secret Types
 - `POST /api/secret-types` - Create a custom secret type
@@ -331,6 +338,15 @@ cd apps/api && npm run prisma:migrate
 ### AI (Card Scanning)
 - `GET /api/ai/status` - Whether AI-backed features are available to the current user (no permission required)
 - `POST /api/secrets/cards/extract` - Extract candidate card fields from cropped card photos via an admin-configured OpenAI vision model (`secrets:write`). Persists nothing; the CVV is never requested or returned. Disabled by default — see `docs/SECRETS.md` and `docs/API.md`.
+
+### Admin Backups
+- `GET /api/admin/backups/schedule` - Get the backup schedule (`system_settings:read`); never returns the password (`passwordConfigured`, `passwordUpdatedAt` only)
+- `PUT /api/admin/backups/schedule` - Replace the schedule; optional write-only `password` (`system_settings:write`)
+- `POST /api/admin/backups/run` - Start a backup now (saved to storage), 202 (`system_settings:write`)
+- `POST /api/admin/backups/export` - Download a backup now: raw streamed zip (not `{data}`), nothing stored, no run row; body `{ password? | useScheduledPassword?: true (exactly one), includeSecrets?, includeAttachments?, includeVersions?, includeMedia?, includeSystem? }`; headers `X-Vault-Export-Users`, `-Secrets`, `-Attachments`, `-Media-Files`; audited as `backups.export` (`system_settings:write`)
+- `GET /api/admin/backups` - List runs (system scope only), newest first, paginated; each run has `scope`, `mediaFileCount`, `contents` (`system_settings:read`)
+- `GET /api/admin/backups/{id}/download` - Signed URL (300 s) `{url, expiresAt, fileName}` (`system_settings:write`)
+- `DELETE /api/admin/backups/{id}` - Delete the backup object, 204 (409 while running, 502 if storage refuses) (`system_settings:write`). See `docs/SECRETS.md`
 
 ### Health
 - `GET /api/health/live` - Liveness check
@@ -373,6 +389,8 @@ cd apps/api && npm run prisma:migrate
 - `secret_types` - Secret type schemas (system + custom); `fields` is a JSONB array of field definitions (`string` \| `number` \| `date` \| `select`, the last requiring `options`)
 - `secrets` - Secret metadata (name, description, type, owner); values live only in `secret_versions`
 - `secret_versions` - One immutable, AES-256-GCM-encrypted row per version of a secret's field data; exactly one `isCurrent = true` per secret
+- `backup_schedules` - Singleton row (`default`): admin backup schedule, keep count, content flags (`include_secrets`, `include_attachments`, `include_versions`, `include_media`, `include_system`), encrypted password, `next_run_at` / `last_run_at`
+- `backup_runs` - History of scheduled, manual and user-saved backups (`scope` `system` | `user`, `owner_id` set for `user` runs and FK to `users` with cascade, status, trigger, `storage_key`, size, counts incl. `media_file_count`, `contents` text[] filled in when the run ends, error, `heartbeat_at`, `deleted_at`); the object is removed by retention or delete, the row stays. Admin routes see `scope = system` only; user routes `scope = user AND owner_id = me`
 - `secret_attachments` - Files linked to a secret. **As of migration `20260727120000_version_scoped_attachments`, scoped to a `secret_version_id` (not just `secret_id`), and carries an optional `role` (`card_front` \| `card_back`).** Unique on `[secret_version_id, storage_object_id]` and `[secret_version_id, role]`; deleting the last reference to a `storage_objects` row deletes it, but a referenced object is never deleted out from under another version or secret still pointing at it
 
 ## Access Control: Email Allowlist

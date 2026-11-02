@@ -11,8 +11,11 @@
   "include": [
     "src/lib/backup-filename.ts",
     "src/lib/backup-retention.ts",
+    "src/lib/backup-runner.ts",
     "src/lib/backup-settings.ts",
     "src/interactive/logic.ts",
+    "src/interactive/admin-backups-logic.ts",
+    "src/lib/admin-backups.ts",
     "src/utils/config.ts",
     "test/**/*.ts"
   ],

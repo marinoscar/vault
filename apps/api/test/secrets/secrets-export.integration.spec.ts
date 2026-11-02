@@ -132,6 +132,7 @@ describe('POST /api/secrets/export (Integration)', () => {
     );
     expect(res.headers['x-vault-export-secrets']).toBe('0');
     expect(res.headers['x-vault-export-attachments']).toBe('0');
+    expect(res.headers['x-vault-export-media-files']).toBe('0');
     expect(res.headers['cache-control']).toBe('no-store');
 
     // A zip, not JSON: local file header magic, not "{".
@@ -171,5 +172,49 @@ describe('POST /api/secrets/export (Integration)', () => {
       includeAttachments: false,
     });
     expect(JSON.stringify(audit)).not.toContain(PASSWORD);
+  });
+
+  it.each([
+    ['nothing selected', { password: PASSWORD, includeSecrets: false }, 'Choose at least one thing to back up'],
+    [
+      'attachments without secrets',
+      { password: PASSWORD, includeSecrets: false, includeMedia: true, includeAttachments: true },
+      'Attachments can only be backed up together with secrets',
+    ],
+    [
+      'includeSystem at the user level',
+      { password: PASSWORD, includeSystem: true },
+      'System configuration can only be included in a scheduled system backup',
+    ],
+  ])('returns 400 for %s', async (_label, body, message) => {
+    const user = await userWithSecretsRead();
+    const res = await request(context.app.getHttpServer())
+      .post(URL)
+      .set(authHeader(user.accessToken))
+      .send(body)
+      .expect(400);
+    expect(JSON.stringify(res.body)).toContain(message);
+    expect(prismaMock.secret.findMany).not.toHaveBeenCalled();
+  });
+
+  it("exports only the caller's media folders and reports them in X-Vault-Export-Media-Files", async () => {
+    const user = await userWithSecretsRead();
+    prismaMock.mediaFolder.findMany.mockResolvedValue([]);
+
+    const res = await request(context.app.getHttpServer())
+      .post(URL)
+      .set(authHeader(user.accessToken))
+      .send({ password: PASSWORD, includeSecrets: false, includeMedia: true })
+      .buffer(true)
+      .parse(binaryParser)
+      .expect(200);
+
+    expect(res.headers['x-vault-export-media-files']).toBe('0');
+    expect(prismaMock.secret.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.mediaFolder.findMany.mock.calls[0][0].where).toEqual({ userId: user.id });
+    const audit = prismaMock.auditEvent.create.mock.calls.find(
+      (c: any[]) => c[0].data.action === 'secrets.export',
+    );
+    expect(audit![0].data.meta).toMatchObject({ includeSecrets: false, includeMedia: true, mediaFileCount: 0 });
   });
 });

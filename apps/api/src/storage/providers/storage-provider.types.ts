@@ -33,6 +33,8 @@ export interface UploadPart {
 export interface SignedUrlOptions {
   expiresIn?: number; // Seconds, default 3600
   responseContentDisposition?: string;
+  /** Content-Type the storage returns for this URL (S3 `ResponseContentType`). Optional. */
+  responseContentType?: string;
 }
 
 /**

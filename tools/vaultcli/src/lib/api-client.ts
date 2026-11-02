@@ -11,6 +11,13 @@ import type {
   StorageObject,
   UserInfo,
 } from '../utils/types.js';
+import type {
+  AdminBackupDownload,
+  AdminBackupRun,
+  AdminBackupRunList,
+  AdminBackupSchedule,
+  AdminBackupScheduleBody,
+} from './admin-backups.js';
 
 function getToken(): string {
   const auth = loadAuth();
@@ -367,13 +374,20 @@ export async function apiStreamRequest(
 
 export interface SecretsExportRequest {
   password: string;
+  /** Current secret values (server default true). */
+  includeSecrets?: boolean;
+  /** Secret attachments; requires includeSecrets (server default true). */
   includeAttachments?: boolean;
+  /** Old secret versions; requires includeSecrets (server default false). */
   includeVersions?: boolean;
+  /** The caller's media library folders and files (server default false). */
+  includeMedia?: boolean;
 }
 
 /**
  * POST /api/secrets/export. Returns the ok streaming Response whose body is
- * the AES-256 encrypted zip; counts are in the X-Vault-Export-* headers.
+ * the AES-256 encrypted zip; counts are in the X-Vault-Export-* headers
+ * (`-Secrets`, `-Attachments`, `-Media-Files`).
  * The password travels only in the request body.
  */
 export async function exportSecretsBackup(dto: SecretsExportRequest): Promise<Response> {
@@ -388,4 +402,71 @@ export async function exportSecretsBackup(dto: SecretsExportRequest): Promise<Re
     if (message.startsWith('Authentication failed')) throw err;
     throw new Error(`Backup failed: ${message}`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Admin backups (/api/admin/backups, system_settings:read / :write)
+// ---------------------------------------------------------------------------
+
+/** A failed API call that keeps the HTTP status (for 403 / 404 / 409 handling). */
+export class ApiStatusError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ApiStatusError';
+  }
+}
+
+async function adminJson<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
+  const res = await apiRequest(path, options);
+  if (!res.ok) throw new ApiStatusError(res.status, await readApiErrorMessage(res));
+  if (res.status === 204) return undefined as T;
+  const json = (await res.json()) as { data: T };
+  return json.data;
+}
+
+export function getAdminBackupSchedule(): Promise<AdminBackupSchedule> {
+  return adminJson<AdminBackupSchedule>('/admin/backups/schedule');
+}
+
+/** PUT the full schedule; the password travels only in this body, and only when set. */
+export function putAdminBackupSchedule(body: AdminBackupScheduleBody): Promise<AdminBackupSchedule> {
+  return adminJson<AdminBackupSchedule>('/admin/backups/schedule', { method: 'PUT', body: JSON.stringify(body) });
+}
+
+export function startAdminBackupRun(): Promise<AdminBackupRun> {
+  return adminJson<AdminBackupRun>('/admin/backups/run', { method: 'POST' });
+}
+
+export function listAdminBackupRuns(params: { page?: number; pageSize?: number } = {}): Promise<AdminBackupRunList> {
+  const query = new URLSearchParams();
+  if (params.page) query.set('page', String(params.page));
+  if (params.pageSize) query.set('pageSize', String(params.pageSize));
+  const qs = query.toString();
+  return adminJson<AdminBackupRunList>(`/admin/backups${qs ? '?' + qs : ''}`);
+}
+
+/**
+ * Find one run by id. The API has no single-run route, so this pages through
+ * the list (newest first; a run being watched is on the first page). Returns
+ * null when it is not found in the first `maxPages` pages.
+ */
+export async function findAdminBackupRun(id: string, maxPages = 5): Promise<AdminBackupRun | null> {
+  for (let page = 1; page <= maxPages; page++) {
+    const list = await listAdminBackupRuns({ page, pageSize: 100 });
+    const hit = list.items.find((r) => r.id === id);
+    if (hit) return hit;
+    if (page >= list.totalPages) break;
+  }
+  return null;
+}
+
+export function getAdminBackupDownload(id: string): Promise<AdminBackupDownload> {
+  return adminJson<AdminBackupDownload>(`/admin/backups/${encodeURIComponent(id)}/download`);
+}
+
+export async function deleteAdminBackupRun(id: string): Promise<void> {
+  await adminJson<void>(`/admin/backups/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }

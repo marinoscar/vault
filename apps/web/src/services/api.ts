@@ -246,6 +246,13 @@ import type {
   CardExtractionResult,
   ExtractCardRequest,
   SystemSettings,
+  BackupSchedule,
+  UpdateBackupScheduleRequest,
+  BackupRun,
+  BackupRunsResponse,
+  BackupDownloadLink,
+  MyBackupsConfig,
+  AdminBackupExportRequest,
 } from '../types';
 
 import { AI_VERIFY_FAILURE_REASONS } from '../types';
@@ -881,8 +888,14 @@ export async function simpleStorageUpload(
 
 export interface SecretsBackupOptions {
   password: string;
+  /** Default true. */
+  includeSecrets?: boolean;
+  /** Default true; only sent as true while includeSecrets is on. */
   includeAttachments?: boolean;
+  /** Default false; only sent as true while includeSecrets is on. */
   includeVersions?: boolean;
+  /** Default false: the user's own media library. */
+  includeMedia?: boolean;
 }
 
 export interface SecretsBackupResult {
@@ -890,6 +903,7 @@ export interface SecretsBackupResult {
   filename: string;
   secretCount: number | null;
   attachmentCount: number | null;
+  mediaFileCount: number | null;
 }
 
 /** `vault-backup-YYYY-MM-DD.zip` for the given date (UTC, matching the server). */
@@ -930,26 +944,172 @@ function parseCountHeader(value: string | null): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
+/** The streamed zip of a backup export, with the counts the server reports. */
+export interface BackupStreamResult {
+  blob: Blob;
+  filename: string;
+  /** Admin downloads only (X-Vault-Export-Users); null when absent. */
+  userCount: number | null;
+  secretCount: number | null;
+  attachmentCount: number | null;
+  mediaFileCount: number | null;
+}
+
 /**
- * Download a password-protected (AES-256 zip) backup of the secrets the
- * current user owns. The password travels only in the request body; it is
- * never logged or stored here.
+ * Read a raw backup zip response: the body as a Blob, the file name from
+ * Content-Disposition (falling back to `vault-backup-YYYY-MM-DD.zip`) and
+ * the X-Vault-Export-* counts. Shared by every streamed backup download.
  */
-export async function downloadSecretsBackup(
-  options: SecretsBackupOptions,
-): Promise<SecretsBackupResult> {
-  const response = await api.postForResponse('/secrets/export', {
-    password: options.password,
-    includeAttachments: options.includeAttachments ?? true,
-    includeVersions: options.includeVersions ?? false,
-  });
+async function readBackupStream(response: Response): Promise<BackupStreamResult> {
   const blob = await response.blob();
   return {
     blob,
     filename:
       parseContentDispositionFilename(response.headers.get('Content-Disposition')) ??
       defaultBackupFilename(),
+    userCount: parseCountHeader(response.headers.get('X-Vault-Export-Users')),
     secretCount: parseCountHeader(response.headers.get('X-Vault-Export-Secrets')),
     attachmentCount: parseCountHeader(response.headers.get('X-Vault-Export-Attachments')),
+    mediaFileCount: parseCountHeader(response.headers.get('X-Vault-Export-Media-Files')),
   };
+}
+
+/**
+ * The user backup body shared by the download (`/secrets/export`) and the
+ * save-to-storage (`/backups/me`) routes. Attachments and versions are part
+ * of a secret: the API rejects them without secrets, so they are forced off
+ * when secrets is off.
+ */
+function toUserBackupBody(options: SecretsBackupOptions) {
+  const includeSecrets = options.includeSecrets ?? true;
+  return {
+    password: options.password,
+    includeSecrets,
+    includeAttachments: includeSecrets && (options.includeAttachments ?? true),
+    includeVersions: includeSecrets && (options.includeVersions ?? false),
+    includeMedia: options.includeMedia ?? false,
+  };
+}
+
+/**
+ * Download a password-protected (AES-256 zip) backup of what the current
+ * user owns: secrets (with attachments / old versions) and/or their media
+ * library. The password travels only in the request body; it is
+ * never logged or stored here.
+ */
+export async function downloadSecretsBackup(
+  options: SecretsBackupOptions,
+): Promise<SecretsBackupResult> {
+  const response = await api.postForResponse('/secrets/export', toUserBackupBody(options));
+  const { userCount: _users, ...result } = await readBackupStream(response);
+  return result;
+}
+
+// =============================================================================
+// Saved backups API (the current user's backups in object storage)
+// =============================================================================
+
+/** Whether saving to storage is available, and how many saved backups are kept. */
+export async function getMyBackupsConfig(): Promise<MyBackupsConfig> {
+  return api.get<MyBackupsConfig>('/backups/me/config');
+}
+
+/**
+ * Build the same zip as `downloadSecretsBackup` on the server and save it to
+ * object storage (202, runs in the background). The password is used only
+ * while building and never stored. Rejects with a 409 ApiError while one of
+ * the user's backups is running, 400 when storage is not configured.
+ */
+export async function saveMyBackupToStorage(options: SecretsBackupOptions): Promise<BackupRun> {
+  return api.post<BackupRun>('/backups/me', toUserBackupBody(options));
+}
+
+/** The current user's saved backups, newest first. */
+export async function getMyBackups(params?: {
+  page?: number;
+  pageSize?: number;
+}): Promise<BackupRunsResponse> {
+  return api.get<BackupRunsResponse>(`/backups/me${pageQuery(params)}`);
+}
+
+/** Short-lived signed download URL for one of the user's saved backups. */
+export async function getMyBackupDownloadUrl(id: string): Promise<BackupDownloadLink> {
+  return api.get<BackupDownloadLink>(`/backups/me/${encodeURIComponent(id)}/download`);
+}
+
+/** Delete one of the user's saved backups from storage (the row stays, marked deleted). */
+export async function deleteMyBackup(id: string): Promise<void> {
+  await api.delete<void>(`/backups/me/${encodeURIComponent(id)}`);
+}
+
+function pageQuery(params?: { page?: number; pageSize?: number }): string {
+  const searchParams = new URLSearchParams();
+  if (params?.page) searchParams.set('page', String(params.page));
+  if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
+  const query = searchParams.toString();
+  return query ? `?${query}` : '';
+}
+
+// =============================================================================
+// Scheduled backups API (admin)
+// =============================================================================
+
+/** Current backup schedule (server defaults when none was saved). Never the password. */
+export async function getBackupSchedule(): Promise<BackupSchedule> {
+  return api.get<BackupSchedule>('/admin/backups/schedule');
+}
+
+/**
+ * Replace the backup schedule. `password` is write-only: leave it out to keep
+ * the stored one. The password travels only in this request body.
+ */
+export async function updateBackupSchedule(
+  data: UpdateBackupScheduleRequest,
+): Promise<BackupSchedule> {
+  return api.put<BackupSchedule>('/admin/backups/schedule', data);
+}
+
+/** Start a manual backup run (202). Rejects with a 409 ApiError while one is running. */
+export async function runBackupNow(): Promise<BackupRun> {
+  return api.post<BackupRun>('/admin/backups/run');
+}
+
+/** Backup run history, newest first. */
+export async function getBackupRuns(params?: {
+  page?: number;
+  pageSize?: number;
+}): Promise<BackupRunsResponse> {
+  return api.get<BackupRunsResponse>(`/admin/backups${pageQuery(params)}`);
+}
+
+/** Short-lived signed download URL for a succeeded, not deleted backup. */
+export async function getBackupDownloadUrl(id: string): Promise<BackupDownloadLink> {
+  return api.get<BackupDownloadLink>(`/admin/backups/${encodeURIComponent(id)}/download`);
+}
+
+/** Delete a backup's archive from storage (the run row stays, marked deleted). */
+export async function deleteBackupRun(id: string): Promise<void> {
+  await api.delete<void>(`/admin/backups/${encodeURIComponent(id)}`);
+}
+
+/**
+ * Build a backup now and stream it to the browser; nothing is stored. Send
+ * either a `password` or `useScheduledPassword: true` (the stored schedule
+ * password), never both. The password travels only in the request body.
+ */
+export async function downloadAdminBackup(
+  request: AdminBackupExportRequest,
+): Promise<BackupStreamResult> {
+  const { password, useScheduledPassword, ...flags } = request;
+  // Attachments and versions are part of a secret: forced off without secrets.
+  const contents = {
+    ...flags,
+    includeAttachments: flags.includeSecrets && flags.includeAttachments,
+    includeVersions: flags.includeSecrets && flags.includeVersions,
+  };
+  const body = useScheduledPassword
+    ? { useScheduledPassword: true, ...contents }
+    : { password, ...contents };
+  const response = await api.postForResponse('/admin/backups/export', body);
+  return readBackupStream(response);
 }

@@ -67,9 +67,13 @@ export class SecretsController {
   @ApiOperation({
     summary: 'Download a password-protected backup of the secrets you own',
     description:
-      'Streams an AES-256 encrypted zip (WinZip AE-2) holding README.txt, ' +
-      'secrets.html, secrets.json and, unless excluded, the attachment files. ' +
-      'Only secrets the caller owns are exported, even with secrets:read_any. ' +
+      'Streams an AES-256 encrypted zip (WinZip AE-2). README.txt is always present and lists what ' +
+      'is included. With includeSecrets (default true): secrets.html, secrets.json and, unless ' +
+      'excluded, the attachment files. With includeMedia (default false): media/media.json and the ' +
+      'files of the media folders the caller owns. At least one of the two is required; ' +
+      'includeAttachments/includeVersions true require includeSecrets; includeSystem is rejected ' +
+      '(scheduled system backups only). ' +
+      'Only data the caller owns is exported, even with secrets:read_any or media:read_any. ' +
       'The password is never stored or logged and cannot be recovered. ' +
       'Requires secrets:read.',
   })
@@ -92,11 +96,17 @@ export class SecretsController {
         description: 'Number of attachment files in the archive',
         schema: { type: 'integer' },
       },
+      'X-Vault-Export-Media-Files': {
+        description: 'Number of media library files in the archive (0 unless includeMedia)',
+        schema: { type: 'integer' },
+      },
     },
   })
   @ApiResponse({
     status: 400,
-    description: 'Validation error (e.g. "Password must be at least 6 characters")',
+    description:
+      'Validation error (e.g. "Password must be at least 6 characters", ' +
+      '"Choose at least one thing to back up")',
   })
   @ApiResponse({ status: 403, description: 'Missing secrets:read' })
   async exportSecrets(
@@ -113,6 +123,7 @@ export class SecretsController {
     reply.header('Cache-Control', 'no-store');
     reply.header('X-Vault-Export-Secrets', String(result.secretCount));
     reply.header('X-Vault-Export-Attachments', String(result.attachmentCount));
+    reply.header('X-Vault-Export-Media-Files', String(result.mediaFileCount));
 
     // Returned as a StreamableFile so the platform adapter pipes the raw zip;
     // TransformInterceptor passes StreamableFile through unwrapped.
