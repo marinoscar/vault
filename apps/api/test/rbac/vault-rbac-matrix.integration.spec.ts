@@ -91,6 +91,12 @@ const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
     'jobs:write',
     'nodes:read',
     'nodes:write',
+    // The platform AI slice (E8.1): `ai_config:*` is system (admin), the rest come from `org_admin`.
+    'ai_config:read',
+    'ai_config:write',
+    'ai:use',
+    'org_ai_config:read',
+    'org_ai_config:write',
     // E7.1: the notifications slice (system: broadcasts, push; org: org_broadcasts, held through org_admin)
     'broadcasts:read',
     'broadcasts:write',
@@ -99,7 +105,7 @@ const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
     'org_broadcasts:read',
     'org_broadcasts:write',
   ],
-  contributor: [...SECRETS_RW, ...USER_SETTINGS, 'storage:read', 'storage:write'],
+  contributor: [...SECRETS_RW, ...USER_SETTINGS, 'storage:read', 'storage:write', 'ai:use'],
   viewer: ['secrets:read', 'secret_types:read', 'media:read', ...USER_SETTINGS, 'storage:read'],
 };
 
@@ -125,6 +131,8 @@ const SYSTEM_PERMISSIONS = new Set([
   'jobs:write',
   'nodes:read',
   'nodes:write',
+  'ai_config:read',
+  'ai_config:write',
   'broadcasts:read',
   'broadcasts:write',
   'push:read',
@@ -165,6 +173,7 @@ const ROUTES: readonly Route[] = [
   ['DELETE', `/api/secrets/${ID}/attachments/${ID}`, 'secrets:write'],
   // Exports and card extraction
   ['POST', '/api/secrets/export', 'secrets:read'],
+  // Also needs `ai:use` and the platform kill switch (a class guard that runs first).
   ['POST', '/api/secrets/cards/extract', 'secrets:write'],
   // Media
   ['POST', '/api/media/folders', 'media:write'],
@@ -193,8 +202,10 @@ const ROUTES: readonly Route[] = [
   ['GET', `/api/backups/me/${ID}/download`, 'secrets:read'],
   ['DELETE', `/api/backups/me/${ID}`, 'secrets:read'],
   // AI
+  // The compatibility alias of the platform's GET /api/ai/config (not behind the kill switch).
+  // The platform's own /api/ai/* and /api/admin/ai/* routes are held by the `ai-rbac-matrix`
+  // conformance suite (test/ai-conformance.spec.ts).
   ['GET', '/api/ai/status', null],
-  ['POST', '/api/system-settings/ai/verify', 'system_settings:write'],
   // Storage objects and status (the platform storage slice since E6.1; ownership-scoped on top)
   ['GET', '/api/storage/objects', 'storage:read'],
   ['GET', `/api/storage/objects/${ID}`, 'storage:read'],
@@ -392,8 +403,7 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
         'BackupsController',
         'MyBackupsController',
         'CardExtractController',
-        'AiController',
-        'AiVerifyController',
+        'AiStatusController',
         'ObjectsController',
         'StorageStatusController',
         'StorageConfigController',
@@ -449,7 +459,7 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
       const grants = catalogGrants(buildPermissionCatalog());
       const heldBy = (roleNames: string[]) =>
         grants.filter((g) => roleNames.includes(g.role)).map((g) => g.permission);
-      const mine = (permissions: readonly string[]) => permissions.filter((p) => /^(secrets|secret_types|media|jobs|nodes|broadcasts|org_broadcasts|push):/.test(p));
+      const mine = (permissions: readonly string[]) => permissions.filter((p) => /^(secrets|secret_types|media|jobs|nodes|ai|ai_config|org_ai_config|broadcasts|org_broadcasts|push):/.test(p));
 
       expect(mine(heldBy(['admin', 'org_admin'])).sort()).toEqual(mine(ROLE_PERMISSIONS.admin).sort());
       expect(mine(heldBy(['contributor'])).sort()).toEqual(mine(ROLE_PERMISSIONS.contributor).sort());
@@ -470,7 +480,12 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
         (typeof permission === 'string' ? held.includes(permission) : permission.some((p) => held.includes(p)));
       const response = await call(method, path, tokenFor(USERS[role], role));
 
-      if (allowed) {
+      if (allowed && path === '/api/secrets/cards/extract') {
+        // Past authentication and permissions the route meets the platform kill switch; the mocked
+        // settings have AI off, so the proof of access is the AI slice's own refusal.
+        expect(response.status).not.toBe(401);
+        if (response.status === 403) expect(response.body?.details?.reason).toBe('AI_DISABLED');
+      } else if (allowed) {
         expect([401, 403]).not.toContain(response.status);
       } else {
         expect(response.status).toBe(403);

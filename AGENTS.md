@@ -90,7 +90,7 @@ Every settings surface, admin or per-user, is a registry-driven hub (in force si
 
 1. **Every new settings page is a card in a section registry**: `ADMIN_SECTIONS` in `apps/web/src/config/adminSections.tsx` (Console hub and rail) or `USER_SETTINGS_SECTIONS` in `apps/web/src/config/userSettingsSections.tsx`, with its route under `/admin/settings/*` or `/settings/*` in `App.tsx`. Append; never insert between existing cards. A route without a card is unacceptable.
 2. **A settings page is never added as a new tab on an existing settings page.** Tabs only for genuinely parallel content inside one destination (Users and Allowlist).
-3. **The card's `permission` is the exact string the API controller enforces**, never invented, and the route's `RequirePermission` gate names the same string: `system_settings:read` (General, AI, Backups, and the platform's Maintenance, Doctor, About), `users:read`, `allowlist:read` (content inside Users), `secret_types:read`, `secrets:read` (My backups), `user_settings:read` (Profile, Appearance, Notifications), `push:read` (Web Push), `broadcasts:read` (Broadcasts), `system_settings:read` also for the platform's Email; none for Access tokens (`pat.controller.ts` bare `@Auth()`). Writes are gated inside the page. `apps/web/src/__tests__/config/settingsRegistry.test.ts` enforces this.
+3. **The card's `permission` is the exact string the API controller enforces**, never invented, and the route's `RequirePermission` gate names the same string: `system_settings:read` (General, Backups, and the platform's Maintenance, Doctor, About), `ai_config:read` (the AI card and its Models and Usage cards: `AiAdminController` / `AiUsageAdminController` of `@marinoscar/platform-api/ai`; `ai_config:write` gates the controls inside the page), `users:read`, `allowlist:read` (content inside Users), `secret_types:read`, `secrets:read` (My backups), `user_settings:read` (Profile, Appearance, Notifications), `push:read` (Web Push), `broadcasts:read` (Broadcasts), `system_settings:read` also for the platform's Email; none for Access tokens (`pat.controller.ts` bare `@Auth()`). Writes are gated inside the page. `apps/web/src/__tests__/config/settingsRegistry.test.ts` enforces this.
 4. **Reuse the packaged `SettingsHub`** (`@marinoscar/platform-web/settings/ui`); never fork it.
 5. **The five coupled breakpoint gates move together or not at all** (all at `sm`, 600px, never `md`): `ShellLayout` `showRail` and `<main>` `pb`, `ShellBottomNav` self-gate, `SettingsHub` `isCompactWindow`, `ShellAppBar` `isCompactWindow`. They are the platform's; the app reads no breakpoint of its own for them.
 
@@ -105,12 +105,17 @@ Design: EAB `docs/specs/job-queue.md`; recipe: [`add-job-type` skill](.claude/sk
 
 ## MANDATORY: AI Rules
 
-Today AI is the generic config/verify/OpenAI provider plus card extraction in `apps/api/src/ai/`. From E8 it is `AiService.forUser(userId, { orgId, feature: 'card-extract' })` of the platform.
+Since E8.1 (#87) AI is the platform slice: `AiModule.forRoot` in `apps/api/src/platform/ai/ai.config.ts`, the feature `card_extract` in `apps/api/src/app-registrations/ai.ts`, calls through `AiService.forUser(userId, { orgId, feature: 'card_extract' })` (`CardExtractService`). Vault has no provider, key reader or limiter of its own. Runbook: [docs/runbooks/ai-platform-migration.md](docs/runbooks/ai-platform-migration.md).
 
-1. **Keys never leave the server and the browser never calls a provider.** Every provider call is server-side. No route, log line, span, error or audit row carries key material; the admin AI key is stored AES-256-GCM-encrypted and write-only.
-2. **Card CVV is never sent to AI and never persisted by extraction.** `POST /api/secrets/cards/extract` persists nothing, never requests or returns the CVV, and runs behind the admin toggle and the daily budget (counted from `audit_events` rows `ai.card.extract`).
-3. **Card photos are user material**: egress is disclosed in the UI (`AiEgressNotice`), and fixtures use generated or placeholder images only.
-4. **AI settings cards declare `feature: 'ai'`**, except the card that switches AI on. A new provider SDK import stays inside its provider folder (`apps/api/src/ai/providers/<provider>/`).
+1. **Keys never leave the server and the browser never calls a provider.** Every provider call is server-side under a key `AiKeyResolver` resolves for that call (Vault: the deployment key, credential `('ai','openai')`, AES-256-GCM under `SECRETS_ENCRYPTION_KEY`, write-only through `/api/admin/ai/*`). No route, log line, span, error or audit/usage row carries key material.
+2. **Never import a provider SDK** in `apps/api`, `apps/web` or `apps/cli` (conformance suite `ai-no-sdk-leak`); a new provider is the platform's.
+3. **Card CVV is never sent to AI as a request and never persisted by extraction.** The prompt forbids reading it, the model schema has no field for it, `normalizeExtractions` forces `cvv` and `security_code_2` to `null` and drops `notes` lines naming a code. `POST /api/secrets/cards/extract` persists nothing and sits behind `AiEnabledGuard` + `ai:use` + `secrets:write`; no image byte or card value may reach `ai_usage_events`, `ai_runs`, `audit_events` or a log (`test/ai/card-extract.db.spec.ts`).
+4. **Card photos are user material**: egress is disclosed in the UI (`AiEgressNotice`), and fixtures use generated or placeholder images only.
+5. **AI jobs are server-only, permanently** (suite `ai-jobs-server-only`). The budget is the platform cap `ai.limits` on the `ai` settings namespace, never a hand-rolled counter.
+6. **Route guards.** Consumer routes under `/api/ai/*` sit behind `AiEnabledGuard` plus `ai:use` (except `GET /api/ai/config`); admin routes under `/api/admin/ai/*` require `ai_config:*` (`org_ai_config:*` for the `org-*` ones) and are deliberately not behind the kill switch. `GET /api/ai/status` is a compatibility alias of `GET /api/ai/config` until E11.
+7. **AI settings cards follow the Settings UI Pattern and declare `feature: 'ai'`** (E10), except the card that switches AI on.
+
+Guardrails: `test/ai-conformance.spec.ts` (`ai-kill-switch`, `ai-rbac-matrix`, `ai-secret-egress`, `ai-key-policy`, `ai-jobs-server-only`) and `test/conformance.spec.ts` (`ai-no-sdk-leak`, `ai-orchestration-boundary`).
 
 ## MANDATORY: Invariants that are easy to break
 

@@ -49,12 +49,7 @@ import type {
   MediaFoldersResponse,
   MediaFile,
   MediaFilesResponse,
-  AiSettingsUpdate,
   AiStatus,
-  AiVerifyFailure,
-  AiVerifyFailureReason,
-  AiVerifyRequest,
-  AiVerifyResult,
   AttachmentRole,
   CardExtractionResult,
   ExtractCardRequest,
@@ -68,7 +63,6 @@ import type {
   AdminBackupExportRequest,
 } from '../types';
 
-import { AI_VERIFY_FAILURE_REASONS } from '../types';
 
 // =============================================================================
 // AI API
@@ -77,9 +71,9 @@ import { AI_VERIFY_FAILURE_REASONS } from '../types';
 /**
  * Whether AI-backed features are available to the current user.
  *
- * Readable by any signed-in user (system settings are admin-only), which is
- * what lets a Viewer's UI hide the card-scan entry point instead of offering a
- * button that can only ever return 503.
+ * Readable by any signed-in user (system settings are admin-only). Since E8.1
+ * it is the compatibility alias of the platform's `GET /api/ai/config`, same
+ * wire shape. `useAiStatus` combines it with the caller's `ai:use`.
  */
 export async function getAiStatus(): Promise<AiStatus> {
   return api.get<AiStatus>('/ai/status');
@@ -96,10 +90,10 @@ export async function getAiStatus(): Promise<AiStatus> {
  * response's `crops` boxes are what the client then crops the stored
  * attachments from — the full photos themselves are never uploaded to storage.
  *
- * The response includes the card security code (`cvv`) among the candidate
- * values, so nothing here may log or persist the payload — it is handed
- * straight to the review form and lives only in component state until the user
- * saves.
+ * The response carries card values (never a security code: `cvv` and
+ * `security_code_2` are always null since E8.1), so nothing here may log or
+ * persist the payload — it is handed straight to the review form and lives only
+ * in component state until the user saves.
  */
 export async function extractCardFromImages(
   images: ExtractCardRequest,
@@ -110,212 +104,24 @@ export async function extractCardFromImages(
 // System Settings API
 
 /**
- * PATCH the `ai` block of the system settings.
+ * Set the model card scanning runs on: `PATCH /api/system-settings` with
+ * `{ ai: { cardExtractModel } }` (Vault's extension of the platform AI policy,
+ * E8.2 #88). Everything else in the `ai` namespace is the platform's and is
+ * edited on the packaged AI page (`/api/admin/ai/*`); the provider key is never
+ * sent through system settings (the API ignores `ai.apiKey`).
  *
- * This is the single place the AI patch body is assembled, because the
- * `apiKey` field is three-state and getting it wrong destroys a credential:
- *
- *   absent -> keep the stored key
- *   null   -> clear the stored key
- *   string -> replace the stored key
- *
- * `apiKey` is copied onto the payload ONLY when the caller passed something
- * other than `undefined`, so a caller saving unrelated fields (say, toggling
- * `enabled`) can never wipe the key by accident. `null` is passed through
- * untouched - that is a deliberate "clear it" from the caller.
- *
- * `version` is sent as `If-Match` for optimistic concurrency; the API answers
- * 409 when the settings changed underneath us.
+ * `version` goes as `If-Match`; the API answers 409 when the settings changed
+ * underneath us.
  */
-export async function patchSystemSettingsAi(
-  ai: AiSettingsUpdate,
+export async function patchCardExtractModel(
+  cardExtractModel: string,
   version: number,
 ): Promise<SystemSettings> {
-  const payload: AiSettingsUpdate = {};
-
-  if (ai.enabled !== undefined) payload.enabled = ai.enabled;
-  if (ai.model !== undefined) payload.model = ai.model;
-  if (ai.maxCallsPerUserPerDay !== undefined) {
-    payload.maxCallsPerUserPerDay = ai.maxCallsPerUserPerDay;
-  }
-  if (ai.apiKey !== undefined) payload.apiKey = ai.apiKey;
-
   return api.patch<SystemSettings>(
     '/system-settings',
-    { ai: payload },
-    { headers: { 'If-Match': String(version) } },
+    { ai: { cardExtractModel } },
+    { headers: { 'If-Match': version.toString() } },
   );
-}
-
-function isAiVerifyFailureReason(
-  value: unknown,
-): value is AiVerifyFailureReason {
-  return (
-    typeof value === 'string' &&
-    (AI_VERIFY_FAILURE_REASONS as readonly string[]).includes(value)
-  );
-}
-
-/**
- * Coerce whatever the endpoint actually returned into the union the UI
- * switches on.
- *
- * Anything unrecognised becomes an `unknown` failure rather than an
- * optimistic pass: a malformed response is not evidence that the
- * configuration works, and rendering a green tick for one would be the exact
- * false reassurance this feature exists to remove.
- */
-function normalizeAiVerifyResult(raw: unknown): AiVerifyResult {
-  const value = raw as LooseAiVerifyPayload | null | undefined;
-
-  const model = typeof value?.model === 'string' ? value.model : '';
-  const durationMs =
-    typeof value?.durationMs === 'number' ? value.durationMs : 0;
-  const adaptedParameters: string[] = Array.isArray(value?.adaptedParameters)
-    ? (value.adaptedParameters as unknown[]).filter(
-        (entry): entry is string => typeof entry === 'string',
-      )
-    : [];
-
-  if (value?.ok === true) {
-    // Defensive: success without image support is a failed test for our
-    // purposes, whatever the API chose to call it. Card import sends photos.
-    if (value.imageSupport === false) {
-      return {
-        ok: false,
-        reason: 'model_no_image_support',
-        message: typeof value.message === 'string' ? value.message : '',
-        model,
-        durationMs,
-        adaptedParameters,
-      };
-    }
-
-    return { ok: true, model, imageSupport: true, durationMs, adaptedParameters };
-  }
-
-  if (value?.ok === false) {
-    return {
-      ok: false,
-      reason: isAiVerifyFailureReason(value.reason) ? value.reason : 'unknown',
-      message: typeof value.message === 'string' ? value.message : '',
-      model,
-      durationMs,
-      adaptedParameters,
-    };
-  }
-
-  return {
-    ok: false,
-    reason: 'unknown',
-    message: 'The connection test returned an unrecognised response.',
-    model: '',
-    durationMs: 0,
-    adaptedParameters: [],
-  };
-}
-
-/**
- * Loosened shape used only while validating an untrusted payload. Every field
- * is optional and none is narrowed, so the checks above are real checks rather
- * than assertions TypeScript has already decided the answer to.
- */
-interface LooseAiVerifyPayload {
-  ok?: boolean;
-  reason?: unknown;
-  message?: unknown;
-  model?: unknown;
-  imageSupport?: unknown;
-  durationMs?: unknown;
-  adaptedParameters?: unknown;
-}
-
-/**
- * Turn a thrown transport/HTTP failure into the same result union, so no path
- * out of `verifyAiConnection` is silent.
- *
- * A `fetch` rejection means the browser never got an answer - that is
- * `network`, and explicitly NOT a rejected key. Conflating the two would send
- * an admin off to reissue a perfectly good credential.
- */
-function aiVerifyFailureFromError(err: unknown): AiVerifyFailure {
-  if (err instanceof ApiError) {
-    const detailReason = (
-      err.details as { reason?: unknown } | null | undefined
-    )?.reason;
-
-    // Deliberately NOT mapping 5xx to `network`. Our API answering at all
-    // means the browser reached it, and it throws on its own failures - a
-    // stored key it cannot decrypt (503), or too many checks in a row (429).
-    // Calling either of those "could not reach OpenAI" would send an admin to
-    // debug their egress firewall over a problem in their own database.
-    let reason: AiVerifyFailureReason = 'unknown';
-    if (isAiVerifyFailureReason(detailReason)) {
-      reason = detailReason;
-    } else if (isAiVerifyFailureReason(err.code)) {
-      reason = err.code;
-    } else if (err.status === 0) {
-      reason = 'network';
-    }
-
-    return {
-      ok: false,
-      reason,
-      message: err.message,
-      model: '',
-      durationMs: 0,
-      adaptedParameters: [],
-    };
-  }
-
-  return {
-    ok: false,
-    reason: 'network',
-    message:
-      err instanceof Error
-        ? err.message
-        : 'The connection test could not be completed.',
-    model: '',
-    durationMs: 0,
-    adaptedParameters: [],
-  };
-}
-
-/**
- * Make one real call to the configured AI provider and report whether the
- * stored key and the given model can actually do card extraction.
- *
- * IMPORTANT: this costs the operator money on every invocation. Call it only
- * from an explicit user action - never from an effect, a blur handler, or a
- * save path.
- *
- * `request.model` is an unsaved candidate to probe instead of the stored model.
- * It is trimmed here, and a name that is empty or only whitespace is dropped
- * rather than sent: the API validates the trimmed length and answers 400 for a
- * blank, whereas an admin who has cleared the field means "test what is saved".
- * Nothing else is ever put in the body - notably not the API key, which the
- * server already holds and which has no business travelling back up the wire.
- *
- * Expected failures (bad key, wrong model, no quota) come back as a 200 with
- * `ok: false`, because they are answers rather than errors. Transport and
- * HTTP failures are normalised into the same shape here so callers render one
- * thing and nothing gets swallowed. This function does not throw.
- */
-export async function verifyAiConnection(
-  request: AiVerifyRequest = {},
-): Promise<AiVerifyResult> {
-  const model = request.model?.trim();
-  // `undefined` (not `{}`) so `api.post` omits the body and the Content-Type
-  // header entirely - which is the path the endpoint's `.default({})` exists to
-  // keep working as "probe the stored model".
-  const body: AiVerifyRequest | undefined = model ? { model } : undefined;
-
-  try {
-    const raw = await api.post<unknown>('/system-settings/ai/verify', body);
-    return normalizeAiVerifyResult(raw);
-  } catch (err) {
-    return aiVerifyFailureFromError(err);
-  }
 }
 
 // Secret Types API

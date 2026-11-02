@@ -56,15 +56,14 @@ describe('secret values stay under VAULT_ENCRYPTION_KEY', () => {
     expect(service).toMatch(/crypto\.encrypt\(/);
   });
 
-  it('only the AI key path and the storage key import read the credential store in application code', () => {
+  it('only the AI key presence reader, the legacy key migration and the storage key import read the credential store in application code', () => {
     const readers = sourceFiles(SRC)
       .filter((file) => /import(?:\s+type)?\s*\{[^}]*\bCredentialsService\b[^}]*\}\s*from/.test(readFileSync(file, 'utf8')))
       .map((f) => relative(SRC, f))
       .sort();
     expect(readers).toEqual([
-      'ai/ai-config.service.ts',
       'ai/ai-key-migration.ts',
-      'platform/settings/ai-key-projection.interceptor.ts',
+      'platform/credentials/ai-key-presence.service.ts',
       // E6.1: the one-time import of the object store's access key (purpose `storage`).
       'platform/storage/storage-env-import.service.ts',
       'platform/storage/storage-env-import.ts',

@@ -3,7 +3,21 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { render } from '../utils/test-utils';
+import type { ReactElement } from 'react';
+import { mockUser, render as baseRender } from '../utils/test-utils';
+
+/**
+ * Renders as a member who may scan (`secrets:write` and `ai:use`, E8.2: the scan
+ * option is hidden without `ai:use`) unless a test passes another user.
+ */
+const SCANNER = {
+  ...mockUser,
+  roles: [{ name: 'contributor' }],
+  permissions: [...mockUser.permissions, 'secrets:read', 'secrets:write', 'ai:use'],
+};
+function render(ui: ReactElement, options: Parameters<typeof baseRender>[1] = {}) {
+  return baseRender(ui, { ...options, wrapperOptions: { user: SCANNER, ...options.wrapperOptions } });
+}
 import { server } from '../mocks/server';
 import RenewCardPage from '../../pages/RenewCardPage';
 import type { CardCropBox } from '../../types';

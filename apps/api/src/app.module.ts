@@ -33,7 +33,6 @@ import { notificationsModule, BroadcastsModule } from './platform/notifications/
 import { identityModule } from './platform/identity/identity.config';
 import { platformHostModule } from './platform/platform-host.module';
 import { settingsModule } from './platform/settings/settings.config';
-import { AiKeyProjectionModule } from './platform/settings/ai-key-projection.module';
 import { hostCoreModule } from './platform/host-core.config';
 import { aboutModule } from './platform/about/about.config';
 import { doctorModule } from './doctor/doctor.config';
@@ -93,8 +92,6 @@ import configuration from './config/configuration';
     notificationsModule,
     // Admin broadcasts (E7.1): `/api/admin/broadcasts/*` and the two broadcast job handlers.
     BroadcastsModule,
-    // The AI key stays write-only on the credential store (interceptor on /api/system-settings).
-    AiKeyProjectionModule,
     // Host core: event bus, maintenance mode (the only APP_GUARD), the
     // `{ data }` envelope, request log, exception filter, request ids and
     // /api/health. Placed where the health routes sat in the OpenAPI document.

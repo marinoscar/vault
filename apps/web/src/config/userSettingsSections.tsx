@@ -18,6 +18,8 @@ import PaletteIcon from '@mui/icons-material/PaletteOutlined';
 import BackupIcon from '@mui/icons-material/BackupOutlined';
 import CategoryIcon from '@mui/icons-material/CategoryOutlined';
 import NotificationsIcon from '@mui/icons-material/NotificationsOutlined';
+// The feature resolvers (`ai`), registered before any hub reads them.
+import './settingsFeatures';
 
 /** The per-user hub's title. */
 export const USER_HUB_TITLE = 'Settings';

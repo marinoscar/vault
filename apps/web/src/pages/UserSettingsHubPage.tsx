@@ -1,4 +1,5 @@
 import { SettingsHub } from '@marinoscar/platform-web/settings/ui';
+import { useSettingsFeatures } from '@marinoscar/platform-web/settings/headless';
 import { usePermissions } from '@marinoscar/platform-web/identity/headless';
 import { USER_HUB_TITLE, USER_SETTINGS_SECTIONS } from '../config/userSettingsSections';
 
@@ -11,6 +12,9 @@ import { USER_HUB_TITLE, USER_SETTINGS_SECTIONS } from '../config/userSettingsSe
  */
 export default function UserSettingsHubPage() {
   const { hasPermission } = usePermissions();
+  // The registered feature resolvers (config/settingsFeatures.ts): `ai` hides the
+  // `feature: 'ai'` cards while AI is off (E8.2).
+  const features = useSettingsFeatures();
   return (
     <SettingsHub
       sections={USER_SETTINGS_SECTIONS}
@@ -18,6 +22,7 @@ export default function UserSettingsHubPage() {
       title={USER_HUB_TITLE}
       subtitle="Manage your account preferences"
       hasPermission={hasPermission}
+      features={features}
     />
   );
 }

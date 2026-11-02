@@ -22,7 +22,7 @@ import {
   SystemBackupUserEntry,
   userFolderName,
 } from './backup-archive';
-import { AiConfigService } from '../ai/ai-config.service';
+import { AiKeyPresence } from '../platform/credentials/ai-key-presence.service';
 import { BackupContentSelection } from '../secrets/export/backup-contents';
 import {
   SYSTEM_ALLOWLIST_SELECT,
@@ -100,7 +100,7 @@ export class BackupArchiveService {
     private readonly storageProvider: StorageProvider,
     private readonly exportService: SecretsExportService,
     private readonly systemSettings: SystemSettingsService,
-    private readonly aiConfig: AiConfigService,
+    private readonly aiKey: AiKeyPresence,
   ) {}
 
   /**
@@ -419,9 +419,9 @@ export class BackupArchiveService {
         select: SYSTEM_SECRET_TYPES_SELECT,
       }),
       // The settings document of GET /api/system-settings; the AI key is reduced
-      // to whether one is stored (`AiConfigService`, the only reader).
+      // to whether one is stored (`AiKeyPresence`: a `describe`, never the secret).
       this.systemSettings.getSettings(),
-      this.aiConfig.isKeyConfigured(),
+      this.aiKey.isConfigured(),
     ]);
 
     const files: Array<[string, unknown]> = [

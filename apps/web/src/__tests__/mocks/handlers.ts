@@ -31,6 +31,8 @@ const mockSystemSettings = {
     allowUserThemeOverride: true,
   },
   features: {},
+  // The platform AI policy (E8.1) as far as Vault's UI reads it, plus Vault's extension.
+  ai: { enabled: true, keyPolicy: 'byok_with_org_fallback', cardExtractModel: 'gpt-4o-mini' },
   updatedAt: new Date().toISOString(),
   updatedBy: null,
   version: 1,
@@ -197,6 +199,14 @@ export const handlers = [
   http.get(`${API_BASE}/ai/status`, () => {
     return HttpResponse.json({
       data: { enabled: true, features: { cardExtract: true } },
+    });
+  }),
+
+  // The platform AI config (E8.2): VaultAiConfigProvider, RequireAiEnabled and the
+  // packaged AI pages read it. Off by default; a test that needs it on overrides it.
+  http.get(`${API_BASE}/ai/config`, () => {
+    return HttpResponse.json({
+      data: { enabled: false, keyPolicy: 'byok_with_org_fallback', providers: [] },
     });
   }),
 

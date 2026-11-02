@@ -8,9 +8,9 @@ Issue [#80](https://github.com/marinoscar/vault/issues/80), epic #54. Applies on
 |---|---|---|
 | Where | `system_settings.value -> ai -> apiKey` (JSON: ciphertext, iv, authTag, last4, updatedAt) | `credentials` row, purpose `ai`, name `openai` |
 | Key | `VAULT_ENCRYPTION_KEY` (hex, `CryptoService`) | `SECRETS_ENCRYPTION_KEY` (base64, platform cipher, HKDF sub-key `ai`) |
-| Read by | `SystemSettingsService.getOpenAiApiKeyPlaintext()` | `AiConfigService` via `CredentialsService.getSecret('ai', 'openai')` |
+| Read by | `SystemSettingsService.getOpenAiApiKeyPlaintext()` | the platform AI slice's `AiKeyResolver` via `CredentialsService.getSecret('ai', 'openai')` (E8.1) |
 
-`(ai, openai)` is the address the platform AI slice reads, so E8 does not move the key a second time. The rest of `system_settings.ai` (`enabled`, `model`, `maxCallsPerUserPerDay`) stays where it is until E8. **Secret values, backups and the scheduled-backup password are not touched**: they stay under `VAULT_ENCRYPTION_KEY`.
+`(ai, openai)` is the address the platform AI slice reads, so E8 did not move the key a second time. The rest of `system_settings.ai` (`enabled`, `model`, `maxCallsPerUserPerDay`) moves with `npm run vault:migrate-ai-platform` (E8.1, [ai-platform-migration.md](ai-platform-migration.md)); run this command first. **Secret values, backups and the scheduled-backup password are not touched**: they stay under `VAULT_ENCRYPTION_KEY`.
 
 There is deliberately **no fallback read** of the old field. After you deploy the new build and before you run the command, AI card scanning reports "not configured" (`503 AI_NOT_CONFIGURED`, `GET /api/ai/status` says disabled). Run the command in the same maintenance window as the deploy.
 

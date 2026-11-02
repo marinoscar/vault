@@ -124,12 +124,14 @@ export interface SystemSecretTypeRow {
 export interface SystemSettingsProjectionInput {
   ui: unknown;
   features: unknown;
+  /** The platform AI policy plus Vault's `cardExtractModel` (E8.1); read through an allowlist below. */
   ai: {
-    enabled: boolean;
-    provider: string;
-    model: string;
-    maxCallsPerUserPerDay: number;
-    apiKeyConfigured: boolean;
+    enabled?: boolean;
+    keyPolicy?: string;
+    cardExtractModel?: string;
+    providers?: Record<string, { enabled?: boolean; [setting: string]: unknown } | undefined>;
+    limits?: { perUser?: { requestsPerMinute?: number; requestsPerDay?: number } };
+    apiKeyConfigured?: boolean;
     [extra: string]: unknown;
   } | null;
   updatedAt: Date | string | null;
@@ -175,12 +177,15 @@ export interface SystemSecretTypeEntry {
 export interface SystemSettingsEntry {
   ui: unknown;
   features: unknown;
-  /** The AI block with the key reduced to `apiKeyConfigured`. */
+  /** The AI policy summary (E8.1) with the key reduced to `apiKeyConfigured`. */
   ai: {
     enabled: boolean;
-    provider: string;
-    model: string;
-    maxCallsPerUserPerDay: number;
+    keyPolicy: string | null;
+    cardExtractModel: string | null;
+    /** Provider id to enabled flag. */
+    providers: Record<string, boolean>;
+    perUserRequestsPerMinute: number | null;
+    perUserRequestsPerDay: number | null;
     apiKeyConfigured: boolean;
   } | null;
   updatedAt: string | null;
@@ -254,10 +259,14 @@ export function toSystemSettings(projection: SystemSettingsProjectionInput): Sys
     features: JSON.parse(JSON.stringify(projection.features ?? {})),
     ai: ai
       ? {
-          enabled: ai.enabled,
-          provider: ai.provider,
-          model: ai.model,
-          maxCallsPerUserPerDay: ai.maxCallsPerUserPerDay,
+          enabled: ai.enabled === true,
+          keyPolicy: typeof ai.keyPolicy === 'string' ? ai.keyPolicy : null,
+          cardExtractModel: typeof ai.cardExtractModel === 'string' ? ai.cardExtractModel : null,
+          providers: Object.fromEntries(
+            Object.entries(ai.providers ?? {}).map(([id, slot]) => [id, slot?.enabled === true]),
+          ),
+          perUserRequestsPerMinute: ai.limits?.perUser?.requestsPerMinute ?? null,
+          perUserRequestsPerDay: ai.limits?.perUser?.requestsPerDay ?? null,
           apiKeyConfigured: ai.apiKeyConfigured === true,
         }
       : null,

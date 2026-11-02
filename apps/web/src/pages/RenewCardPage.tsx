@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom';
+import { usePermissions } from '@marinoscar/platform-web/identity/headless';
 import {
   Alert,
   AlertTitle,
@@ -90,6 +91,7 @@ export default function RenewCardPage() {
   const navigate = useNavigate();
   const { id: secretId } = useParams<{ id: string }>();
   const { cardExtractEnabled, isLoading: isAiStatusLoading } = useAiStatus();
+  const canOpenAiSettings = usePermissions().hasPermission('ai_config:read');
   const {
     secret,
     fields,
@@ -586,6 +588,13 @@ export default function RenewCardPage() {
             >
               <AlertTitle>{extractionError.title}</AlertTitle>
               {extractionError.detail}
+              {extractionError.adminLink && canOpenAiSettings && (
+                <Box sx={{ mt: 1 }}>
+                  <Link component={RouterLink} to={extractionError.adminLink.to}>
+                    {extractionError.adminLink.label}
+                  </Link>
+                </Box>
+              )}
               <Typography variant="body2" sx={{ mt: 1 }}>
                 The current card's details are still below — edit whatever the
                 new card changed and renew as normal.

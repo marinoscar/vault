@@ -8,11 +8,11 @@
 // `/api/system-settings`, `/api/user-settings` and `/api/org-settings` with real
 // credentials:
 //
-//   * existing values survive (ui, features, ai block, maintenance, an unknown
-//     key, the pre-E4.2 ai.apiKey ciphertext block) and are served in the same
-//     wire shape;
-//   * the AI key is write-only: stored in the credential store, never returned,
-//     never in the settings row, never in an audit row;
+//   * existing values survive (ui, features, the `ai` block in the platform AI
+//     slice's shape since E8.1, maintenance, an unknown key) and are served in
+//     the same wire shape;
+//   * the AI key is no longer a system-settings field (E8.1): a PATCH naming
+//     `ai.apiKey` stores nothing anywhere; keys go through /api/admin/ai/*;
 //   * RBAC: admin writes system settings, a contributor reads and writes only its
 //     own user settings, nobody anonymous reads anything;
 //   * a user's pre-E4.1 profile reads in the platform layout; dataTables and
@@ -49,14 +49,6 @@ const admin = findAdminCredentials();
 const describeWithDb = admin ? describe : describe.skip;
 
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
-const API_KEY = 'sk-test-0123456789abcdefghijklmnop';
-const LEGACY_CIPHERTEXT = {
-  ciphertext: 'c2VjcmV0LWNpcGhlcnRleHQ=',
-  iv: 'aXY=',
-  authTag: 'dGFn',
-  last4: 'wxyz',
-  updatedAt: '2026-01-01T00:00:00.000Z',
-};
 
 describeWithDb('platform settings routes bound by Vault (real Postgres)', () => {
   let deployment: AppRoleDatabase;
@@ -117,7 +109,7 @@ describeWithDb('platform settings routes bound by Vault (real Postgres)', () => 
         value: {
           ui: { allowUserThemeOverride: false },
           features: { cardScanning: true },
-          ai: { enabled: true, provider: 'openai', model: 'gpt-4o', maxCallsPerUserPerDay: 7, apiKey: LEGACY_CIPHERTEXT },
+          ai: { enabled: true, keyPolicy: 'byok_with_org_fallback', providers: { openai: { enabled: true } }, cardExtractModel: 'gpt-4o' },
           maintenance: { enabled: false, message: 'Back soon' },
           futureThing: { keep: 'me' },
         },
@@ -173,12 +165,9 @@ describeWithDb('platform settings routes bound by Vault (real Postgres)', () => 
         features: { cardScanning: true },
         ai: {
           enabled: true,
-          provider: 'openai',
-          model: 'gpt-4o',
-          maxCallsPerUserPerDay: 7,
-          apiKeyConfigured: false,
-          apiKeyLast4: null,
-          apiKeyUpdatedAt: null,
+          keyPolicy: 'byok_with_org_fallback',
+          providers: { openai: { enabled: true } },
+          cardExtractModel: 'gpt-4o',
         },
         maintenance: { enabled: false, message: 'Back soon' },
         vaultCards: { imageMaxBytes: 5 * 1024 * 1024, expiryWarningDays: 30 },
@@ -194,12 +183,10 @@ describeWithDb('platform settings routes bound by Vault (real Postgres)', () => 
       });
     });
 
-    it('never returns the legacy ciphertext block or any key field', async () => {
+    it('never returns a key field', async () => {
       const res = await http().get('/api/system-settings').set(as('admin'));
-      const text = JSON.stringify(res.body);
-      expect(text).not.toContain(LEGACY_CIPHERTEXT.ciphertext);
-      expect(text).not.toContain('authTag');
       expect(res.body.data.ai).not.toHaveProperty('apiKey');
+      expect(res.body.data.ai).not.toHaveProperty('apiKeyConfigured');
       // An unknown top-level key is carried, not served.
       expect(res.body.data).not.toHaveProperty('futureThing');
     });
@@ -212,7 +199,7 @@ describeWithDb('platform settings routes bound by Vault (real Postgres)', () => 
   });
 
   describe('PATCH /api/system-settings', () => {
-    it('merges feature flags and keeps every key it does not own, the legacy ciphertext included', async () => {
+    it('merges feature flags and keeps every key it does not own', async () => {
       const res = await http().patch('/api/system-settings').set(as('admin')).send({ features: { newFlag: true } });
 
       expect(res.status).toBe(200);
@@ -221,8 +208,7 @@ describeWithDb('platform settings routes bound by Vault (real Postgres)', () => 
       expect(stored.futureThing).toEqual({ keep: 'me' });
       expect(stored.maintenance).toMatchObject({ message: 'Back soon' });
       expect(stored.ui).toEqual({ allowUserThemeOverride: false });
-      // The pre-E4.2 block waits for vault:migrate-ai-key; a save must not destroy it.
-      expect(stored.ai.apiKey).toEqual(LEGACY_CIPHERTEXT);
+      expect(stored.ai).toMatchObject({ cardExtractModel: 'gpt-4o', providers: { openai: { enabled: true } } });
     });
 
     it('rejects a contributor', async () => {
@@ -232,7 +218,7 @@ describeWithDb('platform settings routes bound by Vault (real Postgres)', () => 
 
     it('validates input (400) and a stale If-Match is a 409', async () => {
       expect(
-        (await http().patch('/api/system-settings').set(as('admin')).send({ ai: { maxCallsPerUserPerDay: -1 } })).status,
+        (await http().patch('/api/system-settings').set(as('admin')).send({ ai: { cardExtractModel: '' } })).status,
       ).toBe(400);
       expect(
         (await http().patch('/api/system-settings').set(as('admin')).send({ vaultCards: { imageMaxBytes: 0 } })).status,
@@ -266,82 +252,64 @@ describeWithDb('platform settings routes bound by Vault (real Postgres)', () => 
     });
   });
 
-  describe('the AI key', () => {
-    const settingsAndAuditText = async () => ({
-      row: JSON.stringify((await globalRow()).value),
-      audits: JSON.stringify(await prisma.auditEvent.findMany()),
-      credentialRows: JSON.stringify(await prisma.credential.findMany()),
-    });
-
-    it('is stored in the credential store, masked in the response, and nowhere else', async () => {
-      const res = await http().patch('/api/system-settings').set(as('admin')).send({ ai: { apiKey: API_KEY } });
+  describe('the AI block (E8.1)', () => {
+    it('patches cardExtractModel and the platform fields, and keeps the rest of the block', async () => {
+      const res = await http()
+        .patch('/api/system-settings')
+        .set(as('admin'))
+        .send({ ai: { cardExtractModel: 'gpt-4o-mini', limits: { perUser: { requestsPerDay: 25 } } } });
 
       expect(res.status).toBe(200);
-      expect(res.body.data.ai).toMatchObject({ apiKeyConfigured: true, apiKeyLast4: 'mnop', apiKeyUpdatedAt: expect.any(String) });
-      expect(JSON.stringify(res.body)).not.toContain(API_KEY);
-
-      const { row, audits, credentialRows } = await settingsAndAuditText();
-      expect(row).not.toContain(API_KEY);
-      expect(audits).not.toContain(API_KEY);
-      expect(credentialRows).not.toContain(API_KEY);
-      expect(await prisma.credential.count({ where: { purpose: 'ai', name: 'openai' } })).toBe(1);
-      expect(audits).toContain('system_settings:ai_key');
-
-      const get = await http().get('/api/system-settings').set(as('admin'));
-      expect(get.body.data.ai).toMatchObject({ apiKeyConfigured: true, apiKeyLast4: 'mnop' });
-      expect(JSON.stringify(get.body)).not.toContain(API_KEY);
+      expect(res.body.data.ai).toMatchObject({
+        enabled: true,
+        keyPolicy: 'byok_with_org_fallback',
+        cardExtractModel: 'gpt-4o-mini',
+        limits: { perUser: { requestsPerDay: 25 } },
+      });
     });
 
-    it('an unrelated save does not touch the key', async () => {
-      const res = await http().patch('/api/system-settings').set(as('admin')).send({ ai: { enabled: false, model: 'gpt-4o-mini' } });
-      expect(res.status).toBe(200);
-      expect(res.body.data.ai).toMatchObject({ enabled: false, model: 'gpt-4o-mini', apiKeyConfigured: true, apiKeyLast4: 'mnop' });
-    });
-
-    it('a PUT without ai keeps the stored ai block and the key; an ai member replaces only the non-secret fields', async () => {
-      const smuggled = 'z'.repeat(30);
+    it('a PUT without ai keeps the stored ai block (the namespace is not required on PUT)', async () => {
       // PUT replaces the document: namespaces declared `requiredOnPut` (the platform's
       // `notifications`, E7.1) must be sent back, as a client that GETs then PUTs does.
       const current = await http().get('/api/system-settings').set(as('admin'));
       const res = await http()
         .put('/api/system-settings')
         .set(as('admin'))
-        .send({ notifications: current.body.data.notifications, ui: { allowUserThemeOverride: true }, features: { onlyFlag: true }, ai: { enabled: true, provider: 'openai', model: 'gpt-4o-mini', maxCallsPerUserPerDay: 9, apiKey: smuggled } });
+        .send({ notifications: current.body.data.notifications, ui: { allowUserThemeOverride: true }, features: { onlyFlag: true } });
 
       expect(res.status).toBe(200);
       expect(res.body.data.features).toEqual({ onlyFlag: true });
-      expect(res.body.data.ai).toMatchObject({ enabled: true, maxCallsPerUserPerDay: 9, apiKeyConfigured: true, apiKeyLast4: 'mnop' });
-      expect(JSON.stringify((await globalRow()).value)).not.toContain(smuggled);
-
-      const without = await http().put('/api/system-settings').set(as('admin')).send({ notifications: current.body.data.notifications, ui: { allowUserThemeOverride: true }, features: {} });
-      expect(without.status).toBe(200);
-      expect(without.body.data.ai).toMatchObject({ enabled: true, maxCallsPerUserPerDay: 9, apiKeyLast4: 'mnop' });
+      expect(res.body.data.ai).toMatchObject({ enabled: true, cardExtractModel: 'gpt-4o-mini' });
       expect((await globalRow()).value).toMatchObject({ futureThing: { keep: 'me' } });
     });
 
-    it('a too-short key is a 400 and changes nothing', async () => {
-      const res = await http().patch('/api/system-settings').set(as('admin')).send({ ai: { apiKey: 'short' } });
-      expect(res.status).toBe(400);
-      const get = await http().get('/api/system-settings').set(as('admin'));
-      expect(get.body.data.ai.apiKeyConfigured).toBe(true);
-    });
+    it('a key sent through system settings is stored nowhere: not in the row, a credential or an audit row', async () => {
+      const smuggled = 'sk-smuggled-' + 'z'.repeat(30);
+      await http().patch('/api/system-settings').set(as('admin')).send({ ai: { apiKey: smuggled } });
 
-    it('a stale If-Match leaves the key as it was', async () => {
-      const res = await http()
-        .patch('/api/system-settings')
-        .set(as('admin'))
-        .set('If-Match', '9999')
-        .send({ ai: { apiKey: 'sk-test-REPLACEMENT-0123456789abcdef' } });
-      expect(res.status).toBe(409);
-      const get = await http().get('/api/system-settings').set(as('admin'));
-      expect(get.body.data.ai.apiKeyLast4).toBe('mnop');
-    });
-
-    it('null clears the key', async () => {
-      const res = await http().patch('/api/system-settings').set(as('admin')).send({ ai: { apiKey: null } });
-      expect(res.status).toBe(200);
-      expect(res.body.data.ai).toMatchObject({ apiKeyConfigured: false, apiKeyLast4: null });
+      expect(JSON.stringify((await globalRow()).value)).not.toContain(smuggled);
+      expect(JSON.stringify(await prisma.auditEvent.findMany())).not.toContain(smuggled);
+      expect(JSON.stringify(await prisma.credential.findMany())).not.toContain(smuggled);
       expect(await prisma.credential.count({ where: { purpose: 'ai', name: 'openai' } })).toBe(0);
+    });
+  });
+
+  describe('an ai block still in the pre-E8 shape (before vault:migrate-ai-platform)', () => {
+    it('is served with the platform defaults, not an error, so the window between deploy and migration is safe', async () => {
+      const before = (await globalRow()).value as Record<string, any>;
+      await prisma.systemSettings.update({
+        where: { key: 'global' },
+        data: { value: { ...before, ai: { enabled: true, provider: 'openai', model: 'gpt-4o', maxCallsPerUserPerDay: 7, apiKey: null } } },
+      });
+
+      const res = await http().get('/api/system-settings').set(as('admin'));
+
+      expect(res.status).toBe(200);
+      // The platform AI policy has no provider switched on yet, so card scanning is refused
+      // (503 AI_NOT_CONFIGURED) until the command runs; nothing 500s.
+      expect(res.body.data.ai.providers.openai.enabled).toBe(false);
+      expect(res.body.data.ai).not.toHaveProperty('model');
+      await prisma.systemSettings.update({ where: { key: 'global' }, data: { value: before } });
     });
   });
 

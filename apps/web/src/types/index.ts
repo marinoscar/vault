@@ -25,56 +25,23 @@ export interface UserSettings {
 }
 
 /**
- * Masked AI settings, as returned by `GET /api/system-settings`.
+ * The `ai` namespace of `GET /api/system-settings` (E8.1, #87): the platform AI
+ * slice's policy (`enabled`, `keyPolicy`, `providers`, `limits`, `defaults`, ...)
+ * plus Vault's one extension, `cardExtractModel`, the model `card_extract` runs on.
  *
- * Mirrors `aiSettingsResponseSchema` in the API. The stored credential is
- * never sent to the client - all the UI ever learns is whether one exists,
- * its last 4 characters, and when it was last changed.
+ * Only the two fields Vault's own UI reads are typed; the rest of the policy is
+ * edited on the packaged AI page (`PUT /api/admin/ai/config`) and passed through
+ * untouched. No field here can hold a provider key: keys are credentials, set and
+ * cleared only through `/api/admin/ai/*`, and never returned.
  */
-export interface AiSettings {
+export interface VaultAiPolicy {
   enabled: boolean;
-  provider: 'openai';
-  model: string;
-  maxCallsPerUserPerDay: number;
-  apiKeyConfigured: boolean;
-  apiKeyLast4: string | null;
-  apiKeyUpdatedAt: string | null;
+  cardExtractModel: string;
+  [field: string]: unknown;
 }
 
-/**
- * The `ai` block accepted by `PATCH /api/system-settings`.
- *
- * Mirrors the `ai` member of `patchSystemSettingsSchema` in the API. `apiKey`
- * is write-only plaintext and is THREE-STATE - the distinction is load-bearing:
- *
- *   omitted -> keep the stored key
- *   null    -> clear the stored key (disables the feature for everyone)
- *   string  -> encrypt and replace the stored key
- *
- * Never populate `apiKey` unless the admin explicitly asked to set or clear it.
- * An unrelated edit that carries `apiKey: null` along silently destroys a
- * working credential.
- */
-export interface AiSettingsUpdate {
-  enabled?: boolean;
-  model?: string;
-  maxCallsPerUserPerDay?: number;
-  apiKey?: string | null;
-}
-
-/** API-side validation bounds for the AI settings, mirrored for client-side checks. */
-export const AI_API_KEY_MIN_LENGTH = 20;
-export const AI_API_KEY_MAX_LENGTH = 300;
-export const AI_MAX_CALLS_MIN = 0;
-export const AI_MAX_CALLS_MAX = 10000;
-
-/** API-side defaults (`DEFAULT_AI_SETTINGS`), used to seed the form when `ai` is null. */
-export const AI_SETTINGS_DEFAULTS = {
-  enabled: false,
-  provider: 'openai',
-  model: 'gpt-4o-mini',
-  maxCallsPerUserPerDay: 50,
-} as const;
+/** Bounds of `ai.cardExtractModel` (`vaultAiExtensionSchema` in the API). */
+export const CARD_EXTRACT_MODEL_MAX_LENGTH = 128;
 
 /**
  * Response of `GET /api/ai/status`.
@@ -92,20 +59,18 @@ export interface AiStatus {
 }
 
 /**
- * Error codes returned by the AI endpoints, mirroring `AI_ERROR_CODES` in
- * `apps/api/src/ai/ai.constants.ts`.
+ * Error codes `POST /api/secrets/cards/extract` answers with, mirroring
+ * `AI_ERROR_CODES` in `apps/api/src/ai/ai.constants.ts`. Client code branches on
+ * `code` first and falls back to `status` (see `describeCardExtractionError` in
+ * `hooks/useCardImport.ts`).
  *
- * KNOWN ISSUE #35: the API's global `HttpExceptionFilter` unconditionally
- * overwrites `code` with a status-derived value, so none of these actually
- * reach the browser today — a 429 arrives as `TOO_MANY_REQUESTS` whether it was
- * a burst limit or the daily quota. Client code therefore branches on `code`
- * first and falls back to `status`, and starts distinguishing the two the
- * moment #35 is fixed. See `describeCardExtractionError` in
- * `hooks/useCardImport.ts`.
+ * `AI_NOT_CONFIGURED` (503) means AI is on but the provider, model or key is not
+ * set up. AI switched OFF is a different answer: the platform kill switch
+ * (`AiEnabledGuard`) refuses with `403`, top-level code `FORBIDDEN` and
+ * `details.reason` {@link AI_DISABLED_REASON}.
  */
 export const AI_ERROR_CODES = {
   NOT_CONFIGURED: 'AI_NOT_CONFIGURED',
-  KEY_UNREADABLE: 'AI_KEY_UNREADABLE',
   INVALID_IMAGE: 'AI_INVALID_IMAGE',
   RATE_LIMITED: 'AI_RATE_LIMITED',
   QUOTA_EXCEEDED: 'AI_QUOTA_EXCEEDED',
@@ -117,103 +82,8 @@ export const AI_ERROR_CODES = {
 
 export type AiErrorCode = (typeof AI_ERROR_CODES)[keyof typeof AI_ERROR_CODES];
 
-/**
- * Why `POST /api/system-settings/ai/verify` said no.
- *
- * These are deliberately narrower than `AI_ERROR_CODES`: the point of the
- * connection test is to tell an admin *which thing* is wrong, because the
- * remedies live in completely different places. A rejected key is fixed by
- * pasting a new credential; a model that cannot see images is fixed by typing
- * a different model name; a quota problem is fixed on the provider's billing
- * page and by touching nothing here at all.
- *
- * `network` is not a verdict on the key or the model - it means the check
- * never got far enough to have an opinion, and must never be presented as a
- * failure of the configuration.
- */
-export const AI_VERIFY_FAILURE_REASONS = [
-  'invalid_key',
-  'model_not_found',
-  'model_no_image_support',
-  'model_no_structured_output',
-  'quota',
-  'network',
-  'unknown',
-] as const;
-
-export type AiVerifyFailureReason =
-  (typeof AI_VERIFY_FAILURE_REASONS)[number];
-
-/**
- * Body of `POST /api/system-settings/ai/verify`, mirroring `verifyAiSchema` in
- * the API.
- *
- * `model` overrides the model held in system settings for this one probe. It is
- * NOT saved - that is the point. An admin typing a candidate name into the
- * settings form needs to know whether it works *before* committing it, and
- * without an override the only way to find out would be to save a broken model
- * and read the failure afterwards.
- *
- * Omit `model` to probe the stored one. Do NOT send an empty or whitespace-only
- * string: the API validates length after trimming and answers 400, where
- * "nothing typed" should simply mean "test what is saved". The stored key is
- * always what the probe authenticates with - this field changes which model is
- * tested, never which credential.
- */
-export interface AiVerifyRequest {
-  model?: string;
-}
-
-/**
- * A passing connection test.
- *
- * `imageSupport` is part of the success shape rather than a separate check
- * because card import needs both halves - a key that works against a model
- * that cannot accept an image is still a broken configuration. The API only
- * ever produces `true` here, and only off a real request that carried an
- * image.
- */
-export interface AiVerifySuccess {
-  ok: true;
-  /**
-   * Model as reported by the provider, which is often a dated snapshot id
-   * rather than the alias that was requested.
-   *
-   * Always describes the model that was ACTUALLY probed - the override when one
-   * was sent, the stored model otherwise. Since the two can differ, this is the
-   * only trustworthy answer to "what is this result about"; never label a result
-   * with the saved setting.
-   */
-  model: string;
-  imageSupport: true;
-  durationMs: number;
-  /**
-   * Request parameters the API had to drop for this model to accept the call.
-   * Empty for a model that took the request as sent. Worth showing: it is the
-   * only signal that a setting is silently being ignored for this model.
-   */
-  adaptedParameters: string[];
-}
-
-export interface AiVerifyFailure {
-  ok: false;
-  reason: AiVerifyFailureReason;
-  /**
-   * Operator-facing explanation written by the API. Deliberately not the
-   * upstream error body, which can reflect request content back.
-   */
-  message: string;
-  /**
-   * The model that was tested, so the admin can see what was checked - the
-   * override when one was sent, the stored model otherwise. On this branch the
-   * provider never resolved a snapshot id, so it is the name as requested.
-   */
-  model: string;
-  durationMs: number;
-  adaptedParameters: string[];
-}
-
-export type AiVerifyResult = AiVerifySuccess | AiVerifyFailure;
+/** `details.reason` of the platform kill switch's `403` (AI switched off). */
+export const AI_DISABLED_REASON = 'AI_DISABLED';
 
 /**
  * Fields the extraction endpoint can return, mirroring `EXTRACTED_FIELD_NAMES`
@@ -223,10 +93,10 @@ export type AiVerifyResult = AiVerifySuccess | AiVerifyFailure;
  * support phone numbers, "Member Since", usage instructions — and seeds the
  * review form's Notes input.
  *
- * `cvv` is the card security code — 3 digits on the back for most networks, 4
- * on the front of an American Express. It is read from the photo like any other
- * field and, like any other field, the user confirms it on the review screen
- * before it is saved.
+ * `cvv` and `security_code_2` stay in the list because the response shape keeps
+ * them, but since E8.1 (#87) they are ALWAYS `null` with confidence 0: the model
+ * is told not to read a security code, its schema has no field for one, and the
+ * API forces both to null. The review form never seeds them; the user types them.
  */
 export const EXTRACTED_CARD_FIELD_NAMES = [
   'cardholder_name',
@@ -303,8 +173,8 @@ export interface SystemSettings {
     allowUserThemeOverride: boolean;
   };
   features: Record<string, boolean>;
-  /** `null` when the stored settings row predates the AI block. */
-  ai: AiSettings | null;
+  /** The platform AI policy plus `cardExtractModel`; `null` only before the first read. */
+  ai: VaultAiPolicy | null;
   updatedAt: string;
   updatedBy: { id: string; email: string } | null;
   version: number;

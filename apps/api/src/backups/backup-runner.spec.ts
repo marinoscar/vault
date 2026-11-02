@@ -146,8 +146,8 @@ function setup(opts: Options = {}) {
     ),
   };
 
-  // AiConfigService: whether an AI key is stored.
-  const aiConfig = { isKeyConfigured: jest.fn(async () => false) };
+  // AiKeyPresence: whether the AI key is stored.
+  const credentials = { isConfigured: jest.fn(async () => false) };
   const systemSettings = {
     getSettings: jest.fn(async () => ({
       ui: { allowUserThemeOverride: true },
@@ -164,7 +164,7 @@ function setup(opts: Options = {}) {
     storage as never,
     exportService as never,
     systemSettings as never,
-    aiConfig as never,
+    credentials as never,
   );
   const runner = new BackupRunnerService(prisma as never, crypto, storage as never, archive, exportService as never);
   return { runner, prisma, storage, exportService, systemSettings, uploads };

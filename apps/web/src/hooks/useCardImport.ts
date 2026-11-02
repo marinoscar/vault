@@ -11,6 +11,7 @@ import {
 } from '../services/api';
 import { ApiError } from '../services/api';
 import {
+  AI_DISABLED_REASON,
   AI_ERROR_CODES,
   EXTRACTED_CARD_FIELD_NAMES,
   type AiErrorCode,
@@ -61,6 +62,49 @@ export interface CardExtractionMessage {
   adminActionRequired: boolean;
   /** True when retrying the same images could plausibly succeed. */
   retryable: boolean;
+  /**
+   * Where an administrator fixes it, when the page should offer a link there
+   * (shown only to a viewer who can open it: `ai_config:read`).
+   */
+  adminLink?: { label: string; to: string };
+}
+
+/** The Console's AI page, where AI is switched on and set up. */
+export const AI_SETTINGS_PATH = '/admin/settings/ai';
+
+const AI_SETTINGS_LINK = { label: 'Open Console → AI', to: AI_SETTINGS_PATH } as const;
+
+/** AI switched off by an administrator (the platform kill switch's 403). */
+export const AI_DISABLED_MESSAGE: CardExtractionMessage = {
+  title: 'AI is off',
+  detail: 'AI is off — an admin can turn it on in Console → AI. You can still enter the card details yourself.',
+  adminActionRequired: true,
+  retryable: false,
+  adminLink: AI_SETTINGS_LINK,
+};
+
+/** AI on, but the provider, model or key is not set up (503 `AI_NOT_CONFIGURED`). */
+export const AI_NOT_CONFIGURED_MESSAGE: CardExtractionMessage = {
+  title: 'AI is not set up yet',
+  detail:
+    'AI is not set up yet — an administrator needs to add the OpenAI key and choose the card scanning model in Console → AI. You can still enter the card details yourself.',
+  adminActionRequired: true,
+  retryable: false,
+  adminLink: AI_SETTINGS_LINK,
+};
+
+/** The caller may not use AI (a `403` without `AI_DISABLED`: no `ai:use`). */
+export const AI_FORBIDDEN_MESSAGE: CardExtractionMessage = {
+  title: 'Card scanning is not available to you',
+  detail: 'Your role does not include AI features. Enter the card details yourself, or ask an administrator.',
+  adminActionRequired: true,
+  retryable: false,
+};
+
+/** `details.reason` of an API error, when it is a string. */
+function detailReason(error: ApiError | null): string | undefined {
+  const reason = (error?.details as { reason?: unknown } | null | undefined)?.reason;
+  return typeof reason === 'string' ? reason : undefined;
 }
 
 const AI_ERROR_CODE_VALUES: readonly string[] = Object.values(AI_ERROR_CODES);
@@ -72,44 +116,27 @@ function isAiErrorCode(code: string | undefined): code is AiErrorCode {
 /**
  * Map an extraction failure to an actionable message.
  *
- * Branches on the API's `code` first, then falls back to the HTTP status.
- *
- * KNOWN ISSUE #35: the API's global `HttpExceptionFilter` ends with an
- * unconditional `code = this.getCodeFromStatus(status)`, which throws away the
- * `AI_*` code every `AiException` carries. So today every 429 arrives as
- * `TOO_MANY_REQUESTS` and the burst limit is indistinguishable from the daily
- * quota — hence the deliberately two-sided 429 fallback below. The `code`
- * branches are already correct and start firing, with no change to this
- * function, the moment #35 is fixed.
- *
- * Codes are matched against the known `AI_*` set rather than trusted blindly,
- * so the filter's status-derived stand-ins ('TOO_MANY_REQUESTS', 'BAD_REQUEST')
- * fall through to the status branch instead of matching nothing and producing a
- * generic message. Message text is never parsed: it is copy, it will be
- * reworded, and branching on it would break silently when it is.
+ * AI switched off is checked first: the platform kill switch answers `403` with
+ * top-level code `FORBIDDEN` and `details.reason: 'AI_DISABLED'` (E8.1; it was a
+ * 503 before). Any other 403 means the caller lacks `ai:use`. Then the API's
+ * `AI_*` `code`, then the HTTP status. Codes are matched against the known
+ * `AI_*` set rather than trusted blindly, so a status-derived stand-in
+ * ('TOO_MANY_REQUESTS', 'BAD_REQUEST') falls through to the status branch.
+ * Message text is never parsed: it is copy, and it will be reworded.
  */
 export function describeCardExtractionError(error: unknown): CardExtractionMessage {
   const apiError = error instanceof ApiError ? error : null;
   const code = isAiErrorCode(apiError?.code) ? apiError.code : undefined;
   const status = apiError?.status;
 
+  if (detailReason(apiError) === AI_DISABLED_REASON || apiError?.code === AI_DISABLED_REASON) {
+    return AI_DISABLED_MESSAGE;
+  }
+  if (status === 403) return AI_FORBIDDEN_MESSAGE;
+
   switch (code) {
     case AI_ERROR_CODES.NOT_CONFIGURED:
-      return {
-        title: 'Card scanning is not set up',
-        detail:
-          'An administrator needs to enable AI and store an OpenAI API key in System Settings before cards can be scanned.',
-        adminActionRequired: true,
-        retryable: false,
-      };
-    case AI_ERROR_CODES.KEY_UNREADABLE:
-      return {
-        title: 'Card scanning is unavailable',
-        detail:
-          'The stored OpenAI API key could not be read. An administrator needs to re-enter it in System Settings.',
-        adminActionRequired: true,
-        retryable: false,
-      };
+      return AI_NOT_CONFIGURED_MESSAGE;
     case AI_ERROR_CODES.INVALID_IMAGE:
       return {
         title: 'Those photos could not be sent',
@@ -138,9 +165,10 @@ export function describeCardExtractionError(error: unknown): CardExtractionMessa
       return {
         title: 'Card scanning is unavailable',
         detail:
-          'The AI provider rejected the configured API key. An administrator needs to check it in System Settings.',
+          'The AI provider rejected the configured API key. An administrator needs to check it in Console → AI.',
         adminActionRequired: true,
         retryable: false,
+        adminLink: AI_SETTINGS_LINK,
       };
     case AI_ERROR_CODES.UPSTREAM_RATE_LIMITED:
       return {
@@ -186,8 +214,8 @@ export function describeCardExtractionError(error: unknown): CardExtractionMessa
         retryable: true,
       };
     case 429:
-      // Ambiguous only because of #35 — burst limit and daily quota share this
-      // status. The wording covers both without claiming either.
+      // A 429 without a recognised code: the wording covers both the burst limit
+      // and the daily cap without claiming either.
       return {
         title: 'Scan limit reached',
         detail:
@@ -204,13 +232,7 @@ export function describeCardExtractionError(error: unknown): CardExtractionMessa
         retryable: true,
       };
     case 503:
-      return {
-        title: 'Card scanning is not set up',
-        detail:
-          'An administrator needs to enable AI and store an OpenAI API key in System Settings before cards can be scanned.',
-        adminActionRequired: true,
-        retryable: false,
-      };
+      return AI_NOT_CONFIGURED_MESSAGE;
     default:
       return {
         title: 'The card could not be read',
@@ -226,9 +248,9 @@ export function describeCardExtractionError(error: unknown): CardExtractionMessa
 
 /**
  * Fields that are typed by hand and NEVER seeded from an extraction: the card
- * security codes (E10.5, issue #96; AGENTS.md AI rule 2). Even when the
- * provider's response carries a candidate for one, the review form starts it
- * empty, so the code a user saves is always the one they typed from the card.
+ * security codes (E10.5, issue #96; AGENTS.md AI rule 3). Since E8.1 the API
+ * always answers them `null` (confidence 0); the review form starts them empty
+ * whatever arrives, so the code a user saves is always the one they typed.
  */
 export const MANUAL_ONLY_CARD_FIELDS: ReadonlySet<string> = new Set(['cvv', 'security_code_2']);
 

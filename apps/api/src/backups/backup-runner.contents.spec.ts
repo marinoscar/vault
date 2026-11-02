@@ -169,8 +169,8 @@ function setup(schedule: Record<string, unknown>) {
     }),
     delete: jest.fn().mockResolvedValue(undefined),
   };
-  // AiConfigService: whether an AI key is stored.
-  const aiConfig = { isKeyConfigured: jest.fn(async () => true) };
+  // AiKeyPresence: whether the AI key is stored.
+  const credentials = { isConfigured: jest.fn(async () => true) };
   const systemSettings = {
     // What SystemSettingsService.getSettings() returns: already masked, but
     // still carrying apiKeyLast4, which the backup drops too.
@@ -179,9 +179,10 @@ function setup(schedule: Record<string, unknown>) {
       features: { cardScanning: true },
       ai: {
         enabled: true,
-        provider: 'openai',
-        model: 'model-x',
-        maxCallsPerUserPerDay: 20,
+        keyPolicy: 'byok_with_org_fallback',
+        providers: { openai: { enabled: true } },
+        cardExtractModel: 'model-x',
+        limits: { perUser: { requestsPerDay: 20 } },
         apiKeyConfigured: true,
         apiKeyLast4: MARKERS.apiKeyLast4,
         apiKeyUpdatedAt: '2026-01-01T00:00:00.000Z',
@@ -198,7 +199,7 @@ function setup(schedule: Record<string, unknown>) {
     storage as never,
     exportService,
     systemSettings as never,
-    aiConfig as never,
+    credentials as never,
   );
   const runner = new BackupRunnerService(prisma as never, crypto, storage as never, archive, exportService);
   return { runner, archive, prisma, storage, uploads, systemSettings };
@@ -321,9 +322,11 @@ describe('System backup content selection', () => {
     const settings = JSON.parse(await zip.text('system/settings.json'));
     expect(settings.ai).toEqual({
       enabled: true,
-      provider: 'openai',
-      model: 'model-x',
-      maxCallsPerUserPerDay: 20,
+      keyPolicy: 'byok_with_org_fallback',
+      cardExtractModel: 'model-x',
+      providers: { openai: true },
+      perUserRequestsPerMinute: null,
+      perUserRequestsPerDay: 20,
       apiKeyConfigured: true,
     });
 

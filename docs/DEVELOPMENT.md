@@ -65,6 +65,8 @@ This application uses **Fastify** as the HTTP adapter, not Express. This has imp
    platform credential store (the OpenAI API key). Back both up with the database.
    An existing database that still holds the AI key in the old place needs
    `npm run vault:migrate-ai-key` once: [runbooks/ai-key-migration.md](runbooks/ai-key-migration.md).
+   An existing database with Vault's old `ai` settings block also needs
+   `npm run vault:migrate-ai-platform` once (E8.1): [runbooks/ai-platform-migration.md](runbooks/ai-platform-migration.md).
 
    **Object storage has no environment variables.** The S3 / R2 / S3-compatible
    bucket, region, endpoint and access keys are entered by an administrator at

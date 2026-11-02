@@ -30,14 +30,7 @@ export const aiNotConfigured = () =>
   new AiException(
     HttpStatus.SERVICE_UNAVAILABLE,
     AI_ERROR_CODES.NOT_CONFIGURED,
-    'AI card scanning is not configured. An administrator must enable it and store an OpenAI API key in System Settings.',
-  );
-
-export const aiKeyUnreadable = () =>
-  new AiException(
-    HttpStatus.SERVICE_UNAVAILABLE,
-    AI_ERROR_CODES.KEY_UNREADABLE,
-    'The stored OpenAI API key could not be decrypted. An administrator must re-enter it in System Settings.',
+    'AI card scanning is not configured. An administrator must enable it and store an OpenAI API key in the AI settings.',
   );
 
 export const aiInvalidImage = (detail?: string) =>
@@ -56,11 +49,12 @@ export const aiRateLimited = (retryAfterSeconds: number) =>
     retryAfterSeconds,
   );
 
-export const aiQuotaExceeded = (limit: number) =>
+export const aiQuotaExceeded = (retryAfterSeconds?: number) =>
   new AiException(
     HttpStatus.TOO_MANY_REQUESTS,
     AI_ERROR_CODES.QUOTA_EXCEEDED,
-    `Daily card scan limit of ${limit} reached. Please try again tomorrow or ask an administrator to raise the limit.`,
+    'Daily card scan limit reached. Please try again later or ask an administrator to raise the limit.',
+    retryAfterSeconds,
   );
 
 /**
@@ -73,7 +67,7 @@ export const aiUpstreamAuth = () =>
   new AiException(
     HttpStatus.BAD_GATEWAY,
     AI_ERROR_CODES.UPSTREAM_AUTH,
-    'The AI provider rejected the configured API key. An administrator must check the key in System Settings.',
+    'The AI provider rejected the configured API key. An administrator must check the key in the AI settings.',
   );
 
 export const aiUpstreamRateLimited = (retryAfterSeconds?: number) =>

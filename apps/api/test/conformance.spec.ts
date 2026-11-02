@@ -7,6 +7,7 @@
 // E3.2 = #77 identity, E4.1 = #79 settings, E5.1 = #81 jobs and nodes,
 // E5.3 = #83 queue rule, E6.1 = #84 storage, E7.1 = #85 email and notifications).
 import '../src/app-registrations/registrations';
+import '@marinoscar/platform-api/ai/testing';
 import '../src/platform/storage/storage-key-prefix.manifest';
 import '@marinoscar/platform-api/email/testing';
 import '@marinoscar/platform-api/host/testing';
@@ -32,6 +33,7 @@ import { AppModule } from '../src/app.module';
 import { API_SOURCE_ROOT, CRON_EXEMPTIONS } from './jobs/cron-source-roots';
 
 const API_DIR = join(__dirname, '..');
+const REPO_DIR = join(API_DIR, '..', '..');
 
 /**
  * The root the identity suite walks: every controller reachable from `AppModule`
@@ -60,7 +62,7 @@ runPlatformConformance({
     // No secret-named field in any registered system or user namespace (the AI key
     // is a credential, E4.2), every default valid against its stored schema, and
     // every org layer gated by a registered org-scope permission (E4.1, #79).
-    // `maintenance`, `jobs`, `retention`, `nodes` (E5.1) plus Vault's `ui`, `features`, `ai`,
+    // `maintenance`, `jobs`, `retention`, `nodes` (E5.1) plus Vault's `ui`, `features`, `ai` (the platform's, E8.1),
     // `vaultCards`, `vaultBackups`, plus `storage` (E6.1) and `notifications` (E7.1).
     settings: {
       permissions: permissionRegistry.list(),
@@ -138,6 +140,34 @@ runPlatformConformance({
     // tests. Vault has NO exemption since E6.1. `minCronFiles` is the backup schedule task: the
     // scan must keep finding it, so the scan cannot pass vacuously.
     cronEnqueueOnly: { exempt: [...CRON_EXEMPTIONS], minCronFiles: CRON_EXEMPTIONS.length + 1 },
+
+    // The AI slice's two source scans (E8.1, #87); the five that boot the app run in
+    // `ai-conformance.spec.ts`. No provider SDK is imported anywhere Vault ships: the API, the
+    // web and the CLI reach a model through the platform AI slice only, whose adapters (with their
+    // SDKs) live in the package, outside these trees. `minFiles` stops a mistyped root from passing
+    // on an empty tree.
+    aiNoSdkLeak: {
+      apiTrees: [{ name: 'apps/api/src', root: join(API_DIR, 'src'), minFiles: 100 }],
+      webTrees: [{ name: 'apps/web/src', root: join(REPO_DIR, 'apps', 'web', 'src'), minFiles: 50 }],
+      noSdkManifests: [
+        join(REPO_DIR, 'package.json'),
+        join(API_DIR, 'package.json'),
+        join(REPO_DIR, 'apps', 'web', 'package.json'),
+        join(REPO_DIR, 'apps', 'cli', 'package.json'),
+      ],
+    },
+    // No agent-orchestration framework anywhere; `allowedRoots` is EMPTY on purpose.
+    aiOrchestrationBoundary: {
+      apiSourceRoots: [join(API_DIR, 'src')],
+      webSourceRoots: [join(REPO_DIR, 'apps', 'web', 'src')],
+      packageJsonPaths: [
+        join(REPO_DIR, 'package.json'),
+        join(API_DIR, 'package.json'),
+        join(REPO_DIR, 'apps', 'web', 'package.json'),
+        join(REPO_DIR, 'apps', 'cli', 'package.json'),
+      ],
+      allowedRoots: {},
+    },
 
     // The `@OnEvent` half (`on-event-no-io`) cannot run as a platform suite here: it requires at
     // least one listener (a vacuity guard) and, since E6.1 (#84), Vault has none. The same detector

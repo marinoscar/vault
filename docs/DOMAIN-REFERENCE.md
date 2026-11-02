@@ -92,8 +92,9 @@ The platform settings slice serves these (E4.1); Vault's namespaces are `ui`, `f
 - `DELETE /api/secret-types/{id}` - Delete a custom secret type (409 if secrets reference it)
 
 ### AI (Card Scanning)
-- `GET /api/ai/status` - Whether AI-backed features are available to the current user (no permission required)
-- `POST /api/secrets/cards/extract` - Extract candidate card fields from cropped card photos via an admin-configured OpenAI vision model (`secrets:write`). Persists nothing; the CVV is never requested or returned. Disabled by default — see `docs/SECRETS.md` and `docs/API.md`.
+- `GET /api/ai/status` - Whether AI-backed features are available to the current user (no permission required); a compatibility alias of the platform's `GET /api/ai/config`, kept until E11
+- `POST /api/secrets/cards/extract` - Extract candidate card fields from card photos through the platform AI slice (`secrets:write` + `ai:use`, behind the platform kill switch). Persists nothing; the CVV is never requested or returned. Disabled by default - see `docs/SECRETS.md` and `docs/API.md`.
+- `GET /api/ai/config`, `/api/ai/*`, `/api/admin/ai/*` (`ai_config:*`, `org_ai_config:*`) - the platform AI slice: policy, deployment key, model catalogue, usage. See `docs/API.md` (AI card extraction).
 
 ### Admin Backups
 - `GET /api/admin/backups/schedule` - Get the backup schedule (`system_settings:read`); never returns the password (`passwordConfigured`, `passwordUpdatedAt` only)
@@ -133,7 +134,7 @@ The platform settings slice serves these (E4.1); Vault's namespaces are `ui`, `f
 - `user_identities` - OAuth provider identities (provider + subject)
 - `roles` / `permissions` / `role_permissions` - RBAC
 - `user_roles` - User-to-role assignments
-- `system_settings` - Global app settings (JSONB); as of the card epic, includes an `ai` block (enabled flag, model, daily budget). The OpenAI API key is NOT in it since E4.2: it is a write-only platform credential (`credentials` table, purpose `ai`, name `openai`, `SECRETS_ENCRYPTION_KEY`); a legacy `ai.apiKey` block is moved by `npm run vault:migrate-ai-key`
+- `system_settings` - Global app settings (JSONB); as of the card epic, includes an `ai` block that, since E8.1, is the platform AI policy (enabled, key policy, providers, caps) plus Vault's `cardExtractModel`. The OpenAI API key is NOT in it: it is the platform's write-only deployment key (`credentials` table, purpose `ai`, name `openai`, `SECRETS_ENCRYPTION_KEY`); the old `{ enabled, provider, model, maxCallsPerUserPerDay }` block is rewritten by `npm run vault:migrate-ai-platform`, a legacy `ai.apiKey` block by `npm run vault:migrate-ai-key`. The platform AI tables (`ai_models`, `ai_usage_events`, `ai_runs`, `user_ai_keys`) hold the catalogue, usage and runs
 - `user_settings` - Per-user settings (JSONB)
 - `audit_events` - Action audit log; also backs the AI card-extraction daily budget (counts `ai.card.extract` rows in the trailing 24h); also records `secrets.export` (backup downloads) — see `docs/SECRETS.md`
 - `refresh_tokens` - JWT refresh tokens (hashed)
