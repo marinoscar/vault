@@ -8,8 +8,6 @@ import {
   TextField,
   InputAdornment,
   IconButton,
-  FormControlLabel,
-  Checkbox,
   Alert,
   CircularProgress,
 } from '@mui/material';
@@ -26,21 +24,27 @@ import {
   suggestBackupPassword,
   validateBackupPassword,
 } from '../../utils/backupPassword';
+import {
+  defaultBackupContents,
+  toUserBackupRequest,
+  validateBackupContents,
+  type BackupContentSelection,
+} from '../../utils/backupContents';
+import { BackupContentsGroup } from './BackupContentsGroup';
 
 export const BACKUP_SUCCESS_MESSAGE =
   'Backup downloaded. Write your password down — without it the file cannot be opened. There is no recovery.';
 
 /**
- * "Back up my data" card: downloads an AES-256 encrypted zip of the secrets
- * the current user owns. Rendering is gated by `secrets:read` at the call
+ * "Back up my data" card: downloads an AES-256 encrypted zip of what the
+ * current user owns (secrets by default, optionally their media library). Rendering is gated by `secrets:read` at the call
  * site (UserSettingsPage).
  */
 export function DataBackup() {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [includeAttachments, setIncludeAttachments] = useState(true);
-  const [includeVersions, setIncludeVersions] = useState(false);
+  const [contents, setContents] = useState<BackupContentSelection>(defaultBackupContents);
   const [submitted, setSubmitted] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +57,7 @@ export function DataBackup() {
   const mismatch = password !== confirm && (confirm.length > 0 || submitted);
   const confirmError = mismatch && !passwordError ? 'Passwords do not match' : null;
   const showWarning = shouldWarnBackupPassword(password);
+  const contentsError = validateBackupContents(contents);
 
   const handleSuggest = () => {
     const suggestion = suggestBackupPassword();
@@ -67,14 +72,13 @@ export function DataBackup() {
     setSubmitted(true);
     setError(null);
     setSuccess(null);
-    if (validationError) return;
+    if (validationError || contentsError) return;
 
     setDownloading(true);
     try {
       const result = await downloadSecretsBackup({
         password,
-        includeAttachments,
-        includeVersions,
+        ...toUserBackupRequest(contents),
       });
       saveBlobAsFile(result.blob, result.filename);
       setPassword('');
@@ -108,7 +112,8 @@ export function DataBackup() {
           Back up my data
         </Typography>
         <Typography variant="body2" color="text.secondary" paragraph>
-          Download a password-protected copy of the secrets you own.
+          Download a password-protected copy of your secrets and, if you choose, your media
+          library.
         </Typography>
 
         <Alert severity="info" sx={{ mb: 2 }}>
@@ -171,26 +176,14 @@ export function DataBackup() {
             </Alert>
           )}
 
-          <Box sx={{ display: 'flex', flexDirection: 'column', mb: 2 }}>
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={includeAttachments}
-                  onChange={(e) => setIncludeAttachments(e.target.checked)}
-                  disabled={downloading}
-                />
-              }
-              label="Include attachments"
-            />
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={includeVersions}
-                  onChange={(e) => setIncludeVersions(e.target.checked)}
-                  disabled={downloading}
-                />
-              }
-              label="Include old versions"
+          <Box sx={{ mb: 2 }}>
+            <BackupContentsGroup
+              value={contents}
+              onChange={(next) => {
+                setContents(next);
+                setSuccess(null);
+              }}
+              disabled={downloading}
             />
           </Box>
 
@@ -211,7 +204,7 @@ export function DataBackup() {
             startIcon={
               downloading ? <CircularProgress size={18} color="inherit" /> : <DownloadIcon />
             }
-            disabled={downloading}
+            disabled={downloading || contentsError !== null}
             aria-busy={downloading}
           >
             {downloading ? 'Preparing backup…' : 'Download backup'}

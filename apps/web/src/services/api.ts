@@ -886,8 +886,14 @@ export async function simpleStorageUpload(
 
 export interface SecretsBackupOptions {
   password: string;
+  /** Default true. */
+  includeSecrets?: boolean;
+  /** Default true; only sent as true while includeSecrets is on. */
   includeAttachments?: boolean;
+  /** Default false; only sent as true while includeSecrets is on. */
   includeVersions?: boolean;
+  /** Default false: the user's own media library. */
+  includeMedia?: boolean;
 }
 
 export interface SecretsBackupResult {
@@ -895,6 +901,7 @@ export interface SecretsBackupResult {
   filename: string;
   secretCount: number | null;
   attachmentCount: number | null;
+  mediaFileCount: number | null;
 }
 
 /** `vault-backup-YYYY-MM-DD.zip` for the given date (UTC, matching the server). */
@@ -936,17 +943,23 @@ function parseCountHeader(value: string | null): number | null {
 }
 
 /**
- * Download a password-protected (AES-256 zip) backup of the secrets the
- * current user owns. The password travels only in the request body; it is
+ * Download a password-protected (AES-256 zip) backup of what the current
+ * user owns: secrets (with attachments / old versions) and/or their media
+ * library. The password travels only in the request body; it is
  * never logged or stored here.
  */
 export async function downloadSecretsBackup(
   options: SecretsBackupOptions,
 ): Promise<SecretsBackupResult> {
+  // Attachments and versions are part of a secret: the API rejects them
+  // without secrets, so they are forced off when secrets is off.
+  const includeSecrets = options.includeSecrets ?? true;
   const response = await api.postForResponse('/secrets/export', {
     password: options.password,
-    includeAttachments: options.includeAttachments ?? true,
-    includeVersions: options.includeVersions ?? false,
+    includeSecrets,
+    includeAttachments: includeSecrets && (options.includeAttachments ?? true),
+    includeVersions: includeSecrets && (options.includeVersions ?? false),
+    includeMedia: options.includeMedia ?? false,
   });
   const blob = await response.blob();
   return {
@@ -956,6 +969,7 @@ export async function downloadSecretsBackup(
       defaultBackupFilename(),
     secretCount: parseCountHeader(response.headers.get('X-Vault-Export-Secrets')),
     attachmentCount: parseCountHeader(response.headers.get('X-Vault-Export-Attachments')),
+    mediaFileCount: parseCountHeader(response.headers.get('X-Vault-Export-Media-Files')),
   };
 }
 

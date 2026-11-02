@@ -22,8 +22,11 @@ const schedule: BackupSchedule = {
   dayOfMonth: null,
   timezone: 'UTC',
   keepCount: 7,
+  includeSecrets: true,
   includeAttachments: true,
   includeVersions: false,
+  includeMedia: false,
+  includeSystem: false,
   passwordConfigured: false,
   passwordUpdatedAt: null,
   nextRunAt: null,
@@ -70,8 +73,11 @@ describe('scheduled backup API functions', () => {
       dayOfMonth: null,
       timezone: 'Europe/Paris',
       keepCount: 10,
+      includeSecrets: true,
       includeAttachments: false,
       includeVersions: true,
+      includeMedia: true,
+      includeSystem: true,
       password: 'blue tiger river',
     };
 

@@ -8,6 +8,7 @@ import {
   ScheduledBackups,
 } from '../../../components/admin/ScheduledBackups';
 import type { BackupRun, BackupSchedule } from '../../../types';
+import { BACKUP_NOTHING_SELECTED_MESSAGE } from '../../../utils/backupContents';
 
 vi.mock('../../../services/api', () => ({
   getBackupSchedule: vi.fn(),
@@ -56,8 +57,11 @@ const schedule: BackupSchedule = {
   dayOfMonth: null,
   timezone: 'America/Chicago',
   keepCount: 7,
+  includeSecrets: true,
   includeAttachments: true,
   includeVersions: false,
+  includeMedia: false,
+  includeSystem: false,
   passwordConfigured: true,
   passwordUpdatedAt: '2026-10-01T12:00:00.000Z',
   nextRunAt: '2026-11-03T09:00:00.000Z',
@@ -75,6 +79,8 @@ const run: BackupRun = {
   userCount: 2,
   secretCount: 5,
   attachmentCount: 1,
+  mediaFileCount: 0,
+  contents: ['secrets', 'attachments'],
   warningCount: 0,
   error: null,
   startedAt: '2026-11-01T09:00:00.000Z',
@@ -352,8 +358,11 @@ describe('ScheduledBackups', () => {
         dayOfMonth: null,
         timezone: 'America/Chicago',
         keepCount: 7,
+        includeSecrets: true,
         includeAttachments: true,
         includeVersions: false,
+        includeMedia: false,
+        includeSystem: false,
       });
     });
 
@@ -818,6 +827,187 @@ describe('ScheduledBackups', () => {
       mockUsePermissions.mockReturnValue(permissions(['system_settings:read', 'system_settings:write']));
       await renderLoaded();
       expect(screen.queryByText(/You can view backups but not change/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('what to back up', () => {
+    const systemBox = () => screen.getByRole('checkbox', { name: /system configuration/i });
+    const secretsBox = () => screen.getByRole('checkbox', { name: 'Secrets' });
+    const summary = () => screen.getByTestId('backup-schedule-contents-summary');
+
+    beforeEach(() => {
+      mockUpdate.mockResolvedValue({ ...schedule });
+    });
+
+    it('shows the group, including system configuration, with the loaded values', async () => {
+      await renderLoaded();
+
+      expect(screen.getByRole('group', { name: 'What to back up' })).toBeInTheDocument();
+      expect(secretsBox()).toBeChecked();
+      expect(screen.getByRole('checkbox', { name: /include attachments/i })).toBeChecked();
+      expect(screen.getByRole('checkbox', { name: /include old versions/i })).not.toBeChecked();
+      expect(screen.getByRole('checkbox', { name: 'Media library' })).not.toBeChecked();
+      expect(systemBox()).not.toBeChecked();
+      expect(
+        screen.getByText(
+          'System configuration (users, roles, allowlist, custom secret types, settings)',
+        ),
+      ).toBeInTheDocument();
+      expect(summary()).toHaveTextContent('Secrets with attachments');
+    });
+
+    it('defaults to secrets with attachments when the API omits the newer flags', async () => {
+      const legacy = { ...schedule } as Partial<BackupSchedule>;
+      delete legacy.includeSecrets;
+      delete legacy.includeMedia;
+      delete legacy.includeSystem;
+      mockGetSchedule.mockResolvedValue(legacy as BackupSchedule);
+      const user = await renderLoaded();
+
+      expect(secretsBox()).toBeChecked();
+      expect(systemBox()).not.toBeChecked();
+      await user.click(screen.getByRole('button', { name: /save schedule/i }));
+
+      await waitFor(() => expect(mockUpdate).toHaveBeenCalled());
+      expect(lastPayload()).toMatchObject({
+        includeSecrets: true,
+        includeAttachments: true,
+        includeVersions: false,
+        includeMedia: false,
+        includeSystem: false,
+      });
+    });
+
+    it('reflects the loaded media and system flags', async () => {
+      mockGetSchedule.mockResolvedValue({
+        ...schedule,
+        includeSecrets: false,
+        includeMedia: true,
+        includeSystem: true,
+      });
+      await renderLoaded();
+
+      expect(secretsBox()).not.toBeChecked();
+      expect(screen.getByRole('checkbox', { name: 'Media library' })).toBeChecked();
+      expect(systemBox()).toBeChecked();
+      expect(summary()).toHaveTextContent('Media library, system configuration');
+    });
+
+    it('disables the nested options when Secrets is off', async () => {
+      const user = await renderLoaded();
+
+      await user.click(secretsBox());
+
+      expect(screen.getByRole('checkbox', { name: /include attachments/i })).toBeDisabled();
+      expect(screen.getByRole('checkbox', { name: /include old versions/i })).toBeDisabled();
+    });
+
+    it('blocks saving when nothing is selected', async () => {
+      const user = await renderLoaded();
+
+      await user.click(secretsBox());
+      expect(screen.getByText(BACKUP_NOTHING_SELECTED_MESSAGE)).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: /save schedule/i }));
+
+      expect(await screen.findAllByText(BACKUP_NOTHING_SELECTED_MESSAGE)).toHaveLength(2);
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('sends system configuration only, with the nested secret options off', async () => {
+      const user = await renderLoaded();
+
+      await user.click(secretsBox());
+      await user.click(systemBox());
+      await user.click(screen.getByRole('button', { name: /save schedule/i }));
+
+      await waitFor(() => expect(mockUpdate).toHaveBeenCalled());
+      expect(lastPayload()).toMatchObject({
+        includeSecrets: false,
+        includeAttachments: false,
+        includeVersions: false,
+        includeMedia: false,
+        includeSystem: true,
+      });
+    });
+
+    it('sends every section when all are selected', async () => {
+      const user = await renderLoaded();
+
+      await user.click(screen.getByRole('checkbox', { name: /include old versions/i }));
+      await user.click(screen.getByRole('checkbox', { name: 'Media library' }));
+      await user.click(systemBox());
+      await user.click(screen.getByRole('button', { name: /save schedule/i }));
+
+      await waitFor(() => expect(mockUpdate).toHaveBeenCalled());
+      expect(lastPayload()).toMatchObject({
+        includeSecrets: true,
+        includeAttachments: true,
+        includeVersions: true,
+        includeMedia: true,
+        includeSystem: true,
+      });
+    });
+
+    it('is read-only without system_settings:write', async () => {
+      mockUsePermissions.mockReturnValue(permissions(['system_settings:read']));
+      await renderLoaded();
+
+      expect(secretsBox()).toBeDisabled();
+      expect(screen.getByRole('checkbox', { name: 'Media library' })).toBeDisabled();
+      expect(systemBox()).toBeDisabled();
+    });
+  });
+
+  describe('history contents', () => {
+    it('shows the contents of each run as chips and the media file count', async () => {
+      mockGetRuns.mockResolvedValue({
+        items: [
+          {
+            ...run,
+            id: 'run-all',
+            contents: ['secrets', 'attachments', 'media', 'system'],
+            mediaFileCount: 12,
+          },
+          { ...run, id: 'run-media', contents: ['media'], mediaFileCount: 3 },
+        ],
+        total: 2,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
+      });
+      render(<ScheduledBackups />);
+
+      const all = await screen.findByTestId('backup-contents-run-all');
+      expect(within(all).getByText('Secrets')).toBeInTheDocument();
+      expect(within(all).getByText('Media')).toBeInTheDocument();
+      expect(within(all).getByText('System')).toBeInTheDocument();
+
+      const media = screen.getByTestId('backup-contents-run-media');
+      expect(within(media).queryByText('Secrets')).not.toBeInTheDocument();
+      expect(within(media).getByText('Media')).toBeInTheDocument();
+      expect(within(media).queryByText('System')).not.toBeInTheDocument();
+
+      expect(
+        screen.getByRole('columnheader', { name: 'Users / Secrets / Attachments / Media files' }),
+      ).toBeInTheDocument();
+      expect(screen.getByText('2 / 5 / 1 / 12')).toBeInTheDocument();
+      expect(screen.getByText('2 / 5 / 1 / 3')).toBeInTheDocument();
+    });
+
+    it('shows a dash for a run recorded before contents existed', async () => {
+      mockGetRuns.mockResolvedValue({
+        items: [{ ...run, contents: [] }],
+        total: 1,
+        page: 1,
+        pageSize: 10,
+        totalPages: 1,
+      });
+      render(<ScheduledBackups />);
+
+      await screen.findByText('Succeeded');
+      expect(screen.queryByTestId('backup-contents-run-1')).not.toBeInTheDocument();
+      expect(screen.getByRole('columnheader', { name: 'Contents' })).toBeInTheDocument();
+      expect(screen.getAllByText('—').length).toBeGreaterThan(0);
     });
   });
 });

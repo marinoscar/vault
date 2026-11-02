@@ -13,9 +13,12 @@ import {
   getTimeZoneOptions,
   isValidTimeOfDay,
   normalizeScheduleFields,
+  scheduleContentSelection,
   startUrlDownload,
   validateScheduleFields,
+  withScheduleContents,
 } from '../../utils/backupSchedule';
+import { BACKUP_NOTHING_SELECTED_MESSAGE } from '../../utils/backupContents';
 import type { BackupScheduleFields } from '../../types';
 
 const base: BackupScheduleFields = {
@@ -27,8 +30,11 @@ const base: BackupScheduleFields = {
   dayOfMonth: null,
   timezone: 'America/Chicago',
   keepCount: 7,
+  includeSecrets: true,
   includeAttachments: true,
   includeVersions: false,
+  includeMedia: false,
+  includeSystem: false,
 };
 
 function fields(overrides: Partial<BackupScheduleFields>): BackupScheduleFields {
@@ -309,6 +315,71 @@ describe('validateScheduleFields', () => {
   it('accepts the keepCount bounds', () => {
     expect(validateScheduleFields(fields({ keepCount: BACKUP_KEEP_MIN }))).toBeNull();
     expect(validateScheduleFields(fields({ keepCount: BACKUP_KEEP_MAX }))).toBeNull();
+  });
+});
+
+describe('schedule contents', () => {
+  it('reads the selection from the include flags', () => {
+    expect(scheduleContentSelection(fields({ includeMedia: true, includeSystem: true }))).toEqual({
+      secrets: true,
+      attachments: true,
+      versions: false,
+      media: true,
+      system: true,
+    });
+  });
+
+  it('writes a selection back as raw flags without touching other fields', () => {
+    const next = withScheduleContents(base, {
+      secrets: false,
+      attachments: true,
+      versions: true,
+      media: false,
+      system: true,
+    });
+    expect(next).toMatchObject({
+      includeSecrets: false,
+      includeAttachments: true,
+      includeVersions: true,
+      includeMedia: false,
+      includeSystem: true,
+      keepCount: 7,
+      timezone: 'America/Chicago',
+    });
+    expect(base.includeSystem).toBe(false);
+  });
+
+  it('normalize sends attachments and versions as false while Secrets is off', () => {
+    const result = normalizeScheduleFields(
+      fields({ includeSecrets: false, includeVersions: true, includeSystem: true }),
+    );
+    expect(result).toMatchObject({
+      includeSecrets: false,
+      includeAttachments: false,
+      includeVersions: false,
+      includeMedia: false,
+      includeSystem: true,
+    });
+  });
+
+  it('normalize keeps the nested options while Secrets is on', () => {
+    expect(normalizeScheduleFields(fields({ includeVersions: true }))).toMatchObject({
+      includeSecrets: true,
+      includeAttachments: true,
+      includeVersions: true,
+    });
+  });
+
+  it('validation rejects a schedule that backs up nothing', () => {
+    expect(
+      validateScheduleFields(
+        fields({ includeSecrets: false, includeMedia: false, includeSystem: false }),
+      ),
+    ).toBe(BACKUP_NOTHING_SELECTED_MESSAGE);
+  });
+
+  it('validation accepts system configuration alone', () => {
+    expect(validateScheduleFields(fields({ includeSecrets: false, includeSystem: true }))).toBeNull();
   });
 });
 

@@ -585,8 +585,16 @@ export interface BackupScheduleFields {
   timezone: string;
   /** How many successful backups to keep (1-365). */
   keepCount: number;
+  /** Back up every user's current secret values. */
+  includeSecrets: boolean;
+  /** Requires includeSecrets. */
   includeAttachments: boolean;
+  /** Requires includeSecrets. */
   includeVersions: boolean;
+  /** Every user's media library (folders and files). */
+  includeMedia: boolean;
+  /** Users and roles, allowlist, custom secret types, redacted system settings. */
+  includeSystem: boolean;
 }
 
 /** GET/PUT /admin/backups/schedule response. Never carries the password. */
@@ -617,6 +625,12 @@ export interface BackupRun {
   userCount: number;
   secretCount: number;
   attachmentCount: number;
+  mediaFileCount: number;
+  /**
+   * Content keys selected for this run: 'secrets', 'attachments',
+   * 'versions', 'media', 'system'. Empty for runs from before the choice existed.
+   */
+  contents: string[];
   warningCount: number;
   error: string | null;
   startedAt: string;

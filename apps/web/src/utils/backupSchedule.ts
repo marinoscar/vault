@@ -4,6 +4,13 @@
  * The API re-validates everything; these only shape the form.
  */
 import type { BackupFrequency, BackupScheduleFields } from '../types';
+import {
+  fromBackupContentFlags,
+  rawBackupContentFlags,
+  toBackupContentFlags,
+  validateBackupContents,
+  type BackupContentSelection,
+} from './backupContents';
 
 export const BACKUP_INTERVAL_HOURS: readonly number[] = [1, 2, 3, 4, 6, 8, 12];
 
@@ -102,13 +109,33 @@ export function describeBackupSchedule(schedule: BackupScheduleFields): string {
   return `${when} · ${keepsText(schedule.keepCount)}`;
 }
 
+/** The "What to back up" selection held by a schedule's include flags. */
+export function scheduleContentSelection(fields: BackupScheduleFields): BackupContentSelection {
+  return fromBackupContentFlags(fields);
+}
+
+/**
+ * The schedule fields with the include flags replaced by a selection, kept
+ * as selected (turning Secrets back on restores the nested options);
+ * `normalizeScheduleFields` applies the nested rule before sending.
+ */
+export function withScheduleContents<T extends BackupScheduleFields>(
+  fields: T,
+  selection: BackupContentSelection,
+): T {
+  return { ...fields, ...rawBackupContentFlags(selection) };
+}
+
 /**
  * Normalize the editable fields before sending: frequency-specific fields
  * that do not apply are sent as null, the ones that do get a default.
+ * Attachments and versions are sent as false while Secrets is off (the API
+ * rejects them without secrets).
  */
 export function normalizeScheduleFields(fields: BackupScheduleFields): BackupScheduleFields {
   return {
     ...fields,
+    ...toBackupContentFlags(scheduleContentSelection(fields)),
     intervalHours: fields.frequency === 'hourly' ? fields.intervalHours ?? 1 : null,
     dayOfWeek: fields.frequency === 'weekly' ? fields.dayOfWeek ?? 1 : null,
     dayOfMonth: fields.frequency === 'monthly' ? fields.dayOfMonth ?? 1 : null,
@@ -148,7 +175,7 @@ export function validateScheduleFields(fields: BackupScheduleFields): string | n
   ) {
     return `Keep between ${BACKUP_KEEP_MIN} and ${BACKUP_KEEP_MAX} backups`;
   }
-  return null;
+  return validateBackupContents(scheduleContentSelection(fields));
 }
 
 /** "1.4 MB"-style size; em dash for null. */

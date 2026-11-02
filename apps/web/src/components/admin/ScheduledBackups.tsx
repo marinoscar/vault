@@ -6,7 +6,6 @@ import {
   Button,
   Card,
   CardContent,
-  Checkbox,
   Chip,
   CircularProgress,
   Dialog,
@@ -82,9 +81,13 @@ import {
   getBrowserTimeZone,
   getTimeZoneOptions,
   normalizeScheduleFields,
+  scheduleContentSelection,
   startUrlDownload,
   validateScheduleFields,
+  withScheduleContents,
 } from '../../utils/backupSchedule';
+import { backupRunContentChips, rawBackupContentFlags } from '../../utils/backupContents';
+import { BackupContentsGroup } from '../settings/BackupContentsGroup';
 
 /** How often the history is refreshed while a run is in progress. */
 export const BACKUP_POLL_INTERVAL_MS = 5000;
@@ -113,8 +116,8 @@ function toDraft(schedule: BackupSchedule): BackupScheduleFields {
     // A schedule that was never saved starts in the admin's own time zone.
     timezone: schedule.updatedAt === null ? getBrowserTimeZone() : schedule.timezone,
     keepCount: schedule.keepCount,
-    includeAttachments: schedule.includeAttachments,
-    includeVersions: schedule.includeVersions,
+    // Older API responses may lack the newer flags; they take the defaults.
+    ...rawBackupContentFlags(scheduleContentSelection(schedule)),
   };
 }
 
@@ -144,6 +147,32 @@ function RunStatusChip({ run }: { run: BackupRun }) {
           label={`${run.warningCount} warning${run.warningCount === 1 ? '' : 's'}`}
         />
       )}
+    </Stack>
+  );
+}
+
+/** What a run backed up, as small chips (Secrets, Media, System). */
+function RunContentChips({ run }: { run: BackupRun }) {
+  const labels = backupRunContentChips(run.contents);
+  if (labels.length === 0) {
+    return (
+      <Typography variant="body2" color="text.secondary">
+        —
+      </Typography>
+    );
+  }
+  return (
+    <Stack
+      direction="row"
+      spacing={0.5}
+      flexWrap="wrap"
+      useFlexGap
+      aria-label="Backup contents"
+      data-testid={`backup-contents-${run.id}`}
+    >
+      {labels.map((label) => (
+        <Chip key={label} size="small" variant="outlined" label={label} />
+      ))}
     </Stack>
   );
 }
@@ -411,28 +440,16 @@ function BackupScheduleCard({ schedule, canWrite, onSaved }: ScheduleCardProps) 
               />
             </Box>
 
-            <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={draft.includeAttachments}
-                    onChange={(e) => update('includeAttachments', e.target.checked)}
-                    disabled={readOnly}
-                  />
-                }
-                label="Include attachments"
-              />
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={draft.includeVersions}
-                    onChange={(e) => update('includeVersions', e.target.checked)}
-                    disabled={readOnly}
-                  />
-                }
-                label="Include old versions"
-              />
-            </Box>
+            <BackupContentsGroup
+              value={scheduleContentSelection(draft)}
+              onChange={(next) => {
+                setDraft((d) => withScheduleContents(d, next));
+                setSuccess(null);
+              }}
+              disabled={readOnly}
+              showSystem
+              summaryTestId="backup-schedule-contents-summary"
+            />
 
             <Divider />
 
@@ -624,8 +641,9 @@ function BackupHistory({
               <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Trigger</TableCell>
               <TableCell>Status</TableCell>
               <TableCell>Size</TableCell>
+              <TableCell>Contents</TableCell>
               <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
-                Users / Secrets / Attachments
+                Users / Secrets / Attachments / Media files
               </TableCell>
               {canWrite && <TableCell align="right">Actions</TableCell>}
             </TableRow>
@@ -658,8 +676,12 @@ function BackupHistory({
                   )}
                 </TableCell>
                 <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatBytes(run.sizeBytes)}</TableCell>
+                <TableCell>
+                  <RunContentChips run={run} />
+                </TableCell>
                 <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
-                  {run.userCount} / {run.secretCount} / {run.attachmentCount}
+                  {run.userCount} / {run.secretCount} / {run.attachmentCount} /{' '}
+                  {run.mediaFileCount ?? 0}
                 </TableCell>
                 {canWrite && (
                   <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>

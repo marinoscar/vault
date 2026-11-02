@@ -7,6 +7,7 @@ import {
   BACKUP_SUCCESS_MESSAGE,
 } from '../../../components/settings/DataBackup';
 import { BACKUP_PASSWORD_WARNING } from '../../../utils/backupPassword';
+import { BACKUP_NOTHING_SELECTED_MESSAGE } from '../../../utils/backupContents';
 
 vi.mock('../../../services/api', () => ({
   downloadSecretsBackup: vi.fn(),
@@ -38,6 +39,7 @@ describe('DataBackup', () => {
       filename: 'vault-backup-2026-05-06.zip',
       secretCount: 2,
       attachmentCount: 1,
+      mediaFileCount: 0,
     });
   });
 
@@ -48,8 +50,10 @@ describe('DataBackup', () => {
     expect(
       screen.getByText(/To open it, use 7-Zip on Windows or Keka on Mac/),
     ).toBeInTheDocument();
+    expect(screen.getByLabelText('Secrets')).toBeChecked();
     expect(screen.getByLabelText('Include attachments')).toBeChecked();
     expect(screen.getByLabelText('Include old versions')).not.toBeChecked();
+    expect(screen.getByLabelText('Media library')).not.toBeChecked();
     expect(screen.getByRole('button', { name: /suggest one for me/i })).toBeInTheDocument();
   });
 
@@ -137,8 +141,10 @@ describe('DataBackup', () => {
     await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
     expect(mockDownload).toHaveBeenCalledWith({
       password: 'blue tiger river',
+      includeSecrets: true,
       includeAttachments: false,
       includeVersions: true,
+      includeMedia: false,
     });
     expect(mockSave).toHaveBeenCalledWith(expect.any(Blob), 'vault-backup-2026-05-06.zip');
     expect(await screen.findByText(BACKUP_SUCCESS_MESSAGE)).toBeInTheDocument();
@@ -147,7 +153,7 @@ describe('DataBackup', () => {
     expect((getConfirm() as HTMLInputElement).value).toBe('');
   });
 
-  it('uses the defaults (attachments on, versions off) when untouched', async () => {
+  it('uses the defaults (secrets with attachments, nothing else) when untouched', async () => {
     const user = userEvent.setup();
     render(<DataBackup />);
 
@@ -157,8 +163,10 @@ describe('DataBackup', () => {
     await waitFor(() => expect(mockDownload).toHaveBeenCalled());
     expect(mockDownload).toHaveBeenCalledWith({
       password: 'blue tiger river',
+      includeSecrets: true,
       includeAttachments: true,
       includeVersions: false,
+      includeMedia: false,
     });
   });
 
@@ -173,7 +181,7 @@ describe('DataBackup', () => {
 
     expect(await screen.findByRole('button', { name: /preparing backup/i })).toBeDisabled();
 
-    resolve({ blob: new Blob(['x']), filename: 'f.zip', secretCount: 0, attachmentCount: 0 });
+    resolve({ blob: new Blob(['x']), filename: 'f.zip', secretCount: 0, attachmentCount: 0, mediaFileCount: 0 });
     expect(await screen.findByRole('button', { name: /download backup/i })).toBeEnabled();
   });
 
@@ -189,5 +197,101 @@ describe('DataBackup', () => {
     expect(mockSave).not.toHaveBeenCalled();
     expect(screen.queryByText(BACKUP_SUCCESS_MESSAGE)).not.toBeInTheDocument();
     expect((getPassword() as HTMLInputElement).value).toBe('blue tiger river');
+  });
+
+  describe('What to back up', () => {
+    const summary = () => screen.getByTestId('backup-contents-summary');
+
+    it('shows the group with a summary of the defaults and no system option', () => {
+      render(<DataBackup />);
+
+      expect(screen.getByRole('group', { name: 'What to back up' })).toBeInTheDocument();
+      expect(summary()).toHaveTextContent('Secrets with attachments');
+      expect(screen.queryByLabelText(/System configuration/)).not.toBeInTheDocument();
+    });
+
+    it('updates the summary as options change', async () => {
+      const user = userEvent.setup();
+      render(<DataBackup />);
+
+      await user.click(screen.getByLabelText('Include old versions'));
+      expect(summary()).toHaveTextContent('Secrets with attachments and old versions');
+      await user.click(screen.getByLabelText('Media library'));
+      expect(summary()).toHaveTextContent(
+        'Secrets with attachments and old versions, media library',
+      );
+    });
+
+    it('disables and unchecks the nested options when Secrets is off, and restores them', async () => {
+      const user = userEvent.setup();
+      render(<DataBackup />);
+
+      await user.click(screen.getByLabelText('Secrets'));
+
+      expect(screen.getByLabelText('Include attachments')).toBeDisabled();
+      expect(screen.getByLabelText('Include attachments')).not.toBeChecked();
+      expect(screen.getByLabelText('Include old versions')).toBeDisabled();
+
+      await user.click(screen.getByLabelText('Secrets'));
+
+      expect(screen.getByLabelText('Include attachments')).toBeEnabled();
+      expect(screen.getByLabelText('Include attachments')).toBeChecked();
+      expect(screen.getByLabelText('Include old versions')).toBeEnabled();
+    });
+
+    it('blocks the download and explains when nothing is selected', async () => {
+      const user = userEvent.setup();
+      render(<DataBackup />);
+
+      await fill(user, 'blue tiger river');
+      await user.click(screen.getByLabelText('Secrets'));
+
+      expect(screen.getByText(BACKUP_NOTHING_SELECTED_MESSAGE)).toBeInTheDocument();
+      expect(screen.queryByTestId('backup-contents-summary')).not.toBeInTheDocument();
+      expect(getDownloadButton()).toBeDisabled();
+      expect(mockDownload).not.toHaveBeenCalled();
+
+      await user.click(screen.getByLabelText('Media library'));
+      expect(screen.queryByText(BACKUP_NOTHING_SELECTED_MESSAGE)).not.toBeInTheDocument();
+      expect(getDownloadButton()).toBeEnabled();
+    });
+
+    it('sends media only, with the nested secret options off', async () => {
+      const user = userEvent.setup();
+      render(<DataBackup />);
+
+      await fill(user, 'blue tiger river');
+      await user.click(screen.getByLabelText('Include old versions'));
+      await user.click(screen.getByLabelText('Secrets'));
+      await user.click(screen.getByLabelText('Media library'));
+      await user.click(getDownloadButton());
+
+      await waitFor(() => expect(mockDownload).toHaveBeenCalled());
+      expect(mockDownload).toHaveBeenCalledWith({
+        password: 'blue tiger river',
+        includeSecrets: false,
+        includeAttachments: false,
+        includeVersions: false,
+        includeMedia: true,
+      });
+    });
+
+    it('sends secrets and media together', async () => {
+      const user = userEvent.setup();
+      render(<DataBackup />);
+
+      await fill(user, 'blue tiger river');
+      await user.click(screen.getByLabelText('Media library'));
+      await user.click(getDownloadButton());
+
+      await waitFor(() => expect(mockDownload).toHaveBeenCalled());
+      expect(mockDownload).toHaveBeenCalledWith({
+        password: 'blue tiger river',
+        includeSecrets: true,
+        includeAttachments: true,
+        includeVersions: false,
+        includeMedia: true,
+      });
+    });
   });
 });

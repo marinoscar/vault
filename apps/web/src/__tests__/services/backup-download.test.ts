@@ -91,6 +91,7 @@ describe('downloadSecretsBackup', () => {
             'Content-Disposition': 'attachment; filename="vault-backup-2026-05-06.zip"',
             'X-Vault-Export-Secrets': '7',
             'X-Vault-Export-Attachments': '3',
+            'X-Vault-Export-Media-Files': '4',
           },
         });
       }),
@@ -100,20 +101,28 @@ describe('downloadSecretsBackup', () => {
       password: 'blue tiger river',
       includeAttachments: false,
       includeVersions: true,
+      includeMedia: true,
     });
 
     expect(received).toEqual({
-      body: { password: 'blue tiger river', includeAttachments: false, includeVersions: true },
+      body: {
+        password: 'blue tiger river',
+        includeSecrets: true,
+        includeAttachments: false,
+        includeVersions: true,
+        includeMedia: true,
+      },
       auth: 'Bearer test-token',
       contentType: 'application/json',
     });
     expect(result.filename).toBe('vault-backup-2026-05-06.zip');
     expect(result.secretCount).toBe(7);
     expect(result.attachmentCount).toBe(3);
+    expect(result.mediaFileCount).toBe(4);
     expect(result.blob.size).toBe(zipBytes.length);
   });
 
-  it('defaults to attachments on and versions off', async () => {
+  it('defaults to secrets with attachments, no versions and no media', async () => {
     let body: unknown;
     server.use(
       http.post('*/api/secrets/export', async ({ request }) => {
@@ -124,7 +133,53 @@ describe('downloadSecretsBackup', () => {
 
     await downloadSecretsBackup({ password: 'abcdef' });
 
-    expect(body).toEqual({ password: 'abcdef', includeAttachments: true, includeVersions: false });
+    expect(body).toEqual({
+      password: 'abcdef',
+      includeSecrets: true,
+      includeAttachments: true,
+      includeVersions: false,
+      includeMedia: false,
+    });
+  });
+
+  it('sends attachments and versions as false when secrets is off', async () => {
+    let body: unknown;
+    server.use(
+      http.post('*/api/secrets/export', async ({ request }) => {
+        body = await request.json();
+        return new HttpResponse(zipBytes, { status: 200 });
+      }),
+    );
+
+    await downloadSecretsBackup({
+      password: 'abcdef',
+      includeSecrets: false,
+      includeAttachments: true,
+      includeVersions: true,
+      includeMedia: true,
+    });
+
+    expect(body).toEqual({
+      password: 'abcdef',
+      includeSecrets: false,
+      includeAttachments: false,
+      includeVersions: false,
+      includeMedia: true,
+    });
+  });
+
+  it('never sends includeSystem', async () => {
+    let body: Record<string, unknown> = {};
+    server.use(
+      http.post('*/api/secrets/export', async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>;
+        return new HttpResponse(zipBytes, { status: 200 });
+      }),
+    );
+
+    await downloadSecretsBackup({ password: 'abcdef', includeMedia: true });
+
+    expect(body).not.toHaveProperty('includeSystem');
   });
 
   it('falls back to the default file name and null counts without headers', async () => {
@@ -137,6 +192,7 @@ describe('downloadSecretsBackup', () => {
     expect(result.filename).toBe(defaultBackupFilename());
     expect(result.secretCount).toBeNull();
     expect(result.attachmentCount).toBeNull();
+    expect(result.mediaFileCount).toBeNull();
   });
 
   it('treats malformed count headers as null', async () => {
@@ -146,7 +202,11 @@ describe('downloadSecretsBackup', () => {
         () =>
           new HttpResponse(zipBytes, {
             status: 200,
-            headers: { 'X-Vault-Export-Secrets': 'abc', 'X-Vault-Export-Attachments': '-4' },
+            headers: {
+              'X-Vault-Export-Secrets': 'abc',
+              'X-Vault-Export-Attachments': '-4',
+              'X-Vault-Export-Media-Files': 'many',
+            },
           }),
       ),
     );
@@ -155,6 +215,7 @@ describe('downloadSecretsBackup', () => {
 
     expect(result.secretCount).toBeNull();
     expect(result.attachmentCount).toBeNull();
+    expect(result.mediaFileCount).toBeNull();
   });
 
   it('surfaces the server error message', async () => {
