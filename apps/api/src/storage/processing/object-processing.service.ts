@@ -46,6 +46,9 @@ export class ObjectProcessingService {
     return Array.isArray(processors) ? processors : [processors];
   }
 
+  // PLATFORM-ADOPTION-SHIM(E6): downloads the object inside the listener, detached from the upload
+  // request. Exempt from the on-event-no-io check (test/jobs/cron-source-roots.ts); the storage
+  // slice's post-upload processor job replaces it.
   @OnEvent(OBJECT_UPLOADED_EVENT, { async: true })
   async handleObjectUploaded(event: ObjectUploadedEvent): Promise<void> {
     const { object } = event;

@@ -1074,6 +1074,23 @@ If-Match: 1
 
 ---
 
+### Jobs and Worker Nodes
+
+The background queue and the worker-node fleet are the platform's (`@marinoscar/platform-api/jobs` and `/nodes`, E5.1), mounted in `apps/api/src/platform/jobs/`. The per-endpoint reference is the generated OpenAPI at `/api/docs`. Every route is `@Auth` with a **system** permission (granted to `admin` only):
+
+| Routes | Permission | Notes |
+|---|---|---|
+| `GET /admin/jobs`, `/admin/jobs/stats`, `/admin/jobs/insights` | `jobs:read` | Paginated list (`type`, `status`, `page`, `pageSize`), counts and throughput |
+| `POST /admin/jobs/:id/retry`, `/admin/jobs/retry-failed`, `/admin/jobs/reset-stuck`, `/admin/jobs/insights/reset-history`; `DELETE /admin/jobs/:id` | `jobs:write` | Operator actions; a handler may veto a delete |
+| `GET /admin/nodes`, `/admin/nodes/:id`, `/admin/nodes/:id/events`, `/admin/nodes/credentials` | `nodes:read` | Fleet inventory |
+| `DELETE /admin/nodes/:id`, `/admin/nodes/credentials/:id` | `nodes:write` | Remove a node, revoke a credential |
+| `POST /node-credentials`, `GET /node-credentials`, `DELETE /node-credentials/:id` | `nodes:write` / `nodes:read` | Mint, list, revoke the `nod_` tokens a worker node authenticates with |
+| `/nodes/*` (register, heartbeat, claim, job renew/result/failure/secret/download-url/upload-url, telemetry) | `nodes:write` / `nodes:read` | The worker-node data plane; callers use a `nod_` token |
+
+Vault registers no node-eligible job type: every handler is server-only, so a registered node is never offered a job. The job types in the queue today are the platform's housekeeping ones (`job.history.purge`, `audit.events.purge`, `auth.token.cleanup`, `device-auth.code.cleanup`, `nodes.fleet.sweep`, `nodes.fleet.prune`, `nodes.node_events_purge`); the backup types arrive with E5.2. The `jobs`, `retention` and `nodes` namespaces of `/system-settings` carry the worker, retention and offload settings.
+
+---
+
 ### Storage Objects
 
 The storage system provides file upload and management capabilities with support for large files (GB scale) through resumable multipart uploads.
