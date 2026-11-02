@@ -238,27 +238,51 @@ The `FOR UPDATE` lock is what makes step 3 correct under concurrency: without it
 
 ## Backup and export
 
-Any user with `secrets:read` can download a password-protected copy of their own secrets, from **Settings > Back up my data** in the web app or with [`vaultcli backup`](../tools/vaultcli/README.md#backup--password-protected-backup). Both call `POST /api/secrets/export` ([API.md](API.md#post-secretsexport)), so the web app and the CLI produce the identical format. The CLI adds local conveniences around that one call: saved settings, retention of old backup files, and a guided terminal menu; see the [vaultcli backup guide](../tools/vaultcli/README.md#backup--password-protected-backup). Retention only deletes local files that match the CLI's output template and never changes what the server exports.
+Any user with `secrets:read` can download a password-protected copy of their own data, from **Settings > Back up my data** in the web app or with [`vaultcli backup`](../tools/vaultcli/README.md#backup--password-protected-backup). Both call `POST /api/secrets/export` ([API.md](API.md#post-secretsexport)), so the web app and the CLI produce the identical format. In the web app you can also [save the backup to the storage account](#saved-user-backups) instead of downloading it. The CLI adds local conveniences around that one call: saved settings, retention of old backup files, and a guided terminal menu; see the [vaultcli backup guide](../tools/vaultcli/README.md#backup--password-protected-backup). Retention only deletes local files that match the CLI's output template and never changes what the server exports.
 
-**Scope.** Only secrets the caller created are exported, even if they hold `secrets:read_any`. By default the archive holds the current version of each secret plus its attachments; the options `includeVersions` (all versions) and `includeAttachments: false` change that. Values are decrypted on the server and re-protected with the user's backup password, so the file is readable without Vault.
+**Scope.** Only data the caller owns is exported (secrets they created, media folders they own), even if they hold `secrets:read_any`. By default the archive holds the current version of each secret plus its attachments. You choose what goes in; see the table below. Values are decrypted on the server and re-protected with the user's backup password, so the file is readable without Vault.
+
+### What each option includes
+
+The default for every backup (web, CLI, schedule) is secrets with their attachments, no old versions and nothing else.
+
+| Option | Key | User backup | Admin backup | Default |
+|--------|-----|-------------|--------------|---------|
+| Secrets (current values) | `secrets` | your own | every user's | on |
+| Secret attachments | `attachments` | files attached to your secrets | files attached to every user's secrets | on (needs secrets) |
+| Old secret versions | `versions` | every version of your secrets | every version of every user's secrets | off (needs secrets) |
+| Media library | `media` | folders you own and their ready files | every user's folders and files | off |
+| System configuration | `system` | not offered (`400` if sent) | users and roles, allowlist, custom secret types, system settings | off |
+
+Rules, with the exact `400` messages ([API.md](API.md#backup-content-validation)):
+
+- At least one of secrets, media and system must be selected: `Choose at least one thing to back up`.
+- Attachments and old versions are part of a secret. Asking for them without secrets is refused: `Attachments can only be backed up together with secrets`, `Old versions can only be backed up together with secrets`.
+- `includeSystem` sent to a user export is refused: `System configuration can only be included in a scheduled system backup`.
+- The audit log is never included. Never in `system` either: refresh tokens, personal access tokens, device codes, sessions, provider identities, the AI API key or any other encrypted credential, and the backup password.
 
 ### What is in the zip
 
-The download is `vault-backup-YYYY-MM-DD.zip` (server UTC date):
+The download is `vault-backup-YYYY-MM-DD.zip` (server UTC date). This is the layout with every part selected; `secrets.*` and `attachments/` are present only with secrets, `media/` only with media:
 
 ```
 vault-backup-2026-11-01.zip   (AES-256)
-├── README.txt        what this is, how to open it, counts, warnings
+├── README.txt        what this is, what is included, how to open it, counts, warnings
 ├── secrets.html      readable report, one section per secret
 ├── secrets.json      machine-readable data (formatVersion 1)
-└── attachments/
-    ├── 0001-01.jpg
-    └── 0002-01.pdf
+├── attachments/
+│   ├── 0001-01.jpg
+│   └── 0002-01.pdf
+└── media/
+    ├── media.json    folders and files, mapped to the opaque names below
+    └── 0001/
+        └── 0001.mp4
 ```
 
-- `README.txt` explains how to open the archive and lists the summary and any warnings (CRLF line endings, so it reads in Windows Notepad).
+- `README.txt` is always present. It says what the archive includes, explains how to open it and lists the summary and any warnings (CRLF line endings, so it reads in Windows Notepad).
 - `secrets.html` is a self-contained report: inline CSS, no scripts, nothing loaded from the internet, every value HTML-escaped. Each secret shows its type's field labels in order, timestamps and an attachment list linking to `attachments/...`; browser-renderable images (JPEG, PNG, GIF, WebP) are embedded. With `includeVersions`, older versions sit in collapsed `<details>` blocks. HEIC/HEIF files are linked, not embedded, because most browsers cannot display them.
-- `secrets.json` is the data of record. Opening it shows exactly what `secrets.html` shows.
+- `secrets.json` is the data of record. Opening it shows exactly what `secrets.html` shows. Its `options` hold the flags used (`includeAttachments`, `includeVersions`, `includeMedia`).
+- `media/media.json` maps the opaque media names to the real ones: `{ "folders": [ { "folder": "media/0001", "name", "createdAt", "files": [ { "file": "media/0001/0001.mp4", "originalName", "mimeType", "size", "createdAt" } ] } ], "warnings": [] }`.
 
 **`secrets.json` shape (formatVersion 1):**
 
@@ -298,7 +322,7 @@ vault-backup-2026-11-01.zip   (AES-256)
 
 ### Opaque attachment names
 
-Zip entry names are stored in clear text even when every file is encrypted: anyone holding the file can list them without the password. For that reason attachments are named only by position, `attachments/<secret index, 4 digits>-<attachment index, 2 digits>.<ext>` (for example `0003-02.png`), where the extension comes from the MIME type (`bin` when unknown). Secret names, roles, labels and original file names never appear in an entry name; they exist only inside the encrypted `secrets.json` and `secrets.html`, which map each file to its secret. The same reasoning applies to the zip's file count: the number of entries is visible without the password.
+Zip entry names are stored in clear text even when every file is encrypted: anyone holding the file can list them without the password. For that reason attachments are named only by position, `attachments/<secret index, 4 digits>-<attachment index, 2 digits>.<ext>` (for example `0003-02.png`), where the extension comes from the MIME type (`bin` when unknown). Media files follow the same rule: `media/<folder index, 4 digits>/<file index, 4 digits>.<ext>` (for example `media/0002/0014.mp4`). Secret names, roles, labels, media folder names and original file names never appear in an entry name; they exist only inside the encrypted `secrets.json`, `secrets.html` and `media/media.json`, which map each file to its secret or folder. The same reasoning applies to the zip's file count: the number of entries is visible without the password.
 
 ### Encryption and the tools that open it
 
@@ -335,9 +359,32 @@ An export never fails because of one bad file. An attachment is skipped, and a w
 
 The skipped attachment keeps its entry in `secrets.json` with `"file": null`, and `counts.attachments` and the `X-Vault-Export-Attachments` header count only files actually written. A version that cannot be decrypted is exported with empty `data` and a warning. Warnings name secrets and file names, so they live only inside the encrypted archive; the server logs just ids, never secret data. Check the WARNINGS section of `README.txt` after a backup you depend on.
 
+Media files are handled the same way, with two differences: a media file whose upload is not finished (status not `ready`) is left out silently, and a file missing from storage is skipped with a warning in `media/media.json` (`warnings[]`) and `README.txt`. The `X-Vault-Export-Media-Files` header counts only files actually written.
+
+### Where the backup goes
+
+**Settings > Back up my data** asks "Where should the backup go?":
+
+- **Download to this device** (default): the zip is streamed to the browser by `POST /api/secrets/export`. Nothing is kept on the server.
+- **Save to the storage account**: the server builds the same zip in the background and keeps it in object storage. The option is disabled when no object storage is configured (the card reads `GET /api/backups/me/config`). See [Saved user backups](#saved-user-backups).
+
+The button reads "Download backup" or "Save backup" to match. The content choices and password rules are the same for both.
+
+### Saved user backups
+
+A saved backup is stored under `user-backups/<userId>/vault-backup-YYYY-MM-DD_HHmmss.zip`. The **My saved backups** list in the same card shows when it started, its status, size and contents, with **Download** (a 300 second signed link) and **Delete**, and refreshes every 5 seconds while one is running. Endpoints: [API.md § My backups](API.md#my-backups).
+
+- **Keeps 10.** After a successful run the user's newest 10 saved backups are kept and older objects are deleted (the card says "Keeps your 10 most recent saved backups"). Rows stay in the list with `deletedAt` set. A failed run removes any partial object.
+- **The password is never stored.** It is held in memory only while the zip is built, and is never written to the database, logs, audit events or error messages. This differs from the admin schedule, which has to keep its password. Losing the password still means the backup can never be opened.
+- **Private to the owner.** A user sees, downloads and deletes only their own saved backups. Another user's id answers `404`. Administrators do not see users' saved backups in the admin history and cannot download or delete them through the admin routes.
+- **One at a time per user.** Starting a second while one is running is refused with `409`.
+- **Needs storage.** Without configured object storage the request is refused with `400`: "Saving to storage isn't set up. Ask an administrator, or download the backup instead."
+
+Risks specific to saving: the file sits in the same bucket as the application's other data, so whoever can read the bucket holds an offline-attackable copy (see [the trade-off](#password-policy-and-the-honest-trade-off)). A user who does not want that should download instead.
+
 ### Audit
 
-Each export writes an `audit_events` row with action `secrets.export` before the first byte is sent, so an export interrupted half way is still on the record. See [Audit Trail](#audit-trail).
+Each export writes an `audit_events` row with action `secrets.export` before the first byte is sent, so an export interrupted half way is still on the record. Saved backups write `backups.user.run`, `backups.user.run.completed`, `backups.user.download` and `backups.user.delete`. See [Audit Trail](#audit-trail).
 
 ### Streaming
 
@@ -347,19 +394,23 @@ The archive is streamed to the client; it is not assembled in memory. If streami
 
 ## Scheduled backups (admin)
 
-An administrator can schedule automatic backups of **every user's** secrets into the configured object storage. Each run writes one AES-256 (WinZip AE-2) zip, opened with the same tools as the [user export](#encryption-and-the-tools-that-open-it) (7-Zip, Keka, `7z`). Endpoints: [API.md § Backups (Admin)](API.md#backups-admin).
+An administrator can schedule automatic backups of **every user's** data into the configured object storage, and can also download a one-off backup straight to the browser. Each run writes one AES-256 (WinZip AE-2) zip, opened with the same tools as the [user export](#encryption-and-the-tools-that-open-it) (7-Zip, Keka, `7z`). Endpoints: [API.md § Backups (Admin)](API.md#backups-admin).
 
 ### Set it up
 
 1. Make sure object storage is configured. Enabling a schedule without it is refused with 400.
 2. Open **Admin Settings > Backups** (needs `system_settings:read` to view, `system_settings:write` to change).
-3. Choose a frequency, how many backups to keep, and the options (include attachments, include old versions).
+3. Choose a frequency, how many backups to keep, and **what to back up** (see [What each option includes](#what-each-option-includes)). The default is secrets with attachments; media library and **System configuration** (users, roles, allowlist, custom secret types, settings) are opt-in.
 4. Set a password (6 to 256 characters). The tab offers the same "Suggest one for me" button and soft warning as the user card. Enabling without a password is refused with 400.
 5. Turn on **Scheduled backups enabled** and save. The tab shows a summary and the next run time.
 
-Use **Run backup now** for an immediate backup. The history table shows each run's status, size and counts, with **Download** (a 300 second signed link) and **Delete**. The table refreshes every 5 seconds while a run is in progress.
+Use **Run backup now (save to storage)** for an immediate backup with the stored password and the schedule's contents. The history table shows each run's status, size, counts and content chips (Secrets, Media, System; a run fills its contents in when it ends), with **Download** (a 300 second signed link) and **Delete**. The table refreshes every 5 seconds while a run is in progress.
 
 A manual run without storage or a password is accepted (202) and then fails with a clear message in the history.
+
+### Download a backup now
+
+**Download a backup now** (next to Run backup now) opens a dialog: choose the contents with the same checklist, including System configuration, then either type a password (6 to 256 characters) or tick **Use the scheduled backup password** (offered only when one is stored). The zip streams to the browser through `POST /api/admin/backups/export` ([API.md](API.md#post-adminbackupsexport)). Nothing is stored in object storage, no run appears in the history, and the typed password is never stored. It needs `system_settings:write` and is audited as `backups.export`, with the contents and counts but never the password.
 
 ### Schedule
 
@@ -374,25 +425,35 @@ Times are wall-clock times in the schedule's IANA time zone. On the spring-forwa
 
 ### What is in the zip
 
-The object key is `system-backups/vault-backup-YYYY-MM-DD_HHmmss.zip` (UTC).
+The object key is `system-backups/vault-backup-YYYY-MM-DD_HHmmss.zip` (UTC). The streamed download uses the same layout and file name. Parts appear only when selected:
 
 ```
 vault-backup-2026-11-02_090000.zip   (AES-256)
-├── README.txt        what this is, how to open it, counts, warnings
+├── README.txt        what this is, what is included, how to open it, counts, warnings
 ├── index.json        formatVersion 1, kind "system-backup"
-└── users/
-    ├── 0001/
-    │   ├── secrets.html
-    │   ├── secrets.json
-    │   └── attachments/0001-01.jpg
-    └── 0002/ ...
+├── users/
+│   ├── 0001/
+│   │   ├── secrets.html              (secrets)
+│   │   ├── secrets.json              (secrets)
+│   │   ├── attachments/0001-01.jpg   (secrets + attachments)
+│   │   └── media/                    (media)
+│   │       ├── media.json
+│   │       └── 0001/0001.mp4
+│   └── 0002/ ...
+└── system/                           (system configuration)
+    ├── users.json
+    ├── allowlist.json
+    ├── secret-types.json
+    └── settings.json
 ```
 
-- Per-user `secrets.html` and `secrets.json` use the same renderers and shape as the [user export](#whats-in-the-zip).
-- `index.json` holds `formatVersion`, `kind`, `counts` (`users`, `usersWithSecrets`, `secrets`, `attachments`), `users[]` and `warnings`. Each `users[]` entry names its `folder`, or `null` for a user with no secrets (such users get no folder).
+- Per-user `secrets.html`, `secrets.json` and `media/media.json` use the same renderers and shapes as the [user export](#whats-in-the-zip).
+- `index.json` holds `formatVersion`, `kind`, `options` (the content flags), `counts` (`users`, `usersWithSecrets`, `secrets`, `attachments`, `mediaFolders`, `mediaFiles`, `system`), `users[]` and `warnings`. Each `users[]` entry names its `folder`, or `null` for a user with none of the selected content (such users get no folder).
+- `system/users.json`: id, email, display name, active flag, role names, creation time and last login if present. `system/allowlist.json`: email, notes, who added it, pending or claimed, dates. `system/secret-types.json`: custom types only (system types are seeded), with fields and owner email. `system/settings.json`: system settings with the AI block reduced to `apiKeyConfigured`, so the key, its last four characters and its timestamps are not in the file.
+- Each file in `system/` is built from an explicit list of fields, so a column added to a model later does not leak into the archive.
 - Folder names are opaque (`users/NNNN`) because the zip listing is readable without the password. Emails and names appear only inside the encrypted `index.json`.
 - Secrets whose owner was deleted are not included; a warning gives their count.
-- Unreadable attachments are skipped with a warning, as in the user export.
+- Unreadable attachments and missing media files are skipped with a warning, and media not yet `ready` is skipped, as in the user export.
 
 The archive is streamed into storage and never buffered in memory.
 
@@ -408,6 +469,9 @@ Every instance runs an every-minute cron. A due slot is claimed atomically (a co
 
 - The password is write-only. It is encrypted with `CryptoService` (`VAULT_ENCRYPTION_KEY`) and never returned (the API reports only `passwordConfigured` and `passwordUpdatedAt`), logged or audited.
 - **One password protects every user's data.** Treat it like a master key.
+- **System configuration adds sensitive metadata.** Selecting it puts the user list with roles, the allowlist (emails and notes) and the system settings into the same archive. Credentials are excluded by construction, but the file still maps who has access and how the deployment is set up. Leave it off unless you need it.
+- **Media can be large.** Every user's media library is streamed into one archive, so a run takes longer and the object can be big; keep the retention count low if media is selected.
+- **A downloaded backup is outside the server's control.** A password typed into **Download a backup now** is never stored, but the file on the administrator's device is protected only by it. Using the scheduled password there ties the file to the password stored on the server.
 - **The server must hold the password** to run unattended. Anyone with the database plus `VAULT_ENCRYPTION_KEY` can decrypt it and therefore open the backups.
 - The zip format derives its key with PBKDF2-SHA1 at 1000 iterations (see [the trade-off above](#password-policy-and-the-honest-trade-off)), so a stolen backup can be attacked offline quickly. Use a long, multi-word password.
 - **Losing the password means the backups can never be opened.** There is no recovery. Changing the password applies to future runs only; older backups keep the password they were written with.
@@ -418,9 +482,12 @@ Every instance runs an every-minute cron. A due slot is claimed atomically (a co
 |-------|----------|
 | `backups.schedule.update` | `{ changedFields, passwordChanged }` |
 | `backups.run`, `backups.download`, `backups.delete` | `{ runId }` |
-| `backups.run.completed` | `{ runId, status, trigger, sizeBytes, counts }` |
+| `backups.run.completed` | `{ runId, status, trigger, sizeBytes, contents, counts }` |
+| `backups.export` | `{ contents, passwordSource, counts }`; `passwordSource` is `provided` or `scheduled`, never the password |
+| `backups.user.run` | `{ runId, contents }` |
+| `backups.user.run.completed`, `backups.user.download`, `backups.user.delete` | as the admin events, for a user's saved backup |
 
-Tables: `backup_schedules` (singleton row `default`) and `backup_runs`.
+Tables: `backup_schedules` (singleton row `default`) and `backup_runs`. `backup_runs.scope` is `system` (the admin schedule and Run backup now) or `user` (a [saved user backup](#saved-user-backups)); `owner_id` is set for `user` runs and removed with the user. Admin list, download, delete, retention and the stale sweep act on `system` runs only; a user's routes act on `scope = user AND owner_id = me`. The stale-heartbeat recovery covers both.
 
 ---
 
@@ -554,8 +621,8 @@ Every secret and secret type operation is written to the `audit_events` table. T
 | `secret.rollback` | `{ fromVersion, carriedAttachments }` |
 | `secret.renew` | `{ fromVersionId, version, carriedAttachments, replacedAttachments, replacedRoles, extractionMethod }` — `extractionMethod` is `'ai_assisted'` or `'manual'`, from the request's `aiAssisted` flag |
 | `secret.attachment.unlink` | `{ attachmentId, storageObjectId, storageObjectDeleted }` |
-| `secrets.export` | `{ secretCount, attachmentCount, includeVersions, includeAttachments, warningCount }` — target is the exporting user; never contains the password |
-| `backups.*` | scheduled admin backups; see [Scheduled backups (admin)](#scheduled-backups-admin) |
+| `secrets.export` | `{ secretCount, attachmentCount, mediaFolderCount, mediaFileCount, includeSecrets, includeAttachments, includeVersions, includeMedia, warningCount }` — target is the exporting user; never contains the password |
+| `backups.*`, `backups.user.*` | scheduled and downloaded admin backups and users' saved backups; see [Scheduled backups (admin)](#scheduled-backups-admin) |
 | `secret_type.create` | `{ name }` |
 | `secret_type.update` | `{ name }` |
 | `secret_type.delete` | `{ name }` |
@@ -575,7 +642,7 @@ Audit records include the acting user's ID and a timestamp, providing a forensic
 
 - `/secrets` — Paginated list view with search, type filter, and sort controls. Includes a create dialog for adding new secrets.
 - `/secrets/:id` — Tabbed detail view with three tabs: Details (decrypted current version), Version History (timeline with rollback controls), and Attachments (only present when the type allows attachments).
-- `/settings` — Includes the **Back up my data** card (shown to users with `secrets:read`): password and confirmation, a passphrase suggester, include-attachments / include-old-versions options, and a download button. See [Backup and export](#backup-and-export).
+- `/settings` — Includes the **Back up my data** card (shown to users with `secrets:read`): password and confirmation, a passphrase suggester, a "What to back up" checklist (secrets, attachments, old versions, media library), a destination choice (download or save to storage) and the **My saved backups** list. See [Backup and export](#backup-and-export).
 - `/secret-types` — Management page for viewing system types (read-only) and creating, editing, or deleting custom types.
 
 ### Key Behaviors

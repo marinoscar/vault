@@ -16,8 +16,8 @@ Vault is a self-hosted secrets manager. It stores credentials, API keys, credit 
 - **Authorization**: Role-based access control (RBAC) with Admin, Contributor, and Viewer roles. Admins can view secrets across all users.
 - **Access Control**: Email allowlist restricts access to pre-authorized users only.
 - **Personal Access Tokens**: Long-lived tokens for programmatic API and CLI access.
-- **Encrypted Data Backup**: download an AES-256 password-protected zip of your own secrets (readable HTML report, JSON and attachments) from the web app or with `vaultcli backup`, including scheduled backups with saved settings, automatic cleanup of old backups and a guided terminal menu (`vaultcli`).
-- **Scheduled Admin Backups**: administrators schedule hourly, daily, weekly or monthly AES-256 zip backups of every user's secrets into object storage (Admin Settings > Backups), with run-now, history, signed downloads and keep-last-N retention.
+- **Encrypted Data Backup**: choose what to back up (secrets with attachments by default, plus old versions and your media library) and either download an AES-256 password-protected zip or save it to the storage account (newest 10 kept, password never stored), from the web app or with `vaultcli backup`, including scheduled backups with saved settings, automatic cleanup of old backups and a guided terminal menu (`vaultcli`).
+- **Admin Backups**: administrators schedule hourly, daily, weekly or monthly AES-256 zip backups of every user's data into object storage (Admin Settings > Backups), choosing secrets, media library and system configuration, with run-now, a one-off "Download a backup now", history, signed downloads and keep-last-N retention. Also available as `vaultcli admin backups` and an Admin backups terminal menu.
 - **.env File Sync**: Back up server `.env` files into Vault as versioned secrets via the `vaultcli` CLI.
 - **Audit Logging**: All secret operations are logged to the audit event store.
 - **Observability**: OpenTelemetry instrumentation with traces, metrics, and structured logging via Uptrace.

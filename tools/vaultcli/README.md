@@ -5,6 +5,7 @@ A command-line tool for the **Vault** secrets management application — designe
 - **Commands for scripts and agents**: `secrets`, `versions`, `types`, `sync`, `backup`, with `--json` / `-q` output.
 - **Terminal menu for people**: run `vaultcli` with no arguments in a terminal (or `vaultcli -i`) for a guided menu: sign in, set up and run password-protected backups, list and clean up old ones, and print a ready-made schedule entry. See [Quick start with the menu](#quick-start-with-the-menu).
 - **Self-cleaning backups**: `vaultcli backup` can save its settings once and delete old backups by age or count after each successful run. See [`backup`](#backup--password-protected-backup).
+- **Server backups for administrators**: `vaultcli admin backups` shows and changes the server's backup schedule, starts a backup, and lists, downloads and deletes the results. See [`admin backups`](#admin-backups--server-backups).
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -498,7 +499,7 @@ The non-zero exit on errors makes the job alertable via standard cron mail or ex
 
 ### `backup` — Password-Protected Backup
 
-Downloads an **AES-256 encrypted zip** of the secrets you own (decrypted values, a readable `secrets.html` report, `secrets.json`, and attachments), protected by a password you choose. It calls `POST /api/secrets/export`, so it produces exactly the same file as **Settings > Back up my data** in the web app. What is inside the archive, the password trade-offs and the warnings: [docs/SECRETS.md § Backup and export](../../docs/SECRETS.md#backup-and-export).
+Downloads an **AES-256 encrypted zip** of the data you own, protected by a password you choose. By default that is your secrets (decrypted values, a readable `secrets.html` report, `secrets.json`, and attachments); you can add old versions and your media library, or back up media only. It calls `POST /api/secrets/export`, so it produces exactly the same file as **Settings > Back up my data** in the web app. What is inside the archive, the password trade-offs and the warnings: [docs/SECRETS.md § Backup and export](../../docs/SECRETS.md#backup-and-export).
 
 Open the file with 7-Zip (Windows), Keka or The Unarchiver (macOS), or `7z x` / File Roller (Linux). The built-in Windows and macOS zip tools cannot open AES zips.
 
@@ -516,20 +517,22 @@ Run `vaultcli` with no arguments in a terminal (or `vaultcli -i`) to open the me
 vaultcli 1.2.0  (Ctrl+C to exit; run "vaultcli --help" for all commands)
 ? Main menu
   Backups ▸
+  Admin backups ▸        (only with system_settings:read)
   Sign in / status
   Exit
 ```
 
-The main menu has two entries besides Exit:
+The main menu has these entries besides Exit:
 
 - **Sign in / status** shows the server and who you are signed in as. If you are not signed in it offers to paste a personal access token (`pat_...`, created under **Settings > Personal Access Tokens**) and validates it. When signed in it lets you sign in with a different token or sign out (removes the stored token). It uses the same stored token as `vaultcli auth login`.
+- **Admin backups** manages the server's backups of every user. It is shown only to users with `system_settings:read` (and is hidden when you are signed out). See [Admin backups in the menu](#admin-backups-in-the-menu).
 - **Backups** opens this submenu:
 
 | Entry | What it does |
 |-------|--------------|
 | Run a backup now | Backs up with your saved settings. Gets the password from the saved source, or asks (with confirmation) if there is none. Then applies retention, if it is on, and shows the result. |
 | Set up backups | The wizard, described below. |
-| View backup settings | Shows the saved settings file, the path the next backup would be written to, the password source, attachments, versions, time zone and retention. |
+| View backup settings | Shows the saved settings file, the path the next backup would be written to, the password source, the contents, time zone and retention. |
 | List backups | Lists the files that match your output template with size and age, and marks those retention would delete. |
 | Clean up old backups now | Previews what retention would delete, asks for confirmation (default No), then deletes. Needs retention to be set up first. |
 | Schedule backups | Asks for a daily time (`HH:MM`, default `02:30`) and prints the exact cron line, launchd plist or `schtasks` command for your operating system, with warnings about anything that would make a scheduled run fail. It shows the entry; **it installs nothing**. |
@@ -539,7 +542,7 @@ The main menu has two entries besides Exit:
 1. UTC or local time for dates in file names.
 2. The output file name template, with a live preview of the resulting path as you type (default suggestion `~/vault-backups/vault-backup-{datetime}.zip`).
 3. Where backups get their password: create a password file in the config folder (`<config dir>/backup-password`, mode `0600`; you type the password twice), use an existing password file, read an environment variable, or ask every time (scheduled backups will not work with this one).
-4. Include attachments, and include old versions.
+4. **What do you want to back up?** A checkbox list (space to toggle): secrets, attachments, old versions, media library. Secrets and attachments are ticked by default. It refuses an empty selection, and attachments or versions without secrets.
 5. Retention: delete backups older than how many days (the menu suggests **30**; blank or `0` means never), and keep at most how many backups (blank means no limit).
 6. A summary, then "Save these settings?". Nothing is written until you confirm.
 
@@ -574,6 +577,9 @@ vaultcli backup                                   # prompts for a password, writ
 vaultcli backup -o "~/backups/{year}/{month}/vault-{datetime}.zip"
 VAULTCLI_BACKUP_PASSWORD='blue tiger river' vaultcli backup --json
 vaultcli backup --password-file ~/.vault-backup-pw --include-versions --no-attachments
+vaultcli backup --media                                                 # secrets, attachments and your media library
+vaultcli backup --contents media                                        # only the media library
+vaultcli backup --contents secrets,attachments,versions,media           # everything you own
 vaultcli backup -o "~/backups/vault-{datetime}.zip" --keep-days 30      # back up, then delete backups older than 30 days
 vaultcli backup --keep-last 10 --prune-dry-run                          # back up, show what cleanup would delete
 vaultcli backup --no-prune                                              # back up, skip the saved retention this once
@@ -589,8 +595,11 @@ Every option below overrides the saved setting of the same name for that run onl
 | `--password-env <VAR>` | Read the password from this environment variable | `VAULTCLI_BACKUP_PASSWORD` |
 | `--password-file <path>` | Read the password from a file (first line, trimmed) | - |
 | `-p, --password <pw>` | Password on the command line (warns: visible in the process list and shell history). Never saved | - |
-| `--attachments` / `--no-attachments` | Include or exclude attachments | attachments included |
-| `--include-versions` / `--no-include-versions` | Include every version of each secret, or only the current ones | current versions only |
+| `--contents <list>` | What to back up, comma separated: `secrets`, `attachments`, `versions`, `media`. Overrides the four flags below; keys not listed are left out. An unknown key is an error that lists the valid ones | - |
+| `--secrets` / `--no-secrets` | Include or exclude secrets. `--no-secrets` also drops attachments and versions | secrets included |
+| `--attachments` / `--no-attachments` | Include or exclude attachments (needs secrets) | attachments included |
+| `--include-versions` / `--no-include-versions` | Include every version of each secret, or only the current ones (needs secrets) | current versions only |
+| `--media` / `--no-media` | Include or exclude your media library (folders and files) | media excluded |
 | `--overwrite` | Replace an existing file instead of adding `-1`, `-2` ... | off |
 | `--utc` / `--no-utc` | Use UTC or local time for the date/time tokens | local time |
 | `--keep-days <n>` | After a successful backup, delete backups older than `n` days | off |
@@ -599,7 +608,9 @@ Every option below overrides the saved setting of the same name for that run onl
 | `--prune-dry-run` | Show what retention would delete, delete nothing | off |
 | `--json` | Machine-readable result (global flag) | off |
 
-`--keep-days` and `--keep-last` must be whole numbers of at least 1. The negated forms (`--no-attachments`, `--no-include-versions`, `--no-utc`) exist so a run can override a saved `true`.
+`--keep-days` and `--keep-last` must be whole numbers of at least 1. The negated forms (`--no-attachments`, `--no-include-versions`, `--no-media`, `--no-utc`) exist so a run can override a saved `true`.
+
+At least secrets or media must be selected, and attachments or versions need secrets; otherwise the command fails before any request. With `--no-secrets`, saved attachment and version settings are ignored. System configuration is not offered here: it exists only in the administrator's backup.
 
 ##### `backup prune` — clean up without backing up
 
@@ -652,7 +663,7 @@ vaultcli backup config reset                       # delete backup.json
 | Subcommand | What it does |
 |------------|--------------|
 | `show` | Prints the file location and, for every key, its effective value and whether it is `saved` or a `default`, plus whether retention is on. `--json` returns `file`, `saved`, `effective` and `sources`; `-q` prints the saved settings as one JSON line. |
-| `set [options]` | Saves the options you give and leaves the rest alone. Takes `-o/--output`, `--password-env`, `--password-file`, `--attachments`/`--no-attachments`, `--include-versions`/`--no-include-versions`, `--utc`/`--no-utc`, `--keep-days`, `--keep-last`. Fails if you give none. There is no `--password`: the password is never saved. |
+| `set [options]` | Saves the options you give and leaves the rest alone. Takes `-o/--output`, `--password-env`, `--password-file`, `--contents` (sets all four content settings), `--secrets`/`--no-secrets`, `--attachments`/`--no-attachments`, `--include-versions`/`--no-include-versions`, `--media`/`--no-media`, `--utc`/`--no-utc`, `--keep-days`, `--keep-last`. Fails if you give none. There is no `--password`: the password is never saved. |
 | `unset <key...>` | Removes one or more saved keys. Keys are the camelCase names below; kebab-case (`keep-days`) is accepted too. |
 | `reset` | Deletes `backup.json`. |
 
@@ -666,8 +677,10 @@ Saved settings live in `backup.json` in the config directory (`~/.config/vaultcl
 {
   "output": "~/vault-backups/vault-backup-{datetime}.zip",
   "passwordFile": "/home/user/.config/vaultcli/backup-password",
+  "includeSecrets": true,
   "includeAttachments": true,
   "includeVersions": false,
+  "includeMedia": false,
   "utc": false,
   "keepDays": 30,
   "keepLast": 14
@@ -679,8 +692,10 @@ Saved settings live in `backup.json` in the config directory (`~/.config/vaultcl
 | `output` | string | Output path template | `vault-backup-{datetime}.zip` |
 | `passwordFile` | string | Path of a file whose first line is the password | none |
 | `passwordEnv` | string | Name of an environment variable holding the password | none (`VAULTCLI_BACKUP_PASSWORD` is still used if set) |
-| `includeAttachments` | boolean | Include attachments | `true` |
-| `includeVersions` | boolean | Include every version of each secret | `false` |
+| `includeSecrets` | boolean | Include secrets | `true` |
+| `includeAttachments` | boolean | Include attachments (needs secrets) | `true` |
+| `includeVersions` | boolean | Include every version of each secret (needs secrets) | `false` |
+| `includeMedia` | boolean | Include your media library | `false` |
 | `utc` | boolean | UTC instead of local time for date/time tokens | `false` |
 | `keepDays` | whole number >= 1 | Retention: delete backups older than this many days | off |
 | `keepLast` | whole number >= 1 | Retention: keep only this many newest backups | off |
@@ -789,7 +804,7 @@ vaultcli backup -o "vault-{timestamp}.zip" --utc
 
 #### Output and exit codes
 
-Human mode prints the path, size, secret and attachment counts (from the `X-Vault-Export-*` headers), the version scope, the retention outcome (what was deleted and how many backups were kept), and a reminder to keep the password safe. With `--json` the result is the envelope shown under [Retention](#retention): `data.backup` is the backup and `data.prune` the cleanup. `secrets` / `attachments` are `null` if the server did not send the count headers. In `-q` mode only the backup path is printed (retention problems go to stderr).
+Human mode prints the path, size, secret, attachment and media file counts (from the `X-Vault-Export-*` headers; media shows `excluded` when not selected), the version scope, the retention outcome (what was deleted and how many backups were kept), and a reminder to keep the password safe. With `--json` the result is the envelope shown under [Retention](#retention): `data.backup` is the backup and `data.prune` the cleanup. `secrets` / `attachments` are `null` if the server did not send the count headers; `mediaFiles` is `0` when media was not included, and the backup lists its selected `contents`. In `-q` mode only the backup path is printed (retention problems go to stderr).
 
 | Exit code | Meaning |
 |-----------|---------|
@@ -797,7 +812,7 @@ Human mode prints the path, size, secret and attachment counts (from the `X-Vaul
 | `1` | Any failure: not authenticated, bad template or password, invalid `backup.json`, server error, or an incomplete or empty download. With `--json` the error goes to stderr as `{"success": false, "error": "...", "code": "backup_failed"}`. `backup prune` also exits `1` when a file could not be deleted |
 | `130` | Interrupted by SIGINT / SIGTERM (the partial file is removed) |
 
-Warnings about attachments that could not be exported are inside the archive (`README.txt`, `secrets.json`), not on the CLI's output: check them occasionally.
+Warnings about attachments or media files that could not be exported are inside the archive (`README.txt`, `secrets.json`), not on the CLI's output: check them occasionally.
 
 ---
 
@@ -914,6 +929,79 @@ Test a restore occasionally: open one backup with 7-Zip using the password and c
 
 ---
 
+### `admin backups` — Server Backups
+
+For administrators. These commands manage the **server's own backups** of every user's data in object storage: the schedule, running one now, and the history. They are separate from `vaultcli backup`, which downloads your own data. What a backup contains, the zip layout and the password risks: [docs/SECRETS.md § Scheduled backups (admin)](../../docs/SECRETS.md#scheduled-backups-admin). The routes are listed in [API.md](../../docs/API.md#backups-admin).
+
+Reading (`schedule show`, `list`) needs `system_settings:read`. Everything else needs `system_settings:write`; without it the command stops with a message saying an administrator is required. Run `vaultcli admin backups --help`, or `--help` on any subcommand, for the flags.
+
+```bash
+vaultcli admin backups schedule show
+vaultcli admin backups schedule set --enable --frequency daily --at 03:00 --timezone America/Chicago --keep 14
+vaultcli admin backups schedule set --frequency weekly --day sun --at 02:30 --password-prompt
+vaultcli admin backups schedule set --contents secrets,attachments,system
+vaultcli admin backups run --wait
+vaultcli admin backups list
+vaultcli admin backups download <id> -o ~/backups/
+vaultcli admin backups delete <id> --yes
+```
+
+| Command | What it does |
+|---------|--------------|
+| `schedule show` | Prints the schedule in plain words, the next and last run, whether a password and storage are configured, and the contents. `--json` returns the schedule object. |
+| `schedule set [options]` | Reads the current schedule, applies the options given and saves the whole schedule. Fails if you give none. |
+| `run [--wait]` | Starts a backup now (saved to storage, with the stored password and the schedule's contents) and prints its id. With `--wait` it polls every 5 seconds until it finishes and exits `1` if it failed. |
+| `list [--page n] [--page-size n]` | Lists backups, newest first: id, start time, trigger, status, size, counts and contents. `--page-size` is 1 to 100 (default 20). |
+| `download <id> [-o path] [--overwrite]` | Downloads an archive. `-o` is a file or a folder (default: the server's file name in the current folder). |
+| `delete <id> [-y]` | Deletes the archive from storage; the run stays in the history. |
+
+There is no endpoint that returns a single run, so `run --wait` polls the list and finds the run by id. If the run drops out of the list, it fails with an error.
+
+##### `schedule set` options
+
+Only the options given change; the rest keep their current values. Fields a frequency does not use are cleared. Every option can be combined.
+
+| Option | Description |
+|--------|-------------|
+| `--enable` / `--disable` | Turn scheduled backups on or off. Enabling needs a password and configured storage. |
+| `--frequency <f>` | `hourly`, `daily`, `weekly` or `monthly`. |
+| `--every <hours>` | Hourly only: 1, 2, 3, 4, 6, 8 or 12. Runs on the hour, counted from local midnight. |
+| `--at <HH:mm>` | Daily, weekly and monthly: time of day, 24 hours. **Refused with an hourly schedule** ("`--at` does not apply to an hourly schedule"); use `--every`. |
+| `--day <day>` | Weekly only: `mon`..`sun`, or `0`-`6` (0 = Sunday). |
+| `--day-of-month <n>` | Monthly only: 1 to 28. |
+| `--timezone <IANA>` | For example `America/Chicago` or `UTC`. |
+| `--keep <n>` | How many successful backups to keep, 1 to 365. |
+| `--contents <list>` | What to back up, comma separated: `secrets`, `attachments`, `versions`, `media`, `system`. Overrides the flags below. |
+| `--secrets` / `--no-secrets` | Every user's secrets (`--no-secrets` also drops attachments and versions). |
+| `--attachments` / `--no-attachments` | Secret attachments (needs secrets). |
+| `--include-versions` / `--no-include-versions` | Old secret versions (needs secrets). |
+| `--media` / `--no-media` | Every user's media library. |
+| `--system` / `--no-system` | System configuration: users and roles, allowlist, custom secret types, settings. |
+| `--password-prompt` | Set a new backup password, typed twice at a hidden prompt (needs a terminal). |
+| `--password-env <VAR>` | Set a new backup password read from this environment variable. |
+| `--password-file <path>` | Set a new backup password read from a file (first line, trimmed). |
+
+Use only one password option. The password is sent only when one is given, otherwise the stored one is kept, and it is never shown again. It is 6 to 256 characters. **One password protects every user's data and cannot be recovered**. Other options that do not fit the chosen frequency (`--every` without hourly, `--day` without weekly, `--day-of-month` without monthly) are refused with a message naming the missing `--frequency`. The content rules are the same as for `vaultcli backup`, plus `system`: at least one of secrets, media and system must be selected.
+
+`download` writes to `<path>.partial` with mode `0600` and renames it when complete; an interrupted download leaves nothing behind. Open the zip with 7-Zip or Keka using the schedule's backup password. `delete` asks for confirmation in a terminal; outside a terminal it refuses unless you pass `--yes`. Add `--json` to `run`, `list`, `download` and `delete` for machine-readable output; `run --wait --json` prints `{ "success": true|false, "data": <run> }`.
+
+#### Admin backups in the menu
+
+**Admin backups ▸** in the main menu (shown only to users with `system_settings:read`) offers:
+
+| Entry | What it does |
+|-------|--------------|
+| View schedule | The same summary as `schedule show`. |
+| Set up schedule | A wizard: frequency, hours/day/time, time zone, how many to keep, a **What to back up?** checklist (secrets, attachments, old versions, media, system), the password (keep, set a new one, or leave unset), and whether to enable. It shows a summary and asks before saving. Without storage or a password the schedule is saved disabled. |
+| Run backup now | Starts a backup and follows it every 5 seconds. Ctrl+C stops watching; the backup keeps running. |
+| List backups | The latest 20 backups. |
+| Download a backup | Pick a successful backup, choose a folder or file name, download it. |
+| Delete a backup | Pick a backup and confirm (default No). |
+
+If the server does not report your permissions, or the check fails while a token is stored, the entry is still shown and a missing permission is explained when you use it.
+
+---
+
 ## AI Agent Integration
 
 The CLI is designed for seamless AI agent integration with `--json` and `-q` modes.
@@ -1016,7 +1104,8 @@ tools/vaultcli/
 │   │   ├── health.ts        # health checks
 │   │   ├── config.ts        # config management
 │   │   ├── sync.ts          # sync add/add-dir/remove/list/status/run/where
-│   │   └── backup.ts        # backup (encrypted zip download)
+│   │   ├── backup.ts        # backup (encrypted zip download)
+│   │   └── admin-backups.ts # admin backups (server schedule, run, list, download, delete)
 │   ├── lib/                 # Core libraries
 │   │   ├── api-client.ts    # HTTP client
 │   │   ├── auth-store.ts    # Token persistence
@@ -1071,3 +1160,9 @@ npm run typecheck     # Type check only
 | `sync run` (read) | `GET` | `/api/secrets/by-name/:name` |
 | `sync run` (attachment) | `POST` | `/api/storage/objects` |
 | `backup` | `POST` | `/api/secrets/export` |
+| `admin backups schedule show` | `GET` | `/api/admin/backups/schedule` |
+| `admin backups schedule set` | `GET`, `PUT` | `/api/admin/backups/schedule` |
+| `admin backups run` | `POST` | `/api/admin/backups/run` |
+| `admin backups list`, `run --wait` | `GET` | `/api/admin/backups` |
+| `admin backups download` | `GET` | `/api/admin/backups/:id/download` (then the signed URL) |
+| `admin backups delete` | `DELETE` | `/api/admin/backups/:id` |

@@ -1337,22 +1337,30 @@ The backup download, [`POST /secrets/export`](#post-secretsexport), returns a ra
 
 **Requires Authentication** (`secrets:read`) - Download a password-protected backup of the secrets **you own**. The response is a streamed AES-256 encrypted zip (WinZip AE-2), not JSON. For what is inside the archive, how to open it and the password trade-offs, see [SECRETS.md § Backup and export](SECRETS.md#backup-and-export).
 
-Only secrets the caller created (`createdById`) are exported, even for a user holding `secrets:read_any`. There is no admin or all-users variant.
+Only data the caller owns is exported (secrets they created, media folders they own), even for a user holding `secrets:read_any`. There is no all-users variant here; an administrator's backup of everyone is [`POST /admin/backups/export`](#post-adminbackupsexport).
+
+The same body is accepted by [`POST /backups/me`](#post-backupsme), which builds the zip in the background and keeps it in object storage instead of streaming it.
 
 **Request Body:**
 ```json
 {
   "password": "blue tiger river",
+  "includeSecrets": true,
   "includeAttachments": true,
-  "includeVersions": false
+  "includeVersions": false,
+  "includeMedia": false
 }
 ```
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `password` | string | required | 6 to 256 characters, no complexity rules. Used as-is (not trimmed). Never stored or logged; it cannot be recovered. |
-| `includeAttachments` | boolean | `true` | Include attachment files (card images and other files). |
-| `includeVersions` | boolean | `false` | Include every version of each secret, not just the current one. |
+| `includeSecrets` | boolean | `true` | Include your secrets (`secrets.html`, `secrets.json`). |
+| `includeAttachments` | boolean | `true` | Include attachment files (card images and other files). Needs `includeSecrets`. |
+| `includeVersions` | boolean | `false` | Include every version of each secret, not just the current one. Needs `includeSecrets`. |
+| `includeMedia` | boolean | `false` | Include the media library folders you own and their files. |
+
+`includeSystem` is not accepted here: sending it at all, even as `false`, is a `400`. System configuration belongs only to the administrator's backup. What each option puts in the zip: [SECRETS.md § What each option includes](SECRETS.md#what-each-option-includes).
 
 **Success Response (200 OK):**
 
@@ -1364,9 +1372,10 @@ The body is the raw zip. It is **not** wrapped in `{ "data": ... }` and has no `
 | `Content-Disposition` | `attachment; filename="vault-backup-YYYY-MM-DD.zip"` (date is the server's UTC date) |
 | `X-Vault-Export-Secrets` | Number of secrets in the archive |
 | `X-Vault-Export-Attachments` | Number of attachment files in the archive |
+| `X-Vault-Export-Media-Files` | Number of media library files in the archive (`0` unless `includeMedia`) |
 | `Cache-Control` | `no-store` |
 
-`Content-Disposition` and both `X-Vault-Export-*` headers are exposed through CORS, so a cross-origin browser client can read them.
+`Content-Disposition` and the `X-Vault-Export-*` headers are exposed through CORS, so a cross-origin browser client can read them.
 
 **Example:**
 ```bash
@@ -1378,17 +1387,32 @@ curl -sS -X POST http://localhost:3535/api/secrets/export \
 ```
 
 **Error Cases:**
-- `400 Bad Request` - the body failed validation. The `message` is the first specific problem (for example `Password must be at least 6 characters`, `Password must be at most 256 characters`, `Password is required`, `includeVersions must be a boolean`); `details` lists every problem as `{ "field", "message" }`. Messages never echo the submitted value.
+- `400 Bad Request` - the body failed validation. The `message` is the first specific problem (for example `Password must be at least 6 characters`, `Password must be at most 256 characters`, `Password is required`, `includeVersions must be a boolean`); `details` lists every problem as `{ "field", "message" }`. Messages never echo the submitted value. The content rules have fixed messages, shared with the other backup routes (see [Backup content validation](#backup-content-validation)).
 - `401 Unauthorized` - missing or invalid token
 - `403 Forbidden` - caller lacks `secrets:read`
 
 All of these are ordinary JSON error responses; they are sent before any zip byte. Once streaming has started, a server-side failure aborts the connection instead (the download ends truncated, so a client must not treat a dropped stream as a complete file).
 
-**Warnings:** an attachment that cannot be read from storage (never finished uploading, or missing from the bucket) does not fail the request. It is skipped and listed under `warnings` in the archive's `secrets.json` and `README.txt`; the response headers count only attachments actually written. A version whose values cannot be decrypted is exported with empty values and a warning.
+**Warnings:** an attachment that cannot be read from storage (never finished uploading, or missing from the bucket) does not fail the request. It is skipped and listed under `warnings` in the archive's `secrets.json` and `README.txt`; the response headers count only attachments actually written. Media files that are not ready are skipped silently, and media files missing from storage are skipped with a warning in `media/media.json` and `README.txt`. A version whose values cannot be decrypted is exported with empty values and a warning.
 
-**Audit:** a `secrets.export` event is written before the first byte is sent, with metadata `{ secretCount, attachmentCount, includeVersions, includeAttachments, warningCount }`. The password is never part of it. See [SECRETS.md § Audit Trail](SECRETS.md#audit-trail).
+**Audit:** a `secrets.export` event is written before the first byte is sent, with metadata `{ secretCount, attachmentCount, mediaFolderCount, mediaFileCount, includeSecrets, includeAttachments, includeVersions, includeMedia, warningCount }`. The password is never part of it. See [SECRETS.md § Audit Trail](SECRETS.md#audit-trail).
 
 **Rate limits:** none specific to this endpoint (see [Rate Limits](#rate-limits)). It reads and decrypts every owned secret, so avoid calling it in a tight loop.
+
+---
+
+#### Backup content validation
+
+Every route that takes a content selection (`POST /secrets/export`, `POST /backups/me`, `PUT /admin/backups/schedule`, `POST /admin/backups/export`) applies the same rules and returns these exact `message` values with `400 Bad Request`:
+
+| Condition | Message |
+|-----------|---------|
+| None of secrets, media and system selected | `Choose at least one thing to back up` |
+| `includeAttachments: true` with `includeSecrets: false` | `Attachments can only be backed up together with secrets` |
+| `includeVersions: true` with `includeSecrets: false` | `Old versions can only be backed up together with secrets` |
+| `includeSystem` sent to a user-level route (`POST /secrets/export`, `POST /backups/me`) | `System configuration can only be included in a scheduled system backup` |
+
+A flag left out takes its default (`includeSecrets` and `includeAttachments` true; `includeVersions`, `includeMedia` and `includeSystem` false). Attachments and versions left out while secrets are off are simply off; only an explicit `true` is an error. `includeSystem: false` is also refused on the user routes, because the field must not be sent at all.
 
 ---
 
@@ -1776,7 +1800,9 @@ Every settings write is audited (`system_settings:patch` / `system_settings:repl
 
 ### Backups (Admin)
 
-Scheduled, system-wide backups of every user's vault data into object storage. Concepts, zip layout and the password risks are in [SECRETS.md § Scheduled backups (admin)](SECRETS.md#scheduled-backups-admin). Base path: `/api/admin/backups`. Reads need `system_settings:read`; anything that changes state or hands out an archive needs `system_settings:write`. All responses use the standard `{ "data": ... }` envelope.
+Scheduled, system-wide backups of every user's vault data into object storage, plus a one-off streamed download. Concepts, zip layout and the password risks are in [SECRETS.md § Scheduled backups (admin)](SECRETS.md#scheduled-backups-admin). Base path: `/api/admin/backups`. Reads need `system_settings:read`; anything that changes state or hands out an archive needs `system_settings:write`. All responses use the standard `{ "data": ... }` envelope, except `POST /admin/backups/export`, which streams a raw zip.
+
+These routes see only system backups (`scope: "system"`). A user's own saved backups ([`/api/backups/me`](#my-backups)) never appear in the list and cannot be downloaded or deleted here.
 
 #### GET /admin/backups/schedule
 
@@ -1794,8 +1820,11 @@ Scheduled, system-wide backups of every user's vault data into object storage. C
     "dayOfMonth": null,
     "timezone": "America/Chicago",
     "keepCount": 7,
+    "includeSecrets": true,
     "includeAttachments": true,
     "includeVersions": false,
+    "includeMedia": false,
+    "includeSystem": false,
     "passwordConfigured": true,
     "passwordUpdatedAt": "2026-11-01T20:15:38.000Z",
     "nextRunAt": "2026-11-03T09:00:00.000Z",
@@ -1823,8 +1852,11 @@ The password and its ciphertext are never returned; only `passwordConfigured` an
   "dayOfMonth": null,
   "timezone": "America/Chicago",
   "keepCount": 7,
+  "includeSecrets": true,
   "includeAttachments": true,
   "includeVersions": false,
+  "includeMedia": false,
+  "includeSystem": false,
   "password": "blue tiger river lamp"
 }
 ```
@@ -1839,21 +1871,24 @@ The password and its ciphertext are never returned; only `passwordConfigured` an
 | `dayOfMonth` | number \| null | Monthly only, 1 to 28. |
 | `timezone` | string | IANA zone, for example `America/Chicago`. |
 | `keepCount` | number | 1 to 365 (default 7). |
-| `includeAttachments` | boolean | Include attachment files. |
-| `includeVersions` | boolean | Include every version, not just the current one. |
+| `includeSecrets` | boolean | Every user's secrets. Optional, default `true`. |
+| `includeAttachments` | boolean | Include attachment files. Needs `includeSecrets`. |
+| `includeVersions` | boolean | Include every version, not just the current one. Needs `includeSecrets`. |
+| `includeMedia` | boolean | Every user's media library folders and files. Optional, default `false`. |
+| `includeSystem` | boolean | System configuration: users and roles, allowlist, custom secret types, system settings. Optional, default `false`. |
 | `password` | string | Optional, write-only, 6 to 256 characters, not trimmed. Omit to keep the stored password; a string replaces it. |
 
-All fields except `password` are required (full replace).
+All fields except `password`, `includeSecrets`, `includeMedia` and `includeSystem` are required (full replace); the three optional content flags take their defaults when left out, so an older client keeps working. The content rules and their messages are under [Backup content validation](#backup-content-validation).
 
 **Error Cases:**
-- `400 Bad Request` - validation failed, or `enabled: true` without a password or without configured storage. Messages never echo the password.
+- `400 Bad Request` - validation failed (including the content rules), or `enabled: true` without a password or without configured storage. Messages never echo the password.
 - `401 Unauthorized` / `403 Forbidden`
 
 **Audit:** `backups.schedule.update` with `{ changedFields, passwordChanged }`. The password is never logged or audited.
 
 #### POST /admin/backups/run
 
-**Requires Authentication** (`system_settings:write`) - Starts a backup now. Returns `202 Accepted` with the run (`status: "running"`). The run finishes in the background; poll `GET /admin/backups`.
+**Requires Authentication** (`system_settings:write`) - Starts a backup now, saved to storage, using the stored schedule password and the schedule's contents. Returns `202 Accepted` with the run (`status: "running"`). The run finishes in the background; poll `GET /admin/backups`. To get a zip straight to the browser instead, use [`POST /admin/backups/export`](#post-adminbackupsexport).
 
 If storage or the password is not configured, the call still returns 202 and the run then fails with a clear message in `error`. If a run is already in progress, the request returns `409 Conflict`.
 
@@ -1870,6 +1905,7 @@ If storage or the password is not configured, the call still returns 202 and the
     "items": [
       {
         "id": "<run-uuid>",
+        "scope": "system",
         "status": "succeeded",
         "trigger": "schedule",
         "triggeredBy": null,
@@ -1877,7 +1913,9 @@ If storage or the password is not configured, the call still returns 202 and the
         "userCount": 3,
         "secretCount": 42,
         "attachmentCount": 7,
+        "mediaFileCount": 0,
         "warningCount": 0,
+        "contents": ["secrets", "attachments"],
         "error": null,
         "startedAt": "2026-11-02T09:00:00.000Z",
         "finishedAt": "2026-11-02T09:00:04.000Z",
@@ -1893,7 +1931,7 @@ If storage or the password is not configured, the call still returns 202 and the
 }
 ```
 
-`status` is `running`, `succeeded` or `failed`; `trigger` is `schedule` or `manual`; `triggeredBy` is `{ id, email, displayName }` for manual runs. `downloadable` is true for a succeeded run whose object has not been deleted. This list wraps its paging fields inside `data` rather than using the `meta` envelope shown under [Pagination](#pagination).
+`status` is `running`, `succeeded` or `failed`; `scope` is `system` here and `user` on [`/backups/me`](#my-backups); `trigger` is `schedule` or `manual`; `triggeredBy` is `{ id, email, displayName }` for manual runs. `contents` lists what the run backed up, a subset of `secrets`, `attachments`, `versions`, `media` and `system` in that order; a system run fills it in when it ends, so it is empty while `running` and for runs made before content selection existed. `mediaFileCount` counts media files written. `downloadable` is true for a succeeded run whose object has not been deleted. This list wraps its paging fields inside `data` rather than using the `meta` envelope shown under [Pagination](#pagination).
 
 #### GET /admin/backups/:id/download
 
@@ -1915,6 +1953,95 @@ If storage or the password is not configured, the call still returns 202 and the
 - Deleting an already-deleted backup is a `204` no-op.
 
 **Audit:** `backups.delete` with `{ runId }`.
+
+#### POST /admin/backups/export
+
+**Requires Authentication** (`system_settings:write`) - Download a system backup now. The response is a streamed AES-256 zip (WinZip AE-2) with the same layout as a scheduled backup (`index.json`, `users/NNNN/...`, `system/...`) built from the contents you choose. Nothing is stored in object storage and no run is recorded. Like [`POST /secrets/export`](#post-secretsexport) the body of the response is raw, not wrapped in `{ "data": ... }`.
+
+**Request Body:**
+```json
+{
+  "useScheduledPassword": true,
+  "includeSecrets": true,
+  "includeAttachments": true,
+  "includeVersions": false,
+  "includeMedia": true,
+  "includeSystem": true
+}
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `password` | string | - | 6 to 256 characters, not trimmed. Never stored or logged. |
+| `useScheduledPassword` | boolean | `false` | Use the stored schedule password (decrypted only for this stream). |
+| `includeSecrets` | boolean | `true` | Every user's secrets. |
+| `includeAttachments` | boolean | `true` | Needs `includeSecrets`. |
+| `includeVersions` | boolean | `false` | Needs `includeSecrets`. |
+| `includeMedia` | boolean | `false` | Every user's media library. |
+| `includeSystem` | boolean | `false` | System configuration. |
+
+Give **exactly one** of `password` and `useScheduledPassword: true`.
+
+**Success Response (200 OK):** the raw zip.
+
+| Header | Value |
+|--------|-------|
+| `Content-Type` | `application/zip` |
+| `Content-Disposition` | `attachment; filename="vault-backup-YYYY-MM-DD_HHmmss.zip"` (UTC) |
+| `X-Vault-Export-Users` | Number of users in `index.json` |
+| `X-Vault-Export-Secrets` | Number of secrets in the archive |
+| `X-Vault-Export-Attachments` | Number of attachment files in the archive |
+| `X-Vault-Export-Media-Files` | Number of media files in the archive |
+| `Cache-Control` | `no-store` |
+
+All `X-Vault-Export-*` headers and `Content-Disposition` are exposed through CORS.
+
+**Error Cases:**
+- `400 Bad Request` - `Enter a password, or use the scheduled backup password` (neither given), `Use either a password or the scheduled backup password, not both`, a password length message, a [content rule](#backup-content-validation), or `No scheduled backup password is set. Enter a password for this download.` when `useScheduledPassword` is true and none is stored. Messages never echo the password.
+- `401 Unauthorized` / `403 Forbidden`
+
+Validation errors are ordinary JSON responses sent before any zip byte; a failure after streaming has started aborts the connection, so a client must not treat a dropped stream as a complete file.
+
+**Audit:** `backups.export`, written before the first byte, with `{ contents, passwordSource: "provided" | "scheduled", counts: { users, secrets, attachments, mediaFiles, warnings } }`. The password is never part of it.
+
+---
+
+### My backups
+
+A user's own backups saved to object storage ("Save to the storage account"). The server builds the same zip as [`POST /secrets/export`](#post-secretsexport) in the background and stores it under `user-backups/<userId>/vault-backup-YYYY-MM-DD_HHmmss.zip`. Concepts and risks: [SECRETS.md § Saved user backups](SECRETS.md#saved-user-backups). Base path: `/api/backups/me`. Every route needs `secrets:read` and works on the caller's own saved backups only: another user's id answers `404`, whatever permissions the caller holds, and an administrator does not see these in the admin list. Responses use the standard `{ "data": ... }` envelope; a run has the shape shown under [`GET /admin/backups`](#get-adminbackups) with `scope: "user"`, `trigger: "manual"` and `triggeredBy` set to you.
+
+#### GET /backups/me/config
+
+Returns whether saving to storage is available, so a client can disable the option.
+
+```json
+{ "data": { "storageConfigured": true, "keepCount": 10 } }
+```
+
+#### POST /backups/me
+
+Starts a saved backup. Body: the same as `POST /secrets/export` (`password`, `includeSecrets`, `includeAttachments`, `includeVersions`, `includeMedia`, with the same defaults and [content rules](#backup-content-validation); `includeSystem` is a `400`). Returns `202 Accepted` with the run (`status: "running"`, `contents` already set); poll `GET /backups/me`.
+
+The password is used only while the zip is built, held in memory, and never stored, logged, audited or put in an error. After a successful run the newest 10 saved backups are kept and older ones are deleted.
+
+**Error Cases:**
+- `400 Bad Request` - validation failed, or storage is not configured: `Saving to storage isn't set up. Ask an administrator, or download the backup instead.`
+- `409 Conflict` - `You already have a backup running` (one running saved backup per user)
+- `401 Unauthorized` / `403 Forbidden`
+
+**Audit:** `backups.user.run` with `{ runId, contents }` when started; `backups.user.run.completed` with `{ runId, status, trigger, sizeBytes, contents, counts }` when it ends.
+
+#### GET /backups/me
+
+Lists your saved backups, newest first. Query: `page` (default 1), `pageSize` (default 20, max 100). Same paginated shape as [`GET /admin/backups`](#get-adminbackups).
+
+#### GET /backups/me/:id/download
+
+Returns a signed storage URL valid for 300 seconds, served as an attachment: `{ "data": { "url", "expiresAt", "fileName" } }`. `404 Not Found` if the run is not yours, does not exist, did not succeed, is still running or was deleted. **Audit:** `backups.user.download` with `{ runId }`.
+
+#### DELETE /backups/me/:id
+
+Deletes the stored object and sets `deletedAt`; the row stays in your list. Returns `204 No Content`. `404` if not yours or unknown, `409` while the backup is running, `502` if storage refuses the delete (the run is not marked deleted); deleting an already-deleted backup is a `204` no-op. **Audit:** `backups.user.delete` with `{ runId }`.
 
 ---
 
