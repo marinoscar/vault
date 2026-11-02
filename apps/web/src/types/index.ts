@@ -445,6 +445,31 @@ export interface SecretsResponse {
   };
 }
 
+/**
+ * One card from `GET /api/secrets/cards/summary` (#118): decrypted server-side
+ * down to the last four digits and the expiry. Never the CVV or the full
+ * number. A malformed card comes back with null fields.
+ */
+export interface CardSummaryItem {
+  id: string;
+  name: string;
+  last4: string | null;
+  expMonth: number | null;
+  expYear: number | null;
+  updatedAt: string;
+}
+
+/** A page of card summaries, soonest expiry first, unknown expiry last. */
+export interface CardSummaryResponse {
+  items: CardSummaryItem[];
+  meta: {
+    page: number;
+    pageSize: number;
+    totalItems: number;
+    totalPages: number;
+  };
+}
+
 // =============================================================================
 // Media Types
 // =============================================================================

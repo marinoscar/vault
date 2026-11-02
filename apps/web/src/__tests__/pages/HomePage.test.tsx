@@ -5,7 +5,7 @@ import { http, HttpResponse } from 'msw';
 import { server } from '../mocks/server';
 import { render, mockUser, type MockUser } from '../utils/test-utils';
 import HomePage from '../../pages/HomePage';
-import type { SecretDetail, SecretListItem } from '../../types';
+import type { CardSummaryItem, SecretListItem } from '../../types';
 import {
   HOUR,
   NOW,
@@ -44,24 +44,15 @@ const RECENT: SecretListItem[] = [
   makeSecret('s3', 'Staging database', 26 * HOUR),
 ];
 
-function card(id: string, name: string, number: string, month: string, year: string): SecretDetail {
-  return {
-    id,
-    name,
-    description: null,
-    type: cardType,
-    currentVersion: 1,
-    createdAt: ago(900 * HOUR),
-    updatedAt: ago(300 * HOUR),
-    values: { number, exp_month: month, exp_year: year },
-    createdBy: null,
-    attachments: [],
-  };
+// The summary endpoint's shape (#118): last four digits and expiry only,
+// already sorted soonest expiry first, as the API returns it.
+function card(id: string, name: string, last4: string, expMonth: number, expYear: number): CardSummaryItem {
+  return { id, name, last4, expMonth, expYear, updatedAt: ago(300 * HOUR) };
 }
 const CARDS = [
-  card('c1', 'Test Visa travel', '4242424242424242', '10', '2026'), // expired
-  card('c2', 'Test Mastercard', '5555555555554444', '12', '2026'), // expiring within 60 days
-  card('c3', 'Test Discover', '6011111111111117', '08', '2029'), // valid
+  card('c1', 'Test Visa travel', '4242', 10, 2026), // expired
+  card('c2', 'Test Mastercard', '4444', 12, 2026), // expiring within 60 days
+  card('c3', 'Test Discover', '1117', 8, 2029), // valid
 ];
 
 interface ApiOptions {
@@ -80,14 +71,12 @@ function mockApi(options: ApiOptions = {}) {
   let recentFailures = options.failRecent ? 1 : 0;
   server.use(
     http.get(`${API}/secret-types`, () => HttpResponse.json({ data: [loginType, cardType] })),
-    http.get(`${API}/secrets`, ({ request }) => {
-      const url = new URL(request.url);
-      if (url.searchParams.get('typeId') === cardType.id) {
-        const items = CARDS.map(({ values: _v, createdBy: _c, attachments: _a, ...item }) => item);
-        return HttpResponse.json({
-          data: { items, meta: { page: 1, pageSize: 100, totalItems: items.length, totalPages: 1 } },
-        });
-      }
+    http.get(`${API}/secrets/cards/summary`, () =>
+      HttpResponse.json({
+        data: { items: CARDS, meta: { page: 1, pageSize: 100, totalItems: CARDS.length, totalPages: 1 } },
+      }),
+    ),
+    http.get(`${API}/secrets`, () => {
       if (recentFailures > 0) {
         recentFailures -= 1;
         return HttpResponse.json({ message: 'Recent secrets are down' }, { status: 500 });
@@ -99,10 +88,8 @@ function mockApi(options: ApiOptions = {}) {
         },
       });
     }),
-    http.get(`${API}/secrets/:id`, ({ params }) => {
-      const found = CARDS.find((c) => c.id === params.id);
-      return found ? HttpResponse.json({ data: found }) : new HttpResponse(null, { status: 404 });
-    }),
+    // Home must never ask for a card's detail; answer loudly if it does.
+    http.get(`${API}/secrets/:id`, () => new HttpResponse(null, { status: 500 })),
     http.get(`${API}/backups/me`, () =>
       HttpResponse.json({ data: { items: [makeRun()], total: 4, page: 1, pageSize: 1, totalPages: 4 } }),
     ),
@@ -250,25 +237,23 @@ describe('HomePage', () => {
       ]);
     });
 
-    it('makes exactly one request per source and one detail request per card (no N+1 beyond the cards)', async () => {
+    it('makes exactly one request per source: one card summary replaces a detail request per card', async () => {
       mockApi();
       renderHome(ADMIN);
       await settled();
 
       expect(countsByPath()).toEqual({
-        '/api/secret-types': 1,
-        '/api/secrets': 2, // recent page + the Card-type page
-        '/api/secrets/c1': 1,
-        '/api/secrets/c2': 1,
-        '/api/secrets/c3': 1,
+        '/api/secrets': 1, // recent page
+        '/api/secrets/cards/summary': 1,
         '/api/backups/me': 1,
         '/api/admin/backups': 1,
         '/api/admin/backups/schedule': 1,
         '/api/media/folders': 1,
         '/api/ai/status': 1,
       });
-      // No detail request for a recent (non-card) secret: list rows are never decrypted.
-      expect(requests.some((r) => /^\/api\/secrets\/s\d/.test(r))).toBe(false);
+      // No detail request for any secret, card or not: Home decrypts nothing in the browser.
+      expect(requests.some((r) => /^\/api\/secrets\/(?!cards\/summary)[^/?]+/.test(r))).toBe(false);
+      expect(requests).toContain('/api/secrets/cards/summary?page=1&pageSize=100');
       // Small pages: the recent list, and a single row for each "latest"/count.
       expect(requests).toContain('/api/secrets?page=1&pageSize=5&sortBy=updatedAt&sortOrder=desc');
       expect(requests).toContain('/api/backups/me?page=1&pageSize=1');
@@ -365,7 +350,7 @@ describe('HomePage', () => {
 
       const after = countsByPath();
       expect(after['/api/secrets']).toBe(before['/api/secrets'] + 1);
-      expect(after['/api/secret-types']).toBe(before['/api/secret-types']);
+      expect(after['/api/secrets/cards/summary']).toBe(before['/api/secrets/cards/summary']);
       expect(after['/api/backups/me']).toBe(before['/api/backups/me']);
     });
   });

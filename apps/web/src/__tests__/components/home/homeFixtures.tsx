@@ -42,16 +42,11 @@ export function makeSecret(id: string, name: string, updatedMsAgo = HOUR): Secre
 export function makeCardSummary(overrides: Partial<CardSummary> & { id: string }): CardSummary {
   return {
     name: overrides.id,
-    description: null,
-    network: 'Visa',
-    kind: 'Credit',
-    cardholderName: 'Person A',
-    issuingBank: 'Org Alpha',
-    maskedNumber: '•••• •••• •••• 4242',
+    last4: '4242',
+    maskedNumber: '•••• 4242',
     expiryLabel: '12/26',
     status: 'expiring_soon',
     expirySortKey: 0,
-    hasAttachments: false,
     updatedAt: ago(HOUR),
     ...overrides,
   };

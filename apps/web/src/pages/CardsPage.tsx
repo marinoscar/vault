@@ -65,7 +65,9 @@ function matchesFilter(card: CardSummary, filter: CardFilter): boolean {
  *
  * Cards previously sat undifferentiated in the secrets list, so an expiry was
  * only discovered when a payment failed. Everything here is derived from values
- * the user already has — no new endpoint, no server-side expiry logic.
+ * the user already has; since #118 they arrive in one paged
+ * `GET /api/secrets/cards/summary` (name, last four digits, expiry) instead of
+ * one decrypted detail request per card.
  *
  * Layout: a header with the two ways to add a card (scan, gated on AI; manual),
  * a toolbar with search and the status filter chips, then a responsive grid of
@@ -117,7 +119,7 @@ export default function CardsPage() {
     return cards.filter((card) => {
       if (!matchesFilter(card, filter)) return false;
       if (!term) return true;
-      return [card.name, card.network, card.cardholderName, card.issuingBank]
+      return [card.name, card.last4 ?? '']
         .filter(Boolean)
         .some((field) => field.toLowerCase().includes(term));
     });
@@ -219,7 +221,7 @@ export default function CardsPage() {
         >
           <TextField
             label="Search cards"
-            placeholder="Name, network, holder or bank"
+            placeholder="Name or last 4 digits"
             size="small"
             value={search}
             onChange={(e) => setSearch(e.target.value)}

@@ -43,6 +43,7 @@ import type {
   SecretVersionDetail,
   SecretAttachment,
   SecretsResponse,
+  CardSummaryResponse,
   RenewSecretRequest,
   RenewSecretResponse,
   MediaFolder,
@@ -378,6 +379,20 @@ export async function getSecrets(params?: {
   if (params?.sortBy) searchParams.set('sortBy', params.sortBy);
   if (params?.sortOrder) searchParams.set('sortOrder', params.sortOrder);
   return api.get<SecretsResponse>(`/secrets?${searchParams}`);
+}
+
+/**
+ * One page of the caller's card summaries (#118), sorted soonest expiry first.
+ * `pageSize` is capped at 100 by the API.
+ */
+export async function getCardSummaries(params?: {
+  page?: number;
+  pageSize?: number;
+}): Promise<CardSummaryResponse> {
+  const searchParams = new URLSearchParams();
+  searchParams.set('page', String(params?.page ?? 1));
+  searchParams.set('pageSize', String(params?.pageSize ?? 20));
+  return api.get<CardSummaryResponse>(`/secrets/cards/summary?${searchParams}`);
 }
 
 export async function getSecret(id: string): Promise<SecretDetail> {

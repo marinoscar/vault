@@ -5,7 +5,7 @@ import { render } from '../../utils/test-utils';
 import {
   ExpiringCardsPanel,
   EXPIRING_CARDS_LIMIT,
-  shortMask,
+  cardMetaLine,
 } from '../../../components/home/ExpiringCardsPanel';
 import { LocationProbe, makeCardSummary } from './homeFixtures';
 
@@ -14,7 +14,8 @@ const soon = makeCardSummary({
   id: 'c2',
   name: 'Test Mastercard',
   status: 'expiring_soon',
-  maskedNumber: '•••• •••• •••• 4444',
+  last4: '4444',
+  maskedNumber: '•••• 4444',
   expiryLabel: '12/26',
 });
 const valid = makeCardSummary({ id: 'c3', name: 'Test Discover', status: 'valid', expiryLabel: '08/29' });
@@ -23,7 +24,15 @@ const unknown = makeCardSummary({ id: 'c4', name: 'Test Amex', status: 'unknown'
 function renderPanel(props: Partial<Parameters<typeof ExpiringCardsPanel>[0]> = {}) {
   return render(
     <>
-      <ExpiringCardsPanel status="ready" cards={[]} error={null} onRetry={vi.fn()} canRenew {...props} />
+      <ExpiringCardsPanel
+        status="ready"
+        cards={[]}
+        totalCards={props.cards?.length ?? 0}
+        error={null}
+        onRetry={vi.fn()}
+        canRenew
+        {...props}
+      />
       <LocationProbe />
     </>,
   );
@@ -71,10 +80,12 @@ describe('ExpiringCardsPanel', () => {
     expect(screen.queryByRole('list')).not.toBeInTheDocument();
   });
 
-  it('admits an incomplete check when the wallet was truncated', () => {
-    renderPanel({ cards: [valid], isTruncated: true });
+  it('says nothing expires soon when Home loaded only part of a non-empty wallet', () => {
+    // Home stops loading once it is past the attention window, so the list can
+    // be shorter than the wallet: the empty copy follows the wallet total.
+    renderPanel({ cards: [], totalCards: 12 });
 
-    expect(screen.getByText(/Only your first 100 cards were checked/)).toBeInTheDocument();
+    expect(screen.getByText('No card expires in the next 60 days.')).toBeInTheDocument();
   });
 
   it('lists only expired and expiring cards, in the order given, with a status in words', () => {
@@ -121,13 +132,13 @@ describe('ExpiringCardsPanel', () => {
   });
 });
 
-describe('shortMask', () => {
+describe('cardMetaLine', () => {
   it.each([
-    ['•••• •••• •••• 4242', '•••• 4242'],
-    ['•••• •••••• •0005', '•••• •0005'],
-    ['••••', '••••'],
-    ['', ''],
-  ])('%s -> %s', (input, expected) => {
-    expect(shortMask(input)).toBe(expected);
+    [{ maskedNumber: '•••• 4242', expiryLabel: '12/26' }, '•••• 4242 · Exp 12/26'],
+    [{ maskedNumber: '•••• 4242', expiryLabel: '' }, '•••• 4242 · Exp —'],
+    [{ maskedNumber: '', expiryLabel: '12/26' }, '•••• — · Exp 12/26'],
+    [{ maskedNumber: '', expiryLabel: '' }, '•••• — · Exp —'],
+  ])('%o -> %s', (input, expected) => {
+    expect(cardMetaLine(input)).toBe(expected);
   });
 });

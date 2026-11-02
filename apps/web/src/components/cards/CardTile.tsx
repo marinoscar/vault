@@ -10,7 +10,6 @@ import { alpha, useTheme } from '@mui/material/styles';
 import {
   Autorenew as RenewIcon,
   ContactlessOutlined as ContactlessIcon,
-  PhotoCameraBackOutlined as PhotoIcon,
 } from '@mui/icons-material';
 import { CardExpiryBadge } from './CardExpiryBadge';
 import type { CardSummary } from '../../hooks/useCards';
@@ -21,21 +20,17 @@ import { CARD_ASPECT_RATIO } from '../../utils/cardImage';
  * One payment card, drawn as a card (E10.5, issue #96; spec §8).
  *
  * The tile is a card face in the brand colour (a `primary` gradient, read from
- * the theme so light and dark both hold their contrast) carrying the four facts
- * a user scans a wallet for: the name they gave the card, its network, the last
- * four digits and the expiry. Below the face sit the expiry badge and the
- * Renew action.
+ * the theme so light and dark both hold their contrast) carrying the facts a
+ * user scans a wallet for: the name they gave the card, the last four digits
+ * and the expiry. Below the face sit the expiry badge and the Renew action.
  *
- * The heading is the user's own name for the card, not the network. A network
- * does not distinguish anything once a user holds several cards on it — three
- * Amex cards headed "American Express" are three identical tiles — whereas the
- * name is the label the user chose for exactly this purpose ("Shown in your
- * card list" on the import/review form). Network, kind and issuing bank are
- * supporting detail and drop to the subheading.
+ * The data comes from `GET /api/secrets/cards/summary` (#118), which returns
+ * only the name, the last four digits and the expiry: the gallery no longer
+ * decrypts every card in the browser, so network, kind, issuing bank and
+ * cardholder live on the card's detail page only.
  *
- * Only the masked number is ever rendered here — a list view must never put a
- * full PAN on screen, so this component has no access to one: `CardSummary`
- * carries the masked string and nothing else. Never the CVV either.
+ * Only `•••• last4` is ever rendered here — a list view must never put a full
+ * PAN on screen, and this component never receives one. Never the CVV either.
  *
  * Every tile has the same height (the face keeps the ISO card aspect ratio and
  * the footer is one row), so the gallery reads as a uniform grid on a phone.
@@ -56,19 +51,8 @@ interface CardTileProps {
 
 export function CardTile({ card, onClick, onRenew }: CardTileProps) {
   const theme = useTheme();
-  // `name` is required on a secret so it is effectively always present; the
-  // network fallback only guards against a blank-name row reaching the view.
-  const heading = card.name || card.network;
-  // Anything that merely restates the heading is dropped, so a card the user
-  // named "American Express" does not read "American Express · American
-  // Express". Older cards predate card_network / card_kind, hence the falsy
-  // filter as well.
-  const subheading = [card.network, card.kind, card.issuingBank]
-    .filter(
-      (part): part is string =>
-        Boolean(part) && part.trim().toLowerCase() !== heading.trim().toLowerCase(),
-    )
-    .join(' · ');
+  // `name` is required on a secret, so the fallback only guards a blank row.
+  const heading = card.name || 'Card';
   const needsAttention = isNeedsAttention(card.status);
   const isExpired = card.status === 'expired';
 
@@ -144,15 +128,6 @@ export function CardTile({ card, onClick, onRenew }: CardTileProps) {
               >
                 {heading}
               </Typography>
-              {subheading && (
-                <Typography
-                  variant="caption"
-                  noWrap
-                  sx={{ color: onFaceMuted, display: 'block' }}
-                >
-                  {subheading}
-                </Typography>
-              )}
             </Box>
             <ContactlessIcon aria-hidden="true" sx={{ color: onFaceMuted, flexShrink: 0 }} />
           </Box>
@@ -171,34 +146,24 @@ export function CardTile({ card, onClick, onRenew }: CardTileProps) {
             }}
           />
 
-          <Typography
-            variant="body1"
-            sx={{
-              mt: 'auto',
-              mb: 1,
-              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-              fontSize: { xs: '1.05rem', sm: '1rem', md: '1.05rem' },
-              letterSpacing: 1.5,
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-            }}
-          >
-            {card.maskedNumber || '—'}
-          </Typography>
-
-          <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 2, minWidth: 0 }}>
-            <Box sx={{ minWidth: 0, flexGrow: 1 }}>
-              <Typography
-                variant="caption"
-                sx={{ color: onFaceMuted, display: 'block', fontSize: 10, letterSpacing: 0.6, textTransform: 'uppercase' }}
-              >
-                Cardholder
-              </Typography>
-              <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
-                {card.cardholderName || '—'}
-              </Typography>
-            </Box>
+          {/* Bottom row: `•••• last4` and the expiry. Missing data reads as a
+              dash, never as a plausible-looking guess. */}
+          <Box sx={{ mt: 'auto', display: 'flex', alignItems: 'flex-end', gap: 2, minWidth: 0 }}>
+            <Typography
+              variant="body1"
+              sx={{
+                flexGrow: 1,
+                minWidth: 0,
+                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+                fontSize: { xs: '1.05rem', sm: '1rem', md: '1.05rem' },
+                letterSpacing: 1.5,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {card.maskedNumber || '•••• —'}
+            </Typography>
             <Box sx={{ flexShrink: 0, textAlign: 'right' }}>
               <Typography
                 variant="caption"
@@ -207,7 +172,7 @@ export function CardTile({ card, onClick, onRenew }: CardTileProps) {
                 Expires
               </Typography>
               <Typography variant="body2" sx={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>
-                {card.expiryLabel || 'Unknown'}
+                {card.expiryLabel || '—'}
               </Typography>
             </Box>
           </Box>
@@ -230,13 +195,6 @@ export function CardTile({ card, onClick, onRenew }: CardTileProps) {
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
           <CardExpiryBadge status={card.status} expiryLabel={card.expiryLabel} />
-          {card.hasAttachments && (
-            <PhotoIcon
-              fontSize="small"
-              titleAccess="Has card photos"
-              sx={{ color: 'text.secondary' }}
-            />
-          )}
         </Box>
         {onRenew && (
           <Button
