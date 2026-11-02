@@ -25,7 +25,12 @@
     "platform:infra:sync": "platform-infra sync",
     "build:packages": "npm run build -w @marinoscar/vault-contract -w @marinoscar/vault-db",
     "typecheck:packages": "npm run typecheck -w @marinoscar/vault-contract -w @marinoscar/vault-db",
-    "test:packages": "npm run test:run -w @marinoscar/vault-contract -w @marinoscar/vault-db"
+    "test:packages": "npm run test:run -w @marinoscar/vault-contract -w @marinoscar/vault-db",
+    "check:package-docs": "node scripts/vault-packages/check-package-docs.mjs",
+    "check:package-pack": "node scripts/vault-packages/check-package-pack.mjs",
+    "changeset": "changeset",
+    "version-packages": "changeset version && npm install --package-lock-only",
+    "release": "npm run build:packages && changeset publish"
   },
   "overrides": {
     "@nestjs/common": "^11.1.12",
@@ -34,6 +39,7 @@
   },
   "devDependencies": {
     "@marinoscar/platform-contract": "0.1.0-next.21",
-    "@marinoscar/platform-infra": "0.1.0-next.21"
+    "@marinoscar/platform-infra": "0.1.0-next.21",
+    "@changesets/cli": "^2.31.1"
   }
 }

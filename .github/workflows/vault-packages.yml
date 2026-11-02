@@ -1,0 +1,104 @@
+name: Vault packages
+
+# Build, pack-check and docs-check the publishable @marinoscar/vault-* packages
+# (contract, db, api, web; a package whose folder does not exist yet is skipped).
+# Publishing is vault-release.yml's job. The standard these jobs enforce:
+# docs/PACKAGES.md.
+#
+# ci.yml keeps the `Packages` job (typecheck and test, with the Postgres service
+# vault-db's real-database test needs) and builds the packages in every job that
+# imports them. This workflow adds the checks that only matter when a package
+# changes (pack contents, README standard, changeset) and runs on the paths below.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/vault-*/**'
+      - 'scripts/vault-packages/**'
+      - '.changeset/**'
+      - 'tsconfig.base.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/vault-packages.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'packages/vault-*/**'
+      - 'scripts/vault-packages/**'
+      - '.changeset/**'
+      - 'tsconfig.base.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/vault-packages.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build, check and pack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - run: npm run build:packages
+
+      # Asks npm what each package would publish and compares it with the
+      # manifest. Needs the build above.
+      - run: npm run check:package-pack
+
+      - name: Smoke-import every entry point
+        run: |
+          node -e "require('@marinoscar/vault-contract')"
+          node -e "require('@marinoscar/vault-contract/secrets')"
+          node -e "require('@marinoscar/vault-contract/errors')"
+          node --input-type=module -e "await import('@marinoscar/vault-contract')"
+          node --input-type=module -e "await import('@marinoscar/vault-contract/backups')"
+          node packages/vault-db/bin/vault-db.js --help
+
+  package-docs:
+    name: Package docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      # Node built-ins only: no install needed.
+      - run: npm run check:package-docs
+
+  changeset-status:
+    name: Changeset status
+    # A pull request that changes a package source needs a changeset. The
+    # version pull request that vault-release.yml opens consumes the changesets
+    # and is the one exception.
+    if: github.event_name == 'pull_request' && github.head_ref != 'vault-release/version'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - run: git fetch origin main
+      - run: npx changeset status --since=origin/main
