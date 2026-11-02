@@ -34,7 +34,7 @@ import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify
 import fastifyCookie from '@fastify/cookie';
 import request from 'supertest';
 import { buildPermissionCatalog, catalogGrants } from '@marinoscar/platform-api/core';
-import { PERMISSIONS_KEY } from '@marinoscar/platform-api/identity';
+import { ANY_PERMISSIONS_KEY, PERMISSIONS_KEY } from '@marinoscar/platform-api/identity';
 import { discoverControllers } from '@marinoscar/platform-api/identity/testing';
 
 import { AppModule } from '../../src/app.module';
@@ -89,6 +89,13 @@ const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
     'jobs:write',
     'nodes:read',
     'nodes:write',
+    // E7.1: the notifications slice (system: broadcasts, push; org: org_broadcasts, held through org_admin)
+    'broadcasts:read',
+    'broadcasts:write',
+    'push:read',
+    'push:write',
+    'org_broadcasts:read',
+    'org_broadcasts:write',
   ],
   contributor: [...SECRETS_RW, ...USER_SETTINGS, 'storage:read', 'storage:write'],
   viewer: ['secrets:read', 'secret_types:read', 'media:read', ...USER_SETTINGS, 'storage:read'],
@@ -114,13 +121,22 @@ const SYSTEM_PERMISSIONS = new Set([
   'jobs:write',
   'nodes:read',
   'nodes:write',
+  'broadcasts:read',
+  'broadcasts:write',
+  'push:read',
+  'push:write',
 ]);
 
 // ---------------------------------------------------------------------------
 // Every Vault route and the permission it enforces (`null` = any signed-in user)
 // ---------------------------------------------------------------------------
 
-type Route = readonly [method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, permission: string | null];
+/** A permission string, `null` (any signed-in user) or a list of which ANY one admits (`anyPermissions`). */
+type RoutePermission = string | null | readonly string[];
+type Route = readonly [method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, permission: RoutePermission];
+
+const BROADCAST_READ = ['broadcasts:read', 'org_broadcasts:read'] as const;
+const BROADCAST_WRITE = ['broadcasts:write', 'org_broadcasts:write'] as const;
 
 const ROUTES: readonly Route[] = [
   // Secret types
@@ -226,8 +242,44 @@ const ROUTES: readonly Route[] = [
   ['POST', '/api/node-credentials', 'nodes:write'],
   ['GET', '/api/node-credentials', 'nodes:read'],
   ['DELETE', `/api/node-credentials/${ID}`, 'nodes:write'],
+  // Email settings (E7.1: the platform email slice reuses the settings permissions)
+  ['GET', '/api/email-settings', 'system_settings:read'],
+  ['PUT', '/api/email-settings', 'system_settings:write'],
+  ['POST', '/api/email-settings/test', 'system_settings:write'],
+  // Notifications: the signed-in user's own inbox, preferences catalog and Web Push subscriptions
+  ['GET', '/api/notifications/events', null],
+  ['GET', '/api/notifications/channels', null],
+  ['GET', '/api/notifications/config', null],
+  ['GET', '/api/notifications', null],
+  ['GET', '/api/notifications/unread-count', null],
+  ['POST', `/api/notifications/${ID}/read`, null],
+  ['POST', '/api/notifications/read-all', null],
+  ['POST', '/api/notifications/push/subscriptions', null],
+  ['DELETE', '/api/notifications/push/subscriptions', null],
+  // Web Push configuration (VAPID; system, admin only)
+  ['GET', '/api/admin/push-config', 'push:read'],
+  ['PUT', '/api/admin/push-config', 'push:write'],
+  ['POST', '/api/admin/push-config/generate', 'push:write'],
+  ['POST', '/api/admin/push-config/rotate', 'push:write'],
+  ['DELETE', '/api/admin/push-config', 'push:write'],
+  ['POST', '/api/admin/push-config/test', 'push:write'],
+  // Admin broadcasts: either the system or the org permission admits; the service scopes by which
+  ['GET', '/api/admin/broadcasts/audience', BROADCAST_READ],
+  ['POST', '/api/admin/broadcasts/test', BROADCAST_WRITE],
+  ['GET', '/api/admin/broadcasts', BROADCAST_READ],
+  ['POST', '/api/admin/broadcasts', BROADCAST_WRITE],
+  ['GET', `/api/admin/broadcasts/${ID}`, BROADCAST_READ],
+  ['POST', `/api/admin/broadcasts/${ID}/cancel`, BROADCAST_WRITE],
+  ['POST', `/api/admin/broadcasts/${ID}/resume`, BROADCAST_WRITE],
+  ['DELETE', `/api/admin/broadcasts/${ID}`, BROADCAST_WRITE],
 ];
 
+/**
+ * Server-sent-event routes: they hold the connection open, so only the credential
+ * check is exercised (anonymous answers 401 before the stream starts). They still
+ * count for the coverage test.
+ */
+const STREAM_ROUTES: readonly Route[] = [['GET', '/api/notifications/stream', null]];
 
 // ---------------------------------------------------------------------------
 // Principal graphs, as production loads them
@@ -339,8 +391,12 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
         'NodesAdminController',
         'NodesController',
         'NodeCredentialController',
+        'EmailSettingsController',
+        'NotificationsController',
+        'PushConfigController',
+        'BroadcastsController',
       ]);
-      const discovered = new Map<string, string | null>();
+      const discovered = new Map<string, RoutePermission>();
       for (const controller of discoverControllers(AppModule)) {
         if (!controllerNames.has(controller.name)) continue;
         const base = Reflect.getMetadata(PATH_METADATA, controller) as string;
@@ -353,12 +409,17 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
           const permissions = (Reflect.getMetadata(PERMISSIONS_KEY, handler) ?? Reflect.getMetadata(PERMISSIONS_KEY, controller)) as
             | string[]
             | undefined;
-          discovered.set(`${RequestMethod[verb]} /api/${[base, sub].filter(Boolean).join('/')}`, permissions?.[0] ?? null);
+          const anyPermissions = (Reflect.getMetadata(ANY_PERMISSIONS_KEY, handler) ??
+            Reflect.getMetadata(ANY_PERMISSIONS_KEY, controller)) as string[] | undefined;
+          discovered.set(
+            `${RequestMethod[verb]} /api/${[base, sub].filter(Boolean).join('/')}`,
+            permissions?.[0] ?? (anyPermissions ? [...anyPermissions] : null),
+          );
         }
       }
 
       const normalised = (path: string) => path.split(ID).join(':id').replace(/\/by-name\/[^/]+/, '/by-name/:name');
-      const declared = new Map(ROUTES.map(([m, p, perm]) => [`${m} ${normalised(p)}`, perm] as const));
+      const declared = new Map([...ROUTES, ...STREAM_ROUTES].map(([m, p, perm]) => [`${m} ${normalised(p)}`, perm] as const));
 
       // Compare shapes: parameter names differ (`:folderId`), so collapse every `:param`.
       const shape = (key: string) => key.replace(/:[A-Za-z]+/g, ':p');
@@ -376,7 +437,7 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
       const grants = catalogGrants(buildPermissionCatalog());
       const heldBy = (roleNames: string[]) =>
         grants.filter((g) => roleNames.includes(g.role)).map((g) => g.permission);
-      const mine = (permissions: readonly string[]) => permissions.filter((p) => /^(secrets|secret_types|media|jobs|nodes):/.test(p));
+      const mine = (permissions: readonly string[]) => permissions.filter((p) => /^(secrets|secret_types|media|jobs|nodes|broadcasts|org_broadcasts|push):/.test(p));
 
       expect(mine(heldBy(['admin', 'org_admin'])).sort()).toEqual(mine(ROLE_PERMISSIONS.admin).sort());
       expect(mine(heldBy(['contributor'])).sort()).toEqual(mine(ROLE_PERMISSIONS.contributor).sort());
@@ -391,7 +452,10 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
     });
 
     it.each(['admin', 'contributor', 'viewer'] as Role[])('%s', async (role) => {
-      const allowed = permission === null || ROLE_PERMISSIONS[role].includes(permission);
+      const held = ROLE_PERMISSIONS[role];
+      const allowed =
+        permission === null ||
+        (typeof permission === 'string' ? held.includes(permission) : permission.some((p) => held.includes(p)));
       const response = await call(method, path, tokenFor(USERS[role], role));
 
       if (allowed) {
@@ -399,6 +463,13 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
       } else {
         expect(response.status).toBe(403);
       }
+    });
+  });
+
+  describe.each(STREAM_ROUTES.map((route) => [`${route[0]} ${route[1]}`, route] as const))('%s (stream)', (_label, [method, path]) => {
+    it('answers 401 without a credential', async () => {
+      const response = await call(method, path);
+      expect(response.status).toBe(401);
     });
   });
 

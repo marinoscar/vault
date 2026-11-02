@@ -9,6 +9,7 @@
 // `theme` and `profile` are core fields the platform composes ahead of these.
 // =============================================================================
 
+import { NOTIFICATIONS_USER_SETTINGS } from '@marinoscar/platform-api/notifications';
 import {
   DATA_TABLES_USER_SETTINGS,
   NAVIGATION_USER_SETTINGS,
@@ -22,6 +23,7 @@ import { APP_USER_SETTINGS_NAMESPACES } from '../../app-registrations/settings';
 export const PLATFORM_USER_SETTINGS_NAMESPACES: readonly UserSettingsNamespace[] = [
   DATA_TABLES_USER_SETTINGS as UserSettingsNamespace,
   NAVIGATION_USER_SETTINGS as UserSettingsNamespace,
+  NOTIFICATIONS_USER_SETTINGS as UserSettingsNamespace, // E7.1: per-channel preferences
 ];
 
 export function assembleVaultUserSettingsNamespaces(): UserSettingsNamespace[] {

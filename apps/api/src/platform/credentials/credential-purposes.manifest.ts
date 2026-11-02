@@ -19,6 +19,8 @@
 // platform's. When `AiModule.forRoot` registers the purpose (E8), delete this
 // registration in the same change: a duplicate registration fails at boot.
 //
+//   smtp, email_ses, push_vapid   (E7.1) the email slice's and the notifications slice's secrets.
+//
 // Not here: Vault's secret values. They are `secret_versions` rows under
 // `VAULT_ENCRYPTION_KEY` (`CryptoService`), a different key and a different
 // store, on purpose (docs/SECRETS.md).
@@ -28,6 +30,8 @@ import {
   registerCredentialPurpose,
   type CredentialPurposeDef,
 } from '@marinoscar/platform-api/credentials';
+import { SES_CREDENTIAL_PURPOSE_DEF, SMTP_CREDENTIAL_PURPOSE_DEF } from '@marinoscar/platform-api/email';
+import { PUSH_VAPID_CREDENTIAL_PURPOSE_DEF } from '@marinoscar/platform-api/notifications';
 
 /** Purpose of the deployment's AI provider keys (also the cipher sub-key domain). */
 export const AI_CREDENTIAL_PURPOSE = 'ai';
@@ -41,3 +45,10 @@ export const AI_CREDENTIAL_PURPOSE_DEF: CredentialPurposeDef = Object.freeze({
 });
 
 registerCredentialPurpose(AI_CREDENTIAL_PURPOSE_DEF);
+
+// E7.1 (#85): the email transports' secrets and the Web Push private key. The
+// platform declares the definitions; the app only registers the ones it stores.
+// SMTP / SES / VAPID are runtime-configured in the admin UI: no environment variable.
+registerCredentialPurpose(SMTP_CREDENTIAL_PURPOSE_DEF);
+registerCredentialPurpose(SES_CREDENTIAL_PURPOSE_DEF);
+registerCredentialPurpose(PUSH_VAPID_CREDENTIAL_PURPOSE_DEF);
