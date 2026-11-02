@@ -88,7 +88,16 @@ describe('Layout (platform shell binding)', () => {
       expect(within(rail).getByRole('link', { name: 'Home' })).not.toHaveAttribute('aria-current');
     });
 
-    it('lights up Settings on the secret types pages', () => {
+    it('lights up Settings on the secret types pages (under their card, and the old redirect path)', () => {
+      setViewportWidth(1440);
+      renderShell('/settings/secret-types/new');
+
+      expect(
+        within(screen.getByRole('navigation', { name: 'Main navigation' })).getByRole('link', { name: 'Settings' }),
+      ).toHaveAttribute('aria-current', 'page');
+    });
+
+    it('lights up Settings on the old /secret-types path too', () => {
       setViewportWidth(1440);
       renderShell('/secret-types/new');
 
@@ -96,14 +105,17 @@ describe('Layout (platform shell binding)', () => {
       expect(within(rail).getByRole('link', { name: 'Settings' })).toHaveAttribute('aria-current', 'page');
     });
 
-    it('switches the rail to Console mode under /admin', () => {
+    it('switches the rail to Console mode under /admin and lists every admin card in registry order', () => {
       setViewportWidth(1440);
-      renderShell('/admin/users', adminUser);
+      renderShell('/admin/settings/users', adminUser);
 
       const rail = screen.getByRole('navigation', { name: 'Console navigation' });
       expect(within(rail).getByRole('link', { name: 'Back to Vault' })).toHaveAttribute('href', '/');
-      expect(within(rail).getByRole('link', { name: 'System settings' })).toBeInTheDocument();
-      expect(within(rail).getByRole('link', { name: 'Users & allowlist' })).toHaveAttribute('aria-current', 'page');
+      expect(within(rail).getByRole('link', { name: 'General' })).toHaveAttribute('href', '/admin/settings/general');
+      expect(within(rail).getByRole('link', { name: 'Users & Allowlist' })).toHaveAttribute('aria-current', 'page');
+      for (const name of ['AI', 'Backups', 'Maintenance', 'Doctor', 'About']) {
+        expect(within(rail).getByRole('link', { name })).toBeInTheDocument();
+      }
     });
 
     it('collapses the rail and keeps the choice in the preferences port', async () => {
@@ -157,13 +169,22 @@ describe('Layout (platform shell binding)', () => {
       expect(tabs.map((tab) => tab.textContent)).not.toContain('Console');
     });
 
-    it('drills into a Console page with a back arrow and the page title', () => {
+    it('drills into a Console card page with a back arrow and the card title', () => {
       setViewportWidth(390);
-      renderShell('/admin/settings', adminUser);
+      renderShell('/admin/settings/backups', adminUser);
 
       const banner = screen.getByRole('banner');
       expect(within(banner).getByRole('button', { name: 'Back' })).toBeInTheDocument();
-      expect(within(banner).getByText('System settings')).toBeInTheDocument();
+      expect(within(banner).getByText('Backups')).toBeInTheDocument();
+    });
+
+    it('drills into a per-user card page with a back arrow and the card title', () => {
+      setViewportWidth(390);
+      renderShell('/settings/appearance');
+
+      const banner = screen.getByRole('banner');
+      expect(within(banner).getByRole('button', { name: 'Back' })).toBeInTheDocument();
+      expect(within(banner).getByText('Appearance')).toBeInTheDocument();
     });
   });
 });

@@ -1,228 +1,41 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+/**
+ * Vault's one HTTP client and the domain calls made through it.
+ *
+ * E3.3 (#78): the transport is the platform's `PlatformHttpClient`
+ * (`@marinoscar/platform-web/core`): the access-token holder, the one-shot
+ * 401 -> refresh -> retry, the cross-page refresh lock and the "session
+ * expired" signal the packaged `AuthProvider` drives sessions through
+ * (`identity/IdentityProviders.tsx` passes this instance as its `client`).
+ * It replaced Vault's own `ApiService` class; what stays Vault's is what it is
+ * configured with. The packaged pages reach the same instance through
+ * `createPlatformApiClient` (`platform/platformHost.tsx`).
+ *
+ * `ApiError` is re-exported so the call sites that import it from here keep
+ * doing so; it is the package's class (same `message`, `status`, `code`,
+ * `details`), so `instanceof` still matches.
+ */
 
-interface RequestOptions extends RequestInit {
-  skipAuth?: boolean;
-}
+import { ApiError, PlatformHttpClient } from '@marinoscar/platform-web/core';
+import type { PlatformHttpBlobWithHeaders, PlatformHttpRequestOptions } from '@marinoscar/platform-web/core';
 
-class ApiService {
-  private accessToken: string | null = null;
-  private refreshPromise: Promise<boolean> | null = null;
+import { PRODUCT_NAME } from '../theme/tokens';
 
-  setAccessToken(token: string | null) {
-    this.accessToken = token;
-  }
+/** Where the API lives (same origin by default). */
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
-  getAccessToken(): string | null {
-    return this.accessToken;
-  }
+export { ApiError };
 
-  /**
-   * Perform a fetch with the bearer token attached, refreshing the access
-   * token and retrying ONCE on a 401. Resolves only with an OK response;
-   * any non-2xx status is thrown as an ApiError built from the JSON error
-   * body. Shared by the JSON (`request`) and binary (`requestBlob`) paths so
-   * the refresh flow exists exactly once.
-   */
-  private async fetchWithAuth(
-    endpoint: string,
-    options: RequestOptions = {},
-  ): Promise<Response> {
-    const { skipAuth = false, ...fetchOptions } = options;
+/** Request options of {@link api}, for the few callers that name the type. */
+export type RequestOptions = PlatformHttpRequestOptions;
 
-    const headers: HeadersInit = {
-      ...fetchOptions.headers,
-    };
-
-    // Only set Content-Type for requests with a body (Fastify 5 is strict about this)
-    if (fetchOptions.body) {
-      (headers as Record<string, string>)['Content-Type'] = 'application/json';
-    }
-
-    if (!skipAuth && this.accessToken) {
-      (headers as Record<string, string>)['Authorization'] = `Bearer ${this.accessToken}`;
-    }
-
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-      ...fetchOptions,
-      headers,
-      credentials: 'include', // Include cookies for refresh token
-    });
-
-    if (response.status === 401 && !skipAuth) {
-      // Try to refresh token (only once, avoid infinite loops)
-      const refreshed = await this.refreshToken();
-      if (refreshed) {
-        // Update authorization header with new token and retry ONCE
-        const retryHeaders: HeadersInit = {
-          'Content-Type': 'application/json',
-          ...fetchOptions.headers,
-          'Authorization': `Bearer ${this.accessToken}`,
-        };
-
-        const retryResponse = await fetch(`${API_BASE_URL}${endpoint}`, {
-          ...fetchOptions,
-          headers: retryHeaders,
-          credentials: 'include',
-        });
-
-        if (!retryResponse.ok) {
-          throw await toApiError(retryResponse);
-        }
-        return retryResponse;
-      }
-      throw new ApiError('Unauthorized', 401);
-    }
-
-    if (!response.ok) {
-      throw await toApiError(response);
-    }
-
-    return response;
-  }
-
-  private async request<T>(
-    endpoint: string,
-    options: RequestOptions = {},
-  ): Promise<T> {
-    const response = await this.fetchWithAuth(endpoint, options);
-
-    // Handle 204 No Content
-    if (response.status === 204) {
-      return undefined as T;
-    }
-
-    const data = await response.json();
-    return data.data ?? data;
-  }
-
-  /**
-   * POST a JSON body and return the raw response (body unread) for binary
-   * downloads. Same auth + refresh-and-retry-once behavior as `post`; the
-   * caller reads the body (e.g. `response.blob()`) and any headers.
-   */
-  postForResponse(endpoint: string, body?: unknown, options?: RequestOptions) {
-    return this.fetchWithAuth(endpoint, {
-      ...options,
-      method: 'POST',
-      body: body ? JSON.stringify(body) : undefined,
-    });
-  }
-
-  async refreshToken(): Promise<boolean> {
-    // If a refresh is already in progress, wait for it
-    if (this.refreshPromise) {
-      return this.refreshPromise;
-    }
-
-    // Start a new refresh
-    this.refreshPromise = this.doRefreshToken();
-
-    try {
-      return await this.refreshPromise;
-    } finally {
-      this.refreshPromise = null;
-    }
-  }
-
-  private async doRefreshToken(): Promise<boolean> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-
-      if (!response.ok) {
-        this.accessToken = null;
-        return false;
-      }
-
-      const responseData = await response.json();
-      // Unwrap the { data: { accessToken } } structure from TransformInterceptor
-      const tokenData = responseData.data ?? responseData;
-
-      // Validate that we actually got a token
-      if (!tokenData.accessToken || typeof tokenData.accessToken !== 'string') {
-        this.accessToken = null;
-        return false;
-      }
-
-      this.accessToken = tokenData.accessToken;
-      return true;
-    } catch {
-      this.accessToken = null;
-      return false;
-    }
-  }
-
-  // Generic methods
-  get<T>(endpoint: string, options?: RequestOptions) {
-    return this.request<T>(endpoint, { ...options, method: 'GET' });
-  }
-
-  post<T>(endpoint: string, body?: unknown, options?: RequestOptions) {
-    return this.request<T>(endpoint, {
-      ...options,
-      method: 'POST',
-      body: body ? JSON.stringify(body) : undefined,
-    });
-  }
-
-  put<T>(endpoint: string, body?: unknown, options?: RequestOptions) {
-    return this.request<T>(endpoint, {
-      ...options,
-      method: 'PUT',
-      body: body ? JSON.stringify(body) : undefined,
-    });
-  }
-
-  patch<T>(endpoint: string, body?: unknown, options?: RequestOptions) {
-    return this.request<T>(endpoint, {
-      ...options,
-      method: 'PATCH',
-      body: body ? JSON.stringify(body) : undefined,
-    });
-  }
-
-  delete<T>(endpoint: string, options?: RequestOptions) {
-    return this.request<T>(endpoint, { ...options, method: 'DELETE' });
-  }
-}
-
-export class ApiError extends Error {
-  constructor(
-    message: string,
-    public status: number,
-    public code?: string,
-    public details?: unknown,
-  ) {
-    super(message);
-    this.name = 'ApiError';
-  }
-}
-
-async function toApiError(response: Response): Promise<ApiError> {
-  const error = await response.json().catch(() => ({}));
-  return new ApiError(
-    error.message || 'Request failed',
-    response.status,
-    error.code,
-    error.details,
-  );
-}
-
-export const api = new ApiService();
+export const api = new PlatformHttpClient({
+  baseUrl: API_BASE_URL,
+  // Named after the app so two apps on one origin never contend for a lock.
+  refreshLockName: `${PRODUCT_NAME.toLowerCase()}-auth-refresh`,
+});
 
 // Import types
 import type {
-  AllowlistResponse,
-  AllowedEmailEntry,
-  UsersResponse,
-  UserListItem,
-  DeviceActivationInfo,
-  DeviceAuthorizationResponse,
-  PersonalAccessToken,
-  PatCreatedResponse,
-  PatDurationUnit,
   FieldDefinition,
   SecretType,
   SecretDetail,
@@ -505,100 +318,6 @@ export async function verifyAiConnection(
   }
 }
 
-// Allowlist API
-export async function getAllowlist(params?: {
-  page?: number;
-  pageSize?: number;
-  search?: string;
-  status?: 'all' | 'pending' | 'claimed';
-}): Promise<AllowlistResponse> {
-  const searchParams = new URLSearchParams();
-  if (params?.page) searchParams.set('page', String(params.page));
-  if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
-  if (params?.search) searchParams.set('search', params.search);
-  if (params?.status) searchParams.set('status', params.status);
-
-  return api.get<AllowlistResponse>(`/allowlist?${searchParams}`);
-}
-
-export async function addToAllowlist(
-  email: string,
-  notes?: string,
-): Promise<AllowedEmailEntry> {
-  return api.post<AllowedEmailEntry>('/allowlist', { email, notes });
-}
-
-export async function removeFromAllowlist(id: string): Promise<void> {
-  await api.delete<void>(`/allowlist/${id}`);
-}
-
-// Users API
-export async function getUsers(params?: {
-  page?: number;
-  pageSize?: number;
-  search?: string;
-  role?: string;
-  isActive?: boolean;
-}): Promise<UsersResponse> {
-  const searchParams = new URLSearchParams();
-  if (params?.page) searchParams.set('page', String(params.page));
-  if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
-  if (params?.search) searchParams.set('search', params.search);
-  if (params?.role) searchParams.set('role', params.role);
-  if (params?.isActive !== undefined)
-    searchParams.set('isActive', String(params.isActive));
-
-  return api.get<UsersResponse>(`/users?${searchParams}`);
-}
-
-export async function updateUser(
-  id: string,
-  data: { displayName?: string; isActive?: boolean },
-): Promise<UserListItem> {
-  return api.patch<UserListItem>(`/users/${id}`, data);
-}
-
-export async function updateUserRoles(
-  id: string,
-  roles: string[],
-): Promise<UserListItem> {
-  return api.put<UserListItem>(`/users/${id}/roles`, { roles });
-}
-
-// Device Activation API
-export async function getDeviceActivationInfo(
-  userCode: string,
-): Promise<DeviceActivationInfo> {
-  return api.get<DeviceActivationInfo>(`/auth/device/activate?code=${userCode}`);
-}
-
-export async function authorizeDevice(
-  userCode: string,
-  approve: boolean,
-): Promise<DeviceAuthorizationResponse> {
-  return api.post<DeviceAuthorizationResponse>('/auth/device/authorize', {
-    userCode,
-    approve,
-  });
-}
-
-// Personal Access Tokens API
-export async function getPersonalAccessTokens(): Promise<PersonalAccessToken[]> {
-  return api.get<PersonalAccessToken[]>('/pat');
-}
-
-export async function createPersonalAccessToken(data: {
-  name: string;
-  durationValue: number;
-  durationUnit: PatDurationUnit;
-}): Promise<PatCreatedResponse> {
-  return api.post<PatCreatedResponse>('/pat', data);
-}
-
-export async function revokePersonalAccessToken(id: string): Promise<void> {
-  await api.delete<void>(`/pat/${id}`);
-}
-
 // Secret Types API
 export async function getSecretTypes(params?: {
   search?: string;
@@ -867,19 +586,7 @@ export async function simpleStorageUpload(
 ): Promise<{ id: string; name: string; mimeType: string; size: number }> {
   const formData = new FormData();
   formData.append('file', file);
-  const token = api.getAccessToken();
-  const response = await fetch('/api/storage/objects', {
-    method: 'POST',
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    credentials: 'include',
-    body: formData,
-  });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.message || 'Upload failed');
-  }
-  const data = await response.json();
-  return data.data ?? data;
+  return api.postFormData('/storage/objects', formData);
 }
 
 // =============================================================================
@@ -960,8 +667,8 @@ export interface BackupStreamResult {
  * Content-Disposition (falling back to `vault-backup-YYYY-MM-DD.zip`) and
  * the X-Vault-Export-* counts. Shared by every streamed backup download.
  */
-async function readBackupStream(response: Response): Promise<BackupStreamResult> {
-  const blob = await response.blob();
+function readBackupStream(response: PlatformHttpBlobWithHeaders): BackupStreamResult {
+  const { blob } = response;
   return {
     blob,
     filename:
@@ -1000,8 +707,10 @@ function toUserBackupBody(options: SecretsBackupOptions) {
 export async function downloadSecretsBackup(
   options: SecretsBackupOptions,
 ): Promise<SecretsBackupResult> {
-  const response = await api.postForResponse('/secrets/export', toUserBackupBody(options));
-  const { userCount: _users, ...result } = await readBackupStream(response);
+  const response = await api.post<PlatformHttpBlobWithHeaders>('/secrets/export', toUserBackupBody(options), {
+    responseType: 'blobWithHeaders',
+  });
+  const { userCount: _users, ...result } = readBackupStream(response);
   return result;
 }
 
@@ -1110,6 +819,8 @@ export async function downloadAdminBackup(
   const body = useScheduledPassword
     ? { useScheduledPassword: true, ...contents }
     : { password, ...contents };
-  const response = await api.postForResponse('/admin/backups/export', body);
+  const response = await api.post<PlatformHttpBlobWithHeaders>('/admin/backups/export', body, {
+    responseType: 'blobWithHeaders',
+  });
   return readBackupStream(response);
 }

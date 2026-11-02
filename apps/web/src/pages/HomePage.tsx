@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Box, Card, Container, Typography } from '@mui/material';
-import { useAuth } from '../contexts/AuthContext';
-import { usePermissions } from '../hooks/usePermissions';
+import { useAuth, usePermissions } from '@marinoscar/platform-web/identity/headless';
 import { useCards } from '../hooks/useCards';
 import { useAiStatus } from '../hooks/useAiStatus';
 import { useDashboardResource } from '../hooks/useDashboardResource';

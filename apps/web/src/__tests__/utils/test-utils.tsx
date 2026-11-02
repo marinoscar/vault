@@ -5,13 +5,24 @@ import { vi } from 'vitest';
 import { ShellRoot } from '@marinoscar/platform-web/shell/ui';
 import { ShellPreferencesProvider } from '@marinoscar/platform-web/shell/headless';
 
-// Vault's AuthContext, re-published to the platform's identity context the
-// shell reads (the same bridge App.tsx mounts), under the Vault themes.
-import { AuthContext } from '../../contexts/AuthContext';
-import { PlatformAuthBridge } from '../../platform/PlatformAuthBridge';
+// The platform's identity context with a fixed session (instead of the
+// packaged `AuthProvider`, which would probe `/auth/refresh`), then the same
+// adapters, platform host and shell preferences App.tsx mounts, under the
+// Vault themes.
+import {
+  AuthContext,
+  IdentityWebAdaptersProvider,
+} from '@marinoscar/platform-web/identity/headless';
+import type {
+  AuthContextValue,
+  AuthProviderInfo as AuthProviderType,
+} from '@marinoscar/platform-web/identity/headless';
+import { DataTablePreferencesProvider } from '@marinoscar/platform-web/datatable/headless';
+import { vaultIdentityAdapters } from '../../identity/identityAdapters';
+import { dataTablePreferencesPort } from '../../platform/dataTablePreferences';
+import { VaultPlatformHostProvider } from '../../platform/platformHost';
 import { shellPreferencesPort } from '../../platform/shellPreferences';
 import { VAULT_THEMES } from '../../theme';
-import type { AuthProvider as AuthProviderType } from '../../types';
 
 interface WrapperOptions {
   route?: string;
@@ -63,6 +74,19 @@ export const mockAdminUser: MockUser = {
   createdAt: new Date().toISOString(),
 };
 
+/**
+ * The `AuthContextValue` fields a test that mocks `useAuth` rarely cares
+ * about (no organization switching in Vault's single-organization mode).
+ */
+export const AUTH_CONTEXT_DEFAULTS = {
+  sessionExpired: false,
+  setAccessToken: vi.fn(),
+  activeOrg: null,
+  memberships: [],
+  switchOrg: vi.fn().mockResolvedValue(undefined),
+  mode: 'server',
+} satisfies Partial<AuthContextValue>;
+
 // Default mock providers
 const defaultMockProviders: AuthProviderType[] = [
   { name: 'google', authUrl: '/api/auth/google' },
@@ -84,21 +108,31 @@ function MockAuthProvider({
   isLoading = false,
   providers = defaultMockProviders,
 }: MockAuthProviderProps) {
-  const contextValue = {
+  const contextValue: AuthContextValue = {
     user: authenticated ? user : null,
     isLoading,
     isAuthenticated: authenticated,
     providers,
+    sessionExpired: false,
     login: vi.fn(),
     logout: vi.fn().mockResolvedValue(undefined),
     refreshUser: vi.fn().mockResolvedValue(undefined),
+    setAccessToken: vi.fn(),
+    activeOrg: null,
+    memberships: [],
+    switchOrg: vi.fn().mockResolvedValue(undefined),
+    mode: 'server',
   };
 
   return (
     <AuthContext.Provider value={contextValue}>
-      <PlatformAuthBridge>
-        <ShellPreferencesProvider port={shellPreferencesPort}>{children}</ShellPreferencesProvider>
-      </PlatformAuthBridge>
+      <IdentityWebAdaptersProvider adapters={vaultIdentityAdapters}>
+        <DataTablePreferencesProvider port={dataTablePreferencesPort}>
+          <VaultPlatformHostProvider>
+            <ShellPreferencesProvider port={shellPreferencesPort}>{children}</ShellPreferencesProvider>
+          </VaultPlatformHostProvider>
+        </DataTablePreferencesProvider>
+      </IdentityWebAdaptersProvider>
     </AuthContext.Provider>
   );
 }

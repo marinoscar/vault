@@ -1,19 +1,19 @@
 ---
 name: add-settings-page
-description: Add an admin or per-user settings page to the Vault web app as a registry card - the entry in adminSections.tsx or userSettingsSections.tsx, the exact permission string the API controller enforces, reuse of SettingsHub, the route, feature gates and the registry tests. The registry is created in E10; before then follow the rule (own routed page, no new tab). Use when adding any settings screen, admin Console page or per-user preference page.
+description: Add an admin or per-user settings page to the Vault web app as a registry card - the entry in adminSections.tsx or userSettingsSections.tsx, the exact permission string the API controller enforces, reuse of SettingsHub, the route, feature gates and the registry tests. The registries exist since E10.3. Use when adding any settings screen, admin Console page or per-user preference page.
 ---
 
 # Add a settings page
 
-> **Registry exists from E10** (`apps/web/src/config/adminSections.tsx`, `userSettingsSections.tsx`, `destinations.ts`). Before E10, settings are tabs (`SystemSettingsPage`, `UserSettingsPage`). The rule applies already: do **not** add a tab; build the content as a standalone component with its own hook so E10 can mount it as a card unchanged. Spec: `docs/specs/ux-refresh.md` (settings hub section). Rationale originates in EAB `docs/specs/settings-ui.md`.
+> **The registries exist since E10.3 (#94)**: `apps/web/src/config/adminSections.tsx` (`ADMIN_SECTIONS`, the Console hub `/admin/settings` and rail) and `userSettingsSections.tsx` (`USER_SETTINGS_SECTIONS`, the `/settings` hub). Spec: `docs/specs/ux-refresh.md` section 6 (with the as-built card table). Rationale originates in EAB `docs/specs/settings-ui.md`.
 
-## Steps (after E10)
+## Steps
 
 1. Write the page component. Gate writes inside the page by disabling controls, not with a second card permission.
 2. Append ONE card to the registry (admin: `ADMIN_SECTIONS`; per-user: `USER_SETTINGS_SECTIONS`), never inserted between existing cards: `{ title, description, Icon, path?, disabled?, permission?, feature?, alwaysShow? }`. `Icon` is a component, not an element.
-3. Add the route beside the other `/admin/settings/*` or `/settings/*` routes in `App.tsx`. A route without a card is unacceptable.
+3. Add the route beside the other `/admin/settings/*` or `/settings/*` routes in `App.tsx`, as `<Route path="..." element={<RequirePermission permission="<the card's permission>" fallback={TO_HOME | TO_SETTINGS}>...` (path and gate adjacent; the registry test reads them). A card with no permission gets an ungated route. A route without a card is unacceptable. Wrap the page in `components/settings/SettingsPageFrame.tsx` (title = card title). `RequirePermission` is the packaged guard (`@marinoscar/platform-web/identity/headless`). A packaged platform page reads the host from `platform/platformHost.tsx`.
 4. API calls go through `apps/web/src/services/api.ts`, wrapped in a hook.
-5. Update the registry tests in `apps/web/src/__tests__/config/` (created in E10).
+5. Update `apps/web/src/__tests__/config/settingsRegistry.test.ts` (its controller mirror and the card order) and add a test for the page.
 
 ## Rules
 

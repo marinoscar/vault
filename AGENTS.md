@@ -84,15 +84,15 @@ Create clean, frequent commits, then land the work through a pull request. Assum
 - **Sequence**: `git status`, `git diff`, stage intentionally (`git add -p` or named files), `git commit`, `git status`.
 - **Tests not run**: still commit, and say so in the body (`Notes: tests not run (DB env not available).`).
 
-## MANDATORY: Settings UI Pattern (TARGET from E10; rule for new pages now)
+## MANDATORY: Settings UI Pattern
 
-Today settings are tabs (`SystemSettingsPage`: UI Settings, Feature Flags, AI, Backups, Advanced (JSON); `UserSettingsPage`). E10 replaces them with a registry-driven hub. Spec: [docs/specs/ux-refresh.md](docs/specs/ux-refresh.md); recipe: [`add-settings-page` skill](.claude/skills/add-settings-page/SKILL.md).
+Every settings surface, admin or per-user, is a registry-driven hub (in force since E10.3, #94): `/settings` and `/admin/settings` are bindings of the packaged `SettingsHub`, and each card is its own routed page. Spec: [docs/specs/ux-refresh.md](docs/specs/ux-refresh.md#6-settings-hub); recipe: [`add-settings-page` skill](.claude/skills/add-settings-page/SKILL.md).
 
-1. **Every new settings page is a card in a section registry** (`ADMIN_SECTIONS` in `apps/web/src/config/adminSections.tsx`, `USER_SETTINGS_SECTIONS` in `userSettingsSections.tsx`; created in E10). Append; never insert between existing cards.
-2. **A settings page is never added as a new tab on an existing settings page.** Tabs only for genuinely parallel content inside one destination. Until E10 lands, a new settings surface is its own routed page, not another tab of `SystemSettingsPage`.
-3. **The card's `permission` is the exact string the API controller enforces**, never invented: `system_settings:read`/`:write`, `users:read`, `allowlist:read`, `secret_types:read`, `secrets:read` (My backups), `user_settings:read`.
+1. **Every new settings page is a card in a section registry**: `ADMIN_SECTIONS` in `apps/web/src/config/adminSections.tsx` (Console hub and rail) or `USER_SETTINGS_SECTIONS` in `apps/web/src/config/userSettingsSections.tsx`, with its route under `/admin/settings/*` or `/settings/*` in `App.tsx`. Append; never insert between existing cards. A route without a card is unacceptable.
+2. **A settings page is never added as a new tab on an existing settings page.** Tabs only for genuinely parallel content inside one destination (Users and Allowlist).
+3. **The card's `permission` is the exact string the API controller enforces**, never invented, and the route's `RequirePermission` gate names the same string: `system_settings:read` (General, AI, Backups, and the platform's Maintenance, Doctor, About), `users:read`, `allowlist:read` (content inside Users), `secret_types:read`, `secrets:read` (My backups), `user_settings:read` (Profile, Appearance); none for Access tokens (`pat.controller.ts` bare `@Auth()`). Writes are gated inside the page. `apps/web/src/__tests__/config/settingsRegistry.test.ts` enforces this.
 4. **Reuse the packaged `SettingsHub`** (`@marinoscar/platform-web/settings/ui`); never fork it.
-5. **The five coupled breakpoint gates move together or not at all** (all at `sm`, 600px, never `md`): `ShellLayout` `showRail` and `<main>` `pb`, `ShellBottomNav` self-gate, `SettingsHub` `isCompactWindow`, `ShellAppBar` `isCompactWindow`. They are the platform's once E10 lands; the app must read no breakpoint of its own for them.
+5. **The five coupled breakpoint gates move together or not at all** (all at `sm`, 600px, never `md`): `ShellLayout` `showRail` and `<main>` `pb`, `ShellBottomNav` self-gate, `SettingsHub` `isCompactWindow`, `ShellAppBar` `isCompactWindow`. They are the platform's; the app reads no breakpoint of its own for them.
 
 ## MANDATORY: Every Long-Running Activity Is a Queue Job (in force since E5.1/E5.3, with listed shims)
 
@@ -110,7 +110,7 @@ Today AI is the generic config/verify/OpenAI provider plus card extraction in `a
 1. **Keys never leave the server and the browser never calls a provider.** Every provider call is server-side. No route, log line, span, error or audit row carries key material; the admin AI key is stored AES-256-GCM-encrypted and write-only.
 2. **Card CVV is never sent to AI and never persisted by extraction.** `POST /api/secrets/cards/extract` persists nothing, never requests or returns the CVV, and runs behind the admin toggle and the daily budget (counted from `audit_events` rows `ai.card.extract`).
 3. **Card photos are user material**: egress is disclosed in the UI (`AiEgressNotice`), and fixtures use generated or placeholder images only.
-4. **AI settings cards declare `feature: 'ai'`** (E10), except the card that switches AI on. A new provider SDK import stays inside its provider folder (`apps/api/src/ai/providers/<provider>/`).
+4. **AI settings cards declare `feature: 'ai'`**, except the card that switches AI on. A new provider SDK import stays inside its provider folder (`apps/api/src/ai/providers/<provider>/`).
 
 ## MANDATORY: Invariants that are easy to break
 

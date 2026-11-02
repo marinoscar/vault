@@ -12,6 +12,14 @@ import {
   SettingsBrightness as SystemIcon,
 } from '@mui/icons-material';
 
+const OPTION_SX = {
+  display: 'flex',
+  flexDirection: { xs: 'column', sm: 'row' },
+  alignItems: 'center',
+  gap: { xs: 0.5, sm: 1 },
+  px: { xs: 0, sm: 1 },
+} as const;
+
 interface ThemeSettingsProps {
   currentTheme: 'light' | 'dark' | 'system';
   onThemeChange: (theme: 'light' | 'dark' | 'system') => void;
@@ -53,22 +61,25 @@ export function ThemeSettings({
           onChange={handleChange}
           aria-label="theme selection"
           disabled={disabled}
-          sx={{ mt: 1 }}
+          fullWidth
+          // Three equal buttons that fit a 390px phone: icon over label below
+          // 600px, side by side above (content adaptation, not a gate).
+          sx={{ mt: 1, maxWidth: 480 }}
         >
           <ToggleButton value="light" aria-label="light mode">
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1 }}>
+            <Box sx={OPTION_SX}>
               <LightIcon />
               <span>Light</span>
             </Box>
           </ToggleButton>
           <ToggleButton value="dark" aria-label="dark mode">
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1 }}>
+            <Box sx={OPTION_SX}>
               <DarkIcon />
               <span>Dark</span>
             </Box>
           </ToggleButton>
           <ToggleButton value="system" aria-label="system preference">
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1 }}>
+            <Box sx={OPTION_SX}>
               <SystemIcon />
               <span>System</span>
             </Box>

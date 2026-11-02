@@ -29,7 +29,7 @@ import DownloadIcon from '@mui/icons-material/Download';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import SaveIcon from '@mui/icons-material/Save';
 import RefreshIcon from '@mui/icons-material/Refresh';
-import { usePermissions } from '../../hooks/usePermissions';
+import { usePermissions } from '@marinoscar/platform-web/identity/headless';
 import {
   deleteBackupRun,
   getBackupDownloadUrl,
@@ -541,7 +541,7 @@ function BackupScheduleCard({ schedule, canWrite, onSaved }: ScheduleCardProps) 
 // =============================================================================
 
 /**
- * "Backups" tab of /admin/settings: the scheduled-backup configuration,
+ * Backups card of the Console (/admin/settings/backups): the scheduled-backup configuration,
  * "Run backup now (save to storage)", "Download a backup now" (streamed,
  * nothing stored) and the run history (system backups only; users' saved
  * backups are never listed here). Reading needs system_settings:read

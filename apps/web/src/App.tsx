@@ -1,11 +1,13 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { ShellPreferencesProvider } from '@marinoscar/platform-web/shell/headless';
 import { ShellRoot } from '@marinoscar/platform-web/shell/ui';
-import { AuthProvider } from './contexts/AuthContext';
-import { PlatformAuthBridge } from './platform/PlatformAuthBridge';
+// Identity is the platform's (E3.3, #78): the session provider, the route
+// guards and the identity pages come from @marinoscar/platform-web/identity.
+import { RequireAuth, RequirePermission } from '@marinoscar/platform-web/identity/headless';
+import { IdentityProviders } from './identity/IdentityProviders';
+import { VaultPlatformHostProvider } from './platform/platformHost';
 import { shellPreferencesPort } from './platform/shellPreferences';
 import { VAULT_THEMES } from './theme';
-import { ProtectedRoute } from './components/common/ProtectedRoute';
 import { Layout } from './components/common/Layout';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 
@@ -13,13 +15,41 @@ import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { Suspense, lazy } from 'react';
 import { LoadingSpinner } from './components/common/LoadingSpinner';
 
-const LoginPage = lazy(() => import('./pages/LoginPage'));
-const AuthCallbackPage = lazy(() => import('./pages/AuthCallbackPage'));
-const ActivateDevicePage = lazy(() => import('./pages/ActivateDevicePage'));
+// The login page is the packaged one with Vault's brand in its slots; the
+// callback, device activation, Access Tokens and Users & Allowlist pages are
+// used as packaged.
+const LoginPage = lazy(() => import('./identity/LoginPage'));
+const AuthCallbackPage = lazy(() =>
+  import('@marinoscar/platform-web/identity/ui').then((m) => ({ default: m.AuthCallbackPage })),
+);
+const ActivateDevicePage = lazy(() =>
+  import('@marinoscar/platform-web/identity/ui').then((m) => ({ default: m.ActivateDevicePage })),
+);
+const UserTokensPage = lazy(() =>
+  import('@marinoscar/platform-web/identity/ui').then((m) => ({ default: m.UserTokensPage })),
+);
+const UsersPage = lazy(() =>
+  import('@marinoscar/platform-web/identity/ui').then((m) => ({ default: m.UsersPage })),
+);
 const HomePage = lazy(() => import('./pages/HomePage'));
-const UserSettingsPage = lazy(() => import('./pages/UserSettingsPage'));
-const SystemSettingsPage = lazy(() => import('./pages/SystemSettingsPage'));
-const UserManagementPage = lazy(() => import('./pages/UserManagementPage'));
+// The two settings hubs and their card pages (E10.3, #94): config/adminSections.tsx
+// and config/userSettingsSections.tsx declare the cards; each card path is a route below.
+const UserSettingsHubPage = lazy(() => import('./pages/UserSettingsHubPage'));
+const ProfileSettingsPage = lazy(() => import('./pages/settings/ProfileSettingsPage'));
+const AppearanceSettingsPage = lazy(() => import('./pages/settings/AppearanceSettingsPage'));
+const MyBackupsPage = lazy(() => import('./pages/settings/MyBackupsPage'));
+const AdminSettingsHubPage = lazy(() => import('./pages/admin/AdminSettingsHubPage'));
+const GeneralSettingsPage = lazy(() => import('./pages/admin/GeneralSettingsPage'));
+const AiSettingsPage = lazy(() => import('./pages/admin/AiSettingsPage'));
+const BackupSettingsPage = lazy(() => import('./pages/admin/BackupSettingsPage'));
+// Packaged pages, read through the platform host (platform/platformHost.tsx).
+const DoctorPage = lazy(() =>
+  import('@marinoscar/platform-web/doctor/ui').then((m) => ({ default: m.DoctorPage })),
+);
+const AboutPage = lazy(() => import('@marinoscar/platform-web/host/ui').then((m) => ({ default: m.AboutPage })));
+const MaintenancePage = lazy(() =>
+  import('@marinoscar/platform-web/host/ui').then((m) => ({ default: m.MaintenancePage })),
+);
 const SecretsPage = lazy(() => import('./pages/SecretsPage'));
 const CardsPage = lazy(() => import('./pages/CardsPage'));
 const ImportCardPage = lazy(() => import('./pages/ImportCardPage'));
@@ -43,6 +73,16 @@ const TestLoginPage = import.meta.env.PROD
   ? null
   : lazy(() => import('./pages/TestLoginPage'));
 
+/** Where a denied settings card page sends the viewer. */
+const TO_HOME = <Navigate to="/" replace />;
+const TO_SETTINGS = <Navigate to="/settings" replace />;
+
+/** `/secret-types/:id/edit` (pre-E10.3 bookmark) to its page under the Secret types card. */
+function SecretTypeEditRedirect() {
+  const { id = '' } = useParams();
+  return <Navigate to={`/settings/secret-types/${encodeURIComponent(id)}/edit`} replace />;
+}
+
 function AppRoutes() {
   return (
     <ErrorBoundary>
@@ -58,7 +98,7 @@ function AppRoutes() {
           )}
 
           {/* Protected routes */}
-          <Route element={<ProtectedRoute />}>
+          <Route element={<RequireAuth loading={<LoadingSpinner fullScreen />} />}>
             {/* Device activation page - without layout for full-screen experience */}
             <Route path="/activate" element={<ActivateDevicePage />} />
 
@@ -74,12 +114,80 @@ function AppRoutes() {
               <Route path="/secrets/new" element={<CreateSecretPage />} />
               <Route path="/secrets/:id" element={<SecretDetailPage />} />
               <Route path="/secrets/:id/edit" element={<EditSecretPage />} />
-              <Route path="/secret-types" element={<SecretTypesPage />} />
-              <Route path="/secret-types/new" element={<CreateSecretTypePage />} />
-              <Route path="/secret-types/:id/edit" element={<EditSecretTypePage />} />
-              <Route path="/settings" element={<UserSettingsPage />} />
-              <Route path="/admin/users" element={<UserManagementPage />} />
-              <Route path="/admin/settings" element={<SystemSettingsPage />} />
+
+              {/* SETTINGS (E10.3). Every card route is gated on EXACTLY the
+                  permission its card declares (the API controller's string),
+                  as `__tests__/config/settingsRegistry.test.ts` asserts by
+                  reading this file: keep `path` and the gate's `permission`
+                  adjacent. Writes are gated inside each page. */}
+              <Route path="/settings" element={<UserSettingsHubPage />} />
+              <Route
+                path="/settings/profile"
+                element={<RequirePermission permission="user_settings:read" fallback={TO_SETTINGS}><ProfileSettingsPage /></RequirePermission>}
+              />
+              <Route
+                path="/settings/appearance"
+                element={<RequirePermission permission="user_settings:read" fallback={TO_SETTINGS}><AppearanceSettingsPage /></RequirePermission>}
+              />
+              {/* Ownership-scoped (the platform's pat.controller.ts, bare @Auth()): no gate. */}
+              <Route path="/settings/tokens" element={<UserTokensPage />} />
+              <Route
+                path="/settings/backups"
+                element={<RequirePermission permission="secrets:read" fallback={TO_SETTINGS}><MyBackupsPage /></RequirePermission>}
+              />
+              <Route
+                path="/settings/secret-types"
+                element={<RequirePermission permission="secret_types:read" fallback={TO_SETTINGS}><SecretTypesPage /></RequirePermission>}
+              />
+              <Route
+                path="/settings/secret-types/new"
+                element={<RequirePermission permission="secret_types:read" fallback={TO_SETTINGS}><CreateSecretTypePage /></RequirePermission>}
+              />
+              <Route
+                path="/settings/secret-types/:id/edit"
+                element={<RequirePermission permission="secret_types:read" fallback={TO_SETTINGS}><EditSecretTypePage /></RequirePermission>}
+              />
+              {/* Pre-E10.3 bookmarks: real redirects, the target route gates. */}
+              <Route path="/secret-types" element={<Navigate to="/settings/secret-types" replace />} />
+              <Route path="/secret-types/new" element={<Navigate to="/settings/secret-types/new" replace />} />
+              <Route path="/secret-types/:id/edit" element={<SecretTypeEditRedirect />} />
+
+              {/* The Console hub: ANY-OF, in sync with the `console` destination's
+                  `anyPermission` in config/destinations.ts. */}
+              <Route
+                path="/admin/settings"
+                element={<RequirePermission permissions={['system_settings:read', 'users:read']} fallback={TO_HOME}><AdminSettingsHubPage /></RequirePermission>}
+              />
+              <Route
+                path="/admin/settings/general"
+                element={<RequirePermission permission="system_settings:read" fallback={TO_HOME}><GeneralSettingsPage /></RequirePermission>}
+              />
+              <Route
+                path="/admin/settings/users"
+                element={<RequirePermission permission="users:read" fallback={TO_HOME}><UsersPage /></RequirePermission>}
+              />
+              <Route
+                path="/admin/settings/ai"
+                element={<RequirePermission permission="system_settings:read" fallback={TO_HOME}><AiSettingsPage /></RequirePermission>}
+              />
+              <Route
+                path="/admin/settings/backups"
+                element={<RequirePermission permission="system_settings:read" fallback={TO_HOME}><BackupSettingsPage /></RequirePermission>}
+              />
+              <Route
+                path="/admin/settings/maintenance"
+                element={<RequirePermission permission="system_settings:read" fallback={TO_HOME}><MaintenancePage /></RequirePermission>}
+              />
+              <Route
+                path="/admin/settings/doctor"
+                element={<RequirePermission permission="system_settings:read" fallback={TO_HOME}><DoctorPage /></RequirePermission>}
+              />
+              <Route
+                path="/admin/settings/about"
+                element={<RequirePermission permission="system_settings:read" fallback={TO_HOME}><AboutPage /></RequirePermission>}
+              />
+              <Route path="/admin" element={<Navigate to="/admin/settings" replace />} />
+              <Route path="/admin/users" element={<Navigate to="/admin/settings/users" replace />} />
               <Route path="/media" element={<MediaFoldersPage />} />
               <Route path="/media/new-folder" element={<CreateFolderPage />} />
               <Route path="/media/:folderId/edit" element={<EditFolderPage />} />
@@ -100,21 +208,23 @@ function AppRoutes() {
 
 /**
  * The tree, outermost first: `ShellRoot` (the Vault themes, the viewer's
- * light / dark / system choice, CssBaseline), Vault's own session, the bridge
- * that re-publishes it to the platform's identity context the shell reads,
- * and the shell's preferences port (the rail's collapse). The shell itself is
+ * light / dark / system choice, CssBaseline), the platform's identity
+ * providers (the session over Vault's one HTTP client, the identity pages'
+ * adapters, the tables' layout store), the platform host the packaged pages
+ * read (Vault's client, the signed-in viewer, the theme setter), and the
+ * shell's preferences port (the rail's collapse). The shell itself is
  * `components/common/Layout.tsx`, the layout route below.
  */
 export default function App() {
   return (
     <ShellRoot themes={VAULT_THEMES}>
-      <AuthProvider>
-        <PlatformAuthBridge>
+      <IdentityProviders>
+        <VaultPlatformHostProvider>
           <ShellPreferencesProvider port={shellPreferencesPort}>
             <AppRoutes />
           </ShellPreferencesProvider>
-        </PlatformAuthBridge>
-      </AuthProvider>
+        </VaultPlatformHostProvider>
+      </IdentityProviders>
     </ShellRoot>
   );
 }
