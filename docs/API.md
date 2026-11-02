@@ -1107,7 +1107,17 @@ Email and notifications are the platform's slices (`@marinoscar/platform-api/ema
 | `GET /admin/broadcasts`, `/admin/broadcasts/audience`, `/admin/broadcasts/:id` | `broadcasts:read` or `org_broadcasts:read` | Either admits; the service scopes to the caller's organization for the org permission |
 | `POST /admin/broadcasts`, `/admin/broadcasts/test`, `/:id/cancel`, `/:id/resume`; `DELETE /admin/broadcasts/:id` | `broadcasts:write` or `org_broadcasts:write` | An admin broadcast fans out through the `admin.broadcast.start` and `admin.broadcast.chunk` jobs into every recipient's inbox (the bell) and, when chosen, email and push |
 
-`broadcasts:*` and `push:*` are system permissions held by `admin`; `org_broadcasts:*` is an organization permission held by `org_admin`. The `notifications` namespace of `/system-settings` is the deployment policy (a channel can be switched off for everyone) and the `notifications` namespace of `/user-settings` holds each user's per-channel preferences. The identity events are `user.welcome` (email), `allowlist.invitation` (email) and `security.role_changed` (email and the bell, mandatory), raised through `IDENTITY_NOTIFIER`. Event keys, channel ids and template names are persisted: never rename one. Vault's own events (secret expiry, backups, shares) arrive with E7.2 (#86); the bell, preference pages, admin pages and the push service worker are the web follow-up.
+`broadcasts:*` and `push:*` are system permissions held by `admin`; `org_broadcasts:*` is an organization permission held by `org_admin`. The `notifications` namespace of `/system-settings` is the deployment policy (a channel can be switched off for everyone) and the `notifications` namespace of `/user-settings` holds each user's per-channel preferences. The identity events are `user.welcome` (email), `allowlist.invitation` (email) and `security.role_changed` (email and the bell, mandatory), raised through `IDENTITY_NOTIFIER`. Event keys, channel ids and template names are persisted: never rename one. Vault's own events (E7.2, #86) are below; the bell, preference pages, admin pages and the push service worker are the web follow-up.
+
+**Event catalog.** An event key is `<domain>.<name>` (the registry accepts exactly one dot), so Vault's are `vault.backup_succeeded`, `vault.backup_failed` and `vault.card_expiring`. All three are in `GET /notifications/events` and therefore in the preferences matrix; none is `mandatory`.
+
+| Event | Channels | Default | Audience | Raised by |
+|---|---|---|---|---|
+| `vault.backup_succeeded` | email, bell/push | off (routine) | the owner of a "My backups" run; the holders of `system_settings:read` for a system run | `BackupNotifier`, after the `backup_runs` row is updated |
+| `vault.backup_failed` | email, bell/push | on | same as above | same |
+| `vault.card_expiring` | email, bell/push | on | the owner of the card secret | job `vault.cards.expiry_scan` |
+
+Backup messages carry the scope, time, size and counts and a deep link (`/settings/backups` for a user run, `/admin/settings/backups` for a system run); a failure carries only one of the static `BACKUP_FAILURE_MESSAGES`, never a raw error, storage key or password. `vault.card_expiring` fires 30 days, 7 days and on the last day of the card's expiry month, once per card, expiry and threshold (the dedup record is an `audit_events` row `vault.card.expiry_notified`, so no table was added; a renewed card is re-armed by its new expiry). Its message carries the secret's name, `MM/YYYY` and a link to `/secrets/:id`; the payload has no field for a number, last four, CVV or any value. Email templates: `vault-backup-succeeded`, `vault-backup-failed`, `vault-card-expiring` (`apps/api/src/email-templates/`).
 
 ---
 
@@ -2022,7 +2032,7 @@ If storage or the password is not configured, the call still returns 202 and the
 **Requires Authentication** (`system_settings:write`) - Returns a signed storage URL valid for 300 seconds.
 
 ```json
-{ "data": { "url": "https://storage.example.test/...", "expiresAt": "2026-11-02T09:05:00.000Z", "fileName": "vault-backup-2026-11-02_090000.zip" } }
+{ "data": { "url": "https://storage.example.test/...", "expiresAt": "2026-11-02T09:05:00.000Z", "fileName": "vault-backup-2026-11-02_090000-9d8c7b6a.zip" } }
 ```
 
 `404 Not Found` if the run does not exist, did not succeed or its object was deleted. **Audit:** `backups.download` with `{ runId }`.
@@ -2092,7 +2102,7 @@ Validation errors are ordinary JSON responses sent before any zip byte; a failur
 
 ### My backups
 
-A user's own backups saved to object storage ("Save to the storage account"). The server builds the same zip as [`POST /secrets/export`](#post-secretsexport) in the background and stores it under `user-backups/<userId>/vault-backup-YYYY-MM-DD_HHmmss.zip`. Concepts and risks: [SECRETS.md § Saved user backups](SECRETS.md#saved-user-backups). Base path: `/api/backups/me`. Every route needs `secrets:read` and works on the caller's own saved backups only: another user's id answers `404`, whatever permissions the caller holds, and an administrator does not see these in the admin list. Responses use the standard `{ "data": ... }` envelope; a run has the shape shown under [`GET /admin/backups`](#get-adminbackups) with `scope: "user"`, `trigger: "manual"` and `triggeredBy` set to you.
+A user's own backups saved to object storage ("Save to the storage account"). The server builds the same zip as [`POST /secrets/export`](#post-secretsexport) in the background and stores it under `user-backups/<userId>/vault-backup-YYYY-MM-DD_HHmmss-<runId8>.zip`. Concepts and risks: [SECRETS.md § Saved user backups](SECRETS.md#saved-user-backups). Base path: `/api/backups/me`. Every route needs `secrets:read` and works on the caller's own saved backups only: another user's id answers `404`, whatever permissions the caller holds, and an administrator does not see these in the admin list. Responses use the standard `{ "data": ... }` envelope; a run has the shape shown under [`GET /admin/backups`](#get-adminbackups) with `scope: "user"`, `trigger: "manual"` and `triggeredBy` set to you.
 
 #### GET /backups/me/config
 
