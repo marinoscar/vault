@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { createHash, randomBytes } from 'crypto';
 import { CreatePatDto } from './dto/create-pat.dto';
 import { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
+import { withMembershipRoles } from '../auth/membership-role-shim';
 
 @Injectable()
 export class PatService {
@@ -156,7 +157,8 @@ export class PatService {
       .update({ where: { id: pat.id }, data: { lastUsedAt: new Date() } })
       .catch(() => {});
 
-    return pat.user as AuthenticatedUser;
+    // PLATFORM-ADOPTION-SHIM(E3.2): permissions of the default-org membership role.
+    return withMembershipRoles(this.prisma, pat.user) as Promise<AuthenticatedUser>;
   }
 
   /**

@@ -5,6 +5,7 @@ import {
   BadRequestException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { withMembershipRoles } from '../auth/membership-role-shim';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes, createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -172,7 +173,10 @@ export class DeviceAuthService {
         }
 
         // Generate tokens
-        const tokens = await this.authService.generateFullTokens(record.user);
+        // PLATFORM-ADOPTION-SHIM(E3.2): include the membership role in the token claim.
+        const tokens = await this.authService.generateFullTokens(
+          await withMembershipRoles(this.prisma, record.user),
+        );
 
         // Mark as used (update status to expired to prevent reuse)
         await this.prisma.deviceCode.update({

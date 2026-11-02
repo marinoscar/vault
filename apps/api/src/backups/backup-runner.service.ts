@@ -991,7 +991,7 @@ export class BackupRunnerService implements OnApplicationBootstrap {
     if (selection.includeMedia) {
       const aggregate = await this.prisma.storageObject.aggregate({
         _sum: { size: true },
-        where: { status: 'ready', mediaFolderId: { not: null } },
+        where: { status: 'ready', mediaFolderFile: { isNot: null } },
       });
       total += Number(aggregate?._sum?.size ?? 0);
     }

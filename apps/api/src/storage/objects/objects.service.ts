@@ -13,6 +13,7 @@ import { randomUUID } from 'crypto';
 import { extname } from 'path';
 
 import { PrismaService } from '../../prisma/prisma.service';
+import { getDefaultOrgId } from '../../prisma/default-org';
 import { Prisma } from '@prisma/client';
 import { STORAGE_PROVIDER } from '../providers/storage-provider.interface';
 import type { StorageProvider } from '../providers/storage-provider.interface';
@@ -106,6 +107,8 @@ export class ObjectsService {
     // Create StorageObject record
     const storageObject = await this.prisma.storageObject.create({
       data: {
+        // PLATFORM-ADOPTION-SHIM(E6): storage_objects.org_id is NOT NULL; Vault is single-org.
+        orgId: await getDefaultOrgId(this.prisma),
         name,
         size: BigInt(size),
         mimeType,
@@ -231,6 +234,8 @@ export class ObjectsService {
           },
           create: {
             objectId,
+            // PLATFORM-ADOPTION-SHIM(E6): chunks carry their object's org_id.
+            orgId: storageObject.orgId,
             partNumber: part.partNumber,
             eTag: part.eTag,
             size: BigInt(0), // We don't know exact part size from client
@@ -343,6 +348,8 @@ export class ObjectsService {
     // Use a default size of 0, should be updated in post-processing
     const storageObject = await this.prisma.storageObject.create({
       data: {
+        // PLATFORM-ADOPTION-SHIM(E6): storage_objects.org_id is NOT NULL; Vault is single-org.
+        orgId: await getDefaultOrgId(this.prisma),
         name: filename,
         size: BigInt(0), // Will be updated by post-processing
         mimeType: mimetype,
