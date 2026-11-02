@@ -8,7 +8,8 @@ Source of truth for every claim below:
 - `apps/api/scripts/transfer-ownership.sql`: the ownership transfer, with its preconditions and its closing check.
 - `infra/compose/postgres-init/10-application-role.sh`: the role attributes.
 - `apps/api/src/prisma/default-org.ts` and `org-scope.ts`: how the API scopes its storage access to the default organization.
-- [database-baseline.md](database-baseline.md): the baseline that must already have run (it creates the policies this role makes effective).
+- [production-cutover.md](production-cutover.md): the end-to-end order (this runbook comes before the baseline on a first cutover).
+- [database-baseline.md](database-baseline.md): the baseline (it creates the policies this role makes effective).
 - `docs/platform-adoption/local-exceptions.md`: the RLS items this closes.
 
 ---
@@ -35,7 +36,7 @@ The target state:
 
 ## 1. Prerequisites
 
-- **The baseline has run.** `npm run db:check:database` and `npm run db:drift` are green, and `SELECT count(*) FROM storage_objects WHERE org_id IS NULL` (run **as the superuser**) is `0`. The baseline runbook comes first and its `--allow-rls` deviation is closed by this one: run this runbook **right after the baseline window**.
+- **Order.** For the **first cutover of a pre-platform database**, do this runbook (sections 3 and 4) **before** the baseline dry run and `prisma:migrate`, so the migrations and the seed run as the application role. This is the order of [production-cutover.md](production-cutover.md) and of CI's `baseline-rehearsal` job. For a database that is already baselined and migrated but still reached as a superuser, run it any time; then the post-migration check applies: `npm run db:check:database` and `npm run db:drift` are green and `SELECT count(*) FROM storage_objects WHERE org_id IS NULL` (run **as the superuser**) is `0` (the column does not exist before the migration, so skip that query on a pre-platform database).
 - **A superuser login** to the cluster. The ownership script refuses to run as anyone else, and the application role must not be used to run it.
 - **A recent verified backup**, downloadable (`pg_dump` of the database, or the provider's snapshot). Ownership changes are reversible (section 7), but you want a way back that does not depend on that argument.
 - **`uuid-ossp` already exists in the database** (it does on every deployment that has run the migrations):
