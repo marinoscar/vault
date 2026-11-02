@@ -1,12 +1,22 @@
 # Module classification
 
-Baseline classification of every Vault module against EnterpriseAppBase (EAB) and its `@marinoscar/platform-*` packages. Input: the generated [drift-baseline.md](drift-baseline.md). Part of the platform migration program, epic [#54](https://github.com/marinoscar/vault/issues/54); written by E0 ([#55](https://github.com/marinoscar/vault/issues/55)).
+Baseline classification of every Vault module against EnterpriseAppBase (EAB) and its `@marinoscar/platform-*` packages. Input: the generated [drift-baseline.md](drift-baseline.md); final state in [drift-final.md](drift-final.md). Part of the platform migration program, epic [#54](https://github.com/marinoscar/vault/issues/54); written by E0 ([#55](https://github.com/marinoscar/vault/issues/55)).
 
 | Field | Value |
 |---|---|
 | EAB commit | `59e377cbebb60e711fe4d7b0d818715f23af8a59` |
 | Vault commit | `1b2074d` |
 | Date | 2026-11-02 |
+
+**Final state (E11.3, [#101](https://github.com/marinoscar/vault/issues/101)).** All twelve epics are merged; this page is closed out against [drift-final.md](drift-final.md) (Vault `9003110`). Every row now ends in one of: **adopted slice** (Vault code deleted, platform serves it), **moved to a `vault-*` package** (domain, E12), **host binding** (stays in `apps/`: a `forRoot` option, registration or glue), or **permanent divergence** ([local-exceptions](local-exceptions.md#permanent-divergences)). Rows that still read "E3" or "E10" as a plan are done; the summary:
+
+| Final status | Rows |
+|---|---|
+| Adopted slice, Vault code deleted | API: auth, users, allowlist, pat, device-auth, health, storage, generic ai, jobs and nodes, email and notifications, db-backup. Web: identity UI, device activation, PAT UI, tab settings (now `SettingsHub`). CLI: `tools/app`, `tools/vaultcli` core. Infra: compose, nginx, otel (generated), Uptrace (deleted) |
+| Moved to a `vault-*` package (E12) | `secrets`, `secret-types`, `backups`, `media`, card extraction, card-expiry reminders; their pages, hooks and brand; wire schemas and error codes (`vault-contract`); fragments and migrations (`vault-db`) |
+| Host binding (stays in `apps/`) | `app.module.ts`, `main.ts`, `platform/*` bindings, `app-registrations/*`, Doctor checks and export, onboarding and user-data glue, `apps/web` shell, destinations, registries and theme, `apps/cli` `src/vault/` |
+| Permanent divergence | `crypto.service.ts` (`VAULT_ENCRYPTION_KEY`), raw-zip export endpoints, logical secret backups beside `db-backup`, `secret_versions_current_unique`, system secret types, card CVV rules, domain permission strings, single-organization scope |
+| Open (temporary) | Legacy `infra/deploy/`, `nginx.prod.conf`, `scripts/dev.ps1` ([follow-up D](local-exceptions.md#status-at-close-out-e113-101)); `useUserSettings` profile shim |
 
 **Categories** (details in [README.md](README.md#categories)): **noise** (package replaces it; delete), **backport** (Vault has something the platform lacks; re-express on top of the package), **domain** (stays in `apps/` until E12, then `@marinoscar/vault-*`), **vault-divergence** (kept on purpose; see [local-exceptions.md](local-exceptions.md)).
 
@@ -21,7 +31,7 @@ Baseline classification of every Vault module against EnterpriseAppBase (EAB) an
 | `allowlist` | 8 | noise | `identity` allowlist | E3 | `INITIAL_ADMIN_EMAIL` bypass and claimed-entry rule must survive **Done in E3.2 (#77): deleted, served by `IdentityModule.forRoot` (`apps/api/src/platform/identity/`).** |
 | `pat` (personal access tokens) | 8 | noise | `identity` PATs | E3 | Existing token hashes must stay valid: verify hash format in the E2/E3 rehearsal **Done in E3.2 (#77): deleted, served by `IdentityModule.forRoot` (`apps/api/src/platform/identity/`).** |
 | `device-auth` (RFC 8628) | 16 | noise | `identity` device flow | E3 | `vaultcli` login depends on it; test against the new CLI in E11 **Done in E3.2 (#77): deleted, served by `IdentityModule.forRoot` (`apps/api/src/platform/identity/`).** |
-| `test-auth` (`/api/auth/test/login`) | 7 | vault-divergence | app test-login binding | E3 | Mock OAuth for CI; keep or replace with the platform's test helpers **Done in E3.2 (#77): deleted, served by `IdentityModule.forRoot` (`apps/api/src/platform/identity/`).** |
+| `test-auth` (`/api/auth/test/login`) | 7 | noise | app test-login binding | E3 | Mock OAuth for CI; keep or replace with the platform's test helpers **Done in E3.2 (#77): deleted, served by `IdentityModule.forRoot` (`apps/api/src/platform/identity/`).** |
 | Jobs and nodes (new in E5.1, #81) | 3 | noise | platform `jobs` + `nodes` | E5 (done: E5.1) | `platform/jobs/` binds `JobsModule.forRoot` / `NodesModule.forRoot` and the host ports; `app-registrations/jobs.ts`. `IDENTITY_JOBS` is `platform/identity/identity-jobs.adapter.ts`. `ai/ai-burst-limiter.service.ts` lost its `@Interval` (lazy pruning on `consume`, E5.3 #83) |
 | Email and notifications (new in E7.1, #85) | 2 | noise | platform `email` + `notifications` | E7 (done: E7.1 API; web in a follow-up) | `platform/email/` (options: Vault teal `THEME_COLOR`, logo `assets/email/logo.png`) and `platform/notifications/` (host ports, the manifest) bind `EmailModule.forRoot`, `NotificationsModule.forRoot` and `BroadcastsModule`; `notifications-registry/identity.notifications.ts` owns the three identity events; `IDENTITY_NOTIFIER` is `platform/identity/identity-notifier.adapter.ts`. Vault's own events (`notifications-registry/vault.notifications.ts`: backup result, card expiring) and templates (`email-templates/`) are E7.2 (#86); the backup notifier is `backups/backup-notifier.service.ts`, the card expiry scan `card-expiry/` |
 | `health` | 5 | noise | `host` health controller | E3 | **Done in E3.1 (#76)**: deleted; `/api/health`, `/live` and `/ready` are the platform's, pinned by `test/health/health.integration.spec.ts` |
@@ -47,19 +57,19 @@ Baseline classification of every Vault module against EnterpriseAppBase (EAB) an
 | `contexts/AuthContext`, `components/auth`, `LoginPage`, `AuthCallbackPage`, `ProtectedRoute`, `RequirePermission`, `hooks/usePermissions` | noise | `@marinoscar/platform-web/identity` | E3 | Brand mark goes in the `Logo` slot **Done in E3.3 (#78): deleted, replaced by `@marinoscar/platform-web/identity` (headless + ui), bound in `apps/web/src/identity/`.** |
 | `components/device-activation`, `ActivateDevicePage` | noise | identity UI | E3 | **Done in E3.3 (#78): deleted, replaced by `@marinoscar/platform-web/identity` (headless + ui), bound in `apps/web/src/identity/`.** |
 | `UserManagementPage`, `components/admin` (`UserList`, `AllowlistTable`, `AddEmailDialog`) | noise | identity `UsersPage` (Users + Allowlist tabs) | E3 | **Done in E3.3 (#78): deleted, replaced by `@marinoscar/platform-web/identity` (headless + ui), bound in `apps/web/src/identity/`.** |
-| `SystemSettingsPage` (tabs), `UserSettingsPage`, `components/admin/{SystemSettingsEditor,UISettings,FeatureFlagsList}` | vault-divergence | registry-driven `SettingsHub` | E10 | Tabs are the divergence; "Advanced (JSON)" tab needs a decision (likely dropped) |
-| `components/settings/{ProfileSettings,ThemeSettings,ImageUpload}` | noise | platform Profile / Appearance pages | E4 / E10 | |
+| `SystemSettingsPage` (tabs), `UserSettingsPage`, `components/admin/{SystemSettingsEditor,UISettings,FeatureFlagsList}` | noise | registry-driven `SettingsHub` | E10 | **Done in E10.3 (#94)**: tabs gone, "Advanced (JSON)" dropped |
+| `components/settings/{ProfileSettings,ThemeSettings,ImageUpload}` | host binding | platform Appearance page; `ProfileSettings` kept in `vault-web` | E4 / E10 | Open: the profile shim goes when the platform `UserProfilePage` replaces `ProfileSettings` ([local-exceptions](local-exceptions.md#status-at-close-out-e113-101)) |
 | `components/settings/{PersonalAccessTokens,CreatePatDialog,PatTokenRevealDialog}` | noise | identity PAT UI | E3 / E10 | **Done in E3.3 (#78): deleted, replaced by `@marinoscar/platform-web/identity` (headless + ui), bound in `apps/web/src/identity/`.** |
-| `components/settings/{AiSettings}` | noise | platform AI pages | E8 / E10 | |
+| `components/settings/{AiSettings}` | noise | platform AI pages | E8 / E10 | **Done in E8.1 (#87)**: packaged AI admin pages |
 | `components/settings/{DataBackup,BackupContentsGroup,BackupPasswordFields,BackupRunsTable}`, `components/admin/{ScheduledBackups,AdminBackupDownloadDialog}`, `utils/{backupContents,backupPassword,backupSchedule}` | domain | vault-web; become settings cards "My backups" and "Backups" | E10 / E12 | **Moved to `@marinoscar/vault-web` in E12.3 (#104).** |
-| `components/navigation` (`Sidebar`, `AppBar`, `UserMenu`), `components/common/Layout.tsx` | vault-divergence | platform `ShellLayout` + `ShellNavigation` | E10 | Flat sidebar replaced by destinations |
+| `components/navigation` (`Sidebar`, `AppBar`, `UserMenu`), `components/common/Layout.tsx` | vault-divergence | platform `ShellLayout` + `ShellNavigation` | E10 | **Done in E10.1/E10.2 (#115)**: flat sidebar replaced by destinations; `Layout.tsx` is a binding |
 | `theme/` (`light`, `dark`, `components`) | backport | `createShellTheme` with Vault brand tokens | E10 | Tokens in [ux-refresh](../specs/ux-refresh.md#5-brand-tokens) |
 | `pages/{SecretsPage,SecretDetailPage,CreateSecretPage,EditSecretPage}`, `components/secrets`, `hooks/{useSecrets,useSecretDetail}` | domain | vault-web; list on `platform-web/datatable` | E10 / E12 | **Moved to `@marinoscar/vault-web` in E12.3 (#104).** |
 | `pages/{SecretTypesPage,CreateSecretTypePage,EditSecretTypePage}`, `components/secret-types`, `hooks/useSecretTypes` | domain | vault-web | E12 | Candidate settings card "Secret types" **Moved to `@marinoscar/vault-web` in E12.3 (#104).** |
 | `pages/{CardsPage,ImportCardPage,RenewCardPage}`, `components/cards`, `hooks/{useCards,useCardImport,useCardRenewal,useAiStatus}`, `utils/{cardExpiry,cardFormat,cardImage}` | domain | vault-web | E8 / E10 / E12 | **Moved to `@marinoscar/vault-web` in E12.3 (#104).** |
 | `pages/Media*`, `pages/{CreateFolderPage,EditFolderPage,RenameMediaFilePage}`, `components/media`, `hooks/{useMediaFiles,useMediaFolders}` | domain | vault-web | E12 | **Moved to `@marinoscar/vault-web` in E12.3 (#104).** |
-| `pages/HomePage`, `components/home/*` | vault-divergence | Home dashboard on shell | E10 | |
-| `hooks/{useSystemSettings,useUserSettings,useAllowlist,useUsers,usePersonalAccessTokens}` | noise | platform hooks | E3 / E4 | |
+| `pages/HomePage`, `components/home/*` | domain | Home dashboard on shell | E10 / E12 | **Done in E10.6 (#117)**; moved to `@marinoscar/vault-web` in E12.3 |
+| `hooks/{useSystemSettings,useUserSettings,useAllowlist,useUsers,usePersonalAccessTokens}` | noise | platform hooks | E3 / E4 | Done except `useUserSettings`, kept in `vault-web` with its profile shim |
 | `services/api.ts` | backport | `createPlatformApiClient` + domain endpoint functions | E3 | Raw-zip downloads use `saveBlob`; keep outside the envelope parser |
 | `utils/{clipboard,saveBlob}`, `hooks/useCopyToClipboard` | domain | vault-web | stays | **Moved to `@marinoscar/vault-web` in E12.3 (#104).** |
 | `__tests__/` | domain | stay; platform conformance added | E11 | Vitest already |
@@ -71,7 +81,7 @@ Baseline classification of every Vault module against EnterpriseAppBase (EAB) an
 | `tools/app` (`@vault/cli`, generic template CLI: allowlist, auth, config, docker, health, prisma, settings, storage, sync, test, users) | noise | `@marinoscar/platform-cli` `createCli` commands | E11 | Deleted in E11.1 (#99) |
 | `tools/vaultcli` core (`auth`, `config`, `health`, TUI plumbing) | noise | platform-cli `login`, `config`, `api` | E11 | Done in E11.1 (#99): `vault login`/`config`/`auth`; `~/.config/vaultcli` files are still read, [migration table](../../apps/cli/README.md#migrating-from-vaultcli) |
 | `tools/vaultcli` domain (`secrets`, `versions`, `backup`, `admin-backups`, `sync`, `types`, interactive menus) | domain | `extraCommands` of the `vault` CLI | E11 | Done in E11.1 (#99): `apps/cli/src/vault/` |
-| `tools/vaultcli/install.sh` (now `apps/cli/install.sh`), `infra/deploy/*` | vault-divergence | `vault deploy` pipeline | E11 | `infra/deploy/install-vault.sh`, `update.sh`, `vault.conf`, `DEPLOY.md` replaced by `vault deploy` |
+| `tools/vaultcli/install.sh` (now `apps/cli/install.sh`), `infra/deploy/*` | open (legacy) | `vault deploy` pipeline | E11 | `vault deploy` replaces `infra/deploy/install-vault.sh`, `update.sh`, `vault.conf`, `DEPLOY.md`; the files are still shipped and deprecated (follow-up D) |
 
 ## Prisma models (composed from `@marinoscar/platform-db` plus `apps/api/prisma/fragments/`)
 
@@ -108,8 +118,8 @@ Installed migrations are never edited or renamed. Since E12.1 the eight app-owne
 | `infra/compose/{base,dev,prod,test}.compose.yml`, `.env.example` | noise | generated by `platform:infra:sync`; app overlays in `app.*.compose.yml`, `app.env.example` | E11 |
 | ~~`infra/compose/otel.compose.yml`, `infra/otel/uptrace.yml`~~ (deleted in E9.2, #90); `infra/otel/otel-collector-config.yaml` is generated | vault-divergence | GreptimeDB `telemetry.compose.yml` | E9 / E11 (done) |
 | `infra/nginx/{nginx.conf,nginx.prod.conf}` | noise | generated; app-owned `nginx/app.d/` | E11 |
-| `infra/deploy/*` | vault-divergence | `vault deploy` | E11 |
-| `.github/workflows/{ci,deploy}.yml` | noise | platform CI shape plus conformance jobs | E11 (CI edits are out of E0) |
+| `infra/deploy/*` | open (legacy) | `vault deploy` (E11.1) | E11; deletion pending (follow-up D) |
+| `.github/workflows/{ci,deploy}.yml` | noise | platform CI shape plus conformance jobs | E11 (done: full API conformance, web conformance, OpenAPI dump and lint, image build in E11.3) |
 | `.github/ISSUE_TEMPLATE/*`, `pull_request_template.md` | noise | aligned in E0 | E0 |
 | `scripts/{dev,worktree}.ps1` | domain | stay | |
 | `tests/e2e` (Playwright) | domain | stay; add visual/e2e plan from ux-refresh | E10 |

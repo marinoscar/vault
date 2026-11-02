@@ -29,7 +29,8 @@ Index of every document in `docs/`, plus the "Doc map by task". Rules for assist
 | [PACKAGES.md](PACKAGES.md) | The `vault-contract` and `vault-db` packages: layout, build, tests, `vault.lock`, versioning plan | |
 | [runbooks/release-vault-packages.md](runbooks/release-vault-packages.md) | Release the `@marinoscar/vault-*` packages: changesets, the `next` dist-tag, OIDC trusted publishing, owner setup, dry run, rollback | |
 | [runbooks/vault-domain-migration.md](runbooks/vault-domain-migration.md) | Author a domain migration (`vault-db promote`), install the domain into a new host, fix a failing `vault-db check` | |
-| [platform-adoption/drift-baseline.md](platform-adoption/drift-baseline.md) | Frozen generated drift report | |
+| [platform-adoption/drift-baseline.md](platform-adoption/drift-baseline.md) | Frozen generated drift report (start of the program) | |
+| [platform-adoption/drift-final.md](platform-adoption/drift-final.md) | Frozen drift report at close-out (E11.3) with remaining drift classified | |
 | [specs/ux-refresh.md](specs/ux-refresh.md) | UX spec for E10: destinations, shell, brand, settings hub, datatable, Home | |
 | [specs/README.md](specs/README.md) | Historical implementation specs 01 to 24 | |
 | [System_Specification_Document.md](System_Specification_Document.md) | Original system specification | |

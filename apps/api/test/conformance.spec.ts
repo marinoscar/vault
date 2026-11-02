@@ -1,13 +1,16 @@
 // The platform's invariants, run against THIS app (`runPlatformConformance`).
 // The package owns each scan; the app supplies only its own data.
 //
-// Only the suites of the slices Vault has ADOPTED run. Each suite of a slice that
-// is not adopted yet is listed below with the written reason and the epic
-// child that removes the skip (platform-adoption epic #54: E3.1 = #76 host,
-// E3.2 = #77 identity, E4.1 = #79 settings, E5.1 = #81 jobs and nodes,
-// E5.3 = #83 queue rule, E6.1 = #84 storage, E7.1 = #85 email and notifications).
+// EVERY suite the installed @marinoscar/platform-api offers runs here (E11.3, #101), except
+// the five AI suites that boot the app (test/ai-conformance.spec.ts). A suite is skipped only
+// with a written reason: the slice is not mounted (sharing, webhooks, alerts, android-app) or
+// the suite's vacuity guard cannot be met (on-event-no-io).
 import '../src/app-registrations/registrations';
 import '@marinoscar/platform-api/ai/testing';
+import '@marinoscar/platform-api/alerts/testing';
+import '@marinoscar/platform-api/android-app/testing';
+import '@marinoscar/platform-api/credentials/testing';
+import '@marinoscar/platform-api/doctor/testing';
 import '../src/platform/storage/storage-key-prefix.manifest';
 import '@marinoscar/platform-api/db-backup/testing';
 import '@marinoscar/platform-api/email/testing';
@@ -18,9 +21,11 @@ import '@marinoscar/platform-api/jobs/testing';
 import '@marinoscar/platform-api/notifications/testing';
 import '@marinoscar/platform-api/onboarding/testing';
 import '@marinoscar/platform-api/settings/testing';
+import '@marinoscar/platform-api/sharing/testing';
 import '@marinoscar/platform-api/telemetry/testing';
 import '@marinoscar/platform-api/storage/testing';
 import '@marinoscar/platform-api/user-data/testing';
+import '@marinoscar/platform-api/webhooks/testing';
 
 import { Module } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -37,6 +42,7 @@ import { runPlatformConformance } from '@marinoscar/platform-api/testing';
 import { composedSchemaDatamodel } from '@marinoscar/platform-api/user-data';
 
 import { AppModule } from '../src/app.module';
+import { doctorConformanceFixture } from './conformance/doctor-fixture';
 import { CRON_EXEMPTIONS, VAULT_API_SOURCE_ROOT, VAULT_SOURCE_ROOTS } from './jobs/cron-source-roots';
 
 const API_DIR = join(__dirname, '..');
@@ -151,6 +157,24 @@ runPlatformConformance({
     // read-only, no response carries a stored GreptimeDB password, and the module boots with telemetry
     // off. The slice's retention cron ships in the package, outside Vault's source root.
     telemetry: {},
+
+    // The credentials slice: every registered purpose names an owner (a platform slice or
+    // `app`), the credential response schemas carry no secret field, and the cipher domains are
+    // distinct. Vault's own purposes are registered under the `app` owner; its secret values are
+    // `secret_versions` rows under VAULT_ENCRYPTION_KEY, a different store (credential-purposes.manifest.ts).
+    credentials: { appOwners: ['app'] },
+
+    // Rule 3 of the Doctor check contract: every check the booted app registers (the platform's and
+    // Vault's own under src/doctor/checks) is read-only, run against a recording Prisma client and a
+    // write-refusing storage provider. `minChecks` is the vacuity guard.
+    doctorReadOnly: { fixture: doctorConformanceFixture, minChecks: 15 },
+
+    // Slices Vault deliberately does not mount. Each suite needs the slice's routes and tables, so
+    // there is nothing to check until an epic adopts the slice; the skip is then removed.
+    sharing: { skip: 'Vault mounts no sharing slice (no groups, grants or link shares): secrets are owner-only and visibility is by ownership; no model carries owner_group_id.' },
+    webhooks: { skip: 'Vault mounts no webhooks slice (WebhooksModule is not imported); there are no webhook routes, tables or events to check.' },
+    alerts: { skip: 'Vault mounts no alerts slice (AlertsModule is not imported); there are no alert rules or incidents to check.' },
+    androidApp: { skip: 'Vault mounts no android-app slice (no trusted apps, hosted APK releases or assetlinks route); Vault ships no native companion.' },
 
     // The `@Cron` half of queue rule 1 (E5.1/E5.3, #81/#83): every `@Cron` body in Vault's own
     // sources only enqueues a job. The platform's crons (the three permanent exemptions, the

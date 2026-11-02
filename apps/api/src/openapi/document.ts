@@ -1,3 +1,5 @@
+// Side effect: registers this app's tag taxonomy into `openApiTags`.
+import './tags';
 import { resolveApiVersion, type PlatformOpenApiOptions } from '@marinoscar/platform-api/host';
 
 /** Vault's identity in the OpenAPI document and on `/api/docs` (Scalar). */
