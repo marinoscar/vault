@@ -9,6 +9,7 @@ import {
 } from '@mui/material';
 import {
   PhotoCamera as CameraIcon,
+  PhotoLibraryOutlined as LibraryIcon,
   Refresh as RetakeIcon,
 } from '@mui/icons-material';
 
@@ -69,9 +70,13 @@ const COPY = {
 /**
  * One capture step of the import wizard.
  *
- * `capture="environment"` asks a phone for the rear camera and opens the camera
+ * Camera-friendly (E10.5): the primary action is a file input with
+ * `capture="environment"`, which asks a phone for the rear camera and opens it
  * directly; on a desktop browser the same input degrades to an ordinary file
  * picker, which is why this is a file input rather than a getUserMedia preview.
+ * A second, secondary action picks an existing photo from the library (no
+ * `capture`), for a card photographed earlier. On a phone both buttons are full
+ * width, comfortably above the 44px target size.
  *
  * No cropping happens here: the FULL photo is shown as-is for a use-it-or-
  * retake decision, and the full frame is what the extraction endpoint receives
@@ -95,7 +100,8 @@ export function CardCaptureStep({
   continueLabel,
   skipLabel = 'Skip the back',
 }: CardCaptureStepProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const libraryRef = useRef<HTMLInputElement>(null);
   const copy = COPY[side];
 
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -105,9 +111,11 @@ export function CardCaptureStep({
     if (file) onFileSelected(file);
   };
 
+  const fullWidthOnPhone = { width: { xs: '100%', sm: 'auto' }, minHeight: 44 } as const;
+
   return (
-    <Paper sx={{ p: { xs: 2, md: 3 } }}>
-      <Typography variant="h6" gutterBottom>
+    <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 } }}>
+      <Typography variant="h6" component="h2" gutterBottom>
         {heading ?? copy.heading}
       </Typography>
       <Typography
@@ -126,7 +134,7 @@ export function CardCaptureStep({
       )}
 
       <input
-        ref={inputRef}
+        ref={cameraRef}
         type="file"
         accept="image/*"
         capture="environment"
@@ -135,11 +143,21 @@ export function CardCaptureStep({
         data-testid={`card-${side}-input`}
         aria-label={copy.action}
       />
+      <input
+        ref={libraryRef}
+        type="file"
+        accept="image/*"
+        onChange={handleChange}
+        style={{ display: 'none' }}
+        data-testid={`card-${side}-library-input`}
+        aria-label={`Choose a photo of the ${side}`}
+      />
 
       {photo ? (
         <Box
           sx={{
             mb: 2,
+            mx: { xs: 'auto', sm: 0 },
             borderRadius: 1,
             overflow: 'hidden',
             border: 1,
@@ -151,71 +169,121 @@ export function CardCaptureStep({
             component="img"
             src={photo.previewUrl}
             alt={`Photo of the ${side} of the card`}
-            sx={{ display: 'block', width: '100%', height: 'auto' }}
+            sx={{ display: 'block', width: '100%', height: 'auto', maxHeight: 360, objectFit: 'contain' }}
           />
         </Box>
       ) : (
+        // A card-shaped frame with corner guides: what "every corner in the
+        // shot" looks like. Decorative; the buttons below carry the action.
         <Box
+          aria-hidden="true"
           sx={{
+            position: 'relative',
             mb: 2,
+            mx: { xs: 'auto', sm: 0 },
             maxWidth: 480,
             aspectRatio: String(CARD_ASPECT_RATIO),
             border: 1,
             borderStyle: 'dashed',
             borderColor: 'divider',
-            borderRadius: 1,
+            borderRadius: 2,
+            bgcolor: 'action.hover',
             display: 'flex',
+            flexDirection: 'column',
+            gap: 1,
             alignItems: 'center',
             justifyContent: 'center',
-            color: 'text.disabled',
+            color: 'text.secondary',
+            '& .corner': {
+              position: 'absolute',
+              width: 28,
+              height: 28,
+              borderColor: 'primary.main',
+              borderStyle: 'solid',
+              borderWidth: 0,
+            },
           }}
         >
+          <Box className="corner" sx={{ top: 10, left: 10, borderTopWidth: 3, borderLeftWidth: 3, borderTopLeftRadius: 8 }} />
+          <Box className="corner" sx={{ top: 10, right: 10, borderTopWidth: 3, borderRightWidth: 3, borderTopRightRadius: 8 }} />
+          <Box className="corner" sx={{ bottom: 10, left: 10, borderBottomWidth: 3, borderLeftWidth: 3, borderBottomLeftRadius: 8 }} />
+          <Box className="corner" sx={{ bottom: 10, right: 10, borderBottomWidth: 3, borderRightWidth: 3, borderBottomRightRadius: 8 }} />
           {isProcessing ? (
             <CircularProgress size={28} />
           ) : (
-            <Typography variant="body2">No photo yet</Typography>
+            <>
+              <CameraIcon sx={{ fontSize: 36, color: 'text.disabled' }} />
+              <Typography variant="body2">
+                {side === 'front' ? 'Front of the card' : 'Back of the card'}
+              </Typography>
+            </>
           )}
         </Box>
       )}
 
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: { xs: 'column', sm: 'row' },
+          flexWrap: 'wrap',
+          gap: 1,
+        }}
+      >
         {photo ? (
           <>
+            <Button
+              variant="contained"
+              onClick={onContinue}
+              disabled={isProcessing}
+              sx={fullWidthOnPhone}
+            >
+              {continueLabel ?? (side === 'front' ? 'Continue' : 'Read the card')}
+            </Button>
             <Button
               variant="outlined"
               startIcon={<RetakeIcon />}
               onClick={() => {
                 onRetake();
-                inputRef.current?.click();
+                cameraRef.current?.click();
               }}
               disabled={isProcessing}
+              sx={fullWidthOnPhone}
             >
               Retake
             </Button>
-            <Button variant="contained" onClick={onContinue} disabled={isProcessing}>
-              {continueLabel ?? (side === 'front' ? 'Continue' : 'Read the card')}
-            </Button>
           </>
         ) : (
-          <Button
-            variant="contained"
-            startIcon={<CameraIcon />}
-            onClick={() => inputRef.current?.click()}
-            disabled={isProcessing}
-          >
-            {copy.action}
-          </Button>
+          <>
+            <Button
+              variant="contained"
+              startIcon={<CameraIcon />}
+              onClick={() => cameraRef.current?.click()}
+              disabled={isProcessing}
+              sx={fullWidthOnPhone}
+            >
+              {copy.action}
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<LibraryIcon />}
+              onClick={() => libraryRef.current?.click()}
+              disabled={isProcessing}
+              sx={fullWidthOnPhone}
+            >
+              Choose a photo
+            </Button>
+          </>
         )}
 
         {onSkip && (
-          <Button onClick={onSkip} disabled={isProcessing}>
+          <Button onClick={onSkip} disabled={isProcessing} sx={fullWidthOnPhone}>
             {skipLabel}
           </Button>
         )}
 
-        <Box sx={{ flexGrow: 1 }} />
+        <Box sx={{ flexGrow: 1, display: { xs: 'none', sm: 'block' } }} />
 
-        <Button color="inherit" onClick={onCancel} disabled={isProcessing}>
+        <Button color="inherit" onClick={onCancel} disabled={isProcessing} sx={fullWidthOnPhone}>
           Cancel
         </Button>
       </Box>

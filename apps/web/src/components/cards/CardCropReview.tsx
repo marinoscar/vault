@@ -37,6 +37,13 @@ interface CardCropReviewProps {
   sides: CardCropReviewSide[];
   disabled?: boolean;
   /**
+   * Summary mode, for the Review step: small read-only thumbnails of what will
+   * be stored and one "Change crop" action (calls `onEdit`, which takes the
+   * wizard back to its Crop step). No adjuster opens in this mode.
+   */
+  compact?: boolean;
+  onEdit?: () => void;
+  /**
    * A new crop was confirmed in the adjuster and rendered. The caller replaces
    * its stored image (revoking the old preview URL) and remembers the
    * adjustments so reopening the adjuster resumes from them.
@@ -61,6 +68,8 @@ interface CardCropReviewProps {
 export function CardCropReview({
   sides,
   disabled = false,
+  compact = false,
+  onEdit,
   onCropChange,
 }: CardCropReviewProps) {
   const [adjustingSide, setAdjustingSide] = useState<'front' | 'back' | null>(null);
@@ -68,6 +77,60 @@ export function CardCropReview({
   const [renderError, setRenderError] = useState<string | null>(null);
 
   if (sides.length === 0) return null;
+
+  if (compact) {
+    return (
+      <Box
+        sx={{
+          mb: 3,
+          p: 1.5,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1.5,
+          flexWrap: 'wrap',
+          borderRadius: 1,
+          border: 1,
+          borderColor: 'divider',
+          bgcolor: 'action.hover',
+        }}
+      >
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          {sides.map((entry) =>
+            entry.crop ? (
+              <Box
+                key={entry.side}
+                component="img"
+                src={entry.crop.image.previewUrl}
+                alt={`Cropped ${entry.side} of the card`}
+                sx={{
+                  display: 'block',
+                  width: 88,
+                  aspectRatio: String(CARD_ASPECT_RATIO),
+                  objectFit: 'cover',
+                  borderRadius: 1,
+                  border: 1,
+                  borderColor: 'divider',
+                }}
+              />
+            ) : null,
+          )}
+        </Box>
+        <Box sx={{ flex: '1 1 160px', minWidth: 0 }}>
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            {sides.length === 2 ? 'Front and back photos' : `${sides[0].side === 'front' ? 'Front' : 'Back'} photo`}
+          </Typography>
+          <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
+            Only these crops are stored with the card.
+          </Typography>
+        </Box>
+        {onEdit && (
+          <Button size="small" startIcon={<CropIcon />} onClick={onEdit} disabled={disabled}>
+            Change crop
+          </Button>
+        )}
+      </Box>
+    );
+  }
 
   const adjusting = sides.find((entry) => entry.side === adjustingSide) ?? null;
 
@@ -95,9 +158,6 @@ export function CardCropReview({
 
   return (
     <Box sx={{ mb: 3 }}>
-      <Typography variant="subtitle1" gutterBottom>
-        Card photos
-      </Typography>
       <Typography
         variant="body2"
         sx={{
@@ -116,7 +176,7 @@ export function CardCropReview({
 
       <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
         {sides.map((entry) => (
-          <Box key={entry.side} sx={{ width: { xs: '100%', sm: 232 } }}>
+          <Box key={entry.side} sx={{ width: { xs: '100%', sm: 280 } }}>
             <Typography variant="caption" sx={{
               color: "text.secondary"
             }}>

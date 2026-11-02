@@ -1,32 +1,39 @@
-import { Alert, AlertTitle, Typography } from '@mui/material';
+import { Alert, AlertTitle, Box, Typography } from '@mui/material';
+import { CloudUploadOutlined as EgressIcon } from '@mui/icons-material';
 
 /**
  * Explicit notice that the card photographs leave this server for OpenAI.
  *
  * This is a real third-party data egress involving a payment instrument, so it
  * is a warning the user reads before the call happens — not a line of fine
- * print under the button. The facts that matter to someone deciding are all
- * stated: what is sent (the FULL photo, so the model can locate the card),
- * what is stored (only the cropped card rectangle), and — because it is the
- * detail a reader is most likely to assume otherwise — that the security code
- * is among what is read and saved.
+ * print under the button. It sits at the top of the capture step, above the
+ * camera button, and stays there for both photos (E10.5, issue #96). The facts
+ * that matter to someone deciding are all stated: what is sent (the FULL
+ * photo, so the model can locate the card), what is stored (only the cropped
+ * card rectangle), and that the security code is never taken from the photo:
+ * the user types it on the review step.
  */
 export function AiEgressNotice() {
   return (
-    <Alert severity="warning" sx={{ mb: 2 }}>
-      <AlertTitle>Your card photo will be sent to OpenAI</AlertTitle>
+    <Alert
+      severity="warning"
+      icon={<EgressIcon />}
+      sx={{ mb: 2 }}
+      role="note"
+      aria-label="Your card photo will be sent to OpenAI"
+    >
+      <AlertTitle sx={{ fontWeight: 600 }}>Your card photo will be sent to OpenAI</AlertTitle>
       <Typography variant="body2" component="div">
-        To read the details, the full photo is sent to OpenAI, which finds the
-        card in the frame and reads what is printed on it. Only the cropped
-        card rectangle is kept as the stored photo — the full picture is never
-        uploaded to storage, and nothing is stored by this app until you
-        confirm the details on the next screen.
+        The full photo goes to OpenAI so it can find the card in the frame and
+        read what is printed on it. Only the cropped card is stored, and only
+        once you save.
       </Typography>
-      <Typography variant="body2" component="div" sx={{ mt: 1 }}>
-        This includes your security code (CVV / CVC): it is read from the photo
-        along with everything else and saved, encrypted, with the card. Check it
-        on the next screen before saving.
-      </Typography>
+      <Box component="div" sx={{ mt: 1 }}>
+        <Typography variant="body2" component="div">
+          Your security code (CVV / CVC) is never filled in from the photo: you
+          type it yourself on the review step.
+        </Typography>
+      </Box>
     </Alert>
   );
 }

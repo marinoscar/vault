@@ -10,20 +10,20 @@ import {
   Container,
   Link,
   Paper,
-  Step,
-  StepLabel,
-  Stepper,
   TextField,
   Typography,
 } from '@mui/material';
+import { AutoAwesomeOutlined as AiIcon } from '@mui/icons-material';
 
 import { AiEgressNotice } from '../components/cards/AiEgressNotice';
 import { CardCaptureStep } from '../components/cards/CardCaptureStep';
 import { CardCropReview, type CardSideCrop } from '../components/cards/CardCropReview';
+import { CardFlowStepper, type CardFlowStep } from '../components/cards/CardFlowStepper';
 import { CardReviewForm } from '../components/cards/CardReviewForm';
 import { useAiStatus } from '../hooks/useAiStatus';
 import {
   LOW_CONFIDENCE_THRESHOLD,
+  aiSeededFields,
   buildDefaultCardName,
   toReviewValues,
   useCardImport,
@@ -40,20 +40,23 @@ import {
   type CroppedCardImage,
 } from '../utils/cardImage';
 
-type Stage = 'front' | 'back' | 'processing' | 'review';
+type Stage = 'front' | 'back' | 'processing' | 'crop' | 'review';
 
-const STEP_LABELS = ['Front', 'Back', 'Read', 'Review'];
-const STEP_INDEX: Record<Stage, number> = {
-  front: 0,
-  back: 1,
-  processing: 2,
-  review: 3,
+/** Where each stage sits on the Capture → Crop → Review → Save stepper. */
+const STAGE_STEP: Record<Stage, CardFlowStep> = {
+  front: 'capture',
+  back: 'capture',
+  processing: 'crop',
+  crop: 'crop',
+  review: 'review',
 };
 
 /**
  * AI-assisted card import.
  *
- * Front capture -> back capture (skippable) -> extraction -> review -> save.
+ * Capture (front, then the optional back) -> Crop (the AI reads the card and
+ * locates it; the user checks the crop) -> Review (AI-read fields marked, CVV
+ * typed by hand) -> Save. The stepper shows those four steps (E10.5, #96).
  *
  * The capture steps collect FULL photos — no cropping happens there. The
  * prepared full frames go to the extraction endpoint, which locates the card
@@ -65,9 +68,8 @@ const STEP_INDEX: Record<Stage, number> = {
  * Two invariants shape the whole flow:
  *
  *  1. A card cannot be saved without a CVV — the Card secret type marks it
- *     required. The extraction usually supplies one now, but the gate stays on
- *     the VALUE rather than on where it came from, so a card the model could
- *     not read the code off still cannot be saved half-finished.
+ *     required — and the CVV is only ever typed by hand: it is never seeded
+ *     from the extraction (`toReviewValues`), whatever the provider returned.
  *  2. A failed extraction is not a dead end. Any failure still lands on the
  *     review step with the captured photos and an empty form, so the card can
  *     be entered manually instead of starting over.
@@ -244,7 +246,8 @@ export default function ImportCardPage() {
     setName(buildDefaultCardName(seeded.card_network, seeded.number));
     setEditedFields(new Set());
     setFieldErrors({});
-    setStage('review');
+    // The Crop step only exists when there is a photo to crop.
+    setStage(nextFront || nextBack ? 'crop' : 'review');
   };
 
   /** The user re-cropped a side in the review step's adjuster. */
@@ -291,6 +294,13 @@ export default function ImportCardPage() {
     }
     return flagged;
   }, [extraction, values, editedFields]);
+
+  // Fields whose value the AI supplied and the user has not touched since.
+  const aiFields = useMemo(() => {
+    const seeded = aiSeededFields(extraction);
+    for (const field of editedFields) seeded.delete(field);
+    return seeded;
+  }, [extraction, editedFields]);
 
   const cvvEntered = (values.cvv ?? '').trim() !== '';
 
@@ -339,7 +349,7 @@ export default function ImportCardPage() {
     // entered in System Settings, behind the admin gate, and nowhere else.
     const canConfigure = hasPermission('system_settings:write');
     return (
-      <Container maxWidth="md" sx={{ py: 3 }}>
+      <Container maxWidth="md" disableGutters>
         <Breadcrumbs sx={{ mb: 2 }}>
           <Link
             color="inherit"
@@ -383,9 +393,17 @@ export default function ImportCardPage() {
   // Wizard
   // ---------------------------------------------------------------------------
 
+  const photoSides = [
+    ...(frontPhoto ? [{ side: 'front' as const, file: frontPhoto.file, crop: frontCrop }] : []),
+    ...(backPhoto ? [{ side: 'back' as const, file: backPhoto.file, crop: backCrop }] : []),
+  ];
+
+  const activeStep: CardFlowStep = isSaving || savedNotice ? 'save' : STAGE_STEP[stage];
+  const readCount = aiSeededFields(extraction).size;
+
   return (
-    <Container maxWidth="md" sx={{ py: 3 }}>
-      <Breadcrumbs sx={{ mb: 2 }}>
+    <Container maxWidth="md" disableGutters>
+      <Breadcrumbs sx={{ mb: 1 }}>
         <Link
           color="inherit"
           href="/cards"
@@ -396,22 +414,14 @@ export default function ImportCardPage() {
         >
           Cards
         </Link>
-        <Typography sx={{
-          color: "text.primary"
-        }}>Import a card</Typography>
+        <Typography sx={{ color: 'text.primary' }}>Scan a card</Typography>
       </Breadcrumbs>
 
-      <Typography variant="h4" gutterBottom>
-        Import a credit card
+      <Typography variant="h4" component="h1" sx={{ fontSize: { xs: '1.75rem', sm: '2.125rem' } }}>
+        Scan a card
       </Typography>
 
-      <Stepper activeStep={STEP_INDEX[stage]} sx={{ my: 3 }} alternativeLabel>
-        {STEP_LABELS.map((label) => (
-          <Step key={label}>
-            <StepLabel>{label}</StepLabel>
-          </Step>
-        ))}
-      </Stepper>
+      <CardFlowStepper active={activeStep} done={Boolean(savedNotice)} />
 
       {typeError && (
         <Alert severity="error" sx={{ mb: 2 }}>
@@ -420,7 +430,7 @@ export default function ImportCardPage() {
       )}
 
       {savedNotice ? (
-        <Paper sx={{ p: 3 }}>
+        <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 } }}>
           <Alert severity="warning" sx={{ mb: 2 }}>
             <AlertTitle>Card saved, photos not attached</AlertTitle>
             {savedNotice.warning}
@@ -432,58 +442,104 @@ export default function ImportCardPage() {
             View the card
           </Button>
         </Paper>
-      ) : stage === 'front' ? (
+      ) : stage === 'front' || stage === 'back' ? (
         <>
+          {/* Above the camera button, on both photos: the user reads where the
+              photo goes before anything is taken, let alone sent. */}
           <AiEgressNotice />
-          <CardCaptureStep
-            side="front"
-            photo={frontPhoto}
-            isProcessing={isPreparing}
-            error={captureError}
-            onFileSelected={(file) => void handleFileSelected('front', file)}
-            onRetake={() => handleRetake('front')}
-            onContinue={() => setStage('back')}
-            onCancel={() => void handleCancel()}
-          />
-        </>
-      ) : stage === 'back' ? (
-        <>
-          <AiEgressNotice />
-          <CardCaptureStep
-            side="back"
-            photo={backPhoto}
-            isProcessing={isPreparing}
-            error={captureError}
-            onFileSelected={(file) => void handleFileSelected('back', file)}
-            onRetake={() => handleRetake('back')}
-            onContinue={() => {
-              if (frontPhoto) void goToReview(frontPhoto, backPhoto);
-            }}
-            onSkip={() => {
-              releaseUrl(backPhoto?.previewUrl);
-              setBackPhoto(null);
-              if (frontPhoto) void goToReview(frontPhoto, null);
-            }}
-            onCancel={() => void handleCancel()}
-          />
+          {stage === 'front' ? (
+            <CardCaptureStep
+              side="front"
+              photo={frontPhoto}
+              isProcessing={isPreparing}
+              error={captureError}
+              onFileSelected={(file) => void handleFileSelected('front', file)}
+              onRetake={() => handleRetake('front')}
+              onContinue={() => setStage('back')}
+              onCancel={() => void handleCancel()}
+            />
+          ) : (
+            <CardCaptureStep
+              side="back"
+              photo={backPhoto}
+              isProcessing={isPreparing}
+              error={captureError}
+              onFileSelected={(file) => void handleFileSelected('back', file)}
+              onRetake={() => handleRetake('back')}
+              onContinue={() => {
+                if (frontPhoto) void goToReview(frontPhoto, backPhoto);
+              }}
+              onSkip={() => {
+                releaseUrl(backPhoto?.previewUrl);
+                setBackPhoto(null);
+                if (frontPhoto) void goToReview(frontPhoto, null);
+              }}
+              onCancel={() => void handleCancel()}
+            />
+          )}
         </>
       ) : stage === 'processing' ? (
-        <Paper sx={{ p: 4, textAlign: 'center' }}>
+        <Paper variant="outlined" sx={{ p: 4, textAlign: 'center' }} aria-live="polite">
           <CircularProgress sx={{ mb: 2 }} />
-          <Typography variant="h6" gutterBottom>
+          <Typography variant="h6" component="h2" gutterBottom>
             Reading the card…
           </Typography>
-          <Typography variant="body2" sx={{
-            color: "text.secondary"
-          }}>
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
             {isExtracting
               ? 'Your photos have been sent to OpenAI, which locates the card and reads the printed details. This usually takes a few seconds.'
               : 'Cropping the photos to the card…'}
           </Typography>
         </Paper>
+      ) : stage === 'crop' ? (
+        <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 } }}>
+          <Typography variant="h6" component="h2" gutterBottom>
+            Check the crop
+          </Typography>
+          {extractionError || extraction?.partial ? (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              The details could not be read automatically. You can type them in
+              on the next step; your photos are kept.
+            </Alert>
+          ) : readCount > 0 ? (
+            <Box
+              sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, color: 'text.secondary' }}
+            >
+              <AiIcon fontSize="small" sx={{ color: 'primary.main' }} />
+              <Typography variant="body2">
+                {readCount} detail{readCount === 1 ? '' : 's'} read from the photo. You
+                will check them on the next step.
+              </Typography>
+            </Box>
+          ) : null}
+
+          <CardCropReview sides={photoSides} onCropChange={handleCropChange} />
+
+          <Box
+            sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 1 }}
+          >
+            <Button
+              variant="contained"
+              onClick={() => setStage('review')}
+              sx={{ minHeight: 44 }}
+            >
+              Continue to details
+            </Button>
+            <Button
+              variant="outlined"
+              onClick={() => setStage('front')}
+              sx={{ minHeight: 44 }}
+            >
+              Retake photos
+            </Button>
+            <Box sx={{ flexGrow: 1, display: { xs: 'none', sm: 'block' } }} />
+            <Button color="inherit" onClick={() => void handleCancel()} sx={{ minHeight: 44 }}>
+              Cancel
+            </Button>
+          </Box>
+        </Paper>
       ) : (
-        <Paper sx={{ p: { xs: 2, md: 3 } }}>
-          <Typography variant="h6" gutterBottom>
+        <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 } }}>
+          <Typography variant="h6" component="h2" gutterBottom>
             Check the details
           </Typography>
 
@@ -527,17 +583,35 @@ export default function ImportCardPage() {
           )}
 
           <CardCropReview
-            sides={[
-              ...(frontPhoto
-                ? [{ side: 'front' as const, file: frontPhoto.file, crop: frontCrop }]
-                : []),
-              ...(backPhoto
-                ? [{ side: 'back' as const, file: backPhoto.file, crop: backCrop }]
-                : []),
-            ]}
+            compact
+            sides={photoSides}
             disabled={isSaving}
+            onEdit={() => setStage('crop')}
             onCropChange={handleCropChange}
           />
+
+          {aiFields.size > 0 && (
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 1,
+                mb: 2,
+                p: 1.5,
+                borderRadius: 1,
+                borderLeft: 3,
+                borderColor: 'primary.main',
+                bgcolor: 'action.hover',
+              }}
+            >
+              <AiIcon fontSize="small" sx={{ color: 'primary.main', mt: 0.25 }} />
+              <Typography variant="body2">
+                Fields marked <strong>AI</strong> were read from your photo; fields
+                marked <strong>Check</strong> were hard to read. Compare them with the
+                card. The CVV is never read from the photo — type it yourself.
+              </Typography>
+            </Box>
+          )}
 
           <TextField
             fullWidth
@@ -569,6 +643,7 @@ export default function ImportCardPage() {
               values={values}
               onChange={handleFieldChange}
               lowConfidenceFields={lowConfidenceFields}
+              aiFields={aiFields}
               warnings={extraction?.warnings ?? []}
               errors={fieldErrors}
               disabled={isSaving}
@@ -577,21 +652,29 @@ export default function ImportCardPage() {
 
           {!cvvEntered && (
             <Alert severity="info" sx={{ mt: 2 }}>
-              Enter the CVV / CVC to save this card. It could not be read from
-              the photo, so type it from the card yourself.
+              Enter the CVV / CVC to save this card. It is never read from the
+              photo, so type it from the card yourself.
             </Alert>
           )}
 
-          <Box sx={{ display: 'flex', gap: 1, mt: 3, flexWrap: 'wrap' }}>
+          <Box
+            sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 1, mt: 3 }}
+          >
             <Button
               variant="contained"
               onClick={() => void handleSave()}
               disabled={isSaving || !cvvEntered || !cardType}
+              sx={{ minHeight: 44 }}
             >
               {isSaving ? 'Saving…' : 'Save card'}
             </Button>
-            <Box sx={{ flexGrow: 1 }} />
-            <Button color="inherit" onClick={() => void handleCancel()} disabled={isSaving}>
+            <Box sx={{ flexGrow: 1, display: { xs: 'none', sm: 'block' } }} />
+            <Button
+              color="inherit"
+              onClick={() => void handleCancel()}
+              disabled={isSaving}
+              sx={{ minHeight: 44 }}
+            >
               Cancel
             </Button>
           </Box>
