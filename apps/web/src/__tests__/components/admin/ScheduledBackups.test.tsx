@@ -17,6 +17,11 @@ vi.mock('../../../services/api', () => ({
   getBackupRuns: vi.fn(),
   getBackupDownloadUrl: vi.fn(),
   deleteBackupRun: vi.fn(),
+  downloadAdminBackup: vi.fn(),
+}));
+
+vi.mock('../../../utils/saveBlob', () => ({
+  saveBlobAsFile: vi.fn(),
 }));
 
 vi.mock('../../../hooks/usePermissions', () => ({
@@ -29,7 +34,13 @@ vi.mock('../../../utils/backupSchedule', async (importOriginal) => ({
 }));
 
 import {
+  ADMIN_BACKUP_DOWNLOADED_MESSAGE,
+  USE_SCHEDULED_PASSWORD_LABEL,
+} from '../../../components/admin/AdminBackupDownloadDialog';
+import { saveBlobAsFile } from '../../../utils/saveBlob';
+import {
   deleteBackupRun,
+  downloadAdminBackup,
   getBackupDownloadUrl,
   getBackupRuns,
   getBackupSchedule,
@@ -47,6 +58,8 @@ const mockRunNow = vi.mocked(runBackupNow);
 const mockDownloadUrl = vi.mocked(getBackupDownloadUrl);
 const mockDelete = vi.mocked(deleteBackupRun);
 const mockStartDownload = vi.mocked(startUrlDownload);
+const mockAdminDownload = vi.mocked(downloadAdminBackup);
+const mockSaveBlob = vi.mocked(saveBlobAsFile);
 
 const schedule: BackupSchedule = {
   enabled: true,
@@ -1008,6 +1021,173 @@ describe('ScheduledBackups', () => {
       expect(screen.queryByTestId('backup-contents-run-1')).not.toBeInTheDocument();
       expect(screen.getByRole('columnheader', { name: 'Contents' })).toBeInTheDocument();
       expect(screen.getAllByText('—').length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('download a backup now', () => {
+    const openButton = () => screen.getByRole('button', { name: 'Download a backup now' });
+
+    async function openDialog() {
+      const user = await renderLoaded();
+      await user.click(openButton());
+      const dialog = await screen.findByRole('dialog', { name: 'Download a backup now' });
+      return { user, dialog };
+    }
+
+    beforeEach(() => {
+      mockAdminDownload.mockResolvedValue({
+        blob: new Blob(['zip']),
+        filename: 'vault-admin-backup-2026-11-02_101500.zip',
+        userCount: 2,
+        secretCount: 5,
+        attachmentCount: 1,
+        mediaFileCount: 0,
+      });
+    });
+
+    it('sits next to the renamed run button', async () => {
+      await renderLoaded();
+
+      expect(openButton()).toBeEnabled();
+      expect(
+        screen.getByRole('button', { name: 'Run backup now (save to storage)' }),
+      ).toBeInTheDocument();
+    });
+
+    it('is hidden without system_settings:write', async () => {
+      mockUsePermissions.mockReturnValue(permissions(['system_settings:read']));
+      await renderLoaded();
+
+      expect(screen.queryByRole('button', { name: 'Download a backup now' })).not.toBeInTheDocument();
+    });
+
+    it('offers the full contents group, including system configuration', async () => {
+      mockGetSchedule.mockResolvedValue({ ...schedule, includeMedia: true });
+      const { dialog } = await openDialog();
+
+      expect(within(dialog).getByRole('group', { name: 'What to back up' })).toBeInTheDocument();
+      expect(within(dialog).getByLabelText(/System configuration/)).not.toBeChecked();
+      // starts from the schedule's contents
+      expect(within(dialog).getByLabelText('Media library')).toBeChecked();
+    });
+
+    it('requires a password', async () => {
+      const { user, dialog } = await openDialog();
+
+      await user.click(within(dialog).getByRole('button', { name: 'Download' }));
+
+      expect(
+        await within(dialog).findByText('Password must be at least 6 characters'),
+      ).toBeInTheDocument();
+      expect(mockAdminDownload).not.toHaveBeenCalled();
+    });
+
+    it('blocks mismatched passwords', async () => {
+      const { user, dialog } = await openDialog();
+
+      await user.type(within(dialog).getByLabelText('Password', { selector: 'input' }), 'blue tiger river');
+      await user.type(within(dialog).getByLabelText('Confirm password'), 'blue tiger rivet');
+      await user.click(within(dialog).getByRole('button', { name: 'Download' }));
+
+      expect(within(dialog).getByText('Passwords do not match')).toBeInTheDocument();
+      expect(mockAdminDownload).not.toHaveBeenCalled();
+    });
+
+    it('blocks the download when nothing is selected', async () => {
+      const { user, dialog } = await openDialog();
+
+      await user.click(within(dialog).getByLabelText('Secrets'));
+
+      expect(within(dialog).getByText(BACKUP_NOTHING_SELECTED_MESSAGE)).toBeInTheDocument();
+      expect(within(dialog).getByRole('button', { name: 'Download' })).toBeDisabled();
+    });
+
+    it('does not offer the scheduled password when none is configured', async () => {
+      mockGetSchedule.mockResolvedValue({
+        ...schedule,
+        passwordConfigured: false,
+        passwordUpdatedAt: null,
+      });
+      const { dialog } = await openDialog();
+
+      expect(
+        within(dialog).queryByRole('checkbox', { name: USE_SCHEDULED_PASSWORD_LABEL }),
+      ).not.toBeInTheDocument();
+      expect(within(dialog).getByLabelText('Password', { selector: 'input' })).toBeInTheDocument();
+    });
+
+    it('streams the zip with the entered password and the chosen contents, and saves it', async () => {
+      const { user, dialog } = await openDialog();
+
+      await user.type(within(dialog).getByLabelText('Password', { selector: 'input' }), 'blue tiger river');
+      await user.type(within(dialog).getByLabelText('Confirm password'), 'blue tiger river');
+      await user.click(within(dialog).getByLabelText(/System configuration/));
+      await user.click(within(dialog).getByRole('button', { name: 'Download' }));
+
+      await waitFor(() => expect(mockSaveBlob).toHaveBeenCalledTimes(1));
+      expect(mockAdminDownload).toHaveBeenCalledWith({
+        password: 'blue tiger river',
+        includeSecrets: true,
+        includeAttachments: true,
+        includeVersions: false,
+        includeMedia: false,
+        includeSystem: true,
+      });
+      expect(mockSaveBlob).toHaveBeenCalledWith(
+        expect.any(Blob),
+        'vault-admin-backup-2026-11-02_101500.zip',
+      );
+      expect(await screen.findByText(ADMIN_BACKUP_DOWNLOADED_MESSAGE)).toBeInTheDocument();
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      // nothing is stored: no run is started
+      expect(mockRunNow).not.toHaveBeenCalled();
+    });
+
+    it('uses the scheduled password without asking for one', async () => {
+      const { user, dialog } = await openDialog();
+
+      await user.click(within(dialog).getByRole('checkbox', { name: USE_SCHEDULED_PASSWORD_LABEL }));
+
+      expect(
+        within(dialog).queryByLabelText('Password', { selector: 'input' }),
+      ).not.toBeInTheDocument();
+      await user.click(within(dialog).getByRole('button', { name: 'Download' }));
+
+      await waitFor(() => expect(mockSaveBlob).toHaveBeenCalledTimes(1));
+      expect(mockAdminDownload).toHaveBeenCalledWith({
+        useScheduledPassword: true,
+        includeSecrets: true,
+        includeAttachments: true,
+        includeVersions: false,
+        includeMedia: false,
+        includeSystem: false,
+      });
+      const body = mockAdminDownload.mock.calls[0][0] as unknown as Record<string, unknown>;
+      expect(body).not.toHaveProperty('password');
+    });
+
+    it('shows the server error in the dialog and keeps it open', async () => {
+      mockAdminDownload.mockRejectedValue(new Error('Storage is unavailable'));
+      const { user, dialog } = await openDialog();
+
+      await user.click(within(dialog).getByRole('checkbox', { name: USE_SCHEDULED_PASSWORD_LABEL }));
+      await user.click(within(dialog).getByRole('button', { name: 'Download' }));
+
+      expect(await within(dialog).findByText('Storage is unavailable')).toBeInTheDocument();
+      expect(mockSaveBlob).not.toHaveBeenCalled();
+      expect(screen.getByRole('dialog', { name: 'Download a backup now' })).toBeInTheDocument();
+    });
+
+    it('starts clean each time it opens', async () => {
+      const { user, dialog } = await openDialog();
+
+      await user.type(within(dialog).getByLabelText('Password', { selector: 'input' }), 'blue tiger river');
+      await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+      await user.click(openButton());
+      const reopened = await screen.findByRole('dialog', { name: 'Download a backup now' });
+      expect(within(reopened).getByLabelText('Password', { selector: 'input' })).toHaveValue('');
     });
   });
 });

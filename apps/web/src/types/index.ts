@@ -653,3 +653,28 @@ export interface BackupDownloadLink {
   expiresAt: string;
   fileName: string;
 }
+
+// =============================================================================
+// Saved backups (per user) and the admin download
+// =============================================================================
+
+/** GET /backups/me/config: whether "Save to the storage account" can be offered. */
+export interface MyBackupsConfig {
+  storageConfigured: boolean;
+  /** How many saved backups are kept per user (newest first). */
+  keepCount: number;
+}
+
+/**
+ * POST /admin/backups/export body. Exactly one of `password` (6-256
+ * characters) or `useScheduledPassword: true` is sent.
+ */
+export interface AdminBackupExportRequest {
+  password?: string;
+  useScheduledPassword?: boolean;
+  includeSecrets: boolean;
+  includeAttachments: boolean;
+  includeVersions: boolean;
+  includeMedia: boolean;
+  includeSystem: boolean;
+}

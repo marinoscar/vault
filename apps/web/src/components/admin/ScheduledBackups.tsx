@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import {
   Alert,
   Autocomplete,
@@ -6,13 +6,7 @@ import {
   Button,
   Card,
   CardContent,
-  Chip,
   CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogContentText,
-  DialogTitle,
   Divider,
   FormControl,
   FormControlLabel,
@@ -24,13 +18,6 @@ import {
   Select,
   Stack,
   Switch,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TablePagination,
-  TableRow,
   TextField,
   Tooltip,
   Typography,
@@ -39,7 +26,6 @@ import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import DownloadIcon from '@mui/icons-material/Download';
-import DeleteIcon from '@mui/icons-material/Delete';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import SaveIcon from '@mui/icons-material/Save';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -55,7 +41,6 @@ import {
 import type {
   BackupFrequency,
   BackupRun,
-  BackupRunStatus,
   BackupSchedule,
   BackupScheduleFields,
   UpdateBackupScheduleRequest,
@@ -76,7 +61,6 @@ import {
   BACKUP_PASSWORD_LOSS_WARNING,
   WEEKDAY_NAMES,
   describeBackupSchedule,
-  formatBytes,
   formatDateTime,
   getBrowserTimeZone,
   getTimeZoneOptions,
@@ -86,11 +70,13 @@ import {
   validateScheduleFields,
   withScheduleContents,
 } from '../../utils/backupSchedule';
-import { backupRunContentChips, rawBackupContentFlags } from '../../utils/backupContents';
+import { rawBackupContentFlags } from '../../utils/backupContents';
+import { useBackupRunHistory } from '../../hooks/useBackupRunHistory';
 import { BackupContentsGroup } from '../settings/BackupContentsGroup';
+import { BackupRunsTable, DeleteBackupDialog } from '../settings/BackupRunsTable';
+import { AdminBackupDownloadDialog } from './AdminBackupDownloadDialog';
 
-/** How often the history is refreshed while a run is in progress. */
-export const BACKUP_POLL_INTERVAL_MS = 5000;
+export { BACKUP_POLL_INTERVAL_MS } from '../../hooks/useBackupRunHistory';
 
 /** Hourly runs are anchored to local midnight, not to the save time. */
 export const BACKUP_HOURLY_HELPER_TEXT = 'Runs on the hour, counted from midnight';
@@ -119,62 +105,6 @@ function toDraft(schedule: BackupSchedule): BackupScheduleFields {
     // Older API responses may lack the newer flags; they take the defaults.
     ...rawBackupContentFlags(scheduleContentSelection(schedule)),
   };
-}
-
-const STATUS_CHIP: Record<BackupRunStatus, { label: string; color: 'info' | 'success' | 'error' }> =
-  {
-    running: { label: 'Running', color: 'info' },
-    succeeded: { label: 'Succeeded', color: 'success' },
-    failed: { label: 'Failed', color: 'error' },
-  };
-
-function RunStatusChip({ run }: { run: BackupRun }) {
-  const { label, color } = STATUS_CHIP[run.status] ?? STATUS_CHIP.failed;
-  return (
-    <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap" useFlexGap>
-      <Chip
-        size="small"
-        label={label}
-        color={color}
-        icon={run.status === 'running' ? <CircularProgress size={12} color="inherit" /> : undefined}
-      />
-      {run.deletedAt && <Chip size="small" label="Deleted" variant="outlined" />}
-      {run.warningCount > 0 && (
-        <Chip
-          size="small"
-          variant="outlined"
-          color="warning"
-          label={`${run.warningCount} warning${run.warningCount === 1 ? '' : 's'}`}
-        />
-      )}
-    </Stack>
-  );
-}
-
-/** What a run backed up, as small chips (Secrets, Media, System). */
-function RunContentChips({ run }: { run: BackupRun }) {
-  const labels = backupRunContentChips(run.contents);
-  if (labels.length === 0) {
-    return (
-      <Typography variant="body2" color="text.secondary">
-        —
-      </Typography>
-    );
-  }
-  return (
-    <Stack
-      direction="row"
-      spacing={0.5}
-      flexWrap="wrap"
-      useFlexGap
-      aria-label="Backup contents"
-      data-testid={`backup-contents-${run.id}`}
-    >
-      {labels.map((label) => (
-        <Chip key={label} size="small" variant="outlined" label={label} />
-      ))}
-    </Stack>
-  );
 }
 
 // =============================================================================
@@ -586,158 +516,14 @@ function BackupScheduleCard({ schedule, canWrite, onSaved }: ScheduleCardProps) 
 }
 
 // =============================================================================
-// History
-// =============================================================================
-
-interface HistoryProps {
-  runs: BackupRun[];
-  total: number;
-  page: number;
-  rowsPerPage: number;
-  loading: boolean;
-  canWrite: boolean;
-  busyId: string | null;
-  onPageChange: (page: number) => void;
-  onRowsPerPageChange: (rows: number) => void;
-  onDownload: (run: BackupRun) => void;
-  onDelete: (run: BackupRun) => void;
-}
-
-function BackupHistory({
-  runs,
-  total,
-  page,
-  rowsPerPage,
-  loading,
-  canWrite,
-  busyId,
-  onPageChange,
-  onRowsPerPageChange,
-  onDownload,
-  onDelete,
-}: HistoryProps) {
-  if (loading && runs.length === 0) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-        <CircularProgress size={28} />
-      </Box>
-    );
-  }
-  if (runs.length === 0) {
-    return (
-      <Typography color="text.secondary" sx={{ p: 2 }}>
-        No backups yet.
-      </Typography>
-    );
-  }
-
-  return (
-    <>
-      <TableContainer sx={{ overflowX: 'auto' }}>
-        <Table size="small" aria-label="Backup history">
-          <TableHead>
-            <TableRow>
-              <TableCell>Started</TableCell>
-              <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Trigger</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Size</TableCell>
-              <TableCell>Contents</TableCell>
-              <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
-                Users / Secrets / Attachments / Media files
-              </TableCell>
-              {canWrite && <TableCell align="right">Actions</TableCell>}
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {runs.map((run) => (
-              <TableRow key={run.id} hover>
-                <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                  {formatDateTime(run.startedAt) ?? '—'}
-                </TableCell>
-                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
-                  {run.trigger === 'manual' ? 'Manual' : 'Scheduled'}
-                  {run.trigger === 'manual' && run.triggeredBy && (
-                    <Typography variant="caption" color="text.secondary" display="block">
-                      {run.triggeredBy.displayName || run.triggeredBy.email}
-                    </Typography>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <RunStatusChip run={run} />
-                  {run.error && (
-                    <Typography
-                      variant="caption"
-                      color="error"
-                      display="block"
-                      sx={{ mt: 0.5, maxWidth: 280, wordBreak: 'break-word' }}
-                    >
-                      {run.error}
-                    </Typography>
-                  )}
-                </TableCell>
-                <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatBytes(run.sizeBytes)}</TableCell>
-                <TableCell>
-                  <RunContentChips run={run} />
-                </TableCell>
-                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
-                  {run.userCount} / {run.secretCount} / {run.attachmentCount} /{' '}
-                  {run.mediaFileCount ?? 0}
-                </TableCell>
-                {canWrite && (
-                  <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
-                    <Tooltip title="Download">
-                      <span>
-                        <IconButton
-                          aria-label="Download backup"
-                          size="small"
-                          onClick={() => onDownload(run)}
-                          disabled={!run.downloadable || busyId === run.id}
-                        >
-                          <DownloadIcon fontSize="small" />
-                        </IconButton>
-                      </span>
-                    </Tooltip>
-                    <Tooltip title="Delete">
-                      <span>
-                        <IconButton
-                          aria-label="Delete backup"
-                          size="small"
-                          onClick={() => onDelete(run)}
-                          disabled={
-                            run.status === 'running' || !!run.deletedAt || busyId === run.id
-                          }
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </span>
-                    </Tooltip>
-                  </TableCell>
-                )}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-      <TablePagination
-        component="div"
-        count={total}
-        page={page}
-        onPageChange={(_, p) => onPageChange(p)}
-        rowsPerPage={rowsPerPage}
-        onRowsPerPageChange={(e) => onRowsPerPageChange(Number.parseInt(e.target.value, 10))}
-        rowsPerPageOptions={[10, 20, 50]}
-      />
-    </>
-  );
-}
-
-// =============================================================================
 // Tab root
 // =============================================================================
 
 /**
  * "Backups" tab of /admin/settings: the scheduled-backup configuration,
- * "Run backup now" and the run history. Reading needs system_settings:read
+ * "Run backup now (save to storage)", "Download a backup now" (streamed,
+ * nothing stored) and the run history (system backups only; users' saved
+ * backups are never listed here). Reading needs system_settings:read
  * (enforced by the page); every change, run, download and delete needs
  * system_settings:write, matching the API.
  */
@@ -751,19 +537,15 @@ export function ScheduledBackups() {
   /** Bumped to remount the form with a freshly loaded schedule. */
   const [formKey, setFormKey] = useState(0);
 
-  const [runs, setRuns] = useState<BackupRun[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
-  const [runsLoading, setRunsLoading] = useState(true);
-  const [runsError, setRunsError] = useState<string | null>(null);
-
   const [starting, setStarting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionInfo, setActionInfo] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<BackupRun | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [downloadOpen, setDownloadOpen] = useState(false);
+  /** Bumped each time the download dialog opens so it starts clean. */
+  const [downloadKey, setDownloadKey] = useState(0);
 
   const loadSchedule = useCallback(async (resetForm: boolean) => {
     try {
@@ -778,39 +560,16 @@ export function ScheduledBackups() {
     }
   }, []);
 
-  const loadRuns = useCallback(async () => {
-    try {
-      const res = await getBackupRuns({ page: page + 1, pageSize: rowsPerPage });
-      setRuns(res.items);
-      setTotal(res.total);
-      setRunsError(null);
-    } catch (err) {
-      setRunsError(errorMessage(err, 'Failed to load backup history'));
-    } finally {
-      setRunsLoading(false);
-    }
-  }, [page, rowsPerPage]);
-
   useEffect(() => {
     void loadSchedule(true);
   }, [loadSchedule]);
 
-  useEffect(() => {
-    void loadRuns();
-  }, [loadRuns]);
-
-  const hasRunning = runs.some((r) => r.status === 'running');
-
-  // Poll while a run is in progress; when it settles, refresh the schedule's
+  // Polls while a run is in progress; when it settles, refresh the schedule's
   // last/next run times without discarding unsaved form edits.
-  const wasRunning = useRef(false);
-  useEffect(() => {
-    if (wasRunning.current && !hasRunning) void loadSchedule(false);
-    wasRunning.current = hasRunning;
-    if (!hasRunning) return undefined;
-    const timer = setInterval(() => void loadRuns(), BACKUP_POLL_INTERVAL_MS);
-    return () => clearInterval(timer);
-  }, [hasRunning, loadRuns, loadSchedule]);
+  const history = useBackupRunHistory(getBackupRuns, {
+    onRunSettled: () => void loadSchedule(false),
+  });
+  const { hasRunning, reload: loadRuns } = history;
 
   const handleRunNow = async () => {
     setStarting(true);
@@ -819,8 +578,7 @@ export function ScheduledBackups() {
     try {
       await runBackupNow();
       setActionInfo('Backup started.');
-      if (page !== 0) setPage(0);
-      else await loadRuns();
+      await history.showNewest();
     } catch (err) {
       setActionError(errorMessage(err, 'Failed to start the backup'));
       await loadRuns();
@@ -916,12 +674,30 @@ export function ScheduledBackups() {
             }}
           >
             <Typography variant="h6">Backup history</Typography>
-            <Stack direction="row" spacing={1} justifyContent="flex-end">
+            <Stack
+              direction="row"
+              spacing={1}
+              justifyContent="flex-end"
+              flexWrap="wrap"
+              useFlexGap
+            >
               <Tooltip title="Refresh">
                 <IconButton aria-label="Refresh history" onClick={() => void loadRuns()}>
                   <RefreshIcon />
                 </IconButton>
               </Tooltip>
+              {canWrite && (
+                <Button
+                  variant="outlined"
+                  startIcon={<DownloadIcon />}
+                  onClick={() => {
+                    setDownloadKey((k) => k + 1);
+                    setDownloadOpen(true);
+                  }}
+                >
+                  Download a backup now
+                </Button>
+              )}
               {canWrite && (
                 <Button
                   variant="contained"
@@ -936,7 +712,7 @@ export function ScheduledBackups() {
                   disabled={starting || hasRunning || runDisabledReason !== null}
                   aria-busy={starting || hasRunning}
                 >
-                  {hasRunning ? 'Backup running…' : 'Run backup now'}
+                  {hasRunning ? 'Backup running…' : 'Run backup now (save to storage)'}
                 </Button>
               )}
             </Stack>
@@ -957,54 +733,51 @@ export function ScheduledBackups() {
               {actionInfo}
             </Alert>
           )}
-          {runsError && (
+          {history.error && (
             <Alert severity="error" sx={{ mb: 2 }}>
-              {runsError}
+              {history.error}
             </Alert>
           )}
 
-          <BackupHistory
-            runs={runs}
-            total={total}
-            page={page}
-            rowsPerPage={rowsPerPage}
-            loading={runsLoading}
-            canWrite={canWrite}
+          <BackupRunsTable
+            runs={history.runs}
+            total={history.total}
+            page={history.page}
+            rowsPerPage={history.rowsPerPage}
+            loading={history.loading}
+            showActions={canWrite}
             busyId={busyId}
-            onPageChange={setPage}
-            onRowsPerPageChange={(rows) => {
-              setRowsPerPage(rows);
-              setPage(0);
-            }}
+            onPageChange={history.setPage}
+            onRowsPerPageChange={history.setRowsPerPage}
             onDownload={(run) => void handleDownload(run)}
             onDelete={setDeleteTarget}
+            ariaLabel="Backup history"
+            emptyText="No backups yet."
+            showAdminColumns
           />
         </CardContent>
       </Card>
 
-      <Dialog open={!!deleteTarget} onClose={() => !deleting && setDeleteTarget(null)}>
-        <DialogTitle>Delete this backup?</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            The backup from {formatDateTime(deleteTarget?.startedAt) ?? 'this run'} will be
-            removed from storage. This cannot be undone. The entry stays in the history.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDeleteTarget(null)} disabled={deleting}>
-            Cancel
-          </Button>
-          <Button
-            color="error"
-            variant="contained"
-            onClick={() => void handleConfirmDelete()}
-            disabled={deleting}
-            startIcon={deleting ? <CircularProgress size={16} color="inherit" /> : undefined}
-          >
-            Delete
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <DeleteBackupDialog
+        target={deleteTarget}
+        deleting={deleting}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => void handleConfirmDelete()}
+      />
+
+      {canWrite && (
+        <AdminBackupDownloadDialog
+          key={downloadKey}
+          open={downloadOpen}
+          onClose={() => setDownloadOpen(false)}
+          onDownloaded={(message) => {
+            setActionError(null);
+            setActionInfo(message);
+          }}
+          passwordConfigured={schedule.passwordConfigured}
+          initialContents={scheduleContentSelection(schedule)}
+        />
+      )}
     </Stack>
   );
 }

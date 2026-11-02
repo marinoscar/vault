@@ -241,6 +241,17 @@ export const handlers = [
     });
   }),
 
+  // Saved backups (Settings -> Back up my data): storage off, nothing saved.
+  http.get(`${API_BASE}/backups/me/config`, () => {
+    return HttpResponse.json({ data: { storageConfigured: false, keepCount: 10 } });
+  }),
+
+  http.get(`${API_BASE}/backups/me`, () => {
+    return HttpResponse.json({
+      data: { items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 },
+    });
+  }),
+
   http.post(`${API_BASE}/auth/device/authorize`, async ({ request }) => {
     const body = (await request.json()) as { userCode: string; approve: boolean };
 
