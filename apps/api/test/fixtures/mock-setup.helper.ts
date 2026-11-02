@@ -24,6 +24,10 @@ export function setupRoleMocks(): void {
   // Mock role.findUnique - use mockResolvedValue for each call
   (prismaMock.role.findUnique as jest.Mock).mockImplementation(
     async ({ where }: any) => {
+      if (where.name === 'org_admin') {
+        // PLATFORM-ADOPTION-SHIM(E3.2): migration 0024's org role, used for admin memberships.
+        return { id: 'role-org-admin', name: 'org_admin', description: 'Organization administrator' };
+      }
       if (where.name) {
         return mockRoles[where.name as keyof typeof mockRoles] || null;
       }

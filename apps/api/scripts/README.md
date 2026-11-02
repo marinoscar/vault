@@ -187,7 +187,9 @@ npm run prisma:migrate
 ### Related Files
 
 - `package.json` - Defines npm scripts using this helper
-- `prisma/schema.prisma` - Prisma schema (uses `env("DATABASE_URL")`)
+- `prisma/schema/` - GENERATED Prisma schema (`npm run db:compose` from `prisma/fragments/` and `@marinoscar/platform-db`); `prisma.config.ts` supplies the connection URL
+- `platform-env.js` - runs the `platform` CLI (`db drift`, `db check --database`, `db baseline`) with `DATABASE_URL` built from `POSTGRES_*`
+- `baseline-rehearsal.sh`, `baseline-deviations.mjs`, `verify-vault-data.ts` - the baseline runbook's tooling ([database-baseline](../../../docs/runbooks/database-baseline.md))
 - `src/config/configuration.ts` - Runtime configuration (constructs DATABASE_URL for the app)
 - `infra/compose/.env.example` - Environment variables template
 - `infra/compose/base.compose.yml` - Docker Compose configuration

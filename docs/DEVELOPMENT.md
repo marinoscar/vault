@@ -565,7 +565,10 @@ const response = await request(app.getHttpServer())
 1. **Update Prisma Schema:**
    ```bash
    cd apps/api
-   # Edit prisma/schema.prisma
+   # Edit the owning fragment: prisma/fragments/vault.prisma (Vault's models)
+   # or media-folder-files.prisma. prisma/schema/ is GENERATED: run
+   npm run db:compose && npm run prisma:generate
+   # (CI's db:compose:check fails on a stale prisma/schema/)
    ```
 
 2. **Create Migration:**

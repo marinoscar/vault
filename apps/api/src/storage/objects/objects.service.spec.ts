@@ -43,6 +43,8 @@ describe('ObjectsService', () => {
 
   beforeEach(async () => {
     mockPrisma = createMockPrismaService();
+    // PLATFORM-ADOPTION-SHIM(E6): objects are written with the default org's id.
+    mockPrisma.organization.findFirst.mockResolvedValue({ id: 'org-default' } as any);
     mockStorageProvider = createMockStorageProvider();
     mockConfig = {
       get: jest.fn(),
@@ -102,6 +104,7 @@ describe('ObjectsService', () => {
       expect(mockPrisma.storageObject.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
+            orgId: 'org-default',
             name: dto.name,
             size: BigInt(dto.size),
             mimeType: dto.mimeType,

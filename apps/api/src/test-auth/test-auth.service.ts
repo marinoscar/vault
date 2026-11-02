@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { setUserRoles, withMembershipRoles } from '../auth/membership-role-shim';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { createHash, randomBytes } from 'crypto';
@@ -86,18 +87,12 @@ export class TestAuthService {
       throw new Error(`Role ${dto.role} not found`);
     }
 
-    // Remove all existing roles and assign the specified role
-    await this.prisma.$transaction([
-      this.prisma.userRole.deleteMany({
-        where: { userId: user.id },
-      }),
-      this.prisma.userRole.create({
-        data: {
-          userId: user.id,
-          roleId: targetRole.id,
-        },
-      }),
-    ]);
+    // Replace the user's roles with the specified one.
+    // PLATFORM-ADOPTION-SHIM(E3.2): admin goes to user_roles, the org role to the
+    // default-org membership (migration 0024).
+    await this.prisma.$transaction((tx) =>
+      setUserRoles(tx, user!.id, [targetRole.name]),
+    );
 
     // Reload user with updated roles
     user = await this.prisma.user.findUnique({
@@ -114,6 +109,7 @@ export class TestAuthService {
     if (!user) {
       throw new Error('Failed to reload user after role assignment');
     }
+    user = await withMembershipRoles(this.prisma, user);
 
     // Generate JWT tokens
     const roles = user.userRoles.map((ur) => ur.role.name);

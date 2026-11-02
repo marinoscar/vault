@@ -17,7 +17,14 @@ Every place where Vault deviates from `@marinoscar/platform-*` on purpose, and t
 | Tab-based settings UI (`SystemSettingsPage`: UI Settings, Feature Flags, AI, Backups, Advanced (JSON); `UserSettingsPage`) and a flat `Sidebar` | `apps/web/src/pages/`, `components/navigation/` | Predates the registry-driven hub and shell | **E10**: `SettingsHub` cards, destinations, platform `ShellLayout` ([spec](../specs/ux-refresh.md)) |
 | Uptrace as the telemetry backend (`otel.compose.yml`, `infra/otel/uptrace.yml`, `UPTRACE_DSN`) | `infra/`, `apps/api/src/instrumentation.ts` | Predates the GreptimeDB-based telemetry slice | **E9** (telemetry) with **E11** (generated infra) |
 | `tools/app` generic template CLI and the `tools/vaultcli` binary name `vaultcli` | `tools/` | Predate `createCli`; `tools/app` still says EnterpriseAppBase | **E11**: one `vault` CLI on `@marinoscar/platform-cli`; domain commands as `extraCommands` |
-| Hand-edited `schema.prisma`, plain Prisma migrations, API connecting with a role that is not yet proven `NOSUPERUSER NOBYPASSRLS` | `apps/api/prisma/` | Predates composed fragments and RLS | **E2** |
+| ~~Hand-edited `schema.prisma`~~ | | **Done in E2.1**: `prisma/schema/` is generated from `@marinoscar/platform-db` plus `apps/api/prisma/fragments/` | |
+| API connecting as `postgres` (superuser), so RLS on `storage_objects`, `storage_object_chunks` and the other `org` tables is **inert** | `POSTGRES_USER`, `apps/api/src/prisma/prisma.service.ts` | The migrations and policies are in (E2.2); the role switch is E2.3 and must follow the baseline immediately in production | **E2.3** ([#75](https://github.com/marinoscar/vault/issues/75)); the paths that need an org scope are listed [below](#rls-readiness-paths-that-need-an-org-scope-in-e23) |
+| **Legacy role shim**: `AuthService`, `PatService`, `DeviceAuthService`, `UsersService`, `TestAuthService` and the system-backup users section read and write roles through the default organization's membership | `apps/api/src/auth/membership-role-shim.ts` and its call sites (`grep PLATFORM-ADOPTION-SHIM`); the roles' `scope` in `prisma/seed.ts` | Platform migration 0024 deletes the `user_roles` rows of `contributor` and `viewer` (they live in `memberships.role_id`) and moves admin's `storage:*` / `user_settings:*` grants to `org_admin`. Legacy auth reads `user_roles` only, so without the shim every non-admin user loses every permission after the migration. New users get a membership of the default organization. `admin` stays in `user_roles` | **E3.2** (identity). **Until then `main` is not deploy-safe unless the shim has been verified on a restored copy** ([runbook, section 6](../runbooks/database-baseline.md#6-migrate-seed-verify-rehearsal-copy)) |
+| `storage_objects` written with the **default organization's id** by legacy storage code (`orgId` is NOT NULL since 0025) | `apps/api/src/prisma/default-org.ts`; `storage/objects/objects.service.ts` (object and chunk creates) | Vault is single-org until identity and storage are adopted | **E3.2** (org resolution) / **E6** (storage slice) |
+| `secret_attachments.storage_object_id` is a plain foreign key on `storage_objects.id`, not the composite `(storage_object_id, org_id)` the platform convention requires | `20260727120000_version_scoped_attachments` | Legal (FK checks bypass RLS) but against convention; fixing it is a data-bearing migration on a domain table | **E6** (composite FK with `org_id`) |
+| `media_folder_files` carries `org_id` but **has no RLS policy**; it is reached only through `storage_objects` (composite FK) and owner-checked `media_folders` | `20261102130000_add_media_folder_files` | A policy would have to be listed in `platform.lock` `rlsPolicies`, and a listed policy makes the pre-migration baseline gate (`--through 2`) fail on the database that does not have it yet. Add the policy and the lock entry once production has the table | **E2.3** (with the role switch) or **E6** |
+| `platform.lock` `deviations` (4 ids, 54 statements) | `apps/api/prisma/platform.lock` | See [below](#drift-allowlist-and-lock-deviations) | Mostly permanent records; two are removable |
+| Soft peer-dependency on **zod 4**: `@marinoscar/platform-db` peers `zod ^4.4.3` | `apps/api/package.json` | E1's zod bump is a separate change; `npm install` here needs it (or `--legacy-peer-deps`) | **E1** (zod) lands first |
 | AI provider key stored in `system_settings.ai` (encrypted with `VAULT_ENCRYPTION_KEY`) and generic AI config/verify code | `apps/api/src/ai/`, `settings` | Predates the credentials and AI slices | **E4** (credentials) and **E8** (AI) |
 | Hand-written `infra/` (compose, nginx, `deploy/`) and `.env.example` | `infra/` | Predates `platform-infra` generation | **E11** |
 | React 18, MUI 5 | package manifests | Predate the platform's required toolchain | **E1** |
@@ -35,6 +42,28 @@ Every place where Vault deviates from `@marinoscar/platform-*` on purpose, and t
 | **Card extraction rules**: CVV never requested, nothing persisted, daily budget from `audit_events` | `apps/api/src/ai/card-extract.*` | Domain privacy rule; stays when AI moves to `AiService.forUser` |
 | **Domain permission strings** (`secrets:*`, `secret_types:*`, `media:*`; `*_any` Admin only) | `apps/api/src/common/constants/roles.constants.ts` | Registered through the app's permission manifest; names are persisted in role seeds and tokens |
 
-## Drift allowlist
+## Drift allowlist and lock deviations
 
-None yet. From E2, intentional drift entries (the raw-SQL index above and any `RLS_POLICIES` deviation) are recorded in `apps/api/prisma/platform.lock` and listed here.
+`apps/api/prisma/platform.lock` is the machine-readable record. `npm run db:drift` is green (no allowlist is needed: every difference between the migrations and the composed schema is either absent or a raw-SQL index listed below).
+
+**Raw-SQL index** (`rawSqlIndexes`): `secret_versions_current_unique`, `CREATE UNIQUE INDEX ... ON public.secret_versions USING btree (secret_id) WHERE (is_current = true)`. Intentional drift; never `@@unique` it. Asserted by B4, by `platform db drift`, and offline by the `app-schema-objects` conformance test (`test/prisma/platform-db-conformance.spec.ts`).
+
+**Baseline deviations** (`deviations`; produced by `scripts/baseline-deviations.mjs` from the dry-run report, which refuses anything it cannot prove). They exist because the live production database differs from the platform history **at version 0002**; they are not exceptions to the schema going forward:
+
+| Id | Statements | What it declares | Removal |
+|---|---|---|---|
+| `vault:pre-0005-uuid-defaults` | 11 | `ALTER TABLE "<t>" ALTER COLUMN "id" DROP DEFAULT` on `allowed_emails`, `audit_events`, `device_codes`, `permissions`, `refresh_tokens`, `roles`, `storage_object_chunks`, `system_settings`, `user_identities`, `user_settings`, `users`. Vault's `20260403235813_add_media_folders` did this early; platform 0005 re-runs it as a no-op | Stays as a record while any database was baselined from the old history |
+| `vault:storage-media-folder-id` | 3 | `storage_objects.media_folder_id` (printed with the twelfth early `DROP DEFAULT`, on `storage_objects`), `storage_objects_media_folder_id_idx`, `storage_objects_media_folder_id_fkey` | Gone from every database once `20261102130000_add_media_folder_files` has run; the entry stays as the record for the pre-migration gate |
+| `vault:domain-schema` | 35 | Every table, index and foreign key of `secret_types`, `secrets`, `secret_versions`, `secret_attachments`, `media_folders`, `backup_schedules`, `backup_runs` | Permanent record: domain tables, not a change to a platform table |
+| `vault:media-folder-files` | 5 | The `media_folder_files` table, its two indexes and two foreign keys, as the diff shows them after that migration ran | Permanent record |
+
+## RLS readiness: paths that need an org scope in E2.3
+
+RLS on `storage_objects` and `storage_object_chunks` is forced but inert while the API is a superuser. When E2.3 moves the API to `vault_app` (`NOSUPERUSER NOBYPASSRLS`), every read or write of those tables, and of every table joined through them (`secret_attachments` includes, `media_folder_files`), must run inside `PrismaService.forOrg(orgId)` / `runInOrg(orgId, fn)` for the default organization (never a session-level `SET`, and `runInOrg`, not `forOrg`, inside `$transaction`). Otherwise reads return nothing and inserts fail the policy check, which looks like data loss. Paths found by grepping `storageObject`, `storage_objects`, `mediaFolderFile` and the `include`s of `storageObject`:
+
+- `storage/objects/objects.service.ts`, `storage/processing/object-processing.service.ts`, `storage/tasks/storage-cleanup.task.ts`
+- `media/media.service.ts`
+- `secrets/secrets.service.ts` (the attachment `$transaction` with `FOR UPDATE`), `secrets/export/*` (`secrets-export.service.ts`, `media-export.ts`)
+- `backups/backup-runner.service.ts` (size estimate, media and attachment streaming), `backups/my-backups.service.ts`
+- `ai/card-extract.service.ts` if it reads attachments
+- `prisma.service.ts` `cleanDatabase()` is unaffected (`TRUNCATE` ignores RLS), but a test that needs the default organization must re-insert it (the truncate also wipes `organizations`).

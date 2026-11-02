@@ -308,7 +308,7 @@ This avoids hardcoding connection strings and keeps the database credentials in 
 
 ### After schema changes
 
-When `apps/api/prisma/schema.prisma` is modified:
+When a fragment in `apps/api/prisma/fragments/` is modified (then `npm run db:compose`):
 
 ```bash
 # 1. Create a new migration (development only — do not run on the VPS directly)
