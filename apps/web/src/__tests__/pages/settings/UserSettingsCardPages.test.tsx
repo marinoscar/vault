@@ -1,6 +1,7 @@
 /**
  * The per-user card pages that replaced the stacked UserSettingsPage (E10.3,
- * #94): Profile, Appearance, Access tokens and My backups. The behaviour each
+ * #94): Profile, Appearance and My backups (Access tokens is the packaged
+ * `UserTokensPage` since E3.3; `identity/identityWiring.test.tsx` covers it). The behaviour each
  * section had on the stacked page moves here with it.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -9,24 +10,11 @@ import userEvent from '@testing-library/user-event';
 import { render, mockUser } from '../../utils/test-utils';
 import ProfileSettingsPage from '../../../pages/settings/ProfileSettingsPage';
 import AppearanceSettingsPage from '../../../pages/settings/AppearanceSettingsPage';
-import AccessTokensPage from '../../../pages/settings/AccessTokensPage';
 import MyBackupsPage from '../../../pages/settings/MyBackupsPage';
 import type { UserSettings } from '../../../types';
 
 vi.mock('../../../hooks/useUserSettings', () => ({
   useUserSettings: vi.fn(),
-}));
-
-vi.mock('../../../hooks/usePersonalAccessTokens', () => ({
-  usePersonalAccessTokens: vi.fn(() => ({
-    tokens: [],
-    isLoading: false,
-    error: null,
-    fetchTokens: vi.fn(),
-    createToken: vi.fn(),
-    revokeToken: vi.fn(),
-    refresh: vi.fn(),
-  })),
 }));
 
 import { useUserSettings } from '../../../hooks/useUserSettings';
@@ -162,15 +150,6 @@ describe('Profile and Appearance card pages', () => {
 
       expect(screen.queryByRole('button', { name: 'dark mode' })).not.toBeInTheDocument();
     });
-  });
-});
-
-describe('Access tokens card page', () => {
-  it('renders the personal access tokens section', () => {
-    render(<AccessTokensPage />);
-
-    expect(screen.getByRole('heading', { level: 1, name: 'Access tokens' })).toBeInTheDocument();
-    expect(screen.getByText('Personal Access Tokens')).toBeInTheDocument();
   });
 });
 

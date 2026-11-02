@@ -41,7 +41,7 @@ import { SecretTypeIcon } from '../components/secrets/SecretTypeIcon';
 import { SecretValueField } from '../components/secrets/SecretValueField';
 import { SecretVersionDrawer } from '../components/secrets/SecretVersionDrawer';
 import { useSecretDetail } from '../hooks/useSecretDetail';
-import { usePermissions } from '../hooks/usePermissions';
+import { usePermissions } from '@marinoscar/platform-web/identity/headless';
 import { deleteSecret, unlinkSecretAttachment } from '../services/api';
 import { formatRelativeTime, isCardType } from '../utils/secretFields';
 
