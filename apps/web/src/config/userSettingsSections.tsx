@@ -18,6 +18,10 @@ import PaletteIcon from '@mui/icons-material/PaletteOutlined';
 import BackupIcon from '@mui/icons-material/BackupOutlined';
 import CategoryIcon from '@mui/icons-material/CategoryOutlined';
 import NotificationsIcon from '@mui/icons-material/NotificationsOutlined';
+import { dataExportSettingsPage } from '@marinoscar/platform-web/exports/ui';
+import { DANGER_ZONE_GROUP_LABEL } from '@marinoscar/platform-web/user-data/headless';
+import { dangerZoneSettingsPage } from '@marinoscar/platform-web/user-data/ui';
+import { gettingStartedSettingsPage } from '@marinoscar/platform-web/onboarding/ui';
 // The feature resolvers (`ai`), registered before any hub reads them.
 import './settingsFeatures';
 
@@ -51,6 +55,10 @@ export const USER_SETTINGS_SECTIONS: SettingsSectionDef[] = [
       // `Access tokens` card was: `Access Tokens`, `/settings/tokens`, no
       // permission (the platform's pat.controller.ts: bare `@Auth()`, ownership-scoped).
       ...identityUserSettingsSections.security,
+      // E9.3 (#91), APPENDED: the packaged Getting started page (`gettingStartedSettingsPage`):
+      // the caller's own checklist from `GET /api/onboarding`, which needs only
+      // `user_settings:read` (every role), so the card carries no permission.
+      { ...gettingStartedSettingsPage.card, Icon: gettingStartedSettingsPage.Icon },
     ],
   },
   {
@@ -73,6 +81,11 @@ export const USER_SETTINGS_SECTIONS: SettingsSectionDef[] = [
         // secret_types:write, delete secret_types:delete.
         permission: 'secret_types:read',
       },
+      // E9.3 (#91), APPENDED: the packaged "Download your data" page. No permission: the API grants
+      // the `user-data` and `vault-secrets` sources to every role through `user_settings:read`, and
+      // lists only the sources the caller may use. It exports metadata only; secret values leave
+      // through the password-protected zip on My backups (see VaultExportNotice).
+      { ...dataExportSettingsPage.card, Icon: dataExportSettingsPage.Icon },
     ],
   },
   {
@@ -92,5 +105,12 @@ export const USER_SETTINGS_SECTIONS: SettingsSectionDef[] = [
         permission: 'user_settings:read',
       },
     ],
+  },
+  {
+    // E9.3 (#91): the packaged Delete my data page, in its own group KEPT LAST of the registry
+    // (`dangerZoneLastViolations`; the one documented exception to append-only). No permission:
+    // every role holds `user_settings:write`, which the API enforces on `/api/user-data/*`.
+    label: DANGER_ZONE_GROUP_LABEL,
+    cards: [{ ...dangerZoneSettingsPage.card, Icon: dangerZoneSettingsPage.Icon }],
   },
 ];

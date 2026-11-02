@@ -23,6 +23,7 @@ Index of every document in `docs/`, plus the "Doc map by task". Rules for assist
 | [runbooks/database-baseline.md](runbooks/database-baseline.md) | One-time baseline of a live database onto the platform history (rehearse, window, rollback) | |
 | [runbooks/settings-migration.md](runbooks/settings-migration.md) | Move pre-E4.1 user profiles onto the platform settings layout (`vault:migrate-settings`) | |
 | [runbooks/database-restore.md](runbooks/database-restore.md) | Whole-database backup and restore (`db-backup` slice): keys that must match, pre-flight, manual and automated restore, rollback, rehearsal | |
+| [runbooks/factory-reset.md](runbooks/factory-reset.md) | Delete a user's data and factory reset a deployment (back up first, verify, recover) | |
 | [runbooks/storage-config-migration.md](runbooks/storage-config-migration.md) | Move the S3 environment variables onto the runtime storage settings (`vault:migrate-storage-config`, boot-time import, cut-over, rollback) | |
 | [platform-adoption/drift-baseline.md](platform-adoption/drift-baseline.md) | Frozen generated drift report | |
 | [specs/ux-refresh.md](specs/ux-refresh.md) | UX spec for E10: destinations, shell, brand, settings hub, datatable, Home | |

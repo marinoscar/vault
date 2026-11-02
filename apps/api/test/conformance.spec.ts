@@ -11,15 +11,19 @@ import '@marinoscar/platform-api/ai/testing';
 import '../src/platform/storage/storage-key-prefix.manifest';
 import '@marinoscar/platform-api/db-backup/testing';
 import '@marinoscar/platform-api/email/testing';
+import '@marinoscar/platform-api/exports/testing';
 import '@marinoscar/platform-api/host/testing';
 import '@marinoscar/platform-api/identity/testing';
 import '@marinoscar/platform-api/jobs/testing';
 import '@marinoscar/platform-api/notifications/testing';
+import '@marinoscar/platform-api/onboarding/testing';
 import '@marinoscar/platform-api/settings/testing';
 import '@marinoscar/platform-api/telemetry/testing';
 import '@marinoscar/platform-api/storage/testing';
+import '@marinoscar/platform-api/user-data/testing';
 
 import { Module } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { join } from 'node:path';
 import {
   buildPermissionCatalog,
@@ -30,6 +34,7 @@ import {
 } from '@marinoscar/platform-api/core';
 import { discoverControllers } from '@marinoscar/platform-api/identity/testing';
 import { runPlatformConformance } from '@marinoscar/platform-api/testing';
+import { composedSchemaDatamodel } from '@marinoscar/platform-api/user-data';
 
 import { AppModule } from '../src/app.module';
 import { API_SOURCE_ROOT, CRON_EXEMPTIONS } from './jobs/cron-source-roots';
@@ -87,6 +92,10 @@ runPlatformConformance({
         {
           file: 'secrets/secrets.service.ts',
           why: 'SELECT ... FOR UPDATE on one storage object id the caller already proved it may attach.',
+        },
+        {
+          file: 'platform/onboarding/onboarding-data.adapter.ts',
+          why: 'queryAggregate(): the activation metrics\' one developer-authored aggregate statement, run with positional values inside a SET TRANSACTION READ ONLY transaction; it takes no request-derived id.',
         },
       ],
     },
@@ -197,5 +206,33 @@ runPlatformConformance({
     // registered carry binding `$1`. Vault registers NO carry-over (app-registrations/db-backup.ts
     // says why), so none is required.
     dbBackup: { requiredCarryOverIds: [] },
+
+    // The exports slice (E9.3, #91): every source names a registered permission and offers a registered
+    // writer, the user-owned registry agrees with the datamodel, and the `secret-egress` case fills every
+    // model with sentinels and runs `user-data` and `org-data` through every writer: no ciphertext, secret
+    // or hash column reaches any output. Vault's `vault-secrets` source is held by its own spec and by
+    // `test/export/platform-export-secrets.db.spec.ts` (decrypted-value and ciphertext markers).
+    exports: { datamodel: Prisma.dmmf.datamodel, permissions: permissionRegistry.list() },
+
+    // The user-data slice (E9.3, #91): every owner model has an explicit decision that `everything`
+    // reaches (secrets, media folders, backup runs, custom types), every hint and scope names a model,
+    // column and category that exist, and a delete order exists for this schema.
+    userData: { datamodel: composedSchemaDatamodel(__dirname)() },
+
+    // The onboarding slice (E9.3, #91): every fact a step names is registered, no required step is
+    // skippable, every step permission is exactly a registered permission, each fact resolves at most
+    // once per request and no data-port call happens while steps evaluate. `factSamples` stands in for
+    // the facts that would query.
+    onboarding: {
+      permissions: permissionRegistry.list(),
+      factSamples: {
+        'vault.ownSecretCount': 0,
+        'vault.cardScan': { available: true, count: 0 },
+        'vault.ownBackupCount': 0,
+        'vault.ownTokenCount': 0,
+        'vault.backupSchedule': { enabled: false, passwordConfigured: false },
+      },
+      minSteps: 12,
+    },
   },
 });

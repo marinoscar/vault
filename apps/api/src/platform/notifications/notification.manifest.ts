@@ -34,6 +34,7 @@ import { configureEmailRendering, registerPlatformEmailTemplates } from '@marino
 // credential store is used; importing the manifest is idempotent.
 import '../credentials/credential-purposes.manifest';
 import { registerVaultEmailTemplates } from '../../email-templates';
+import { EXPORTS_NOTIFICATIONS } from '../../notifications-registry/exports.notifications';
 import { DB_BACKUP_NOTIFICATIONS } from '../../notifications-registry/db-backup.notifications';
 import { IDENTITY_NOTIFICATIONS } from '../../notifications-registry/identity.notifications';
 import { VAULT_NOTIFICATIONS } from '../../notifications-registry/vault.notifications';
@@ -55,6 +56,8 @@ if (!registered) {
     ...BROADCASTS_NOTIFICATIONS,
     ...OPS_NOTIFICATIONS,
     ...NODES_NOTIFICATIONS,
+    // E9.3: the exports slice's `export.ready` / `export.failed` (bell and Web Push only).
+    ...EXPORTS_NOTIFICATIONS,
     // E9.1: the whole-database backup events (appended, the preferences matrix order is stable).
     ...DB_BACKUP_NOTIFICATIONS,
   ]);

@@ -24,7 +24,11 @@ import './jobs';
 import './db-backup';
 import { VAULT_MODEL_OWNERSHIP } from './model-ownership';
 import { VAULT_USER_OWNED_MODELS } from './user-owned-models';
+import { registerVaultOnboarding } from '../platform/onboarding/onboarding.manifest';
 
 registerPlatformPermissions(PERMISSION_OPTIONS);
 registerPlatformUserOwnedModels(VAULT_USER_OWNED_MODELS);
 registerPlatformModelOwnership(VAULT_MODEL_OWNERSHIP);
+// E9.3: the onboarding facts and steps. After the permissions (it keeps the platform steps whose
+// permission is registered) and before anything that reads the step registry.
+registerVaultOnboarding();

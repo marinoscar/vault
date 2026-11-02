@@ -34,8 +34,8 @@ describe('Vault settings namespaces', () => {
     ]);
   });
 
-  it('registers the platform dataTables, navigation and notifications user namespaces', () => {
-    expect(userSettingsNamespaceRegistry.list().map((n) => n.key)).toEqual(['dataTables', 'navigation', 'notifications']);
+  it('registers the platform dataTables, navigation, notifications and onboarding user namespaces', () => {
+    expect(userSettingsNamespaceRegistry.list().map((n) => n.key)).toEqual(['dataTables', 'navigation', 'notifications', 'onboarding']);
   });
 
   it('keeps the legacy wire keys of the global row: ui, features, ai', () => {

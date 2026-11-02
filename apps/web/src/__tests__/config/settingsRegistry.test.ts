@@ -30,6 +30,7 @@ import usersPermissionsSource from '../../../../../node_modules/@marinoscar/plat
 import allowlistPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/identity/allowlist/allowlist.permissions.js?raw';
 import dbBackupPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/db-backup/db-backup.permissions.js?raw';
 import notificationsPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/notifications/notifications.permissions.js?raw';
+import userDataPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/user-data/user-data.permissions.js?raw';
 import aiPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/ai/ai.permissions.js?raw';
 import aiAdminControllerSource from '../../../../../node_modules/@marinoscar/platform-api/dist/ai/config/ai-admin.controller.js?raw';
 import aiUsageAdminControllerSource from '../../../../../node_modules/@marinoscar/platform-api/dist/ai/usage/ai-usage-admin.controller.js?raw';
@@ -63,6 +64,8 @@ const API_PERMISSIONS = new Set([
   ...declaredIds(aiPermissionsSource),
   ...declaredIds(telemetryPermissionsSource),
   ...declaredIds(storageConfigPermissionsSource),
+  // E9.3 (#91): `system:factory_reset` and `orgs:offboard` (the user-data slice, Admin only).
+  ...declaredIds(userDataPermissionsSource),
 ]);
 
 /**
@@ -117,7 +120,24 @@ const CONTROLLER_MIRROR: Record<string, string | undefined> = {
   '/admin/settings/ai/usage': 'ai_config:read',
   // E6.1 web follow-up: the platform storage-config.controller GET /api/admin/storage-config (STORAGE_CONFIG_READ)
   '/admin/settings/storage': 'storage_config:read',
+  // E9.3 (#91): the platform onboarding, exports and user-data slices.
+  // onboarding.controller GET /api/onboarding adds the admin block for `system_settings:read` (adminPermission)
+  '/admin/settings/setup': 'system_settings:read',
+  // user-data.controller FactoryResetController (system:factory_reset, Admin only)
+  '/admin/settings/factory-reset': 'system:factory_reset',
+  // GET /api/onboarding: `user_settings:read` (every role), which the user card does not name (ownership-scoped)
+  '/settings/getting-started': undefined,
+  // GET /api/exports/sources: bare @Auth(); the service checks `user_settings:read` per source (every role)
+  '/settings/data-export': undefined,
+  // UserDataController: `user_settings:write` (every role)
+  '/settings/danger-zone': undefined,
 };
+
+/**
+ * Admin cards whose permission is held ONLY by the Admin system role, which also holds every permission of the
+ * Console hub gate: they are reachable through it without being named in it.
+ */
+const ADMIN_ONLY_CARD_PERMISSIONS = new Set(['system:factory_reset']);
 
 /**
  * Cards that sit BENEATH another card's route rather than directly under the
@@ -251,9 +271,11 @@ describe('the AI cards (E8.2, the platform AI slice)', () => {
 describe('the Storage card (E6.1 web follow-up, the platform storage slice)', () => {
   const card = ADMIN_CARDS.find((c) => c.path === '/admin/settings/storage');
 
-  it('is the last Administration card, gated on storage_config:read with no feature', () => {
+  it('is an Administration card appended after AI usage (only the E9.3 Setup guide follows), gated on storage_config:read with no feature', () => {
     const administration = ADMIN_SECTIONS.find((s) => s.label === 'Administration')!;
-    expect(administration.cards[administration.cards.length - 1]).toBe(card);
+    const titles = administration.cards.map((c) => c.title);
+    expect(administration.cards[titles.indexOf('Storage')]).toBe(card);
+    expect(titles.slice(titles.indexOf('Storage'))).toEqual(['Storage', 'Setup guide']);
     expect(card?.title).toBe('Storage');
     expect(card?.permission).toBe('storage_config:read');
     expect(card?.feature).toBeUndefined();
@@ -280,7 +302,7 @@ describe('the Storage card (E6.1 web follow-up, the platform storage slice)', ()
 });
 
 describe('the registries as a whole', () => {
-  it('lists the cards in append order (E10.3, then E7.2, then E8.2, then E6.1 Storage)', () => {
+  it('lists the cards in append order (E10.3, then E7.2, E8.2, E6.1 Storage, E9.1 to E9.3)', () => {
     expect(ADMIN_CARDS.map((card) => card.title)).toEqual([
       'General',
       'Users & Allowlist',
@@ -289,6 +311,7 @@ describe('the registries as a whole', () => {
       'AI models',
       'AI usage',
       'Storage',
+      'Setup guide',
       'Maintenance',
       'Doctor',
       'About',
@@ -299,14 +322,18 @@ describe('the registries as a whole', () => {
       'Telemetry',
       'Telemetry Explorer',
       'Telemetry Dashboard',
+      'Factory reset',
     ]);
     expect(USER_CARDS.map((card) => card.title)).toEqual([
       'Profile',
       'Appearance',
       'Access Tokens',
+      'Getting started',
       'My backups',
       'Secret types',
+      'Download your data',
       'Notifications',
+      'Delete my data',
     ]);
   });
 
@@ -322,9 +349,11 @@ describe('the registries as a whole', () => {
     expect(perms).toEqual(consoleDest.anyPermission);
     // Every admin card is reachable by some holder of the hub gate.
     // The `telemetry:*` cards are held by the admin role only, which also holds the hub gate's
-    // `system_settings:read`: the page gate (not the hub gate) is what checks the telemetry string.
+    // `system_settings:read`: the page gate (not the hub gate) is what checks the telemetry string. Likewise
+    // `system:factory_reset` (E9.3, Admin only).
     for (const card of ADMIN_CARDS.filter((c) => !/^telemetry:/.test(String(c.permission ?? '')))) {
-      expect(perms).toContain(card.permission as string);
+      if (ADMIN_ONLY_CARD_PERMISSIONS.has(card.permission as string)) expect(perms).toContain('system_settings:read');
+      else expect(perms).toContain(card.permission as string);
     }
   });
 

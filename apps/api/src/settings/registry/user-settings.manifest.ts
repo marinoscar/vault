@@ -10,6 +10,7 @@
 // =============================================================================
 
 import { NOTIFICATIONS_USER_SETTINGS } from '@marinoscar/platform-api/notifications';
+import { ONBOARDING_USER_SETTINGS } from '@marinoscar/platform-api/onboarding';
 import {
   DATA_TABLES_USER_SETTINGS,
   NAVIGATION_USER_SETTINGS,
@@ -24,6 +25,7 @@ export const PLATFORM_USER_SETTINGS_NAMESPACES: readonly UserSettingsNamespace[]
   DATA_TABLES_USER_SETTINGS as UserSettingsNamespace,
   NAVIGATION_USER_SETTINGS as UserSettingsNamespace,
   NOTIFICATIONS_USER_SETTINGS as UserSettingsNamespace, // E7.1: per-channel preferences
+  ONBOARDING_USER_SETTINGS as UserSettingsNamespace, // E9.3: welcome seen, checklists dismissed, skipped steps
 ];
 
 export function assembleVaultUserSettingsNamespaces(): UserSettingsNamespace[] {

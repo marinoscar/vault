@@ -2009,6 +2009,30 @@ Whole-database disaster recovery from the platform `db-backup` slice (`@marinosc
 
 Restore and rollback answer `403` with `details.reason: "deployment_mode_saas"` when `DEPLOYMENT_MODE=saas`, before any lookup. Every dump and restore carries `--enable-row-security` and `PGOPTIONS=-c app.rls_bypass=on` (environment, never argv). Procedures: [runbooks/database-restore.md](runbooks/database-restore.md). Notifications: `db_backup.backup_failed` and the mandatory `db_backup.restore_completed`, to the holders of `db_backup:read`.
 
+---
+
+### Exports, user data and onboarding
+
+The platform's `exports`, `user-data` and `onboarding` slices (E9.3, [#91](https://github.com/marinoscar/vault/issues/91)), mounted in `apps/api/src/platform/{exports,user-data,onboarding}/`. The per-endpoint reference is the generated OpenAPI at `/api/docs`; the conventions are the platform's (`{ data }` envelope, `202` for a queued job).
+
+| Routes | Permission | Notes |
+|---|---|---|
+| `GET /exports/sources` | signed-in user | The sources the caller may use: `user-data` (platform) and `vault-secrets` (secret metadata only) |
+| `POST /exports`, `GET /exports`, `GET /exports/:id` | signed-in user | `POST` queues `export.run` (`{ source, format, request }`), the id is the job id. `GET /exports/:id` of a `ready` export mints a signed URL that lives 5 minutes. Someone else's export is a `404`. Never contains a secret value or ciphertext ([SECRETS.md](SECRETS.md#download-your-data-vs-the-password-protected-zip)); values leave only through `POST /secrets/export` |
+| `GET /user-data/summary` | `user_settings:write` | Categories with live counts, the scopes and what is kept |
+| `POST /user-data/deletions` | `user_settings:write` | `{ scope, confirmation }`: scope `backups` (`DELETE MY BACKUPS`), `content` (`DELETE MY CONTENT`) or `everything` (`DELETE MY DATA`); queues `user.data.purge` (`202`, `{ jobId }`) |
+| `GET /user-data/deletions/:jobId` | `user_settings:write` | The job's status and result counts |
+| `GET /admin/factory-reset/summary`, `POST /admin/factory-reset` (`{ confirmation: "FACTORY RESET" }`), `GET /admin/factory-reset/:jobId` | `system:factory_reset` | Admin only; refused with `403 FACTORY_RESET_DISABLED_IN_SAAS` when `DEPLOYMENT_MODE=saas` |
+| `GET /admin/orgs/:orgId/offboarding/*`, `POST /admin/orgs/:orgId/offboarding` | `orgs:offboard` | Admin only; answers in `TENANCY_MODE=multi` only. Vault runs one organization and ships no page for it |
+| `GET /onboarding` | `user_settings:read` | The caller's `user` checklist and, for a holder of `system_settings:read`, the `admin` checklist. Statuses are derived on every read, never stored |
+| `GET /admin/onboarding/metrics` | `system_settings:read` | Aggregate activation metrics (counts only) |
+
+Job types (all server-only, permanent): `export.run`, `export.purge`, `user.data.purge`, `admin.factory_reset`, `org.offboard`, and Vault's `vault.user_data.purge` (the delegate that deletes a user's saved backups, archive first, and their unused custom secret types). Notification events `export.ready` and `export.failed` (bell and push only, no email).
+
+Onboarding steps (ids are permanent: a user's skipped steps store them): platform `admin.storage`, `admin.email`, `admin.access`, `admin.ai`, `admin.push` (and `admin.backup` for database backups once that slice is mounted); Vault's `admin.vault_backups` (schedule on and a password stored), `user.first_secret`, `user.scan_card` (offered only while card scanning is usable), `user.first_backup` and `user.install_cli` (an access token exists, such as the one `vault login` creates).
+
+---
+
 ### Host and operations (admin)
 
 All require `system_settings:read` unless noted; served by the platform (`PlatformHostCoreModule`, `DoctorModule`, `AboutModule`).

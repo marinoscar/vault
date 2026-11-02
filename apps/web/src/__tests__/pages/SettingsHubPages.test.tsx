@@ -67,9 +67,12 @@ describe('/settings (per-user hub)', () => {
       'Profile',
       'Appearance',
       'Access Tokens',
+      'Getting started',
       'My backups',
       'Secret types',
+      'Download your data',
       'Notifications',
+      'Delete my data',
     ]);
   });
 
@@ -77,14 +80,23 @@ describe('/settings (per-user hub)', () => {
     setViewportWidth(1440);
     renderHub('user', mockUser);
 
-    expect(cardTitles()).toEqual(['Profile', 'Appearance', 'Access Tokens', 'Notifications']);
+    expect(cardTitles()).toEqual([
+      'Profile',
+      'Appearance',
+      'Access Tokens',
+      'Getting started',
+      'Download your data',
+      'Notifications',
+      'Delete my data',
+    ]);
   });
 
   it('always shows Access Tokens (ownership-scoped, no permission)', () => {
     setViewportWidth(1440);
     renderHub('user', { ...mockUser, permissions: [] });
 
-    expect(cardTitles()).toEqual(['Access Tokens']);
+    // Ownership-scoped cards carry no permission (E9.3 added Getting started, Download your data, Delete my data).
+    expect(cardTitles()).toEqual(['Access Tokens', 'Getting started', 'Download your data', 'Delete my data']);
   });
 
   it('navigates to the card route', async () => {
@@ -119,6 +131,7 @@ describe('/admin/settings (Console hub)', () => {
       'Users & Allowlist',
       'AI',
       'Backups',
+      'Setup guide',
       'Maintenance',
       'Doctor',
       'About',
@@ -153,7 +166,7 @@ describe('/admin/settings (Console hub)', () => {
     renderHub('admin', { ...mockUser, permissions: ['system_settings:read'] });
 
     // AI needs ai_config:read since E8.2 (the platform AI admin controller).
-    expect(cardTitles()).toEqual(['General', 'Backups', 'Maintenance', 'Doctor', 'About', 'Email']);
+    expect(cardTitles()).toEqual(['General', 'Backups', 'Setup guide', 'Maintenance', 'Doctor', 'About', 'Email']);
     // db_backup:read is a pair of its own (admin only): system_settings:read alone does not show Database Backup.
   });
 
@@ -174,6 +187,7 @@ describe('/admin/settings (Console hub)', () => {
       'Backups',
       'AI models',
       'AI usage',
+      'Setup guide',
       'Maintenance',
       'Doctor',
       'About',

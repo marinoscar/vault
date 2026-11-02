@@ -16,12 +16,13 @@
 // `telemetry` (E9.2) declares `telemetry:read|write|query` (system, admin). `ai` is listed for
 // `ai:use`, which the telemetry assistant route requires next to `telemetry:query`; the AI slice
 // itself (E8) mounts its own routes.
-// `db-backup` (E9.1) declares `db_backup:read|write|restore` (system, admin only).
+// `db-backup` (E9.1) declares `db_backup:read|write|restore` (system, admin only). `user-data` (E9.3)
+// declares `system:factory_reset` and `orgs:offboard` (system, admin only).
 import type { PlatformPermissionOptions } from '@marinoscar/platform-api/manifest';
 
 import { VAULT_PERMISSIONS } from '../app-registrations/permissions';
 
 export const PERMISSION_OPTIONS = {
-  slices: ['identity', 'settings', 'storage', 'jobs', 'nodes', 'ai', 'notifications', 'telemetry', 'db-backup'],
+  slices: ['identity', 'settings', 'storage', 'jobs', 'nodes', 'ai', 'notifications', 'telemetry', 'db-backup', 'user-data'],
   app: { permissions: [VAULT_PERMISSIONS] },
 } satisfies PlatformPermissionOptions;

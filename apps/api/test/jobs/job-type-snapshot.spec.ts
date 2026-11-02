@@ -57,6 +57,15 @@ const PINNED_JOB_TYPES = [
   'db.backup.sweep',
   'db.restore.run',
   'db.restore.old-db-drop',
+  // exports slice (`ExportsModule.forRoot`, E9.3): the file build and the expiry sweep, both server-only
+  'export.run',
+  'export.purge',
+  // user-data slice (`UserDataModule.forRoot`, E9.3): the per-user purge, the admin factory reset and the
+  // organization offboarding, all server-only; plus Vault's delegate for backup runs and custom secret types
+  'user.data.purge',
+  'admin.factory_reset',
+  'org.offboard',
+  'vault.user_data.purge',
 ] as const;
 
 describe('job type snapshot (issue #81)', () => {

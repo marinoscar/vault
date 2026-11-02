@@ -86,6 +86,12 @@ const PushConfigPage = lazy(() =>
 const BroadcastsPage = lazy(() =>
   import('@marinoscar/platform-web/notifications/ui').then((m) => ({ default: m.BroadcastsPage })),
 );
+// E9.3 (#91): the platform exports, user-data and onboarding pages with Vault's notices.
+const DataExportRoute = lazy(() => import('./pages/DataExportRoute'));
+const DangerZoneRoute = lazy(() => import('./pages/UserDataPages').then((m) => ({ default: m.DangerZoneRoute })));
+const FactoryResetRoute = lazy(() => import('./pages/UserDataPages').then((m) => ({ default: m.FactoryResetRoute })));
+const GettingStartedRoute = lazy(() => import('./components/onboarding/GettingStartedRoute'));
+const SetupGuideRoute = lazy(() => import('./components/onboarding/SetupGuideRoute'));
 // E6.1 web follow-up (#84): the platform storage slice's configuration page. It
 // takes no adapters: it reads the platform host (platform/platformHost.tsx).
 const StorageConfigPage = lazy(() =>
@@ -192,6 +198,12 @@ function AppRoutes() {
                 path="/settings/notifications"
                 element={<RequirePermission permission="user_settings:read" fallback={TO_SETTINGS}><UserNotificationsPage /></RequirePermission>}
               />
+              {/* E9.3 (#91): ownership-scoped pages of the platform exports, onboarding and user-data
+                  slices. Their API routes need only `user_settings:read|write` (every role) or a bare
+                  `@Auth()`, so, like Access Tokens, these routes carry no gate. */}
+              <Route path="/settings/getting-started" element={<GettingStartedRoute />} />
+              <Route path="/settings/data-export" element={<DataExportRoute />} />
+              <Route path="/settings/danger-zone" element={<DangerZoneRoute />} />
               {/* Pre-E10.3 bookmarks: real redirects, the target route gates. */}
               <Route path="/secret-types" element={<Navigate to="/settings/secret-types" replace />} />
               <Route path="/secret-types/new" element={<Navigate to="/settings/secret-types/new" replace />} />
@@ -281,6 +293,17 @@ function AppRoutes() {
               <Route
                 path="/admin/settings/db-backup"
                 element={<RequirePermission permission="db_backup:read" fallback={TO_HOME}><DbBackupSettingsPage /></RequirePermission>}
+              />
+              {/* E9.3 (#91). The Setup guide: `system_settings:read`, the string the platform adds the admin
+                  block of GET /api/onboarding for. The factory reset: `system:factory_reset`, the string its
+                  controller enforces (Admin only). */}
+              <Route
+                path="/admin/settings/setup"
+                element={<RequirePermission permission="system_settings:read" fallback={TO_HOME}><SetupGuideRoute /></RequirePermission>}
+              />
+              <Route
+                path="/admin/settings/factory-reset"
+                element={<RequirePermission permission="system:factory_reset" fallback={TO_HOME}><FactoryResetRoute /></RequirePermission>}
               />
               <Route path="/admin" element={<Navigate to="/admin/settings" replace />} />
               <Route path="/admin/users" element={<Navigate to="/admin/settings/users" replace />} />

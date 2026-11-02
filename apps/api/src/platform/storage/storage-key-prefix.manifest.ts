@@ -33,6 +33,7 @@
 // `storage_objects`, like the zips above.
 // =============================================================================
 
+import { EXPORTS_KEY_PREFIXES } from '@marinoscar/platform-api/exports';
 import { DB_BACKUP_KEY_PREFIX } from '@marinoscar/platform-api/db-backup';
 import {
   STORAGE_SLICE_KEY_PREFIXES,
@@ -67,6 +68,8 @@ export const ALL_KEY_PREFIXES: readonly StorageKeyPrefixDef[] = [
   ...STORAGE_SLICE_KEY_PREFIXES,
   DB_BACKUP_KEY_PREFIX,
   ...VAULT_KEY_PREFIXES,
+  // E9.3: `exports/users/<userId>/` and `exports/orgs/<orgId>/` (the exports slice's files).
+  ...EXPORTS_KEY_PREFIXES,
 ];
 
 let registered = false;

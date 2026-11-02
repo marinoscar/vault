@@ -12,6 +12,8 @@ This document describes the secrets management feature of the Vault application:
 - [Rollback](#rollback)
 - [Attachments](#attachments)
 - [Backup and export](#backup-and-export)
+- [Download your data vs. the password-protected zip](#download-your-data-vs-the-password-protected-zip)
+- [Deleting your data](#deleting-your-data)
 - [Scheduled backups (admin)](#scheduled-backups-admin)
 - [Whole-database backup versus encrypted secret backups](#whole-database-backup-versus-encrypted-secret-backups)
 - [API Reference](#api-reference)
@@ -406,6 +408,44 @@ Each export writes an `audit_events` row with action `secrets.export` before the
 The archive is streamed to the client; it is not assembled in memory. If streaming fails after the response has started, the connection is aborted and the download ends truncated, so clients (the CLI writes to a `.partial` file and deletes it) must treat an aborted download as a failure.
 
 ---
+
+## Download your data vs. the password-protected zip
+
+Vault has **two** ways to take data out, and only one of them can carry a secret value (E9.3, [#91](https://github.com/marinoscar/vault/issues/91)).
+
+| | Settings > Download your data | Settings > My backups (`POST /api/secrets/export`) |
+|---|---|---|
+| Slice | the platform `exports` slice (`GET|POST /api/exports`), a queue job (`export.run`) | Vault's own raw-zip endpoint |
+| Contains secret values | **Never.** No decrypted value and no ciphertext | Yes, decrypted on the server and re-protected with **your password** (AES-256 zip) |
+| What it lists | `user-data`: your media folders and custom secret types. `vault-secrets`: for every secret its name, type, created/updated time, number of versions, current version and number of attachments, and each attachment's role, label and time | The secrets you choose, with versions, attachments and media as selected |
+| Formats | JSON, CSV (zip of CSVs), XLSX | A password-protected zip |
+| Delivery | A file in object storage, a signed link that lives five minutes, kept seven days, a bell notification when ready | Streamed to the browser, or saved as a [saved user backup](#saved-user-backups) |
+
+The "Download your data" page says this above the downloads and links to My backups for anyone who holds `secrets:read`. The proof is a test, not a promise: `apps/api/test/exports/platform-export-secrets.db.spec.ts` plants a decrypted-value marker (encrypted into a real `secret_versions` row), a description marker and the stored ciphertext, then runs every source through every writer (JSON, CSV, XLSX, zips opened) and through a real `export.run` job, and fails if any marker appears. The `exports` conformance suite does the same with sentinels in every column of every model, so a new column cannot leak by accident.
+
+How the boundary is kept:
+
+- `Secret` and `SecretVersion` are `export: 'exclude'` in `app-registrations/user-owned-models.ts`, so the platform's `user-data` source never reads them. Only `MediaFolder` and `SecretType` (a type is a list of field names and kinds) are `include`.
+- The `vault-secrets` source (`platform/exports/vault-secrets.source.ts`) copies **named** columns into each row (never a spread of the record), so a client that returns every column still cannot leak one. It selects no `encryptedData`, `iv`, `authTag` or storage key, and it leaves out a secret's description (free text a user may use as a hint).
+- The platform's `user-data` source also lists the user's own file manifest (`storage_objects`: file name, size, type and key). That is the platform's behaviour for every app; the key is a path, never a credential.
+
+## Deleting your data
+
+**Settings > Delete my data** (the platform `user-data` slice, `/api/user-data/*`) deletes your own data in categories, after a typed confirmation, as a server-only queue job. What each category does with Vault's data:
+
+| Category | Deleted | Notes |
+|---|---|---|
+| Secrets | every secret you created, with all versions (the ciphertext) and attachment records | cascade; **irreversible** |
+| Custom secret types | the types you created, unless a secret of somebody else still uses one | system types are never touched |
+| Media folders | your folders and their file links | the files are removed with Files |
+| My backups | your saved backup archives (the file, then its record) and their rows | the system schedule's backups are not yours |
+| Files (platform) | every file you uploaded: attachments, card images and media files, bytes and row | an object an administrator attached to **another** user's secret is the uploader's and goes with the uploader |
+
+Scopes: `backups` ("DELETE MY BACKUPS") deletes only My backups; the platform's `content` ("DELETE MY CONTENT") and `everything` ("DELETE MY DATA") are the composite scopes. Your account, roles and session stay.
+
+**Backup first.** There is no undo: make a [password-protected backup](#backup-and-export) and keep it and its password. Deleting everything deletes your saved backups too, so download one before you start.
+
+The admin **Factory reset** (Console > Danger Zone, `system:factory_reset`, Admin only) deletes every user's data the same way, plus every logical backup archive (the scheduled and every user's) and every custom secret type, and every stored file. It keeps the actor, the system secret types, the backup schedule and its password, and every platform setting. See [the runbook](runbooks/factory-reset.md).
 
 ## Scheduled backups (admin)
 
