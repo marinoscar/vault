@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **System settings `ai` block**: admin-only, write-only OpenAI API key (AES-256-GCM encrypted, masked in every read response), plus `enabled`, `model`, and `maxCallsPerUserPerDay`.
 - **`GET /api/ai/status`**: lets any authenticated user check whether AI-backed features are currently available, without exposing system settings.
 
+### Changed
+
+- **Runtime is now Node 24** (#68): CI `NODE_VERSION` 24, API and web Dockerfiles on `node:24-alpine`, root `engines` `>=24`, `.nvmrc` 24, `@types/node` ^24 in `apps/api`. The `tools/*` CLIs keep `engines` `>=18` because they run on user machines.
+
 ### Known Issues
 
 - **#34**: 75 pre-existing test failures on this branch, unrelated to the card feature work.
