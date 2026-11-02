@@ -122,25 +122,25 @@ const EXISTING_SECRET = {
   attachments: [],
   values: {
     card_network: 'Visa',
-    cardholder_name: 'ADA LOVELACE',
+    cardholder_name: 'PERSON A',
     number: '4242424242424242',
     exp_month: '07',
     exp_year: '2026',
     cvv: '123',
-    issuing_bank: 'Bank of Analytics',
+    issuing_bank: 'Bank Alpha',
   },
 };
 
 /** What the AI reads off the replacement card: new number, new expiry. */
 const EXTRACTION = {
   fields: {
-    cardholder_name: 'ADA LOVELACE',
+    cardholder_name: 'PERSON A',
     number: '4111111111111111',
     exp_month: '09',
     exp_year: '2031',
     card_network: 'Visa',
     card_kind: 'Credit',
-    issuing_bank: 'Bank of Analytics',
+    issuing_bank: 'Bank Alpha',
     security_code_2: null,
   },
   confidence: {
@@ -237,7 +237,14 @@ async function walkToReviewWithoutPhotos() {
   await screen.findByRole('heading', { name: /check what changes/i });
 }
 
-/** Photograph the front, skip the back, land on the diff. */
+/** The Crop step (E10.5), shown whenever a photo was taken; then the diff. */
+async function passCropStep() {
+  await screen.findByRole('heading', { name: /check the crop/i });
+  fireEvent.click(screen.getByRole('button', { name: /continue to changes/i }));
+  await screen.findByRole('heading', { name: /check what changes/i });
+}
+
+/** Photograph the front, skip the back, Crop, land on the diff. */
 async function walkToReviewWithFrontPhoto() {
   await screen.findByRole('button', { name: /take a photo of the front/i });
   selectPhoto('front');
@@ -245,7 +252,7 @@ async function walkToReviewWithFrontPhoto() {
 
   await screen.findByRole('button', { name: /take a photo of the back/i });
   fireEvent.click(screen.getByRole('button', { name: /skip the photo/i }));
-  await screen.findByRole('heading', { name: /check what changes/i });
+  await passCropStep();
 }
 
 /** The diff line rendered beneath a given field. */
@@ -319,12 +326,24 @@ describe('RenewCardPage — works with AI disabled', () => {
     });
   });
 
-  it('shows only three steps when there is nothing to read', async () => {
+  it('shows the same four steps, with no AI "Read" step, when there is nothing to read', async () => {
     render(<RenewCardPage />);
 
     await screen.findByRole('heading', { name: /renew visa/i });
     expect(screen.queryByText('Read')).not.toBeInTheDocument();
-    expect(screen.getByText('Review')).toBeInTheDocument();
+    for (const label of ['Capture', 'Crop', 'Review', 'Save']) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
+  });
+
+  it('marks the Crop step skipped when no photo was taken', async () => {
+    render(<RenewCardPage />);
+    await walkToReviewWithoutPhotos();
+
+    expect(screen.getByText('Skipped')).toBeInTheDocument();
+    expect(
+      screen.getByText('Review').closest('[aria-current="step"]'),
+    ).not.toBeNull();
   });
 });
 
@@ -387,7 +406,7 @@ describe('RenewCardPage — the per-field diff', () => {
     ).toBeInTheDocument();
 
     await user.clear(field(/cardholder name/i));
-    await user.type(field(/cardholder name/i), 'ADA B LOVELACE');
+    await user.type(field(/cardholder name/i), 'PERSON A B');
 
     await waitFor(() =>
       expect(within(diffFor('Cardholder Name')).getByText('Changes')).toBeInTheDocument(),
@@ -509,8 +528,8 @@ describe('RenewCardPage — unchanged fields submit their current value', () => 
     // the ones the renewal did not touch.
     expect(captured.body?.data).toEqual({
       card_network: 'Visa',
-      cardholder_name: 'ADA LOVELACE',
-      issuing_bank: 'Bank of Analytics',
+      cardholder_name: 'PERSON A',
+      issuing_bank: 'Bank Alpha',
       number: '4111111111111111',
       exp_month: '09',
       exp_year: '2031',
@@ -537,7 +556,7 @@ describe('RenewCardPage — unchanged fields submit their current value', () => 
     await waitFor(() => expect(captured.body).toBeDefined());
     expect(
       (captured.body?.data as Record<string, string>).issuing_bank,
-    ).toBe('Bank of Analytics');
+    ).toBe('Bank Alpha');
   });
 
   it('omits a field the user cleared rather than sending an empty string', async () => {
@@ -720,7 +739,7 @@ describe('RenewCardPage — the request body matches the endpoint DTO', () => {
     await screen.findByRole('button', { name: /take a photo of the back/i });
     selectPhoto('back');
     fireEvent.click(await screen.findByRole('button', { name: /read the card/i }));
-    await screen.findByRole('heading', { name: /check what changes/i });
+    await passCropStep();
 
     await user.type(field(/cvv/i), '999');
     fireEvent.click(screen.getByRole('button', { name: /renew card/i }));
@@ -830,5 +849,37 @@ describe('RenewCardPage — the card cannot be loaded', () => {
       await screen.findByText(/this card could not be loaded/i),
     ).toBeInTheDocument();
     expect(screen.queryByTestId('card-front-input')).not.toBeInTheDocument();
+  });
+});
+
+describe('RenewCardPage — the CVV is never prefilled (E10.5)', () => {
+  it('ignores a code the extraction read off the new card', async () => {
+    server.use(
+      aiStatus(true),
+      secretDetail(),
+      http.post(`${API_BASE}/secrets/cards/extract`, () =>
+        HttpResponse.json({
+          data: { ...EXTRACTION, fields: { ...EXTRACTION.fields, cvv: '999' } },
+        }),
+      ),
+    );
+    render(<RenewCardPage />);
+    await walkToReviewWithFrontPhoto();
+
+    expect(field(/cvv/i)).toHaveValue('');
+    expect(screen.getByRole('button', { name: /renew card/i })).toBeDisabled();
+  });
+
+  it('marks the values the AI changed, and only those', async () => {
+    server.use(aiStatus(true), secretDetail(), extractOk());
+    render(<RenewCardPage />);
+    await walkToReviewWithFrontPhoto();
+
+    // The number changed on the new card: read by AI.
+    const number = field(/card number/i).closest('.MuiFormControl-root') as HTMLElement;
+    expect(within(number).getAllByLabelText('Read by AI').length).toBeGreaterThan(0);
+    // The holder is the same as the card held: nothing for the AI to claim.
+    const holder = field(/cardholder name/i).closest('.MuiFormControl-root') as HTMLElement;
+    expect(within(holder).queryAllByLabelText('Read by AI')).toHaveLength(0);
   });
 });

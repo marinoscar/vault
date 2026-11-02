@@ -225,21 +225,43 @@ export function describeCardExtractionError(error: unknown): CardExtractionMessa
 }
 
 /**
+ * Fields that are typed by hand and NEVER seeded from an extraction: the card
+ * security codes (E10.5, issue #96; AGENTS.md AI rule 2). Even when the
+ * provider's response carries a candidate for one, the review form starts it
+ * empty, so the code a user saves is always the one they typed from the card.
+ */
+export const MANUAL_ONLY_CARD_FIELDS: ReadonlySet<string> = new Set(['cvv', 'security_code_2']);
+
+/**
  * Seed the review form from an extraction.
  *
- * Every value becomes a string because the form edits strings. `cvv` seeds from
- * the extraction like every other field; the empty default below only covers
- * the case where the model returned nothing for it, so the input still renders
- * and the user can type the code from the card.
+ * Every value becomes a string because the form edits strings. The security
+ * codes ({@link MANUAL_ONLY_CARD_FIELDS}) are never seeded: they always start
+ * empty, whatever the extraction returned, and the user types them.
  */
 export function toReviewValues(
   extraction: CardExtractionResult | null,
 ): Record<string, string> {
   const values: Record<string, string> = { cvv: '' };
   for (const name of EXTRACTED_CARD_FIELD_NAMES) {
-    values[name] = extraction?.fields?.[name] ?? '';
+    values[name] = MANUAL_ONLY_CARD_FIELDS.has(name) ? '' : (extraction?.fields?.[name] ?? '');
   }
   return values;
+}
+
+/**
+ * The fields whose seeded value came from the extraction (non-empty and not
+ * manual-only), so the review form can mark them "read by AI".
+ */
+export function aiSeededFields(extraction: CardExtractionResult | null): Set<string> {
+  const seeded = new Set<string>();
+  if (!extraction?.fields) return seeded;
+  for (const name of EXTRACTED_CARD_FIELD_NAMES) {
+    if (MANUAL_ONLY_CARD_FIELDS.has(name)) continue;
+    const value = extraction.fields[name];
+    if (typeof value === 'string' && value.trim() !== '') seeded.add(name);
+  }
+  return seeded;
 }
 
 /**

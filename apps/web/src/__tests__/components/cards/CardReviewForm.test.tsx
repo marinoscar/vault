@@ -49,16 +49,16 @@ describe('CardReviewForm — CVV helper text', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows the read-state helper once a value is present', () => {
+  it('shows the typed-state helper once a value is present', () => {
     render(<ControlledForm values={{ cvv: '123' }} />);
 
     expect(
-      screen.getByText(/read from the photo — check it against the card\./i),
+      screen.getByText(/typed by you\. never read from the photo\./i),
     ).toBeInTheDocument();
     expect(screen.queryByText(/type it from the card/i)).not.toBeInTheDocument();
   });
 
-  it('switches from the empty helper to the read helper as the user types', async () => {
+  it('switches from the empty helper to the typed helper as the user types', async () => {
     const user = userEvent.setup();
     render(<ControlledForm values={{ cvv: '' }} />);
 
@@ -67,7 +67,7 @@ describe('CardReviewForm — CVV helper text', () => {
     await user.type(screen.getByLabelText(/^cvv \/ cvc \*?$/i), '123');
 
     expect(
-      await screen.findByText(/read from the photo — check it against the card\./i),
+      await screen.findByText(/typed by you\. never read from the photo\./i),
     ).toBeInTheDocument();
     expect(screen.queryByText(/type it from the card/i)).not.toBeInTheDocument();
   });
@@ -76,7 +76,7 @@ describe('CardReviewForm — CVV helper text', () => {
     const user = userEvent.setup();
     render(<ControlledForm values={{ cvv: '123' }} />);
 
-    expect(screen.getByText(/read from the photo/i)).toBeInTheDocument();
+    expect(screen.getByText(/never read from the photo/i)).toBeInTheDocument();
 
     await user.clear(screen.getByLabelText(/^cvv \/ cvc \*?$/i));
 
@@ -99,13 +99,13 @@ describe('CardReviewForm — CVV helper text', () => {
   it('shows the low-confidence helper on a non-CVV field instead of the CVV copy', () => {
     render(
       <ControlledForm
-        values={{ cardholder_name: 'ADA LOVELACE' }}
+        values={{ cardholder_name: 'PERSON A' }}
         fields={[NAME_FIELD]}
         lowConfidenceFields={new Set(['cardholder_name'])}
       />,
     );
 
     expect(screen.getByText(/hard to read here/i)).toBeInTheDocument();
-    expect(screen.queryByText(/read from the photo — check it against the card\./i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/never read from the photo/i)).not.toBeInTheDocument();
   });
 });

@@ -7,6 +7,7 @@ import { ApiError } from '../../services/api';
 import {
   buildDefaultCardName,
   describeCardExtractionError,
+  aiSeededFields,
   toReviewValues,
   useCardImport,
   type CapturedCardSide,
@@ -151,17 +152,34 @@ describe('describeCardExtractionError', () => {
 });
 
 describe('toReviewValues', () => {
-  it('seeds the CVV from the extraction, like any other field', () => {
+  it('never seeds the security codes from the extraction, even when one came back', () => {
     const extraction = {
-      fields: { number: '4242424242424242', cvv: '123' },
+      fields: { number: '4242424242424242', cvv: '123', security_code_2: '4567' },
       confidence: {},
       warnings: [],
       model: 'gpt-4o-mini',
       partial: false,
     } as unknown as CardExtractionResult;
 
-    expect(toReviewValues(extraction).cvv).toBe('123');
+    // E10.5 / AGENTS.md AI rule 2: the CVV is typed by hand, always.
+    expect(toReviewValues(extraction).cvv).toBe('');
+    expect(toReviewValues(extraction).security_code_2).toBe('');
     expect(toReviewValues(extraction).number).toBe('4242424242424242');
+  });
+
+  it('reports the AI-seeded fields, never a security code', () => {
+    const extraction = {
+      fields: { number: '4242424242424242', cardholder_name: ' ', cvv: '123', security_code_2: '4567' },
+      confidence: {},
+      warnings: [],
+      model: 'gpt-4o-mini',
+      partial: false,
+    } as unknown as CardExtractionResult;
+
+    const seeded = aiSeededFields(extraction);
+    expect([...seeded]).toEqual(['number']);
+    expect(seeded.has('cvv')).toBe(false);
+    expect(aiSeededFields(null).size).toBe(0);
   });
 
   it('leaves the CVV empty when the extraction did not return one', () => {

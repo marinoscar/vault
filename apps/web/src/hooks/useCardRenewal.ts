@@ -16,6 +16,7 @@ import {
   type SecretDetail,
 } from '../types';
 import {
+  MANUAL_ONLY_CARD_FIELDS,
   describeCardExtractionError,
   type CapturedCardSide,
   type CardExtractionMessage,
@@ -27,9 +28,9 @@ import {
  * Every other value is seeded from the outgoing card, because most of a
  * reissued card is unchanged. The security code is not: a reissued card always
  * carries a new one, and pre-filling the old one would produce a card record
- * that looks complete and declines at the till. It is therefore seeded ONLY
- * from a fresh reading of the new card's photo — never from the outgoing card
- * — and falls back to an empty box the user fills by hand.
+ * that looks complete and declines at the till. Nor is it read from the new
+ * card's photo (E10.5, AGENTS.md AI rule 2): it always starts as an empty box
+ * the user fills by hand.
  */
 export const CVV_FIELD = 'cvv';
 
@@ -79,8 +80,8 @@ export function toCurrentValues(
  *
  * A `null` from the extraction means "could not read it", NOT "the card no
  * longer has one", so it falls back to the current value rather than blanking
- * the field. `cvv` is the one exception to that fallback — see {@link
- * CVV_FIELD} and the note at the end of this function.
+ * the field. The security codes are the exception: never seeded from the
+ * extraction, and `cvv` never carried forward — see {@link CVV_FIELD}.
  */
 export function toRenewalValues(
   currentValues: Record<string, string>,
@@ -89,6 +90,8 @@ export function toRenewalValues(
   const proposed: Record<string, string> = { ...currentValues };
 
   for (const name of EXTRACTED_CARD_FIELD_NAMES) {
+    // The security codes are typed by hand, never seeded from a photo.
+    if (MANUAL_ONLY_CARD_FIELDS.has(name)) continue;
     // Only fields the type actually declares are in `currentValues`; the
     // extraction may return more than this card's type knows about.
     if (!(name in proposed)) continue;
@@ -110,12 +113,10 @@ export function toRenewalValues(
 
   // The old card's code must never carry forward — a reissued card has a new
   // one, and silently keeping the previous value would produce a card that
-  // looks complete and declines. A code read off the NEW card's photo is a
-  // different matter, and is exactly what belongs here.
+  // looks complete and declines. Nor is it ever seeded from the new card's
+  // photo (E10.5): the CVV is typed by hand, so it always starts empty.
   if (CVV_FIELD in proposed) {
-    const extractedCvv = extraction?.fields?.[CVV_FIELD];
-    proposed[CVV_FIELD] =
-      typeof extractedCvv === 'string' ? extractedCvv.trim() : '';
+    proposed[CVV_FIELD] = '';
   }
   return proposed;
 }
@@ -167,6 +168,9 @@ export function wasAiAssisted(
 ): boolean {
   if (!extraction) return false;
   return EXTRACTED_CARD_FIELD_NAMES.some((name) => {
+    // A hand-typed security code is never an AI contribution, even when it
+    // happens to equal what the provider returned.
+    if (MANUAL_ONLY_CARD_FIELDS.has(name)) return false;
     const extracted = extraction.fields?.[name];
     if (typeof extracted !== 'string' || extracted.trim() === '') return false;
     return data[name] === extracted.trim();
