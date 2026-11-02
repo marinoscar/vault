@@ -5,6 +5,7 @@ import { platformSeedInputFrom, seedPlatform, type SeedPrisma } from '@marinosca
 
 import { buildDatabaseUrl } from '../src/common/database-url';
 import { PERMISSION_OPTIONS } from '../src/platform/permissions';
+import { DEFAULT_SYSTEM_SETTINGS } from '../src/settings/registry/default-system-settings';
 import { SYSTEM_SECRET_TYPES } from './system-secret-types';
 
 // =============================================================================
@@ -33,15 +34,6 @@ const prisma = new PrismaClient({
   adapter: new PrismaPg(buildDatabaseUrl()),
 });
 
-// PLATFORM-ADOPTION-SHIM(E4.1): the `global` system settings row's seed value.
-// The settings slice composes it from its namespace registry.
-const DEFAULT_SYSTEM_SETTINGS = {
-  ui: {
-    allowUserThemeOverride: true,
-  },
-  features: {},
-};
-
 /** Vault's org-scoped permissions: the ones a system role must not hold a grant of. */
 const VAULT_ORG_PERMISSIONS = PERMISSION_OPTIONS.app.permissions.flatMap((batch) =>
   Object.values(batch)
@@ -53,6 +45,7 @@ async function seedPlatformRows() {
   const input = platformSeedInputFrom(
     {
       permissions: platformPermissionCatalog(PERMISSION_OPTIONS),
+      // Every registered namespace's defaults, in registration order (E4.1).
       settings: DEFAULT_SYSTEM_SETTINGS,
     },
     process.env,
