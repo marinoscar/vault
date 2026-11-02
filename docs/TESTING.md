@@ -825,6 +825,16 @@ npm run test:ui
 **Issue:** Async state not updating in tests
 - **Solution:** Use `await waitFor()` to wait for async updates
 
+## Platform conformance
+
+The platform's invariants run against Vault in one spec per side, so a regression in a mounted slice fails CI rather than a review.
+
+- **API**: `apps/api/test/conformance.spec.ts` calls `runPlatformConformance()` with every suite the installed `@marinoscar/platform-api` offers. `apps/api/test/ai-conformance.spec.ts` runs the five AI suites that boot the app (their harness is `test/ai-conformance/`); `doctor-read-only` boots it through `test/conformance/doctor-fixture.ts`. A suite for a slice Vault does not mount (`sharing`, `webhooks`, `alerts`, `android-app`) and the `on-event-no-io` vacuity case are `skip`ped with a written reason; the harness prints the run and skipped suites in a table.
+- **Web**: `apps/web/src/__tests__/conformance.test.tsx` calls `runPlatformWebConformance()` over `ADMIN_SECTIONS`, `USER_SETTINGS_SECTIONS`, the `App.tsx` route table and the destinations of `@marinoscar/vault-web/navigation`. `shell-local-host` and `settings-ai-cards` are skipped with reasons.
+- **OpenAPI**: `npm run openapi:dump && npm run openapi:lint` (CI job `OpenAPI`) dumps the document in Nest preview mode and lints it with Spectral (`.spectral.yaml`). Every controller's `@ApiTags` name must be declared in `apps/api/src/openapi/tags.ts`.
+
+Adding a skip needs a reason that names why the suite cannot apply; removing one is the follow-up that adopts the slice.
+
 ## E2E and Visual Regression (Playwright)
 
 Two Playwright suites live under `tests/` (E10.7, #98). They share `tests/support/`: invented fixtures (`fixtures.ts`), the network-layer API (`mock-api.ts`) and the determinism helpers (`stabilize.ts`, with the vendored subset fonts in `fonts/`).
