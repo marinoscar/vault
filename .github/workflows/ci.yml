@@ -56,18 +56,22 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: vault
+          # The image's bootstrap login is a SUPERUSER; the API and the tests
+          # connect as the ordinary role created below, so row-level security
+          # is enforced (issue #75).
+          POSTGRES_USER: postgres
           POSTGRES_PASSWORD: "p@ss/word:ci"
           POSTGRES_DB: vault_ci
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U vault -d vault_ci"
+          --health-cmd "pg_isready -U postgres -d vault_ci"
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       POSTGRES_HOST: localhost
       POSTGRES_PORT: '5432'
-      POSTGRES_USER: vault
+      # The ORDINARY application role (NOSUPERUSER NOBYPASSRLS, owns the tables).
+      POSTGRES_USER: vault_app
       POSTGRES_PASSWORD: "p@ss/word:ci"
       POSTGRES_DB: vault_ci
       INITIAL_ADMIN_EMAIL: admin@example.test
@@ -83,6 +87,15 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Create the ordinary application role (vault_app)
+        env:
+          PGHOST: localhost
+          PGPORT: '5432'
+          PGPASSWORD: "p@ss/word:ci"
+          APP_DB_USER: vault_app
+          APP_DB_PASSWORD: "p@ss/word:ci"
+        run: bash infra/compose/postgres-init/10-application-role.sh
 
       - name: Generate Prisma Client
         run: npm run prisma:generate --workspace=api
@@ -107,6 +120,9 @@ jobs:
       - name: Migrations equal the schema (drift)
         run: npm run db:drift --workspace=api
 
+      # Connects as vault_app, so the RLS suites (test/rls, role-attributes)
+      # run against an ordinary role; the bootstrap superuser (postgres, same
+      # password) is only used to create their scratch databases.
       - name: Real-Postgres tests
         run: npm run test:db --workspace=api
         env:
@@ -125,18 +141,20 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: vault
+          POSTGRES_USER: postgres
           POSTGRES_PASSWORD: "p@ss/word:ci"
           POSTGRES_DB: postgres
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U vault -d postgres"
+          --health-cmd "pg_isready -U postgres -d postgres"
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       POSTGRES_HOST: localhost
       POSTGRES_PORT: '5432'
-      POSTGRES_USER: vault
+      # The ORDINARY application role; the bootstrap superuser (postgres) only
+      # creates the database and the role.
+      POSTGRES_USER: vault_app
       POSTGRES_PASSWORD: "p@ss/word:ci"
       POSTGRES_DB: vault_rehearsal
       PGPASSWORD: "p@ss/word:ci"
@@ -157,12 +175,15 @@ jobs:
       - name: Build the pre-baseline database (7 original migrations + fixture rows)
         working-directory: apps/api
         run: |
-          createdb -h localhost -U vault vault_rehearsal
+          createdb -h localhost -U postgres vault_rehearsal
+          PGHOST=localhost APP_DB_USER=vault_app APP_DB_PASSWORD="$PGPASSWORD" \
+            bash ../../infra/compose/postgres-init/10-application-role.sh
           bash scripts/baseline-rehearsal.sh
 
       # B1-B6 dry run: must end "dry run clean" or "nothing to do". The gate
       # runs BEFORE prisma:migrate, so it uses --through 2 --allow-rls (see the
-      # runbook: --allow-rls asserts a NOSUPERUSER role that production gets in E2.3).
+      # runbook: --allow-rls is the explicit opt-in to the row-level-security
+      # migrations above --through; the role here is already the ordinary one).
       - name: Baseline dry run (through 2)
         working-directory: apps/api
         run: |
@@ -187,7 +208,9 @@ jobs:
 
       - name: The data survived (0024 role split, 0025 org backfill, media links)
         run: |
-          q() { psql -h localhost -U vault -d vault_rehearsal -At -c "$1"; }
+          # As the bootstrap superuser: vault_app sees no storage_objects row
+          # without an organization scope, which would make the NULL check vacuous.
+          q() { psql -h localhost -U postgres -d vault_rehearsal -At -c "$1"; }
           test "$(q "SELECT count(*) FROM memberships")" = "3"
           test "$(q "SELECT r.name FROM memberships m JOIN roles r ON r.id = m.role_id JOIN users u ON u.id = m.user_id WHERE u.email = 'contributor@example.test'")" = "contributor"
           test "$(q "SELECT r.name FROM user_roles ur JOIN roles r ON r.id = ur.role_id")" = "admin"
