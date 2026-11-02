@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { Route, Routes } from 'react-router-dom';
 import userEvent from '@testing-library/user-event';
-import { within } from '@testing-library/react';
+import { fireEvent, waitFor, within } from '@testing-library/react';
+import { http, HttpResponse } from 'msw';
+
+import { server } from '../../mocks/server';
 
 import { Layout } from '../../../components/common/Layout';
 import { mockAdminUser, mockUser, render, screen } from '../../utils/test-utils';
@@ -118,14 +121,29 @@ describe('Layout (platform shell binding)', () => {
       }
     });
 
-    it('collapses the rail and keeps the choice in the preferences port', async () => {
+    it('collapses the rail and keeps the choice in the navigation user setting', async () => {
+      const patches: unknown[] = [];
+      server.use(
+        http.get('*/api/user-settings', () =>
+          HttpResponse.json({ data: { theme: 'system', profile: {}, version: 3 } }),
+        ),
+        http.patch('*/api/user-settings', async ({ request }) => {
+          patches.push(await request.json());
+          return HttpResponse.json({ data: { theme: 'system', profile: {}, navigation: { railCollapsed: true }, version: 4 } });
+        }),
+      );
       setViewportWidth(1440);
-      const user = userEvent.setup();
       renderShell('/');
 
-      await user.click(screen.getByRole('button', { name: 'Collapse navigation' }));
-      expect(screen.getByRole('button', { name: 'Expand navigation' })).toHaveAttribute('aria-expanded', 'false');
-      expect(window.localStorage.getItem('vault.shell.preferences')).toContain('"railCollapsed":true');
+      // The toggle is a no-op until the stored settings (their version) load,
+      // so keep clicking until it takes; once collapsed the button is renamed.
+      await waitFor(() => {
+        const collapse = screen.queryByRole('button', { name: 'Collapse navigation' });
+        if (collapse) fireEvent.click(collapse);
+        expect(screen.getByRole('button', { name: 'Expand navigation' })).toHaveAttribute('aria-expanded', 'false');
+      });
+      await waitFor(() => expect(patches).toEqual([{ navigation: { railCollapsed: true } }]));
+      expect(window.localStorage.getItem('vault.shell.preferences')).toBeNull();
     });
 
     it('opens the user menu with Settings, Console and Sign out', async () => {
