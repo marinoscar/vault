@@ -9,7 +9,7 @@ import {
   BadRequestException,
   ConflictException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { SystemSettingsService } from '@marinoscar/platform-api/settings';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { defaultOrgClient, runInDefaultOrg } from '../prisma/default-org';
@@ -60,26 +60,6 @@ const CARD_IMAGE_MIME_TYPES: readonly string[] = [
   'image/heif',
 ];
 
-/**
- * Default cap for a card face image: 5 MB.
- *
- * A card is a credit-card-sized rectangle photographed head-on. A 12 MP phone
- * photo of one lands around 2-4 MB of JPEG, so 5 MB clears every realistic
- * capture with headroom while still rejecting the multi-hundred-MB files the
- * global 10 GB `MAX_FILE_SIZE` would otherwise let through onto a card record.
- */
-const DEFAULT_CARD_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
-
-/**
- * Env var that overrides {@link DEFAULT_CARD_IMAGE_MAX_BYTES}.
- *
- * Read through ConfigService by raw env name rather than as a nested key like
- * `storage.cardImage.maxBytes`, because adding the key to
- * `src/config/configuration.ts` is outside the scope of this change. ConfigService
- * falls back to `process.env`, so this stays operator-tunable and moves to a
- * typed config key later without touching call sites here.
- */
-const CARD_IMAGE_MAX_BYTES_ENV = 'CARD_IMAGE_MAX_BYTES';
 
 /**
  * Attachment rows a version bump must NOT copy forward.
@@ -102,7 +82,7 @@ export class SecretsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly crypto: CryptoService,
-    private readonly config: ConfigService,
+    private readonly systemSettings: SystemSettingsService,
     // The raw provider, NOT ObjectsService: ObjectsService.delete() enforces its
     // own uploader-ownership check, which would reject an admin acting under
     // secrets:write_any on someone else's file. Ownership for this path is
@@ -308,31 +288,15 @@ export class SecretsService {
   }
 
   /**
-   * Resolve the card image size cap, in bytes.
-   *
-   * A non-numeric or non-positive override is ignored rather than obeyed: a
-   * typo'd `CARD_IMAGE_MAX_BYTES=5MB` must not parse to NaN and disable the
-   * check (every comparison against NaN is false, so nothing would ever be
-   * rejected).
+   * Resolve the card image size cap, in bytes: the `vaultCards.imageMaxBytes`
+   * system setting. Its default is `CARD_IMAGE_MAX_BYTES` (5 MB when unset or
+   * invalid), so an operator who set the variable sees no change until an admin
+   * saves another value. A stored value that is not a positive integer is
+   * ignored by the settings read, never obeyed (NaN would disable the check).
    */
-  private getCardImageMaxBytes(): number {
-    const raw = this.config.get<string | number>(CARD_IMAGE_MAX_BYTES_ENV);
-
-    if (raw === undefined || raw === null || raw === '') {
-      return DEFAULT_CARD_IMAGE_MAX_BYTES;
-    }
-
-    const parsed = typeof raw === 'number' ? raw : parseInt(raw, 10);
-
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-      this.logger.warn(
-        `Ignoring invalid ${CARD_IMAGE_MAX_BYTES_ENV}="${String(raw)}"; ` +
-          `falling back to ${DEFAULT_CARD_IMAGE_MAX_BYTES} bytes`,
-      );
-      return DEFAULT_CARD_IMAGE_MAX_BYTES;
-    }
-
-    return parsed;
+  private async getCardImageMaxBytes(): Promise<number> {
+    const { imageMaxBytes } = await this.systemSettings.getNamespace('vaultCards');
+    return imageMaxBytes;
   }
 
   /**
@@ -460,7 +424,7 @@ export class SecretsService {
       );
     }
 
-    const maxBytes = this.getCardImageMaxBytes();
+    const maxBytes = await this.getCardImageMaxBytes();
     const recordedSize = Number(storageObject.size ?? 0);
 
     // A recorded size of 0 means "unknown", not "empty" — see

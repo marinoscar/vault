@@ -32,7 +32,8 @@ import {
   userBackupStorageKey,
   userFolderName,
 } from './backup-archive';
-import { SystemSettingsService } from '../settings/system-settings/system-settings.service';
+import { SystemSettingsService } from '@marinoscar/platform-api/settings';
+import { AiConfigService } from '../ai/ai-config.service';
 import {
   BackupContentSelection,
   resolveContentSelection,
@@ -235,6 +236,7 @@ export class BackupRunnerService implements OnApplicationBootstrap {
     private readonly storageProvider: StorageProvider,
     private readonly exportService: SecretsExportService,
     private readonly systemSettings: SystemSettingsService,
+    private readonly aiConfig: AiConfigService,
   ) {}
 
   /**
@@ -942,13 +944,19 @@ export class BackupRunnerService implements OnApplicationBootstrap {
     };
   }
 
+  /** The system settings document with the AI block reduced to `apiKeyConfigured`. */
+  private settingsProjection(settings: unknown, apiKeyConfigured: boolean): SystemSettingsProjectionInput {
+    const doc = settings as SystemSettingsProjectionInput;
+    return { ...doc, ai: doc.ai ? { ...doc.ai, apiKeyConfigured } : null };
+  }
+
   /**
    * Write `system/*.json`. Every query selects explicit columns and every
    * file is built by an explicit mapper (see backup-system-section.ts), so no
    * token, key, credential, ciphertext or password can reach the archive.
    */
   private async writeSystemSection(zipWriter: ZipWriter<unknown>): Promise<void> {
-    const [users, allowlist, secretTypes, settings] = await Promise.all([
+    const [users, allowlist, secretTypes, settings, aiKey] = await Promise.all([
       this.prisma.user.findMany({
         orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
         select: SYSTEM_USERS_SELECT,
@@ -963,8 +971,10 @@ export class BackupRunnerService implements OnApplicationBootstrap {
         orderBy: [{ name: 'asc' }, { id: 'asc' }],
         select: SYSTEM_SECRET_TYPES_SELECT,
       }),
-      // The masked projection used by GET /api/system-settings.
+      // The settings document of GET /api/system-settings; the AI key is reduced
+      // to whether one is stored (`AiConfigService`, the only reader).
       this.systemSettings.getSettings(),
+      this.aiConfig.isKeyConfigured(),
     ]);
 
     const files: Array<[string, unknown]> = [
@@ -976,7 +986,7 @@ export class BackupRunnerService implements OnApplicationBootstrap {
       ],
       [
         SYSTEM_SECTION_FILES.settings,
-        toSystemSettings(settings as unknown as SystemSettingsProjectionInput),
+        toSystemSettings(this.settingsProjection(settings, aiKey)),
       ],
     ];
     for (const [path, data] of files) {

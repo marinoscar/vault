@@ -2,8 +2,9 @@ import { APP_PIPE } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
 import { ZodValidationPipe } from 'nestjs-zod';
-import { PLATFORM_PRISMA, decryptSecret, encryptSecret } from '@marinoscar/platform-api/core';
+import { PLATFORM_PRISMA, encryptSecret } from '@marinoscar/platform-api/core';
 import { CredentialsService } from '@marinoscar/platform-api/credentials';
+import { SystemSettingsService } from '@marinoscar/platform-api/settings';
 import { JwtAuthGuard, PermissionsGuard, RolesGuard } from '@marinoscar/platform-api/identity';
 
 import { AiBurstLimiterService } from '../../src/ai/ai-burst-limiter.service';
@@ -11,17 +12,16 @@ import { AiConfigService } from '../../src/ai/ai-config.service';
 import { CardExtractController } from '../../src/ai/card-extract.controller';
 import { CardExtractService } from '../../src/ai/card-extract.service';
 import { AI_VISION_PROVIDER } from '../../src/ai/providers/vision-provider.interface';
-import { DEFAULT_SYSTEM_SETTINGS } from '../../src/common/types/settings.types';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import '../../src/platform/credentials/credentials.config';
-import { SystemSettingsController } from '../../src/settings/system-settings/system-settings.controller';
-import { SystemSettingsService } from '../../src/settings/system-settings/system-settings.service';
 import { buildRawExtraction } from '../mocks/ai-vision-provider.mock';
 
-// The admin AI settings and card extraction, over real HTTP, on the REAL
-// SystemSettingsService / AiConfigService / CredentialsService with the platform
-// cipher (SECRETS_ENCRYPTION_KEY from .env.test). Only Prisma, the guards and the
-// OpenAI provider are stubbed. Issue #80 (E4.2).
+// Card extraction over real HTTP, on the REAL AiConfigService / CredentialsService
+// with the platform cipher (SECRETS_ENCRYPTION_KEY from .env.test). Only Prisma,
+// the settings service (the `ai` namespace), the guards and the OpenAI provider are
+// stubbed. Issue #80 (E4.2). The admin side (PATCH/GET /api/system-settings, the
+// write-only key) is covered by test/settings/settings-routes.db.spec.ts and
+// src/platform/settings/ai-key-projection.interceptor.spec.ts (E4.1).
 
 const PLAINTEXT = 'sk-test-0123456789abcdefghijklmnop';
 const LEGACY_CIPHERTEXT = 'legacy-ciphertext-must-not-appear';
@@ -54,7 +54,6 @@ describe('AI key in the credential store (HTTP)', () => {
   beforeEach(async () => {
     credentialRow = null;
     settingsValue = {
-      ...DEFAULT_SYSTEM_SETTINGS,
       ai: {
         enabled: true,
         provider: 'openai',
@@ -102,9 +101,9 @@ describe('AI key in the credential store (HTTP)', () => {
     };
 
     const moduleRef = await Test.createTestingModule({
-      controllers: [SystemSettingsController, CardExtractController],
+      controllers: [CardExtractController],
       providers: [
-        SystemSettingsService,
+        { provide: SystemSettingsService, useValue: { getNamespace: async () => settingsValue.ai } },
         AiConfigService,
         AiBurstLimiterService,
         CardExtractService,
@@ -138,76 +137,12 @@ describe('AI key in the credential store (HTTP)', () => {
     await app.close();
   });
 
-  const get = () => app.inject({ method: 'GET', url: '/api/system-settings' });
-  const patch = (payload: unknown) =>
-    app.inject({ method: 'PATCH', url: '/api/system-settings', payload: payload as never });
   const extract = () =>
     app.inject({
       method: 'POST',
       url: '/api/secrets/cards/extract',
       payload: { front: IMAGE },
     });
-
-  it('GET never returns key material: not the plaintext, the ciphertext, nor a legacy block', async () => {
-    credentialRow = {
-      secret: encryptSecret(PLAINTEXT, 'ai'),
-      hint: '••••mnop',
-      label: 'AI provider key (OpenAI)',
-      updatedAt: new Date('2026-04-01T00:00:00Z'),
-    };
-    (settingsValue.ai as any).apiKey = {
-      ciphertext: LEGACY_CIPHERTEXT,
-      iv: 'legacy-iv',
-      authTag: 'legacy-tag',
-      last4: 'zzzz',
-      updatedAt: '2026-01-01T00:00:00.000Z',
-    };
-
-    const res = await get();
-
-    expect(res.statusCode).toBe(200);
-    const body = res.json();
-    expect(body.ai).toMatchObject({
-      enabled: true,
-      apiKeyConfigured: true,
-      apiKeyLast4: 'mnop',
-    });
-    expect(body.ai).not.toHaveProperty('apiKey');
-    const raw = res.body;
-    expect(raw).not.toContain(PLAINTEXT);
-    expect(raw).not.toContain(credentialRow.secret);
-    expect(raw).not.toContain(LEGACY_CIPHERTEXT);
-    expect(raw).not.toContain('legacy-iv');
-    expect(raw).not.toContain('ciphertext');
-  });
-
-  it('PATCH stores the key encrypted under SECRETS_ENCRYPTION_KEY, and no response or row carries it', async () => {
-    const res = await patch({ ai: { apiKey: PLAINTEXT } });
-
-    expect(res.statusCode).toBe(200);
-    expect(res.body).not.toContain(PLAINTEXT);
-    expect(res.json().ai).toMatchObject({ apiKeyConfigured: true, apiKeyLast4: 'mnop' });
-
-    // The credential row decrypts with the platform cipher under purpose "ai".
-    expect(credentialRow).not.toBeNull();
-    expect(credentialRow!.secret).not.toContain(PLAINTEXT);
-    expect(decryptSecret(credentialRow!.secret, 'ai')).toBe(PLAINTEXT);
-    // The settings row never receives it, and the audit trail neither.
-    expect(JSON.stringify(settingsValue)).not.toContain(PLAINTEXT);
-    expect((settingsValue.ai as any).apiKey).toBeNull();
-    expect(JSON.stringify(prisma.auditEvent.create.mock.calls)).not.toContain(PLAINTEXT);
-  });
-
-  it('PATCH with a null key removes the credential', async () => {
-    await patch({ ai: { apiKey: PLAINTEXT } });
-    expect(credentialRow).not.toBeNull();
-
-    const res = await patch({ ai: { apiKey: null } });
-
-    expect(res.statusCode).toBe(200);
-    expect(credentialRow).toBeNull();
-    expect(res.json().ai).toMatchObject({ apiKeyConfigured: false, apiKeyLast4: null });
-  });
 
   it('card extraction resolves the key from the credential store and hands it to the provider', async () => {
     credentialRow = {

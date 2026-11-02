@@ -14,7 +14,6 @@ import { ZodValidationPipe } from 'nestjs-zod';
 
 import { PrismaModule } from './prisma/prisma.module';
 import { CommonModule } from './common/common.module';
-import { SettingsModule } from './settings/settings.module';
 import { StorageModule } from './storage/storage.module';
 import { SecretTypesModule } from './secret-types/secret-types.module';
 import { SecretsModule } from './secrets/secrets.module';
@@ -25,7 +24,8 @@ import { LoggerModule } from './common/logger/logger.module';
 
 import { identityModule } from './platform/identity/identity.config';
 import { platformHostModule } from './platform/platform-host.module';
-import { SystemSettingsShimModule } from './platform/system-settings.shim';
+import { settingsModule } from './platform/settings/settings.config';
+import { AiKeyProjectionModule } from './platform/settings/ai-key-projection.module';
 import { hostCoreModule } from './platform/host-core.config';
 import { aboutModule } from './platform/about/about.config';
 import { doctorModule } from './doctor/doctor.config';
@@ -53,8 +53,6 @@ import configuration from './config/configuration';
 
     // Platform host ports (AUDIT_SINK, PLATFORM_PRISMA, SYSTEM_SETTINGS_STORE)
     platformHostModule,
-    // PLATFORM-ADOPTION-SHIM(E4.1): the platform SystemSettingsService token
-    SystemSettingsShimModule,
 
     // Logger
     LoggerModule,
@@ -64,7 +62,12 @@ import configuration from './config/configuration';
     // Identity (issue #77, E3.2): sign-in, sessions, users, roles, the allowlist,
     // PATs, the device flow and the test login, from the platform slice.
     identityModule,
-    SettingsModule,
+    // Settings (issue #79, E4.1): /api/system-settings, /api/user-settings and
+    // /api/org-settings from the platform slice. GLOBAL: SystemSettingsService,
+    // UserSettingsService and SettingsResolver resolve everywhere.
+    settingsModule,
+    // The AI key stays write-only on the credential store (interceptor on /api/system-settings).
+    AiKeyProjectionModule,
     // Host core: event bus, maintenance mode (the only APP_GUARD), the
     // `{ data }` envelope, request log, exception filter, request ids and
     // /api/health. Placed where the health routes sat in the OpenAPI document.

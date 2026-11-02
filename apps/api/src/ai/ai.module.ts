@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 
 import { CredentialsModule } from '../platform/credentials/credentials.config';
-import { SettingsModule } from '../settings/settings.module';
 
 import { AiBurstLimiterService } from './ai-burst-limiter.service';
 import { AiConfigService } from './ai-config.service';
@@ -16,8 +15,8 @@ import { OpenAiVisionProvider } from './providers/openai/openai-vision.provider'
 /**
  * AI module.
  *
- * `SettingsModule` is imported for the non-secret AI settings (enabled, model,
- * budget). The OpenAI key is read from the platform credential store
+ * The non-secret AI settings (enabled, model, budget) come from the platform
+ * settings slice (global `SystemSettingsService`, `ai` namespace). The OpenAI key is read from the platform credential store
  * (`CredentialsModule`, purpose `ai`, name `openai`) by `AiConfigService`, the
  * only place it is decrypted. `PrismaModule` is global, so
  * `PrismaService` needs no import for the audit/budget queries.
@@ -27,7 +26,7 @@ import { OpenAiVisionProvider } from './providers/openai/openai-vision.provider'
  * change here, and tests override the token instead of stubbing the network.
  */
 @Module({
-  imports: [SettingsModule, CredentialsModule],
+  imports: [CredentialsModule],
   controllers: [AiController, AiVerifyController, CardExtractController],
   providers: [
     {

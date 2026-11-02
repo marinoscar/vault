@@ -21,6 +21,7 @@ Index of every document in `docs/`, plus the "Doc map by task". Rules for assist
 | [platform-adoption/local-exceptions.md](platform-adoption/local-exceptions.md) | Deliberate deviations and what removes them | |
 | [platform-adoption/schema-delta.md](platform-adoption/schema-delta.md) | What platform migrations 0003 to 0040 add to the database | |
 | [runbooks/database-baseline.md](runbooks/database-baseline.md) | One-time baseline of a live database onto the platform history (rehearse, window, rollback) | |
+| [runbooks/settings-migration.md](runbooks/settings-migration.md) | Move pre-E4.1 user profiles onto the platform settings layout (`vault:migrate-settings`) | |
 | [platform-adoption/drift-baseline.md](platform-adoption/drift-baseline.md) | Frozen generated drift report | |
 | [specs/ux-refresh.md](specs/ux-refresh.md) | UX spec for E10: destinations, shell, brand, settings hub, datatable, Home | |
 | [specs/README.md](specs/README.md) | Historical implementation specs 01 to 24 | |

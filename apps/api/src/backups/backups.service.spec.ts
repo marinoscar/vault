@@ -41,7 +41,9 @@ const input = (over: Partial<UpdateBackupScheduleInput> = {}): UpdateBackupSched
   ...over,
 });
 
-function makeService(opts: { schedule?: Record<string, unknown> | null; storage?: boolean } = {}) {
+function makeService(
+  opts: { schedule?: Record<string, unknown> | null; storage?: boolean; scheduleDefaults?: Record<string, unknown> } = {},
+) {
   let stored: Record<string, unknown> | null = opts.schedule ?? null;
   const prisma = {
     backupSchedule: {
@@ -68,7 +70,9 @@ function makeService(opts: { schedule?: Record<string, unknown> | null; storage?
     startRun: jest.fn(),
     launch: jest.fn(),
   };
-  const service = new BackupsService(prisma as never, crypto, storageProvider as never, runner as never);
+  // The platform settings service: `vaultBackups` reads as its defaults.
+  const systemSettings = { getNamespace: jest.fn(async () => ({ ...(opts.scheduleDefaults ?? {}) })) };
+  const service = new BackupsService(prisma as never, crypto, storageProvider as never, runner as never, systemSettings as never);
   return { service, prisma, storageProvider, runner, getStored: () => stored };
 }
 
