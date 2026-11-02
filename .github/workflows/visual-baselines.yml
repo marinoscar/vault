@@ -1,0 +1,63 @@
+name: Visual baselines
+
+# Regenerates the committed screenshots (tests/visual/specs/__screenshots__) in
+# the same Playwright image the `visual` CI job uses, then commits them to the
+# branch it was run on. Run it from the Actions tab (choose the branch) after an
+# intentional UI change, review the PNG diff in the commit, then merge.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    name: Update baselines
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      options: --ipc=host
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install and build the web app
+        run: |
+          npm ci
+          npm run build:packages
+          npm run build --workspace=web
+
+      - name: Install the visual suite
+        run: npm ci --ignore-scripts
+        working-directory: tests/visual
+
+      - name: Regenerate baselines
+        run: ../../tests/visual/node_modules/.bin/playwright test --update-snapshots
+        working-directory: tests/visual
+        env:
+          CI: 'true'
+
+      - name: Verify they are stable (second run, no update)
+        run: ../../tests/visual/node_modules/.bin/playwright test
+        working-directory: tests/visual
+        env:
+          CI: 'true'
+
+      - name: Commit the baselines
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/visual/specs/__screenshots__
+          if git diff --cached --quiet; then
+            echo "Baselines unchanged."
+          else
+            git commit -m "test(tests): update visual baselines"
+            git push
+          fi

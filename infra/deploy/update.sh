@@ -167,6 +167,23 @@ elif [ "${ALREADY_CURRENT}" = "true" ] && [ "${NO_CACHE}" = "false" ]; then
 else
     log "[2/6] Rebuilding Docker images..."
 
+    # Installs made before #144 built each image from its app directory. The
+    # Dockerfiles now need the repository root as the context (workspace packages
+    # and the root lockfile), so migrate an old compose.yml in place. Idempotent.
+    if grep -q 'context: ./repo/apps/' "${COMPOSE_FILE}"; then
+        log "  Migrating compose.yml build contexts to the repository root (#144)..."
+        sed -i \
+            -e 's#context: ./repo/apps/api#context: ./repo#' \
+            -e 's#context: ./repo/apps/web#context: ./repo#' \
+            "${COMPOSE_FILE}"
+        # The dockerfile line directly follows each context line.
+        awk '
+            /^  (api|web):/ { svc=$1; sub(":","",svc) }
+            /^      dockerfile: Dockerfile$/ { print "      dockerfile: apps/" svc "/Dockerfile"; next }
+            { print }
+        ' "${COMPOSE_FILE}" > "${COMPOSE_FILE}.new" && mv "${COMPOSE_FILE}.new" "${COMPOSE_FILE}"
+    fi
+
     BUILD_ARGS=""
     if [ "${NO_CACHE}" = "true" ]; then
         BUILD_ARGS="--no-cache"

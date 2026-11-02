@@ -374,12 +374,39 @@ jobs:
           VAULT_TOKEN: ci-placeholder
         run: |
           set -e
-          docker compose -f base.compose.yml -f dev.compose.yml -f app.build.compose.yml -f app.dev.src-mounts.compose.yml config > /dev/null
-          docker compose -f base.compose.yml -f dev.compose.yml -f devdb.compose.yml -f app.build.compose.yml -f app.dev.src-mounts.compose.yml config > /dev/null
-          docker compose -f base.compose.yml -f prod.compose.yml -f app.build.compose.yml config > /dev/null
-          docker compose -f base.compose.yml -f prod.compose.yml -f telemetry.compose.yml -f vps.compose.yml -f vps.telemetry.compose.yml -f app.build.compose.yml -f app.vps.no-stack-agent.compose.yml config > /dev/null
+          docker compose -f base.compose.yml -f dev.compose.yml config > /dev/null
+          docker compose -f base.compose.yml -f dev.compose.yml -f devdb.compose.yml config > /dev/null
+          docker compose -f base.compose.yml -f prod.compose.yml config > /dev/null
+          docker compose -f base.compose.yml -f prod.compose.yml -f telemetry.compose.yml -f vps.compose.yml -f vps.telemetry.compose.yml -f app.vps.no-stack-agent.compose.yml config > /dev/null
           docker compose -f worker.compose.yml -f worker.build.compose.yml config > /dev/null
           docker compose -f test.compose.yml config > /dev/null
+
+  # The images build from the REPOSITORY ROOT (workspace packages and the root
+  # lockfile must be in the context, issue #144). Nothing else builds them, so a
+  # broken Dockerfile would otherwise reach a deploy. No push.
+  docker-build:
+    name: Docker build (${{ matrix.app }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [api, web]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build the ${{ matrix.app }} production image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/${{ matrix.app }}/Dockerfile
+          target: production
+          push: false
+          cache-from: type=gha,scope=${{ matrix.app }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.app }}
 
   cli-check:
     name: CLI Check
@@ -410,3 +437,103 @@ jobs:
           npm run build --workspace=cli
           node apps/cli/dist/cli.js --help
           node apps/cli/dist/cli.js secrets --help
+
+  # E10.7 (#98). Both suites serve the BUILT web app with `vite preview` and answer
+  # /api at the network layer (tests/support/mock-api.ts): no backend, database or
+  # AI key, and the e2e suite does NOT exercise the real API. They run in the
+  # Playwright image because pixel baselines depend on the browser build and its
+  # system libraries; the tag equals the pinned @playwright/test version.
+  visual:
+    name: Visual regression
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      options: --ipc=host
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install and build the web app
+        run: |
+          npm ci
+          npm run build:packages
+          npm run build --workspace=web
+
+      - name: Install the visual suite
+        run: npm ci --ignore-scripts
+        working-directory: tests/visual
+
+      - name: Check that baselines exist
+        id: baselines
+        run: |
+          if ls tests/visual/specs/__screenshots__/*/*.png >/dev/null 2>&1; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::No visual baselines committed yet. Run the 'Visual baselines' workflow (workflow_dispatch) and merge its commit; see docs/TESTING.md#visual-regression."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run visual regression
+        if: steps.baselines.outputs.present == 'true'
+        run: ../../tests/visual/node_modules/.bin/playwright test
+        working-directory: tests/visual
+        env:
+          CI: 'true'
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-report
+          path: |
+            tests/visual/playwright-report
+            tests/visual/test-results
+          if-no-files-found: ignore
+
+  e2e:
+    name: E2E (mocked network)
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      options: --ipc=host
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install and build the web app
+        run: |
+          npm ci
+          npm run build:packages
+          npm run build --workspace=web
+
+      - name: Install the e2e suite
+        run: npm ci --ignore-scripts
+        working-directory: tests/e2e
+
+      - name: Run e2e
+        run: ../../tests/e2e/node_modules/.bin/playwright test
+        working-directory: tests/e2e
+        env:
+          CI: 'true'
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          path: |
+            tests/e2e/playwright-report
+            tests/e2e/test-results
+          if-no-files-found: ignore

@@ -224,7 +224,7 @@ cd /opt/infra/apps/vault
 
 The update script:
 1. Pulls the latest code from `origin/main`
-2. Rebuilds Docker images
+2. Rebuilds Docker images (from the repository root as the build context; a `compose.yml` created before #144 is migrated in place)
 3. Runs Prisma migrations against the live database
 4. Restarts all services
 5. Optionally updates the VPS proxy config if `vault.conf` has changed
