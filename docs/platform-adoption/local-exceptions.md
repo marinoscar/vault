@@ -20,7 +20,7 @@ Every place where Vault deviates from `@marinoscar/platform-*` on purpose, and t
 | Hand-edited `schema.prisma`, plain Prisma migrations, API connecting with a role that is not yet proven `NOSUPERUSER NOBYPASSRLS` | `apps/api/prisma/` | Predates composed fragments and RLS | **E2** |
 | AI provider key stored in `system_settings.ai` (encrypted with `VAULT_ENCRYPTION_KEY`) and generic AI config/verify code | `apps/api/src/ai/`, `settings` | Predates the credentials and AI slices | **E4** (credentials) and **E8** (AI) |
 | Hand-written `infra/` (compose, nginx, `deploy/`) and `.env.example` | `infra/` | Predates `platform-infra` generation | **E11** |
-| Prisma 5, React 18, MUI 5 | package manifests | Predate the platform's required toolchain | **E1** |
+| Prisma 5 (React 19 and MUI 9 landed in E1.3, #70) | package manifests | Predate the platform's required toolchain | **E1** |
 | Domain code lives in `apps/api/src` and `apps/web/src`, not packages | secrets, secret-types, backups, media, card extraction | Packages-first applies once the platform slices are adopted | **E12** |
 
 ## Permanent divergences

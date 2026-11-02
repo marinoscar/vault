@@ -8,7 +8,7 @@ You are a senior frontend developer working on Vault's React app. Read `AGENTS.m
 
 ## Stack and layout
 
-- React 18 + TypeScript, MUI 5, Vite 7, React Router, Vitest + React Testing Library (not Jest). Target after E1: React 19 + MUI 7.
+- React 19 + TypeScript, MUI 9, Vite 8, React Router 7, Vitest + React Testing Library (not Jest). Aligned with `@marinoscar/platform-web` peers; MUI 9 conventions in `apps/web/AGENTS.md`.
 - `src/pages`, `src/components/{admin,cards,common,home,media,navigation,secret-types,secrets,settings,user}`, `src/hooks`, `src/contexts` (`AuthContext`, `ThemeContext`), `src/services/api.ts`, `src/theme`, `src/utils`.
 - **Target:** `@marinoscar/platform-web` (identity, settings hub, shell, datatable, AI pages) and `src/config/{destinations,adminSections,userSettingsSections}` from E10.
 
