@@ -91,7 +91,7 @@ describe('toCardSummary', () => {
         values: {
           card_network: 'Visa',
           card_kind: 'Credit',
-          cardholder_name: 'Ada Lovelace',
+          cardholder_name: 'Person A',
           issuing_bank: 'Analytical Bank',
           number: '4242424242424242',
           exp_month: '12',
@@ -103,7 +103,7 @@ describe('toCardSummary', () => {
 
     expect(summary.network).toBe('Visa');
     expect(summary.kind).toBe('Credit');
-    expect(summary.cardholderName).toBe('Ada Lovelace');
+    expect(summary.cardholderName).toBe('Person A');
     expect(summary.issuingBank).toBe('Analytical Bank');
     expect(summary.expiryLabel).toBe('12/26');
     expect(summary.status).toBe('valid');

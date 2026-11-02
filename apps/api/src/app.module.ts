@@ -1,3 +1,10 @@
+// Fills core's role, permission, user-owned-model and model-ownership registries
+// (issue #77). Before anything that reads them (the guards, the seed catalog,
+// the OpenAPI RBAC docs); the registries freeze when the application bootstraps.
+// Imported here too so a test that builds `AppModule` without `test/setup.ts`
+// still has them registered.
+import './app-registrations/registrations';
+
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -7,21 +14,16 @@ import { ZodValidationPipe } from 'nestjs-zod';
 
 import { PrismaModule } from './prisma/prisma.module';
 import { CommonModule } from './common/common.module';
-import { AuthModule } from './auth/auth.module';
-import { UsersModule } from './users/users.module';
 import { SettingsModule } from './settings/settings.module';
-import { AllowlistModule } from './allowlist/allowlist.module';
-import { DeviceAuthModule } from './device-auth/device-auth.module';
 import { StorageModule } from './storage/storage.module';
-import { PatModule } from './pat/pat.module';
 import { SecretTypesModule } from './secret-types/secret-types.module';
 import { SecretsModule } from './secrets/secrets.module';
 import { MediaModule } from './media/media.module';
 import { AiModule } from './ai/ai.module';
 import { BackupsModule } from './backups/backups.module';
 import { LoggerModule } from './common/logger/logger.module';
-import { TestAuthModule } from './test-auth/test-auth.module';
 
+import { identityModule } from './platform/identity/identity.config';
 import { platformHostModule } from './platform/platform-host.module';
 import { SystemSettingsShimModule } from './platform/system-settings.shim';
 import { hostCoreModule } from './platform/host-core.config';
@@ -59,8 +61,9 @@ import configuration from './config/configuration';
 
     // Feature modules
     CommonModule,
-    AuthModule,
-    UsersModule,
+    // Identity (issue #77, E3.2): sign-in, sessions, users, roles, the allowlist,
+    // PATs, the device flow and the test login, from the platform slice.
+    identityModule,
     SettingsModule,
     // Host core: event bus, maintenance mode (the only APP_GUARD), the
     // `{ data }` envelope, request log, exception filter, request ids and
@@ -70,18 +73,13 @@ import configuration from './config/configuration';
     doctorModule,
     DoctorChecksModule,
     aboutModule,
-    AllowlistModule,
-    DeviceAuthModule,
     StorageModule,
-    PatModule,
     SecretTypesModule,
     SecretsModule,
     MediaModule,
     AiModule,
     BackupsModule,
 
-    // Test modules (non-production only)
-    ...(process.env.NODE_ENV !== 'production' ? [TestAuthModule] : []),
   ],
   providers: [
     // Global validation pipe (Zod)

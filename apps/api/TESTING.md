@@ -91,24 +91,24 @@ In CI environments, E2E tests should be run with a dedicated test database servi
 
 ### Unit Test Example
 ```typescript
-// src/auth/auth.service.spec.ts
+// src/secrets/secrets.service.spec.ts (the identity services are the platform's since E3.2)
 import { Test } from '@nestjs/testing';
-import { AuthService } from './auth.service';
+import { SecretsService } from './secrets.service';
 import { createMockPrismaService } from '../test/mocks/prisma.mock';
 
-describe('AuthService', () => {
-  let service: AuthService;
+describe('SecretsService', () => {
+  let service: SecretsService;
   let prisma: MockPrismaService;
 
   beforeEach(async () => {
     const module = await Test.createTestingModule({
       providers: [
-        AuthService,
+        SecretsService,
         { provide: PrismaService, useValue: createMockPrismaService() },
       ],
     }).compile();
 
-    service = module.get(AuthService);
+    service = module.get(SecretsService);
     prisma = module.get(PrismaService);
   });
 

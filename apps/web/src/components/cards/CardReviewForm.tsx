@@ -12,6 +12,7 @@ import {
   Typography,
 } from '@mui/material';
 import {
+  AutoAwesomeOutlined as AiIcon,
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
   WarningAmber as WarningIcon,
@@ -27,6 +28,12 @@ interface CardReviewFormProps {
   onChange: (name: string, value: string) => void;
   /** Field names the model was unsure about. */
   lowConfidenceFields?: Set<string>;
+  /**
+   * Field names whose current value was read from the photo by the AI and not
+   * edited since. Each gets a "Read by AI" marker so the user knows which
+   * values to check against the card. Never contains the CVV.
+   */
+  aiFields?: Set<string>;
   /** Warnings returned by the extraction, rendered above the form. */
   warnings?: string[];
   errors?: Record<string, string>;
@@ -49,21 +56,19 @@ interface CardReviewFormProps {
 }
 
 /**
- * The CVV is read from the photo like every other field, but it is the field
- * most worth checking by hand.
+ * The CVV is typed by hand, always (E10.5, issue #96; AGENTS.md AI rule 2).
  *
- * It is required (`POST /api/secrets` rejects a card without one), it is three
- * or four characters with no checksum behind it — unlike the PAN, where Luhn
- * catches a misread — and the cost of a wrong one surfaces at a payment
- * terminal months later. So it gets its own helper text in both states: a
- * prompt to type it when the model found nothing, and a prompt to verify it
- * when the model did.
+ * It is never seeded from the photo: the review form starts it empty whatever
+ * the extraction returned, and the user types it from the card. It is required
+ * (`POST /api/secrets` rejects a card without one) and has no checksum behind
+ * it, so its helper says plainly where the value has to come from, and stays
+ * quiet once something is typed.
  */
 const CVV_FIELD = 'cvv';
 
 const CVV_EMPTY_HELPER =
   'Not read from the photo — type it from the card. Required.';
-const CVV_READ_HELPER = 'Read from the photo — check it against the card.';
+const CVV_TYPED_HELPER = 'Typed by you. Never read from the photo.';
 const LOW_CONFIDENCE_HELPER =
   'The photo was hard to read here. Check this against the card.';
 
@@ -80,6 +85,7 @@ export function CardReviewForm({
   values,
   onChange,
   lowConfidenceFields,
+  aiFields,
   warnings = [],
   errors = {},
   disabled = false,
@@ -118,6 +124,8 @@ export function CardReviewForm({
           const error = errors[field.name];
           const isLowConfidence = lowConfidenceFields?.has(field.name) ?? false;
           const isCvv = field.name === CVV_FIELD;
+          // The CVV is never an AI value, whatever a caller passes.
+          const isAiValue = !isCvv && value !== '' && (aiFields?.has(field.name) ?? false);
 
           // An empty CVV outranks the low-confidence hint: "type it from the
           // card" is actionable, "check this against the card" is not when
@@ -129,30 +137,44 @@ export function CardReviewForm({
               : isLowConfidence
                 ? LOW_CONFIDENCE_HELPER
                 : isCvv
-                  ? CVV_READ_HELPER
+                  ? CVV_TYPED_HELPER
                   : undefined);
 
           // A low-confidence field is not an error — the value may well be
-          // right — so it is tinted rather than marked invalid, which keeps the
-          // red reserved for things that actually block saving.
+          // right — so its outline takes the amber accent (a fill/stroke, never
+          // text: spec §5) rather than being marked invalid, which keeps the
+          // red reserved for things that actually block saving. The words come
+          // from the "Check" chip and the helper text, never the colour alone.
           const warningSx =
             !error && isLowConfidence
               ? {
-                  '& .MuiFormHelperText-root': { color: 'warning.main' },
-                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'warning.main' },
+                  '& .MuiOutlinedInput-notchedOutline': {
+                    borderColor: 'secondary.main',
+                    borderWidth: 2,
+                  },
                 }
               : undefined;
 
           const label = (
             <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
               {field.label}
+              {isAiValue && !isLowConfidence && (
+                <Chip
+                  icon={<AiIcon />}
+                  label="AI"
+                  size="small"
+                  color="primary"
+                  variant="outlined"
+                  aria-label="Read by AI"
+                  sx={{ height: 18, fontSize: 11, '& .MuiChip-icon': { fontSize: 12 } }}
+                />
+              )}
               {isLowConfidence && (
                 <Chip
                   label="Check"
                   size="small"
-                  color="warning"
-                  variant="outlined"
-                  sx={{ height: 18, fontSize: 11 }}
+                  color="secondary"
+                  sx={{ height: 18, fontSize: 11, fontWeight: 600 }}
                 />
               )}
             </Box>

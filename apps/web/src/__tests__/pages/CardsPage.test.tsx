@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { HttpResponse, http } from 'msw';
 import { server } from '../mocks/server';
@@ -18,6 +18,13 @@ vi.mock('react-router-dom', async () => {
 });
 
 import { useCards } from '../../hooks/useCards';
+import { useLocation } from 'react-router-dom';
+
+/** Renders the router's current query string, to assert URL sync. */
+function LocationProbe() {
+  const { search } = useLocation();
+  return <output data-testid="location-search">{search}</output>;
+}
 
 const mockUseCards = vi.mocked(useCards);
 
@@ -27,7 +34,7 @@ function makeSummary(overrides: Partial<CardSummary> & { id: string }): CardSumm
     description: null,
     network: 'Visa',
     kind: 'Credit',
-    cardholderName: 'Ada Lovelace',
+    cardholderName: 'Person A',
     issuingBank: '',
     maskedNumber: '•••• •••• •••• 4242',
     expiryLabel: '12/29',
@@ -59,23 +66,47 @@ describe('CardsPage', () => {
     mockCards([]);
   });
 
-  it('shows an empty state when the user has no cards', () => {
+  it('shows an empty state with "Scan a card" and "Add manually" when the user has no cards', async () => {
+    const user = userEvent.setup();
     mockCards([]);
     render(<CardsPage />);
 
-    expect(screen.getByText('No cards yet.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /add a card/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'No cards yet' })).toBeInTheDocument();
+    // No toolbar over an empty gallery.
+    expect(screen.queryByLabelText(/search cards/i)).not.toBeInTheDocument();
+
+    // Scan is gated on the AI status (enabled by the default handler).
+    await user.click(await screen.findByRole('button', { name: /scan a card/i }));
+    expect(mockNavigate).toHaveBeenCalledWith('/cards/import');
+
+    await user.click(screen.getByRole('button', { name: /add manually/i }));
+    expect(mockNavigate).toHaveBeenCalledWith('/secrets/new');
+  });
+
+  it('offers only "Add manually" in the empty state when AI is disabled', async () => {
+    server.use(
+      http.get('*/api/ai/status', () =>
+        HttpResponse.json({ data: { enabled: false, features: { cardExtract: false } } }),
+      ),
+    );
+    mockCards([]);
+    render(<CardsPage />);
+
+    expect(screen.getByRole('button', { name: /add manually/i })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /scan a card/i })).not.toBeInTheDocument(),
+    );
   });
 
   it('renders card details including the masked number', () => {
-    mockCards([makeSummary({ id: 'card-1', name: 'Chase Sapphire' })]);
+    mockCards([makeSummary({ id: 'card-1', name: 'Org Alpha Rewards' })]);
     render(<CardsPage />);
 
     // Heading is the card's own name; network/kind are supporting detail in
     // the subheading, joined into a single text node with kind.
-    expect(screen.getByText('Chase Sapphire')).toBeInTheDocument();
+    expect(screen.getByText('Org Alpha Rewards')).toBeInTheDocument();
     expect(screen.getByText(/Visa/)).toBeInTheDocument();
-    expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
+    expect(screen.getByText('Person A')).toBeInTheDocument();
     expect(screen.getByText('•••• •••• •••• 4242')).toBeInTheDocument();
     expect(screen.getByText('12/29')).toBeInTheDocument();
   });
@@ -107,25 +138,136 @@ describe('CardsPage', () => {
     expect(screen.getByText(/none expiring soon/i)).toBeInTheDocument();
   });
 
-  it('filters to cards that need attention', async () => {
-    const user = userEvent.setup();
-    mockCards([
+  describe('filter chips', () => {
+    const WALLET = () => [
       makeSummary({ id: 'a', name: 'ExpiredCard', status: 'expired' }),
       makeSummary({ id: 'b', name: 'SoonCard', status: 'expiring_soon' }),
+      makeSummary({ id: 'b2', name: 'SoonCard2', status: 'expiring_soon' }),
       makeSummary({ id: 'c', name: 'GoodCard', status: 'valid' }),
       makeSummary({ id: 'd', name: 'MysteryCard', status: 'unknown' }),
+    ];
+
+    it('offers All, Needs attention, Expiring soon and Expired with whole-wallet counts', () => {
+      mockCards(WALLET());
+      render(<CardsPage />);
+
+      const group = screen.getByRole('group', { name: /filter cards/i });
+      expect(within(group).getByRole('button', { name: 'All (5)' })).toHaveAttribute('aria-pressed', 'true');
+      expect(within(group).getByRole('button', { name: 'Needs attention (3)' })).toHaveAttribute('aria-pressed', 'false');
+      expect(within(group).getByRole('button', { name: 'Expiring soon (2)' })).toHaveAttribute('aria-pressed', 'false');
+      expect(within(group).getByRole('button', { name: 'Expired (1)' })).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('shows only expiring cards under "Expiring soon"', async () => {
+      const user = userEvent.setup();
+      mockCards(WALLET());
+      render(<CardsPage />);
+
+      await user.click(screen.getByRole('button', { name: /^expiring soon/i }));
+
+      await waitFor(() => expect(screen.queryByText('GoodCard')).not.toBeInTheDocument());
+      expect(screen.getByText('SoonCard')).toBeInTheDocument();
+      expect(screen.getByText('SoonCard2')).toBeInTheDocument();
+      expect(screen.queryByText('ExpiredCard')).not.toBeInTheDocument();
+      expect(screen.queryByText('MysteryCard')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^expiring soon/i })).toHaveAttribute('aria-pressed', 'true');
+      // Counts describe the wallet, not the view.
+      expect(screen.getByRole('button', { name: 'All (5)' })).toBeInTheDocument();
+    });
+
+    it('shows only expired cards under "Expired", and everything again under "All"', async () => {
+      const user = userEvent.setup();
+      mockCards(WALLET());
+      render(<CardsPage />);
+
+      await user.click(screen.getByRole('button', { name: /^expired \(/i }));
+      await waitFor(() => expect(screen.queryByText('SoonCard')).not.toBeInTheDocument());
+      expect(screen.getByText('ExpiredCard')).toBeInTheDocument();
+      expect(screen.getAllByTestId('card-tile')).toHaveLength(1);
+
+      await user.click(screen.getByRole('button', { name: /^all \(/i }));
+      expect(screen.getAllByTestId('card-tile')).toHaveLength(5);
+    });
+
+    it('opens on "Needs attention" from ?filter=attention (the Home dashboard link)', () => {
+      mockCards(WALLET());
+      render(<CardsPage />, { wrapperOptions: { route: '/cards?filter=attention' } });
+
+      expect(screen.getByRole('button', { name: 'Needs attention (3)' })).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getAllByTestId('card-tile').map((t) => t.getAttribute('data-status'))).toEqual([
+        'expired',
+        'expiring_soon',
+        'expiring_soon',
+      ]);
+      // 'unknown' is not actionable, so it is not "needs attention".
+      expect(screen.queryByText('MysteryCard')).not.toBeInTheDocument();
+    });
+
+    it.each([
+      ['expired', 'Expired (1)'],
+      ['expiring_soon', 'Expiring soon (2)'],
+      ['expiring', 'Expiring soon (2)'],
+      ['all', 'All (5)'],
+      ['bogus', 'All (5)'],
+    ])('reads ?filter=%s as the %s chip', (param, chip) => {
+      mockCards(WALLET());
+      render(<CardsPage />, { wrapperOptions: { route: `/cards?filter=${param}` } });
+      expect(screen.getByRole('button', { name: chip })).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('keeps ?filter= in sync as the user picks chips', async () => {
+      const user = userEvent.setup();
+      mockCards(WALLET());
+      render(
+        <>
+          <CardsPage />
+          <LocationProbe />
+        </>,
+        { wrapperOptions: { route: '/cards' } },
+      );
+
+      expect(screen.getByTestId('location-search')).toHaveTextContent(/^$/);
+      await user.click(screen.getByRole('button', { name: /^expired \(/i }));
+      expect(screen.getByTestId('location-search')).toHaveTextContent('?filter=expired');
+      await user.click(screen.getByRole('button', { name: /^needs attention/i }));
+      expect(screen.getByTestId('location-search')).toHaveTextContent('?filter=attention');
+      await user.click(screen.getByRole('button', { name: /^all \(/i }));
+      expect(screen.getByTestId('location-search')).toHaveTextContent(/^$/);
+    });
+
+    it('combines with search, and offers a way back when nothing matches', async () => {
+      const user = userEvent.setup();
+      mockCards(WALLET());
+      render(<CardsPage />);
+
+      await user.click(screen.getByRole('button', { name: /^expired \(/i }));
+      await user.type(screen.getByLabelText(/search cards/i), 'Good');
+
+      expect(await screen.findByText('No cards match your filters.')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: /show all cards/i }));
+
+      expect(screen.getAllByTestId('card-tile')).toHaveLength(5);
+      expect(screen.getByLabelText(/search cards/i)).toHaveValue('');
+    });
+  });
+
+  it('gives every tile its expiry state, in words', () => {
+    mockCards([
+      makeSummary({ id: 'a', name: 'ExpiredCard', status: 'expired', expiryLabel: '01/24' }),
+      makeSummary({ id: 'b', name: 'SoonCard', status: 'expiring_soon', expiryLabel: '12/26' }),
+      makeSummary({ id: 'c', name: 'GoodCard', status: 'valid' }),
     ]);
     render(<CardsPage />);
 
-    expect(screen.getByText('GoodCard')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('switch', { name: /needs attention/i }));
-
-    await waitFor(() => expect(screen.queryByText('GoodCard')).not.toBeInTheDocument());
-    expect(screen.getByText('ExpiredCard')).toBeInTheDocument();
-    expect(screen.getByText('SoonCard')).toBeInTheDocument();
-    // 'unknown' is not actionable, so it is not "needs attention".
-    expect(screen.queryByText('MysteryCard')).not.toBeInTheDocument();
+    const tiles = screen.getAllByTestId('card-tile');
+    expect(tiles.map((tile) => tile.getAttribute('data-status'))).toEqual([
+      'expired',
+      'expiring_soon',
+      'valid',
+    ]);
+    expect(within(tiles[0]).getByLabelText('Expired, expiry 01/24')).toBeInTheDocument();
+    expect(within(tiles[1]).getByLabelText('Expires soon, expiry 12/26')).toBeInTheDocument();
+    expect(within(tiles[2]).getByLabelText('Valid, expiry 12/29')).toBeInTheDocument();
   });
 
   it('preserves soonest-first order from the hook', () => {
@@ -148,7 +290,7 @@ describe('CardsPage', () => {
 
     // Enabled by the default /api/ai/status handler.
     const importButton = await screen.findByRole('button', {
-      name: /import credit card/i,
+      name: /scan a card/i,
     });
     expect(importButton).toBeEnabled();
 
@@ -169,7 +311,7 @@ describe('CardsPage', () => {
     expect(await screen.findByText('Everyday Card')).toBeInTheDocument();
     await waitFor(() =>
       expect(
-        screen.queryByRole('button', { name: /import credit card/i }),
+        screen.queryByRole('button', { name: /scan a card/i }),
       ).not.toBeInTheDocument(),
     );
   });
@@ -186,7 +328,7 @@ describe('CardsPage', () => {
     expect(await screen.findByText('Everyday Card')).toBeInTheDocument();
     await waitFor(() =>
       expect(
-        screen.queryByRole('button', { name: /import credit card/i }),
+        screen.queryByRole('button', { name: /scan a card/i }),
       ).not.toBeInTheDocument(),
     );
   });
@@ -216,7 +358,7 @@ describe('CardsPage', () => {
 
     await waitFor(() =>
       expect(
-        screen.queryByRole('button', { name: /import credit card/i }),
+        screen.queryByRole('button', { name: /scan a card/i }),
       ).not.toBeInTheDocument(),
     );
     expect(screen.getByRole('button', { name: /renew business visa/i })).toBeEnabled();
@@ -377,5 +519,21 @@ describe('CardsPage', () => {
         screen.queryByRole('button', { name: 'Renew Mastercard' }),
       ).not.toBeInTheDocument();
     });
+  });
+});
+
+describe('CardsPage — header actions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('offers "Add manually" next to "Scan a card" once the wallet has cards', async () => {
+    const user = userEvent.setup();
+    mockCards([makeSummary({ id: 'card-1' })]);
+    render(<CardsPage />);
+
+    await screen.findByRole('button', { name: /scan a card/i });
+    await user.click(screen.getByRole('button', { name: /add manually/i }));
+    expect(mockNavigate).toHaveBeenCalledWith('/secrets/new');
   });
 });

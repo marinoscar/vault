@@ -13,12 +13,21 @@ import { EXPIRING_SOON_DAYS, type CardExpiryStatus } from '../../utils/cardExpir
  * Every state carries an icon AND a text label; colour is only ever a third,
  * redundant signal. A user who cannot distinguish the red and amber chips still
  * reads "Expired" vs "Expires soon", and the icon shapes differ too.
+ *
+ * States (E10.5, spec §8): `valid` is an outlined success chip; `expiring_soon`
+ * (within EXPIRING_SOON_DAYS) is the brand amber FILL with dark slate text;
+ * `expired` is a filled error chip; `unknown` is a neutral outline.
  */
 
 interface StatusPresentation {
   label: string;
   icon: React.ReactElement;
-  color: 'error' | 'warning' | 'success' | 'default';
+  /**
+   * `secondary` is the brand amber (spec §5): a FILL with slate text
+   * (`secondary.contrastText`, 7.28:1), never amber text on a light surface.
+   */
+  color: 'error' | 'secondary' | 'success' | 'default';
+  variant: 'filled' | 'outlined';
   tooltip: string;
 }
 
@@ -27,24 +36,28 @@ const PRESENTATION: Record<CardExpiryStatus, StatusPresentation> = {
     label: 'Expired',
     icon: <ExpiredIcon fontSize="small" />,
     color: 'error',
+    variant: 'filled',
     tooltip: 'This card has passed its expiry date.',
   },
   expiring_soon: {
     label: 'Expires soon',
     icon: <ExpiringIcon fontSize="small" />,
-    color: 'warning',
+    color: 'secondary',
+    variant: 'filled',
     tooltip: `This card expires within ${EXPIRING_SOON_DAYS} days.`,
   },
   valid: {
     label: 'Valid',
     icon: <ValidIcon fontSize="small" />,
     color: 'success',
+    variant: 'outlined',
     tooltip: 'This card is valid.',
   },
   unknown: {
     label: 'Unknown expiry',
     icon: <UnknownIcon fontSize="small" />,
     color: 'default',
+    variant: 'outlined',
     tooltip: 'No usable expiry date is stored for this card.',
   },
 };
@@ -71,8 +84,10 @@ export function CardExpiryBadge({ status, expiryLabel }: CardExpiryBadgeProps) {
         label={presentation.label}
         color={presentation.color}
         size="small"
-        variant={status === 'valid' ? 'outlined' : 'filled'}
+        variant={presentation.variant}
         aria-label={accessibleLabel}
+        data-status={status}
+        sx={{ fontWeight: 600 }}
       />
     </Tooltip>
   );

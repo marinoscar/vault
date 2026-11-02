@@ -11,19 +11,18 @@ import {
   Container,
   Link,
   Paper,
-  Step,
-  StepLabel,
-  Stepper,
   Typography,
 } from '@mui/material';
 
 import { AiEgressNotice } from '../components/cards/AiEgressNotice';
 import { CardCaptureStep } from '../components/cards/CardCaptureStep';
 import { CardCropReview, type CardSideCrop } from '../components/cards/CardCropReview';
+import { CardFlowStepper, type CardFlowStep } from '../components/cards/CardFlowStepper';
 import { CardReviewForm } from '../components/cards/CardReviewForm';
 import { useAiStatus } from '../hooks/useAiStatus';
 import {
   LOW_CONFIDENCE_THRESHOLD,
+  aiSeededFields,
   type CapturedCardPhoto,
   type CapturedCardSide,
 } from '../hooks/useCardImport';
@@ -42,12 +41,23 @@ import {
   type CroppedCardImage,
 } from '../utils/cardImage';
 
-type Stage = 'front' | 'back' | 'processing' | 'review';
+type Stage = 'front' | 'back' | 'processing' | 'crop' | 'review';
+
+/** Where each stage sits on the Capture → Crop → Review → Save stepper. */
+const STAGE_STEP: Record<Stage, CardFlowStep> = {
+  front: 'capture',
+  back: 'capture',
+  processing: 'crop',
+  crop: 'crop',
+  review: 'review',
+};
 
 /**
  * Renew a card in place, creating a new version.
  *
- * Front capture -> back capture -> (optional AI read) -> per-field diff -> renew.
+ * Capture (both photos optional) -> Crop (only when a photo was taken; the AI
+ * reads the new card first when it is on) -> Review (per-field diff) -> Save.
+ * The same four-step stepper as the import wizard (E10.5, #96).
  *
  * The capture steps collect FULL photos, exactly as the import wizard now
  * does: the prepared full frame goes to the extraction endpoint, the AI
@@ -71,10 +81,10 @@ type Stage = 'front' | 'back' | 'processing' | 'review';
  *     old version's images forward server-side, which is what keeps the old
  *     card readable in its own version of the history.
  *
- * The CVV rule is narrower than it looks: the OUTGOING card's code is never
- * carried forward, because a reissued card always has a new one. A code read
- * from the new card's photo does seed the field, and saving stays blocked
- * until the field holds something either way.
+ * The CVV is typed by hand, always: the OUTGOING card's code is never carried
+ * forward (a reissued card always has a new one) and nothing read from the new
+ * card's photo seeds it either. Saving stays blocked until the field holds
+ * something.
  */
 export default function RenewCardPage() {
   const navigate = useNavigate();
@@ -139,14 +149,6 @@ export default function RenewCardPage() {
    * clicks by which time the two-boolean status call has landed.
    */
   const canExtract = !isAiStatusLoading && cardExtractEnabled;
-
-  const stepLabels = canExtract
-    ? ['Front', 'Back', 'Read', 'Review']
-    : ['Front', 'Back', 'Review'];
-
-  const stepIndex = canExtract
-    ? { front: 0, back: 1, processing: 2, review: 3 }[stage]
-    : { front: 0, back: 1, processing: 2, review: 2 }[stage];
 
   // What gets uploaded on renew: the CROPPED images, never the full photos.
   const capturedSides: CapturedCardSide[] = useMemo(() => {
@@ -269,7 +271,8 @@ export default function RenewCardPage() {
     setValues(toRenewalValues(currentValues, result));
     setEditedFields(new Set());
     setFieldErrors({});
-    setStage('review');
+    // The Crop step only exists when there is a photo to crop.
+    setStage(nextFront || nextBack ? 'crop' : 'review');
   };
 
   /** The user re-cropped a side in the diff step's adjuster. */
@@ -326,6 +329,17 @@ export default function RenewCardPage() {
   );
   const changedCount = changes.filter((change) => change.changed).length;
 
+  // Fields the AI supplied (and that differ from the card held, so it actually
+  // contributed them) and the user has not touched since.
+  const aiFields = useMemo(() => {
+    const seeded = aiSeededFields(extraction);
+    for (const field of editedFields) seeded.delete(field);
+    for (const field of [...seeded]) {
+      if ((values?.[field] ?? '') === (currentValues[field] ?? '')) seeded.delete(field);
+    }
+    return seeded;
+  }, [extraction, editedFields, values, currentValues]);
+
   const cvvEntered = (values?.[CVV_FIELD] ?? '').trim() !== '';
   const hasCvvField = fields.some((field) => field.name === CVV_FIELD);
   const canSubmit = !isSubmitting && (!hasCvvField || cvvEntered);
@@ -365,7 +379,7 @@ export default function RenewCardPage() {
   // ---------------------------------------------------------------------------
 
   const breadcrumbs = (
-    <Breadcrumbs sx={{ mb: 2 }}>
+    <Breadcrumbs sx={{ mb: 1 }}>
       <Link
         color="inherit"
         href="/cards"
@@ -394,7 +408,7 @@ export default function RenewCardPage() {
 
   if (loadError || !secret) {
     return (
-      <Container maxWidth="md" sx={{ py: 3 }}>
+      <Container maxWidth="md" disableGutters>
         {breadcrumbs}
         <Alert severity="error">
           <AlertTitle>This card could not be loaded</AlertTitle>
@@ -413,30 +427,30 @@ export default function RenewCardPage() {
   // Wizard
   // ---------------------------------------------------------------------------
 
+  const photoSides = [
+    ...(frontPhoto ? [{ side: 'front' as const, file: frontPhoto.file, crop: frontCrop }] : []),
+    ...(backPhoto ? [{ side: 'back' as const, file: backPhoto.file, crop: backCrop }] : []),
+  ];
+  const activeStep: CardFlowStep = isSubmitting ? 'save' : STAGE_STEP[stage];
+  const skippedSteps = new Set<CardFlowStep>(photoSides.length === 0 ? ['crop'] : []);
+
   return (
-    <Container maxWidth="md" sx={{ py: 3 }}>
+    <Container maxWidth="md" disableGutters>
       {breadcrumbs}
 
-      <Typography variant="h4" gutterBottom>
+      <Typography
+        variant="h4"
+        component="h1"
+        sx={{ overflowWrap: 'anywhere', fontSize: { xs: '1.75rem', sm: '2.125rem' } }}
+      >
         Renew {secret.name}
       </Typography>
-      <Typography
-        variant="body2"
-        sx={{
-          color: "text.secondary",
-          mb: 1
-        }}>
+      <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.5 }}>
         Saves a new version. The current card — its number, name and photos —
         stays readable in this card's version history.
       </Typography>
 
-      <Stepper activeStep={stepIndex} sx={{ my: 3 }} alternativeLabel>
-        {stepLabels.map((label) => (
-          <Step key={label}>
-            <StepLabel>{label}</StepLabel>
-          </Step>
-        ))}
-      </Stepper>
+      <CardFlowStepper active={activeStep} skipped={skippedSteps} />
 
       {stage === 'front' || stage === 'back' ? (
         <>
@@ -503,22 +517,39 @@ export default function RenewCardPage() {
           )}
         </>
       ) : stage === 'processing' ? (
-        <Paper sx={{ p: 4, textAlign: 'center' }}>
+        <Paper variant="outlined" sx={{ p: 4, textAlign: 'center' }} aria-live="polite">
           <CircularProgress sx={{ mb: 2 }} />
-          <Typography variant="h6" gutterBottom>
+          <Typography variant="h6" component="h2" gutterBottom>
             {isExtracting ? 'Reading the new card…' : 'Preparing the photos…'}
           </Typography>
-          <Typography variant="body2" sx={{
-            color: "text.secondary"
-          }}>
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
             {isExtracting
               ? 'Your photos have been sent to OpenAI, which locates the card and reads the printed details. This usually takes a few seconds.'
               : 'Cropping the photos to the card…'}
           </Typography>
         </Paper>
+      ) : stage === 'crop' ? (
+        <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 } }}>
+          <Typography variant="h6" component="h2" gutterBottom>
+            Check the crop
+          </Typography>
+          <CardCropReview sides={photoSides} onCropChange={handleCropChange} />
+          <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 1 }}>
+            <Button variant="contained" onClick={() => setStage('review')} sx={{ minHeight: 44 }}>
+              Continue to changes
+            </Button>
+            <Button variant="outlined" onClick={() => setStage('front')} sx={{ minHeight: 44 }}>
+              Retake photos
+            </Button>
+            <Box sx={{ flexGrow: 1, display: { xs: 'none', sm: 'block' } }} />
+            <Button color="inherit" onClick={() => void handleCancel()} sx={{ minHeight: 44 }}>
+              Cancel
+            </Button>
+          </Box>
+        </Paper>
       ) : (
-        <Paper sx={{ p: { xs: 2, md: 3 } }}>
-          <Typography variant="h6" gutterBottom>
+        <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 } }}>
+          <Typography variant="h6" component="h2" gutterBottom>
             Check what changes
           </Typography>
 
@@ -532,9 +563,7 @@ export default function RenewCardPage() {
                   : `${changedCount} field${changedCount === 1 ? '' : 's'} change`
               }
             />
-            <Typography variant="body2" sx={{
-              color: "text.secondary"
-            }}>
+            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
               Everything else is saved exactly as it is now.
             </Typography>
           </Box>
@@ -578,15 +607,10 @@ export default function RenewCardPage() {
           )}
 
           <CardCropReview
-            sides={[
-              ...(frontPhoto
-                ? [{ side: 'front' as const, file: frontPhoto.file, crop: frontCrop }]
-                : []),
-              ...(backPhoto
-                ? [{ side: 'back' as const, file: backPhoto.file, crop: backCrop }]
-                : []),
-            ]}
+            compact
+            sides={photoSides}
             disabled={isSubmitting}
+            onEdit={() => setStage('crop')}
             onCropChange={handleCropChange}
           />
 
@@ -595,6 +619,7 @@ export default function RenewCardPage() {
             values={values ?? {}}
             onChange={handleFieldChange}
             lowConfidenceFields={lowConfidenceFields}
+            aiFields={aiFields}
             warnings={extraction?.warnings ?? []}
             errors={fieldErrors}
             disabled={isSubmitting}
@@ -604,25 +629,27 @@ export default function RenewCardPage() {
 
           {hasCvvField && !cvvEntered && (
             <Alert severity="info" sx={{ mt: 2 }}>
-              Enter the CVV / CVC from the new card to renew. It could not be
-              read from a photo, and the old card's code is never reused, so
-              type it from the new card yourself.
+              Enter the CVV / CVC from the new card to renew. It is never read
+              from a photo, and the old card's code is never reused, so type it
+              from the new card yourself.
             </Alert>
           )}
 
-          <Box sx={{ display: 'flex', gap: 1, mt: 3, flexWrap: 'wrap' }}>
+          <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 1, mt: 3 }}>
             <Button
               variant="contained"
               onClick={() => void handleSubmit()}
               disabled={!canSubmit}
+              sx={{ minHeight: 44 }}
             >
               {isSubmitting ? 'Renewing…' : 'Renew card'}
             </Button>
-            <Box sx={{ flexGrow: 1 }} />
+            <Box sx={{ flexGrow: 1, display: { xs: 'none', sm: 'block' } }} />
             <Button
               color="inherit"
               onClick={() => void handleCancel()}
               disabled={isSubmitting}
+              sx={{ minHeight: 44 }}
             >
               Cancel
             </Button>

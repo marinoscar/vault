@@ -28,7 +28,7 @@ import type { Client } from 'pg';
 import type { PrismaClient } from '@prisma/client';
 
 import { defaultOrgClient, getDefaultOrgId, runInDefaultOrg } from '../../src/prisma/default-org';
-import { runInOrg } from '../../src/prisma/org-scope';
+import { runInOrg } from '@marinoscar/platform-api/core';
 import { ObjectsService } from '../../src/storage/objects/objects.service';
 import {
   findAdminCredentials,
