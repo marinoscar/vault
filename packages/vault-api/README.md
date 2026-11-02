@@ -8,13 +8,20 @@ The package is the domain; `apps/api` is a host that binds twelve ports and regi
 
 Status: experimental. Introduced in E12.2.
 
-Entry points:
+## Entry points
 
-- `@marinoscar/vault-api`: `VaultApiModule.forRoot({ bindings, imports })`, the port tokens and types.
-- `@marinoscar/vault-api/ports`: the tokens and interfaces only.
-- `@marinoscar/vault-api/core`: `VAULT_PERMISSIONS`, `ROLES`/`PERMISSIONS` constants, `runInDefaultOrg` / `defaultOrgClient`, the metric label lists, the notification event keys and payloads, `detectImageType`.
-- `@marinoscar/vault-api/{secrets,secret-types,media,backups,ai,card-expiry}`: each slice's services, controllers, handlers and constants.
-- `@marinoscar/vault-api/testing`: in-memory fakes of the ports and `createFakeBindings()`.
+| Specifier | Exports |
+|---|---|
+| `@marinoscar/vault-api` | `VaultApiModule.forRoot({ bindings, imports })`, the port tokens and types |
+| `@marinoscar/vault-api/ports` | The tokens and interfaces only |
+| `@marinoscar/vault-api/core` | `VAULT_PERMISSIONS`, `ROLES`/`PERMISSIONS` constants, `runInDefaultOrg` / `defaultOrgClient`, the metric label lists, the notification event keys and payloads, `detectImageType` |
+| `@marinoscar/vault-api/secrets` | Secrets and card-summary services, the secrets controller, the export zip service |
+| `@marinoscar/vault-api/secret-types` | The secret-types service and controller |
+| `@marinoscar/vault-api/media` | The media folders service and controller |
+| `@marinoscar/vault-api/backups` | Archive, queue, runner, schedule tick, notifier, controllers and the two job handlers |
+| `@marinoscar/vault-api/ai` | Card extraction service and controller, the AI status controller |
+| `@marinoscar/vault-api/card-expiry` | The card-expiry scan job handler and its schedule task |
+| `@marinoscar/vault-api/testing` | In-memory fakes of the ports and `createFakeBindings()` |
 
 ## Install and peer dependencies
 
@@ -57,32 +64,57 @@ export const vaultApiModule = VaultApiModule.forRoot({
 });
 ```
 
-## The ports
+## Configuration
 
-| Token | Interface | Notes |
+`VaultApiModule.forRoot(options)` takes two options.
+
+| Option | Required | Meaning |
 |---|---|---|
-| `VAULT_PRISMA` | `VaultPrismaClient` | The host's `PrismaClient`; connects as the ordinary role, so org tables are read through `runInDefaultOrg` |
-| `VAULT_CRYPTO` | `VaultCryptoPort` | AES-256-GCM under `VAULT_ENCRYPTION_KEY`; secret values exist only as ciphertext |
-| `VAULT_OBJECT_STORE` | `VaultObjectStorePort` | The raw provider (no uploader-ownership check) |
-| `VAULT_OBJECTS` | `VaultObjectsPort` | `delete`, `getDownloadUrl` with the ownership check (media) |
-| `VAULT_JOBS` | `VaultJobsPort` | `enqueue`, `enqueueWithin`, `registerHandler`; job types are permanent |
-| `VAULT_NOTIFY` | `VaultNotifyPort` | Called after the triggering write commits |
-| `VAULT_AI`, `VAULT_AI_CONFIG` | `VaultAiPort`, `VaultAiConfigPort` | Server-side only; the CVV is never sent |
-| `VAULT_AI_KEY_PRESENCE` | `VaultAiKeyPresencePort` | A describe, never the key |
-| `VAULT_AUDIT` | `VaultAuditPort` | One `audit_events` row per call |
-| `VAULT_SETTINGS` | `VaultSettingsPort` | `vaultCards`, `vaultBackups`, `ai` namespaces |
-| `VAULT_METRICS` | `VaultMetricsPort` | Optional; enum labels only |
+| `bindings` | yes | A `VaultApiBindings` object: one binding per port (`prisma`, `crypto`, `objectStore`, `objects`, `jobs`, `notify`, `ai`, `aiConfig`, `aiKeyPresence`, `audit`, `settings`; `metrics` is optional) |
+| `imports` | no | Modules the bindings and the controllers' guards need (storage providers, the AI module that exports `AiEnabledGuard`, the credentials module) |
 
-A token's description string (`@marinoscar/vault/<NAME>`) is permanent.
+Each binding is one of `{ useClass }`, `{ useExisting }`, `{ useValue }` or `{ useFactory, inject }`. Eleven ports are required: a slice that finds its port missing fails at bootstrap naming the token, not on first use. `metrics` is the only optional port; a host without telemetry binds nothing and the slices emit nothing. The package reads no environment variable; the cipher key (`VAULT_ENCRYPTION_KEY`) belongs to the host's `VAULT_CRYPTO` binding.
 
-## Invariants the package keeps
+## Extension-point catalog
 
-Ciphertext only under the host key; exactly one current version per secret; attachments are version-scoped and a referenced object is never deleted (refcount); export endpoints return a raw zip with the `X-Vault-Export-*` headers; backup jobs are server-only (no `nodeResultSchema`, no `persistNodeResult`, the archive password only as ciphertext in the payload); `notify()` runs after the write commits; the card CVV is never sent to AI or persisted by extraction; domain reads of `storage_objects` run in the default organization's scope.
+The twelve ports are the extension points. A token's description string (`@marinoscar/vault/<NAME>`) is permanent.
+
+| Token | Interface | Binding key | Notes |
+|---|---|---|---|
+| `VAULT_PRISMA` | `VaultPrismaClient` | `prisma` | The host's `PrismaClient`; connects as the ordinary role, so org tables are read through `runInDefaultOrg` |
+| `VAULT_CRYPTO` | `VaultCryptoPort` | `crypto` | AES-256-GCM under `VAULT_ENCRYPTION_KEY`; secret values exist only as ciphertext |
+| `VAULT_OBJECT_STORE` | `VaultObjectStorePort` | `objectStore` | The raw provider (no uploader-ownership check) |
+| `VAULT_OBJECTS` | `VaultObjectsPort` | `objects` | `delete`, `getDownloadUrl` with the ownership check (media) |
+| `VAULT_JOBS` | `VaultJobsPort` | `jobs` | `enqueue`, `enqueueWithin`, `registerHandler`; job types are permanent |
+| `VAULT_NOTIFY` | `VaultNotifyPort` | `notify` | Called after the triggering write commits |
+| `VAULT_AI` | `VaultAiPort` | `ai` | Server-side only; the CVV is never sent |
+| `VAULT_AI_CONFIG` | `VaultAiConfigPort` | `aiConfig` | The public AI configuration |
+| `VAULT_AI_KEY_PRESENCE` | `VaultAiKeyPresencePort` | `aiKeyPresence` | A describe, never the key |
+| `VAULT_AUDIT` | `VaultAuditPort` | `audit` | One `audit_events` row per call |
+| `VAULT_SETTINGS` | `VaultSettingsPort` | `settings` | `vaultCards`, `vaultBackups`, `ai` namespaces |
+| `VAULT_METRICS` | `VaultMetricsPort` | `metrics` | Optional; enum labels only |
+
+`@marinoscar/vault-api/testing` ships fakes for them: `TestCrypto` (`VAULT_CRYPTO`), `InMemoryObjectStore` (`VAULT_OBJECT_STORE`), `RecordingJobs`, `RecordingNotify`, `InMemoryAudit` (and `auditOverPrisma(prisma)`), `FakeSettings`, `CountingMetrics`, and `createUnusablePrisma()`, which throws on any query. `createFakeBindings(overrides)` returns `{ bindings, ports }` for `forRoot`; its AI ports answer "not configured" and `objects` returns a signed-URL stub, so a test that needs a scripted model overrides `ai`.
+
+To add a port: a token and interface in `src/ports/`, a field in `VaultApiBindings`, a line in `TOKENS` of `vault-api.module.ts`, a fake in `src/testing/fake-ports.ts`, a check in `conformance.spec.ts`, and the binding in `apps/api/src/platform/vault-api/vault-api.config.ts`. To add a slice: a folder with an `index.ts`, an `exports` entry in `package.json`, its providers in `VaultApiModule`.
+
+## Security notes
+
+- Secret values exist only as AES-256-GCM ciphertext, produced and read through the `VAULT_CRYPTO` port under the host's key; the package never holds the key or logs a plaintext value.
+- The card CVV is never sent to AI and never persisted by extraction; AI calls run server-side through `VAULT_AI`, and keys never leave the server.
+- Backup archive passwords are never logged and never stored in plaintext (only as ciphertext in the job payload).
+- Export endpoints return a raw zip (not the `{ data }` envelope) with the `X-Vault-Export-*` headers.
+- There is no `*:read_any` bypass by accident: a read of a foreign resource answers 404, not 403.
+- AI and backup jobs are server-only: no `nodeResultSchema`, no `persistNodeResult`, so no credential is ever brokered to a worker node.
+- Exactly one current version per secret; attachments are version-scoped and a referenced object is never deleted (refcount); `notify()` runs after the write commits; domain reads of `storage_objects` run in the default organization's scope.
 
 ## Testing
 
 `npm run test:run -w @marinoscar/vault-api` runs the domain specs (Jest, ts-jest) and `test/conformance.spec.ts`, which boots `VaultApiModule` over `createFakeBindings()`, pins the 45-route table, the three job types and their server-only shape, and checks that a missing required port fails the boot naming its token. The bound host is proven by `apps/api`'s integration, RBAC and real-database tiers.
 
-## Extending
+## Links
 
-Add a port: a token and interface in `src/ports/`, a field in `VaultApiBindings`, a line in `TOKENS` of `vault-api.module.ts`, a fake in `src/testing/fake-ports.ts`, a check in `conformance.spec.ts`, and the binding in `apps/api/src/platform/vault-api/vault-api.config.ts`. Add a slice: a folder with an `index.ts`, an `exports` entry in `package.json`, its providers in `VaultApiModule`.
+- [Package documentation standard](../../docs/PACKAGES.md#vault-api-the-ports)
+- [ADR-0001: packages first](../../docs/decisions/0001-packages-first.md)
+- [Local exceptions](../../docs/platform-adoption/local-exceptions.md)
+- Sibling packages: [`@marinoscar/vault-contract`](../vault-contract/README.md), [`@marinoscar/vault-db`](../vault-db/README.md)
