@@ -85,6 +85,14 @@ export function systemBackupFileName(date: Date): string {
   );
 }
 
+/** Object-storage prefix of the backups users save to storage. */
+export const USER_BACKUP_KEY_PREFIX = 'user-backups/';
+
+/** `user-backups/<userId>/vault-backup-YYYY-MM-DD_HHmmss.zip` (UTC). */
+export function userBackupStorageKey(userId: string, date: Date): string {
+  return `${USER_BACKUP_KEY_PREFIX}${userId}/${systemBackupFileName(date)}`;
+}
+
 /** `system-backups/vault-backup-YYYY-MM-DD_HHmmss.zip` (UTC). */
 export function systemBackupStorageKey(date: Date): string {
   return `${SYSTEM_BACKUP_KEY_PREFIX}${systemBackupFileName(date)}`;

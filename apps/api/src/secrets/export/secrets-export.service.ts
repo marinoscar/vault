@@ -567,13 +567,19 @@ export class SecretsExportService {
    * selected) and the media folders `owner` owns (when selected), with blobs
    * missing from storage dropped. Shared by the user export and the scheduled
    * system backup. Owner-only by construction, for both parts.
+   *
+   * With `mode.decrypt === false` no secret value is decrypted (every version's
+   * `data` is `{}`): for a count-only pass, e.g. the headers of a streamed
+   * system backup. Such a plan must never be written.
    */
   async prepareUserPlan(
     owner: { id: string; email: string },
     options: PrepareUserPlanSelection,
     exportedAt: Date,
     logLabel = 'Secrets export',
+    mode: { decrypt?: boolean } = {},
   ): Promise<UserArchivePlan> {
+    const decrypt = mode.decrypt ?? true;
     const selection = normalizeUserSelection(options);
     const { includeAttachments, includeVersions, includeMedia } = selection;
 
@@ -584,7 +590,7 @@ export class SecretsExportService {
         owner: { id: owner.id, email: owner.email },
         options: { includeAttachments, includeVersions, includeMedia },
         exportedAt,
-        decrypt: (version) => this.decryptVersion(version),
+        decrypt: decrypt ? (version) => this.decryptVersion(version) : () => ({}),
         onDecryptFailure: (secretId, versionId) =>
           this.logger.warn(
             `${logLabel} for user ${owner.id}: version ${versionId} of secret ${secretId} ` +

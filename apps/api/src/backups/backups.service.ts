@@ -1,3 +1,5 @@
+import { Readable } from 'stream';
+
 import {
   BadRequestException,
   BadGatewayException,
@@ -14,7 +16,16 @@ import { CryptoService } from '../common/services/crypto.service';
 import { STORAGE_PROVIDER, StorageProvider } from '../storage/providers';
 import { encryptBackupPassword } from './backup-password';
 import { BackupFrequency, computeNextRunAt } from './backup-schedule';
-import { BACKUP_SCHEDULE_ID, BackupRunnerService } from './backup-runner.service';
+import {
+  BACKUP_FAILURE_MESSAGES,
+  BACKUP_SCHEDULE_ID,
+  BackupRunnerService,
+  SYSTEM_SCOPE,
+} from './backup-runner.service';
+import { decryptBackupPassword } from './backup-password';
+import { systemBackupFileName } from './backup-archive';
+import { selectedContentKeys } from '../secrets/export/backup-contents';
+import { ExportSystemBackupInput } from './dto/export-system-backup.dto';
 import {
   BACKUP_RUN_INCLUDE,
   BackupDownloadResponse,
@@ -32,7 +43,21 @@ export const BACKUPS_AUDIT_ACTIONS = {
   run: 'backups.run',
   download: 'backups.download',
   delete: 'backups.delete',
+  export: 'backups.export',
 } as const;
+
+export const NO_SCHEDULED_PASSWORD_MESSAGE =
+  'No scheduled backup password is set. Enter a password for this download.';
+
+/** Result of {@link BackupsService.exportNow}: headers first, then the zip. */
+export interface SystemExportResult {
+  fileName: string;
+  userCount: number;
+  secretCount: number;
+  attachmentCount: number;
+  mediaFileCount: number;
+  stream: Readable;
+}
 
 /** Lifetime of a download link. */
 export const BACKUP_DOWNLOAD_URL_TTL_SECONDS = 300;
@@ -201,14 +226,17 @@ export class BackupsService {
 
   async listRuns(query: BackupRunListQuery): Promise<BackupRunListResponse> {
     const { page, pageSize } = query;
+    // System runs only: a backup a user saved to storage is theirs alone.
+    const where = { scope: SYSTEM_SCOPE };
     const [rows, total] = await Promise.all([
       this.prisma.backupRun.findMany({
+        where,
         orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
         skip: (page - 1) * pageSize,
         take: pageSize,
         include: BACKUP_RUN_INCLUDE,
       }),
-      this.prisma.backupRun.count(),
+      this.prisma.backupRun.count({ where }),
     ]);
     return {
       items: (rows as BackupRunRow[]).map(toBackupRunResponse),
@@ -221,7 +249,7 @@ export class BackupsService {
 
   /** @throws NotFoundException unless the run succeeded and its object still exists. */
   async getDownload(id: string, actorUserId: string): Promise<BackupDownloadResponse> {
-    const run = await this.prisma.backupRun.findUnique({ where: { id } });
+    const run = await this.findSystemRun(id);
     if (!run || run.status !== 'succeeded' || run.deletedAt || !run.storageKey) {
       throw new NotFoundException({ message: 'Backup not found or no longer available' });
     }
@@ -250,7 +278,7 @@ export class BackupsService {
    * @throws NotFoundException for an unknown id; ConflictException while running.
    */
   async deleteRun(id: string, actorUserId: string): Promise<void> {
-    const run = await this.prisma.backupRun.findUnique({ where: { id } });
+    const run = await this.findSystemRun(id);
     if (!run) {
       throw new NotFoundException({ message: 'Backup not found' });
     }
@@ -274,6 +302,75 @@ export class BackupsService {
     await this.audit(actorUserId, BACKUPS_AUDIT_ACTIONS.delete, 'backup_run', run.id, {
       runId: run.id,
     });
+  }
+
+  /**
+   * Stream a system backup to the caller now ("Download a backup now"):
+   * same writer and layout as a scheduled run, nothing stored, no run row.
+   *
+   * The password is either the one given or the stored schedule password,
+   * decrypted here and handed to the zip writer only. Counts are computed
+   * (without decrypting values) and audited before the first byte is sent.
+   *
+   * @throws BadRequestException when the scheduled password is asked for but
+   *   none is stored (or it cannot be decrypted).
+   */
+  async exportNow(input: ExportSystemBackupInput, actorUserId: string): Promise<SystemExportResult> {
+    let password: string;
+    if (input.useScheduledPassword) {
+      const schedule = await this.prisma.backupSchedule.findUnique({
+        where: { id: BACKUP_SCHEDULE_ID },
+        select: { passwordEncrypted: true },
+      });
+      if (!schedule?.passwordEncrypted) {
+        throw new BadRequestException({ message: NO_SCHEDULED_PASSWORD_MESSAGE });
+      }
+      try {
+        password = decryptBackupPassword(this.crypto, schedule.passwordEncrypted);
+      } catch (error) {
+        this.logger.error(`Scheduled backup password could not be decrypted: ${(error as Error)?.message}`);
+        throw new BadRequestException({ message: BACKUP_FAILURE_MESSAGES.passwordUnreadable });
+      }
+    } else {
+      password = input.password as string;
+    }
+
+    const createdAt = new Date();
+    const counts = await this.runner.countSystemArchive(input.selection, createdAt);
+
+    await this.audit(actorUserId, BACKUPS_AUDIT_ACTIONS.export, 'backup_export', actorUserId, {
+      contents: selectedContentKeys(input.selection),
+      passwordSource: input.useScheduledPassword ? 'scheduled' : 'provided',
+      counts: {
+        users: counts.userCount,
+        secrets: counts.secretCount,
+        attachments: counts.attachmentCount,
+        mediaFiles: counts.mediaFileCount,
+        warnings: counts.warningCount,
+      },
+    });
+    this.logger.log(
+      `System backup export by ${actorUserId}: ${counts.userCount} user(s), ${counts.secretCount} secret(s), ` +
+        `${counts.attachmentCount} attachment(s), ${counts.mediaFileCount} media file(s)`,
+    );
+
+    return {
+      fileName: systemBackupFileName(createdAt),
+      userCount: counts.userCount,
+      secretCount: counts.secretCount,
+      attachmentCount: counts.attachmentCount,
+      mediaFileCount: counts.mediaFileCount,
+      stream: await this.runner.streamSystemArchive(input.selection, password, createdAt),
+    };
+  }
+
+  /** A system run by id; a user-saved run is invisible here (`null`). */
+  private async findSystemRun(id: string) {
+    const run = await this.prisma.backupRun.findUnique({ where: { id } });
+    if (!run || (run.scope ?? SYSTEM_SCOPE) !== SYSTEM_SCOPE) {
+      return null;
+    }
+    return run;
   }
 
   private toScheduleResponse(row: ScheduleRow | null): BackupScheduleResponse {

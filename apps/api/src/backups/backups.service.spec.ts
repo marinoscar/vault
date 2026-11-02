@@ -491,3 +491,85 @@ describe('BackupsService content selection', () => {
     expect(result.items[0]).toMatchObject({ mediaFileCount: 3, contents: ['media', 'system'] });
   });
 });
+
+describe('BackupsService scope isolation', () => {
+  const userRun = { id: 'user-run', scope: 'user', ownerId: 'u1', status: 'succeeded', storageKey: 'user-backups/u1/x.zip', deletedAt: null };
+
+  it('lists system runs only', async () => {
+    const { service, prisma } = makeService();
+    await service.listRuns({ page: 1, pageSize: 20 });
+    expect(prisma.backupRun.findMany.mock.calls[0][0].where).toEqual({ scope: 'system' });
+    expect(prisma.backupRun.count.mock.calls[0][0]).toEqual({ where: { scope: 'system' } });
+  });
+
+  it("never downloads or deletes a user's saved backup", async () => {
+    const { service, prisma, storageProvider } = makeService();
+    prisma.backupRun.findUnique.mockResolvedValue(userRun);
+    await expect(service.getDownload('user-run', ACTOR)).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.deleteRun('user-run', ACTOR)).rejects.toBeInstanceOf(NotFoundException);
+    expect(storageProvider.getSignedDownloadUrl).not.toHaveBeenCalled();
+    expect(storageProvider.delete).not.toHaveBeenCalled();
+  });
+});
+
+describe('BackupsService.exportNow', () => {
+  const selection = {
+    includeSecrets: true,
+    includeAttachments: true,
+    includeVersions: false,
+    includeMedia: false,
+    includeSystem: true,
+  };
+  const counts = { userCount: 2, secretCount: 5, attachmentCount: 1, mediaFileCount: 0, warningCount: 0 };
+
+  function withExport(schedule?: Record<string, unknown> | null) {
+    const ctx = makeService({ schedule });
+    const stream = { fake: 'stream' };
+    Object.assign(ctx.runner, {
+      countSystemArchive: jest.fn(async () => counts),
+      streamSystemArchive: jest.fn(async () => stream),
+    });
+    return { ...ctx, stream, runner: ctx.runner as typeof ctx.runner & Record<string, jest.Mock> };
+  }
+
+  it('streams with the given password and audits contents and counts without it', async () => {
+    const { service, runner, prisma, stream } = withExport();
+    const result = await service.exportNow({ password: PASSWORD, useScheduledPassword: false, selection }, ACTOR);
+
+    expect(result).toMatchObject({ userCount: 2, secretCount: 5, attachmentCount: 1, mediaFileCount: 0, stream });
+    expect(result.fileName).toMatch(/^vault-backup-\d{4}-\d{2}-\d{2}_\d{6}\.zip$/);
+    expect(runner.streamSystemArchive.mock.calls[0][0]).toEqual(selection);
+    expect(runner.streamSystemArchive.mock.calls[0][1]).toBe(PASSWORD);
+    const audit = prisma.auditEvent.create.mock.calls[0][0].data;
+    expect(audit).toMatchObject({
+      action: BACKUPS_AUDIT_ACTIONS.export,
+      meta: {
+        contents: ['secrets', 'attachments', 'system'],
+        passwordSource: 'provided',
+        counts: { users: 2, secrets: 5, attachments: 1, mediaFiles: 0 },
+      },
+    });
+    expect(JSON.stringify(prisma.auditEvent.create.mock.calls)).not.toContain(PASSWORD);
+    expect(JSON.stringify(logSpies.flatMap((s) => s.mock.calls))).not.toContain(PASSWORD);
+    expect(prisma.backupSchedule.upsert).not.toHaveBeenCalled();
+  });
+
+  it('useScheduledPassword decrypts the stored password for the stream only', async () => {
+    const { service: setter, getStored } = makeService();
+    await setter.updateSchedule(input({ password: PASSWORD }), ACTOR);
+    const { service, runner, prisma } = withExport(getStored());
+
+    await service.exportNow({ password: null, useScheduledPassword: true, selection }, ACTOR);
+    expect(runner.streamSystemArchive.mock.calls[0][1]).toBe(PASSWORD);
+    expect(prisma.auditEvent.create.mock.calls[0][0].data.meta.passwordSource).toBe('scheduled');
+    expect(JSON.stringify(prisma.auditEvent.create.mock.calls)).not.toContain(PASSWORD);
+  });
+
+  it('400 when the scheduled password is asked for but none is stored', async () => {
+    const { service, runner } = withExport(null);
+    await expect(
+      service.exportNow({ password: null, useScheduledPassword: true, selection }, ACTOR),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(runner.streamSystemArchive).not.toHaveBeenCalled();
+  });
+});

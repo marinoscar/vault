@@ -1,3 +1,5 @@
+import { Readable } from 'stream';
+
 import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { APP_PIPE } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
@@ -60,6 +62,7 @@ describe('Backups routes (HTTP RBAC)', () => {
     listRuns: jest.fn(),
     getDownload: jest.fn(),
     deleteRun: jest.fn(),
+    exportNow: jest.fn(),
   };
 
   beforeAll(async () => {
@@ -103,6 +106,14 @@ describe('Backups routes (HTTP RBAC)', () => {
     service.listRuns.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20, totalPages: 0 });
     service.getDownload.mockResolvedValue({ url: 'https://s.example.test/x', expiresAt: 'x', fileName: 'f.zip' });
     service.deleteRun.mockResolvedValue(undefined);
+    service.exportNow.mockImplementation(async () => ({
+      fileName: 'vault-backup-2026-07-01_000000.zip',
+      userCount: 3,
+      secretCount: 4,
+      attachmentCount: 5,
+      mediaFileCount: 6,
+      stream: Readable.from([Buffer.from([0x50, 0x4b, 0x03, 0x04])]),
+    }));
   });
 
   const call = (
@@ -150,6 +161,15 @@ describe('Backups routes (HTTP RBAC)', () => {
       handler: 'getDownload',
     },
     { name: 'DELETE run', method: 'DELETE', url: `/${ID}`, permission: WRITE, okStatus: 204, handler: 'deleteRun' },
+    {
+      name: 'POST export',
+      method: 'POST',
+      url: '/export',
+      permission: WRITE,
+      payload: { password: 'secret1', includeSystem: true },
+      okStatus: 200,
+      handler: 'exportNow',
+    },
   ];
 
   describe.each(routes)('$name', (route) => {
@@ -234,6 +254,37 @@ describe('Backups routes (HTTP RBAC)', () => {
         expect.objectContaining({ password: 'hunter22', frequency: 'daily' }),
         'admin-1',
       );
+    });
+
+    it('export streams the raw zip with the count headers, not wrapped in {data}', async () => {
+      const response = await call('POST', '/export', asUser(WRITE), { password: 'secret1' });
+      expect(response.statusCode).toBe(200);
+      expect(response.headers['content-type']).toMatch(/^application\/zip/);
+      expect(response.headers['content-disposition']).toBe(
+        'attachment; filename="vault-backup-2026-07-01_000000.zip"',
+      );
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.headers['x-vault-export-users']).toBe('3');
+      expect(response.headers['x-vault-export-secrets']).toBe('4');
+      expect(response.headers['x-vault-export-attachments']).toBe('5');
+      expect(response.headers['x-vault-export-media-files']).toBe('6');
+      expect(response.rawPayload.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04]))).toBe(true);
+      expect(service.exportNow).toHaveBeenCalledWith(
+        expect.objectContaining({ password: 'secret1', useScheduledPassword: false }),
+        'admin-1',
+      );
+    });
+
+    it.each([
+      ['no password source', {}],
+      ['both password sources', { password: 'secret1', useScheduledPassword: true }],
+      ['a short password', { password: 'abc' }],
+      ['nothing selected', { password: 'secret1', includeSecrets: false }],
+    ])('export answers 400 before the service for %s', async (_label, body) => {
+      const response = await call('POST', '/export', asUser(WRITE), body);
+      expect(response.statusCode).toBe(400);
+      expect(response.body).not.toContain('"abc"');
+      expect(service.exportNow).not.toHaveBeenCalled();
     });
 
     it('rejects a non-uuid id with 400', async () => {

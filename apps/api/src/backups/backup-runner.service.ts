@@ -16,6 +16,7 @@ import { CryptoService } from '../common/services/crypto.service';
 import { STORAGE_PROVIDER, StorageProvider } from '../storage/providers';
 import {
   SecretsExportService,
+  userArchiveBlobBytes,
   userArchiveCounts,
   vaultZipWriterOptions,
   ZIP64_THRESHOLD_BYTES,
@@ -27,6 +28,7 @@ import {
   SystemBackupIndex,
   SystemBackupUserEntry,
   systemBackupStorageKey,
+  userBackupStorageKey,
   userFolderName,
 } from './backup-archive';
 import { SystemSettingsService } from '../settings/system-settings/system-settings.service';
@@ -34,6 +36,7 @@ import {
   BackupContentSelection,
   resolveContentSelection,
   selectedContentKeys,
+  UserContentSelection,
 } from '../secrets/export/backup-contents';
 import {
   SYSTEM_ALLOWLIST_SELECT,
@@ -58,6 +61,26 @@ export const BACKUP_SCHEDULE_ID = 'default';
 
 /** Audit action written when a run finishes, successfully or not. */
 export const BACKUPS_RUN_COMPLETED_AUDIT_ACTION = 'backups.run.completed';
+/** Audit action written when a user-saved run finishes. */
+export const BACKUPS_USER_RUN_COMPLETED_AUDIT_ACTION = 'backups.user.run.completed';
+
+/** `backup_runs.scope` of an administrator's system backup. */
+export const SYSTEM_SCOPE = 'system';
+/** `backup_runs.scope` of a backup a user saved to storage. */
+export const USER_SCOPE = 'user';
+
+/** How many saved backups each user keeps; older ones are deleted after a successful run. */
+export const USER_BACKUP_KEEP_COUNT = 10;
+
+/**
+ * First key of the two-key advisory lock serializing one user's saved runs
+ * (the second is `hashtext(userId)`). Two-key locks live in a different key
+ * space from the single bigint {@link BACKUP_RUN_LOCK_KEY}, so they never
+ * collide with the system lock.
+ */
+export const USER_BACKUP_LOCK_NAMESPACE = 731_104;
+
+export const USER_RUN_ALREADY_RUNNING_MESSAGE = 'You already have a backup running';
 
 /** How often a live run refreshes its `heartbeat_at`. */
 export const BACKUP_HEARTBEAT_INTERVAL_MS = 30 * 1000;
@@ -139,6 +162,41 @@ export function staleRunsWhere(now: Date) {
       { heartbeatAt: null, startedAt: { lt: cutoff } },
     ],
   };
+}
+
+/** Writes one archive into a zip writer, closes it, and returns its counts. */
+type ArchiveWriteFn = (zipWriter: ZipWriter<unknown>) => Promise<BackupArchiveCounts>;
+
+/** What {@link BackupRunnerService.performRun} needs to run one archive. */
+interface RunJob {
+  auditAction: string;
+  fallbackKey: () => string;
+  /** Checks and loads everything; a throw here fails the run before upload. */
+  prepare: () => Promise<{
+    password: string;
+    selection: BackupContentSelection | UserContentSelection;
+    zip64: boolean;
+    write: ArchiveWriteFn;
+  }>;
+  afterSuccess?: (finishedAt: Date) => Promise<void>;
+  retention: () => Promise<void>;
+}
+
+/** The schedule's content columns resolved with the defaults. */
+function scheduleSelection(schedule: {
+  includeSecrets?: boolean | null;
+  includeAttachments?: boolean | null;
+  includeVersions?: boolean | null;
+  includeMedia?: boolean | null;
+  includeSystem?: boolean | null;
+}): BackupContentSelection {
+  return resolveContentSelection({
+    includeSecrets: schedule.includeSecrets ?? undefined,
+    includeAttachments: schedule.includeAttachments ?? undefined,
+    includeVersions: schedule.includeVersions ?? undefined,
+    includeMedia: schedule.includeMedia ?? undefined,
+    includeSystem: schedule.includeSystem ?? undefined,
+  });
 }
 
 /** Generic stream error text: what the storage SDK sees if the archive aborts. */
@@ -273,10 +331,12 @@ export class BackupRunnerService implements OnApplicationBootstrap {
   }
 
   /**
-   * Insert a `running` row, unless one exists. Atomic across instances (see
-   * the class comment). Does not start the work: call {@link launch}.
+   * Insert a `running` system run, unless one exists. Atomic across instances
+   * (see the class comment). Only `scope: 'system'` rows count: a user's
+   * saved backup never blocks the schedule. Does not start the work: call
+   * {@link launch}.
    *
-   * @throws ConflictException when a run is already in progress.
+   * @throws ConflictException when a system run is already in progress.
    */
   async startRun(trigger: BackupRunTrigger, triggeredById: string | null): Promise<BackupRunRow> {
     const startedAt = new Date();
@@ -290,13 +350,16 @@ export class BackupRunnerService implements OnApplicationBootstrap {
         data: { status: 'failed', error: STALE_RUN_ERROR, finishedAt: startedAt },
       });
 
-      const running = await tx.backupRun.count({ where: { status: 'running' } });
+      const running = await tx.backupRun.count({
+        where: { status: 'running', scope: SYSTEM_SCOPE },
+      });
       if (running > 0) {
         throw new ConflictException({ message: RUN_ALREADY_RUNNING_MESSAGE });
       }
 
       return tx.backupRun.create({
         data: {
+          scope: SYSTEM_SCOPE,
           status: 'running',
           trigger,
           triggeredById,
@@ -309,11 +372,77 @@ export class BackupRunnerService implements OnApplicationBootstrap {
     }) as Promise<BackupRunRow>;
   }
 
-  /** Execute a started run in the background. Never rejects. */
+  /**
+   * Insert a `running` user-saved run for `ownerId`, unless that user already
+   * has one. Serialized per user with a two-key advisory lock
+   * ({@link USER_BACKUP_LOCK_NAMESPACE}, `hashtext(ownerId)`): the two-key
+   * space never overlaps the single bigint key of the system lock, so users
+   * never wait on the schedule or on each other.
+   *
+   * @throws ConflictException when this user already has a run in progress.
+   */
+  async startUserRun(
+    ownerId: string,
+    selection: UserContentSelection,
+  ): Promise<BackupRunRow> {
+    const startedAt = new Date();
+    const storageKey = userBackupStorageKey(ownerId, startedAt);
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(${USER_BACKUP_LOCK_NAMESPACE}::int, hashtext(${ownerId}::text))`;
+
+      await tx.backupRun.updateMany({
+        where: staleRunsWhere(startedAt),
+        data: { status: 'failed', error: STALE_RUN_ERROR, finishedAt: startedAt },
+      });
+
+      const running = await tx.backupRun.count({
+        where: { status: 'running', scope: USER_SCOPE, ownerId },
+      });
+      if (running > 0) {
+        throw new ConflictException({ message: USER_RUN_ALREADY_RUNNING_MESSAGE });
+      }
+
+      return tx.backupRun.create({
+        data: {
+          scope: USER_SCOPE,
+          ownerId,
+          status: 'running',
+          trigger: 'manual',
+          triggeredById: ownerId,
+          storageKey,
+          startedAt,
+          heartbeatAt: startedAt,
+          contents: selectedContentKeys(selection),
+        },
+        include: BACKUP_RUN_INCLUDE,
+      });
+    }) as Promise<BackupRunRow>;
+  }
+
+  /** Execute a started system run in the background. Never rejects. */
   launch(run: BackupRunRow): void {
-    const promise = this.execute(run)
+    this.track(run.id, this.execute(run));
+  }
+
+  /**
+   * Execute a started user-saved run in the background. Never rejects.
+   * `password` lives only in this call's closure for the duration of the run:
+   * it is not stored on `this`, on the row, in a log line or in audit meta.
+   */
+  launchUserRun(
+    run: BackupRunRow,
+    owner: { id: string; email: string },
+    selection: UserContentSelection,
+    password: string,
+  ): void {
+    this.track(run.id, this.executeUserRun(run, owner, selection, password));
+  }
+
+  private track(runId: string, work: Promise<void>): void {
+    const promise = work
       .catch((error: unknown) => {
-        this.logger.error(`Backup run ${run.id} crashed: ${describeError(error)}`);
+        this.logger.error(`Backup run ${runId} crashed: ${describeError(error)}`);
       })
       .finally(() => {
         this.inFlight.delete(promise);
@@ -329,51 +458,125 @@ export class BackupRunnerService implements OnApplicationBootstrap {
   }
 
   /**
-   * Write the archive, upload it, record the outcome, apply retention.
-   * Every failure ends as a `failed` row with a static message.
+   * Run a scheduled or manual system backup: write the archive, upload it,
+   * record the outcome, apply retention. Every failure ends as a `failed`
+   * row with a static message.
    */
   async execute(run: BackupRunRow): Promise<void> {
-    const storageKey = run.storageKey ?? systemBackupStorageKey(run.startedAt);
+    await this.performRun(run, {
+      auditAction: BACKUPS_RUN_COMPLETED_AUDIT_ACTION,
+      fallbackKey: () => systemBackupStorageKey(run.startedAt),
+      prepare: async () => {
+        if (!this.isStorageConfigured()) {
+          throw new BackupRunFailure(BACKUP_FAILURE_MESSAGES.storageNotConfigured);
+        }
+
+        const schedule = await this.prisma.backupSchedule.findUnique({
+          where: { id: BACKUP_SCHEDULE_ID },
+        });
+        if (!schedule?.passwordEncrypted) {
+          throw new BackupRunFailure(BACKUP_FAILURE_MESSAGES.noPassword);
+        }
+
+        let password: string;
+        try {
+          password = decryptBackupPassword(this.crypto, schedule.passwordEncrypted);
+        } catch (error) {
+          throw new BackupRunFailure(BACKUP_FAILURE_MESSAGES.passwordUnreadable, describeError(error));
+        }
+
+        const selection = scheduleSelection(schedule);
+        if (!selection.includeSecrets && !selection.includeMedia && !selection.includeSystem) {
+          throw new BackupRunFailure(BACKUP_FAILURE_MESSAGES.nothingSelected);
+        }
+
+        return {
+          password,
+          selection,
+          zip64: await this.needsZip64(selection),
+          write: (zipWriter) => this.writeArchive(zipWriter, selection, run.startedAt),
+        };
+      },
+      afterSuccess: async (finishedAt) => {
+        await this.prisma.backupSchedule.updateMany({
+          where: { id: BACKUP_SCHEDULE_ID },
+          data: { lastRunAt: finishedAt },
+        });
+      },
+      retention: () => this.applyRetention(run.id),
+    });
+  }
+
+  /**
+   * Run a user-saved backup: the same zip as the user's download (README,
+   * secrets, media) uploaded under `user-backups/<userId>/`. Retention keeps
+   * that user's newest {@link USER_BACKUP_KEEP_COUNT}.
+   */
+  async executeUserRun(
+    run: BackupRunRow,
+    owner: { id: string; email: string },
+    selection: UserContentSelection,
+    password: string,
+  ): Promise<void> {
+    await this.performRun(run, {
+      auditAction: BACKUPS_USER_RUN_COMPLETED_AUDIT_ACTION,
+      fallbackKey: () => userBackupStorageKey(owner.id, run.startedAt),
+      prepare: async () => {
+        if (!this.isStorageConfigured()) {
+          throw new BackupRunFailure(BACKUP_FAILURE_MESSAGES.storageNotConfigured);
+        }
+        const plan = await this.exportService.prepareUserPlan(
+          owner,
+          selection,
+          run.startedAt,
+          'User backup',
+        );
+        return {
+          password,
+          selection,
+          zip64: userArchiveBlobBytes(plan) > ZIP64_THRESHOLD_BYTES,
+          write: async (zipWriter) => {
+            await this.exportService.writeUserEntries(plan, zipWriter, owner.id, {
+              logLabel: 'User backup',
+            });
+            await zipWriter.close();
+            const counts = userArchiveCounts(plan);
+            return {
+              userCount: 1,
+              secretCount: counts.secrets,
+              attachmentCount: counts.attachments,
+              mediaFileCount: counts.mediaFiles,
+              warningCount: counts.warnings.length,
+            };
+          },
+        };
+      },
+      retention: () => this.applyUserRetention(owner.id, run.id),
+    });
+  }
+
+  /**
+   * The shared life of a run: prepare (may fail before anything is
+   * uploaded), stream the archive into storage, record the outcome, audit,
+   * retention. A failure deletes the partial object and stores a static
+   * message only. The password returned by `prepare` is a local here.
+   */
+  private async performRun(run: BackupRunRow, job: RunJob): Promise<void> {
+    const storageKey = run.storageKey ?? job.fallbackKey();
     let uploadStarted = false;
-    let selection: BackupContentSelection | null = null;
+    let selection: BackupContentSelection | UserContentSelection | null = null;
     const heartbeat = this.startHeartbeat(run.id);
 
     try {
-      if (!this.isStorageConfigured()) {
-        throw new BackupRunFailure(BACKUP_FAILURE_MESSAGES.storageNotConfigured);
-      }
-
-      const schedule = await this.prisma.backupSchedule.findUnique({
-        where: { id: BACKUP_SCHEDULE_ID },
-      });
-      if (!schedule?.passwordEncrypted) {
-        throw new BackupRunFailure(BACKUP_FAILURE_MESSAGES.noPassword);
-      }
-
-      let password: string;
-      try {
-        password = decryptBackupPassword(this.crypto, schedule.passwordEncrypted);
-      } catch (error) {
-        throw new BackupRunFailure(BACKUP_FAILURE_MESSAGES.passwordUnreadable, describeError(error));
-      }
-
-      selection = resolveContentSelection({
-        includeSecrets: schedule.includeSecrets ?? undefined,
-        includeAttachments: schedule.includeAttachments ?? undefined,
-        includeVersions: schedule.includeVersions ?? undefined,
-        includeMedia: schedule.includeMedia ?? undefined,
-        includeSystem: schedule.includeSystem ?? undefined,
-      });
-      if (!selection.includeSecrets && !selection.includeMedia && !selection.includeSystem) {
-        throw new BackupRunFailure(BACKUP_FAILURE_MESSAGES.nothingSelected);
-      }
+      const prepared = await job.prepare();
+      selection = prepared.selection;
 
       uploadStarted = true;
       const { counts, sizeBytes } = await this.writeAndUpload(
         storageKey,
-        password,
-        selection,
-        run.startedAt,
+        prepared.password,
+        prepared.zip64,
+        prepared.write,
       );
 
       const finishedAt = new Date();
@@ -395,19 +598,16 @@ export class BackupRunnerService implements OnApplicationBootstrap {
           error: null,
         },
       });
-      await this.prisma.backupSchedule.updateMany({
-        where: { id: BACKUP_SCHEDULE_ID },
-        data: { lastRunAt: finishedAt },
-      });
+      await job.afterSuccess?.(finishedAt);
 
       this.logger.log(
         `Backup run ${run.id} succeeded: ${counts.userCount} user(s), ${counts.secretCount} secret(s), ` +
           `${counts.attachmentCount} attachment(s), ${counts.mediaFileCount} media file(s), ` +
           `${counts.warningCount} warning(s), ${sizeBytes} bytes`,
       );
-      await this.auditCompleted(run, 'succeeded', sizeBytes, counts, selection);
+      await this.auditCompleted(run, job.auditAction, 'succeeded', sizeBytes, counts, selection);
 
-      await this.applyRetention(run.id);
+      await job.retention();
     } catch (error) {
       const message =
         error instanceof BackupRunFailure ? error.message : BACKUP_FAILURE_MESSAGES.unknown;
@@ -434,7 +634,7 @@ export class BackupRunnerService implements OnApplicationBootstrap {
           ...(selection ? { contents: selectedContentKeys(selection) } : {}),
         },
       });
-      await this.auditCompleted(run, 'failed', null, null, selection);
+      await this.auditCompleted(run, job.auditAction, 'failed', null, null, selection);
     } finally {
       clearInterval(heartbeat);
     }
@@ -470,11 +670,9 @@ export class BackupRunnerService implements OnApplicationBootstrap {
   private async writeAndUpload(
     storageKey: string,
     password: string,
-    selection: BackupContentSelection,
-    createdAt: Date,
+    zip64: boolean,
+    write: ArchiveWriteFn,
   ): Promise<{ counts: BackupArchiveCounts; sizeBytes: number }> {
-    const zip64 = await this.needsZip64(selection);
-
     const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
     const zipBytes = Readable.fromWeb(readable as unknown as NodeWebReadableStream<Uint8Array>);
 
@@ -512,7 +710,7 @@ export class BackupRunnerService implements OnApplicationBootstrap {
       void abortArchive();
     });
 
-    const writePromise = this.writeArchive(zipWriter, selection, createdAt);
+    const writePromise = write(zipWriter);
     writePromise.catch(() => {
       firstFailure ??= 'archive';
       void abortArchive();
@@ -530,6 +728,77 @@ export class BackupRunnerService implements OnApplicationBootstrap {
       throw new BackupRunFailure(BACKUP_FAILURE_MESSAGES[cause], describeError(reason));
     }
     return { counts: written.value, sizeBytes };
+  }
+
+  /**
+   * Counts of a system archive with `selection`, without decrypting any
+   * secret value: for the headers of a streamed export, sent before the
+   * archive is written. The archive itself may differ only by a race (a blob
+   * that disappears between this pass and the write).
+   */
+  async countSystemArchive(
+    selection: BackupContentSelection,
+    createdAt: Date,
+  ): Promise<BackupArchiveCounts> {
+    const users = await this.prisma.user.findMany({
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: { id: true, email: true },
+    });
+    const totals: BackupArchiveCounts = {
+      userCount: users.length,
+      secretCount: 0,
+      attachmentCount: 0,
+      mediaFileCount: 0,
+      warningCount: 0,
+    };
+    if (!selection.includeSecrets && !selection.includeMedia) {
+      return totals;
+    }
+    for (const user of users) {
+      const plan = await this.exportService.prepareUserPlan(
+        { id: user.id, email: user.email },
+        selection,
+        createdAt,
+        'System export',
+        { decrypt: false },
+      );
+      const counts = userArchiveCounts(plan);
+      totals.secretCount += counts.secrets;
+      totals.attachmentCount += counts.attachments;
+      totals.mediaFileCount += counts.mediaFiles;
+      totals.warningCount += counts.warnings.length;
+    }
+    return totals;
+  }
+
+  /**
+   * Stream a system archive with `selection` straight to the caller (the
+   * admin "Download a backup now"): same writer, so the same layout as a
+   * scheduled backup. Nothing is stored. `password` is handed to the zip
+   * writer only. A failure part way destroys the stream with a generic
+   * message.
+   */
+  async streamSystemArchive(
+    selection: BackupContentSelection,
+    password: string,
+    createdAt: Date,
+  ): Promise<Readable> {
+    const zip64 = await this.needsZip64(selection);
+    const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+    const output = Readable.fromWeb(readable as unknown as NodeWebReadableStream<Uint8Array>);
+    const zipWriter = new ZipWriter(writable, vaultZipWriterOptions(password, zip64));
+
+    void this.writeArchive(zipWriter, selection, createdAt).catch(async (error: unknown) => {
+      this.logger.error(`System backup export failed while streaming: ${describeError(error)}`);
+      try {
+        await writable.abort(new Error(ARCHIVE_ABORTED_MESSAGE));
+      } catch {
+        // Already errored or closed (e.g. the client went away first).
+      }
+      output.destroy(new Error(ARCHIVE_ABORTED_MESSAGE));
+    });
+
+    return output;
   }
 
   /**
@@ -730,9 +999,10 @@ export class BackupRunnerService implements OnApplicationBootstrap {
   }
 
   /**
-   * Keep the newest `keepCount` successful backups; delete the objects of the
-   * older ones and set their `deleted_at`. Never deletes `justWrittenId`.
-   * Failures are logged and do not fail the run.
+   * Keep the newest `keepCount` successful system backups; delete the
+   * objects of the older ones and set their `deleted_at`. Never deletes
+   * `justWrittenId`; never looks at user-saved runs. Failures are logged and
+   * do not fail the run.
    */
   async applyRetention(justWrittenId: string): Promise<void> {
     try {
@@ -740,43 +1010,62 @@ export class BackupRunnerService implements OnApplicationBootstrap {
         where: { id: BACKUP_SCHEDULE_ID },
         select: { keepCount: true },
       });
-      const keepCount = schedule?.keepCount ?? 7;
-
-      const candidates = await this.prisma.backupRun.findMany({
-        where: { status: 'succeeded', deletedAt: null, storageKey: { not: null } },
-        orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
-        select: { id: true, status: true, startedAt: true, deletedAt: true, storageKey: true },
-      });
-
-      for (const run of pickRunsToDelete(candidates, keepCount, justWrittenId)) {
-        try {
-          await this.storageProvider.delete(run.storageKey as string);
-          await this.prisma.backupRun.update({
-            where: { id: run.id },
-            data: { deletedAt: new Date() },
-          });
-          this.logger.log(`Retention deleted backup ${run.id}`);
-        } catch (error) {
-          this.logger.warn(`Retention could not delete backup ${run.id}: ${describeError(error)}`);
-        }
-      }
+      await this.deleteBeyond({ scope: SYSTEM_SCOPE }, schedule?.keepCount ?? 7, justWrittenId);
     } catch (error) {
       this.logger.warn(`Backup retention failed: ${describeError(error)}`);
     }
   }
 
+  /**
+   * Keep `ownerId`'s newest {@link USER_BACKUP_KEEP_COUNT} saved backups.
+   * Same rules as {@link applyRetention}, limited to that user's runs.
+   */
+  async applyUserRetention(ownerId: string, justWrittenId: string): Promise<void> {
+    try {
+      await this.deleteBeyond({ scope: USER_SCOPE, ownerId }, USER_BACKUP_KEEP_COUNT, justWrittenId);
+    } catch (error) {
+      this.logger.warn(`User backup retention failed for user ${ownerId}: ${describeError(error)}`);
+    }
+  }
+
+  private async deleteBeyond(
+    where: { scope: string; ownerId?: string },
+    keepCount: number,
+    justWrittenId: string,
+  ): Promise<void> {
+    const candidates = await this.prisma.backupRun.findMany({
+      where: { ...where, status: 'succeeded', deletedAt: null, storageKey: { not: null } },
+      orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
+      select: { id: true, status: true, startedAt: true, deletedAt: true, storageKey: true },
+    });
+
+    for (const run of pickRunsToDelete(candidates, keepCount, justWrittenId)) {
+      try {
+        await this.storageProvider.delete(run.storageKey as string);
+        await this.prisma.backupRun.update({
+          where: { id: run.id },
+          data: { deletedAt: new Date() },
+        });
+        this.logger.log(`Retention deleted backup ${run.id}`);
+      } catch (error) {
+        this.logger.warn(`Retention could not delete backup ${run.id}: ${describeError(error)}`);
+      }
+    }
+  }
+
   private async auditCompleted(
     run: BackupRunRow,
+    action: string,
     status: 'succeeded' | 'failed',
     sizeBytes: number | null,
     counts: BackupArchiveCounts | null,
-    selection: BackupContentSelection | null,
+    selection: BackupContentSelection | UserContentSelection | null,
   ): Promise<void> {
     try {
       await this.prisma.auditEvent.create({
         data: {
           actorUserId: run.triggeredById,
-          action: BACKUPS_RUN_COMPLETED_AUDIT_ACTION,
+          action,
           targetType: 'backup_run',
           targetId: run.id,
           meta: {

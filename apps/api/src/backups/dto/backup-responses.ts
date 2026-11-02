@@ -32,9 +32,12 @@ export interface BackupScheduleResponse {
 
 export type BackupRunStatus = 'running' | 'succeeded' | 'failed';
 export type BackupRunTrigger = 'schedule' | 'manual';
+/** `system`: an administrator's backup of everyone; `user`: a backup a user saved to storage. */
+export type BackupRunScope = 'system' | 'user';
 
 export interface BackupRunResponse {
   id: string;
+  scope: BackupRunScope;
   status: BackupRunStatus;
   trigger: BackupRunTrigger;
   triggeredBy: { id: string; email: string; displayName: string | null } | null;
@@ -77,6 +80,9 @@ export interface BackupDownloadResponse {
 /** Row shape the mapper needs (a Prisma BackupRun with `triggeredBy` selected). */
 export interface BackupRunRow {
   id: string;
+  /** Absent only in old fixtures; the column defaults to `system`. */
+  scope?: string;
+  ownerId?: string | null;
   status: string;
   trigger: string;
   triggeredById: string | null;
@@ -104,6 +110,7 @@ export function toBackupRunResponse(row: BackupRunRow): BackupRunResponse {
   const status = row.status as BackupRunStatus;
   return {
     id: row.id,
+    scope: row.scope === 'user' ? 'user' : 'system',
     status,
     trigger: row.trigger as BackupRunTrigger,
     triggeredBy: row.triggeredBy

@@ -10,14 +10,29 @@ import {
   Post,
   Put,
   Query,
+  Res,
+  StreamableFile,
 } from '@nestjs/common';
-import { ApiBody, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBody,
+  ApiOperation,
+  ApiParam,
+  ApiProduces,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { FastifyReply } from 'fastify';
 
 import { Auth } from '../auth/decorators/auth.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { PERMISSIONS } from '../common/constants/roles.constants';
 import { BackupsService } from './backups.service';
 import { BackupRunListQueryDto } from './dto/backup-run-list-query.dto';
+import {
+  EXPORT_SYSTEM_BACKUP_BODY_SCHEMA,
+  parseExportSystemBackupBody,
+} from './dto/export-system-backup.dto';
 import {
   parseUpdateBackupScheduleBody,
   UPDATE_BACKUP_SCHEDULE_BODY_SCHEMA,
@@ -87,11 +102,66 @@ export class BackupsController {
     return this.backupsService.runNow(userId);
   }
 
+  @Post('export')
+  @Auth({ permissions: [PERMISSIONS.SYSTEM_SETTINGS_WRITE] })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Download a system backup now',
+    description:
+      'Streams an AES-256 encrypted zip with the same layout as a scheduled backup (index.json, ' +
+      'users/NNNN/..., system/...), built from the chosen contents. Nothing is stored and no run is ' +
+      'recorded. Give exactly one of password and useScheduledPassword: true. Audited as ' +
+      'backups.export (contents and counts, never the password). Requires system_settings:write.',
+  })
+  @ApiBody({ schema: EXPORT_SYSTEM_BACKUP_BODY_SCHEMA })
+  @ApiProduces('application/zip')
+  @ApiResponse({
+    status: 200,
+    description: 'The encrypted zip archive',
+    content: { 'application/zip': { schema: { type: 'string', format: 'binary' } } },
+    headers: {
+      'Content-Disposition': {
+        description: 'attachment; filename="vault-backup-YYYY-MM-DD_HHmmss.zip" (UTC)',
+        schema: { type: 'string' },
+      },
+      'X-Vault-Export-Users': { description: 'Number of users in index.json', schema: { type: 'integer' } },
+      'X-Vault-Export-Secrets': { description: 'Number of secrets', schema: { type: 'integer' } },
+      'X-Vault-Export-Attachments': { description: 'Number of attachment files', schema: { type: 'integer' } },
+      'X-Vault-Export-Media-Files': { description: 'Number of media files', schema: { type: 'integer' } },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Validation error (no or two password sources, nothing selected, ...) or no scheduled password set',
+  })
+  async exportNow(
+    // Parsed by hand so a 400 carries the specific message; never logged.
+    @Body() body: unknown,
+    @CurrentUser('id') userId: string,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<StreamableFile> {
+    const result = await this.backupsService.exportNow(parseExportSystemBackupBody(body), userId);
+
+    reply.header('Cache-Control', 'no-store');
+    reply.header('X-Vault-Export-Users', String(result.userCount));
+    reply.header('X-Vault-Export-Secrets', String(result.secretCount));
+    reply.header('X-Vault-Export-Attachments', String(result.attachmentCount));
+    reply.header('X-Vault-Export-Media-Files', String(result.mediaFileCount));
+
+    // StreamableFile: the raw zip, passed through TransformInterceptor unwrapped.
+    return new StreamableFile(result.stream, {
+      type: 'application/zip',
+      disposition: `attachment; filename="${result.fileName}"`,
+    });
+  }
+
   @Get()
   @Auth({ permissions: [PERMISSIONS.SYSTEM_SETTINGS_READ] })
   @ApiOperation({
     summary: 'List backup runs',
     description:
+      'System backups only (never a backup a user saved to storage). ' +
       'Newest first, paginated. Each run carries mediaFileCount and contents (the content keys it ' +
       'was made with: secrets, attachments, versions, media, system). Requires system_settings:read.',
   })

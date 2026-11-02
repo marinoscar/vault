@@ -368,4 +368,59 @@ describe('System backup content selection', () => {
       error: BACKUP_FAILURE_MESSAGES.nothingSelected,
     });
   });
+
+  it('streamSystemArchive writes the same layout as a scheduled run, stores nothing', async () => {
+    const ctx = setup({});
+    const selection = {
+      includeSecrets: false,
+      includeAttachments: false,
+      includeVersions: false,
+      includeMedia: true,
+      includeSystem: true,
+    };
+    const stream = await ctx.runner.streamSystemArchive(selection, PASSWORD, NOW);
+    const chunks: Buffer[] = [];
+    for await (const c of stream) chunks.push(Buffer.from(c));
+    const zip = await openUpload(Buffer.concat(chunks));
+    expect(zip.names).toEqual([
+      'README.txt',
+      'index.json',
+      'system/allowlist.json',
+      'system/secret-types.json',
+      'system/settings.json',
+      'system/users.json',
+      'users/0001/media/0001/0001.mp4',
+      'users/0001/media/media.json',
+      'users/0002/media/0001/0001.mp4',
+      'users/0002/media/media.json',
+    ]);
+    expect(JSON.parse(await zip.text('index.json')).counts).toMatchObject({ mediaFiles: 2, system: true });
+    expect(ctx.storage.upload).not.toHaveBeenCalled();
+    expect(ctx.prisma.backupRun.update).not.toHaveBeenCalled();
+    await zip.close();
+  });
+
+  it('countSystemArchive counts without decrypting any value', async () => {
+    const ctx = setup({});
+    const decrypt = jest.spyOn(crypto, 'decrypt');
+    ctx.prisma.secret.findMany.mockResolvedValue([
+      {
+        id: 's1',
+        name: 'Alpha',
+        description: null,
+        createdAt: NOW,
+        updatedAt: NOW,
+        type: { id: 't', name: 'Login', fields: [] },
+        versions: [{ id: 'v1', version: 1, encryptedData: 'x', iv: 'y', authTag: 'z', createdAt: NOW, isCurrent: true }],
+        attachments: [],
+      },
+    ]);
+    const counts = await ctx.runner.countSystemArchive(
+      { includeSecrets: true, includeAttachments: true, includeVersions: false, includeMedia: true, includeSystem: false },
+      NOW,
+    );
+    expect(counts).toEqual({ userCount: 2, secretCount: 2, attachmentCount: 0, mediaFileCount: 2, warningCount: 0 });
+    expect(decrypt).not.toHaveBeenCalled();
+    decrypt.mockRestore();
+  });
 });
