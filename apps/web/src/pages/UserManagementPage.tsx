@@ -14,11 +14,17 @@ interface TabPanelProps {
 function TabPanel({ children, value, index }: TabPanelProps) {
   return (
     <div role="tabpanel" hidden={value !== index}>
-      {value === index && <Box sx={{ py: 3 }}>{children}</Box>}
+      {value === index && <Box sx={{ py: { xs: 2, sm: 3 } }}>{children}</Box>}
     </div>
   );
 }
 
+/**
+ * The `Users & allowlist` card of the Console (`/admin/settings/users`; the
+ * old `/admin/users` redirects here, E10.3 #94). Two tabs for genuinely
+ * parallel content in one destination (Settings UI Pattern rule 2). Replaced
+ * by the packaged identity page in E3.3.
+ */
 export default function UserManagementPage() {
   const { hasPermission } = usePermissions();
   const [tabIndex, setTabIndex] = useState(0);
@@ -30,9 +36,9 @@ export default function UserManagementPage() {
 
   return (
     <Container maxWidth="lg">
-      <Box sx={{ py: 4 }}>
+      <Box sx={{ py: { xs: 2, sm: 4 } }}>
         <Typography variant="h4" component="h1" gutterBottom>
-          User Management
+          Users &amp; allowlist
         </Typography>
         <Typography
           sx={{
@@ -52,7 +58,7 @@ export default function UserManagementPage() {
             <Tab label="Allowlist" />
           </Tabs>
 
-          <Box sx={{ p: 3 }}>
+          <Box sx={{ p: { xs: 1, sm: 3 } }}>
             <TabPanel value={tabIndex} index={0}>
               <UserList />
             </TabPanel>

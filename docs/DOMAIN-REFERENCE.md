@@ -164,7 +164,7 @@ The application uses an **email allowlist** to restrict access to pre-authorized
 - This email is automatically added to the allowlist during database seeding
 
 ### Admin Management
-- Access allowlist management at `/admin/users` (Allowlist tab)
+- Access allowlist management at `/admin/settings/users` (Allowlist tab)
 - Two tabs available:
   - **Users**: Manage existing registered users
   - **Allowlist**: Pre-authorize email addresses for future logins

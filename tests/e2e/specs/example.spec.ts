@@ -2,10 +2,11 @@ import { test, expect } from '../fixtures/auth.fixture';
 
 test.describe('Admin functionality', () => {
   test('admin can access user management', async ({ adminPage }) => {
+    // The pre-E10.3 URL redirects to the Users & allowlist card.
     await adminPage.goto('/admin/users');
 
     // Verify we're on the admin page
-    await expect(adminPage).toHaveURL('/admin/users');
+    await expect(adminPage).toHaveURL('/admin/settings/users');
     await expect(adminPage.locator('h1, h2, h3, h4, h5, h6').first()).toBeVisible();
   });
 
@@ -19,11 +20,11 @@ test.describe('Admin functionality', () => {
 
 test.describe('Role-based access', () => {
   test('viewer cannot access admin users page', async ({ viewerPage }) => {
-    await viewerPage.goto('/admin/users');
+    await viewerPage.goto('/admin/settings/users');
 
     // Should be redirected away from admin page
     // Either to home or access denied page
-    await expect(viewerPage).not.toHaveURL('/admin/users');
+    await expect(viewerPage).not.toHaveURL('/admin/settings/users');
   });
 
   test('contributor can access regular pages', async ({ contributorPage }) => {

@@ -6,9 +6,11 @@ import { ShellRoot } from '@marinoscar/platform-web/shell/ui';
 import { ShellPreferencesProvider } from '@marinoscar/platform-web/shell/headless';
 
 // Vault's AuthContext, re-published to the platform's identity context the
-// shell reads (the same bridge App.tsx mounts), under the Vault themes.
+// shell reads and the platform host the packaged pages read (the same
+// bridges App.tsx mounts), under the Vault themes.
 import { AuthContext } from '../../contexts/AuthContext';
 import { PlatformAuthBridge } from '../../platform/PlatformAuthBridge';
+import { PlatformHostBridge } from '../../platform/PlatformHostBridge';
 import { shellPreferencesPort } from '../../platform/shellPreferences';
 import { VAULT_THEMES } from '../../theme';
 import type { AuthProvider as AuthProviderType } from '../../types';
@@ -97,7 +99,9 @@ function MockAuthProvider({
   return (
     <AuthContext.Provider value={contextValue}>
       <PlatformAuthBridge>
-        <ShellPreferencesProvider port={shellPreferencesPort}>{children}</ShellPreferencesProvider>
+        <PlatformHostBridge>
+          <ShellPreferencesProvider port={shellPreferencesPort}>{children}</ShellPreferencesProvider>
+        </PlatformHostBridge>
       </PlatformAuthBridge>
     </AuthContext.Provider>
   );

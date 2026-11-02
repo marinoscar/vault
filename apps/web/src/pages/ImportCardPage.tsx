@@ -373,8 +373,8 @@ export default function ImportCardPage() {
             : 'AI card scanning is turned off for this application. Ask an administrator to enable it if you need it.'}
           <Box sx={{ mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
             {canConfigure && (
-              <Button variant="contained" onClick={() => navigate('/admin/settings')}>
-                Open System Settings
+              <Button variant="contained" onClick={() => navigate('/admin/settings/ai')}>
+                Open AI settings
               </Button>
             )}
             <Button variant="outlined" onClick={() => navigate('/secrets/new')}>

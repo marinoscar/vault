@@ -10,7 +10,7 @@ const ALL = { canCreateSecret: true, canScanCard: true, canBackUp: true };
 const ACTIONS = [
   { name: 'New secret', path: '/secrets/new', icon: 'AddIcon' },
   { name: 'Scan a card', path: '/cards/import', icon: 'DocumentScannerOutlinedIcon' },
-  { name: 'Back up now', path: '/settings', icon: 'BackupIcon' },
+  { name: 'Back up now', path: '/settings/backups', icon: 'BackupIcon' },
 ];
 
 function renderActions(props: Partial<Parameters<typeof QuickActions>[0]> = {}) {
@@ -65,7 +65,7 @@ describe('QuickActions', () => {
       expect(screen.getByRole('link', { name })).toHaveFocus();
     }
     await user.keyboard('{Enter}');
-    expect(screen.getByTestId('location')).toHaveTextContent('/settings');
+    expect(screen.getByTestId('location')).toHaveTextContent('/settings/backups');
   });
 
   it('follows an action on click', async () => {
