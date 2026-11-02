@@ -33,6 +33,12 @@ const PINNED_JOB_TYPES = [
   'nodes.fleet.sweep',
   'nodes.fleet.prune',
   'nodes.node_events_purge',
+  // notifications slice (`NotificationsModule.forRoot`, E7.1): retention of the inbox and delivery rows
+  'notifications.inbox.purge',
+  'notifications.deliveries.purge',
+  // admin broadcasts (`BroadcastsModule`, E7.1): the fan-out of one broadcast, in chunks
+  'admin.broadcast.start',
+  'admin.broadcast.chunk',
   // backups (E5.2): the logical secret backups, both server-only
   'vault.backup.run',
   'vault.user_backup.run',

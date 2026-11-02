@@ -11,12 +11,13 @@
 // `storage:delete_any`, and the identity conformance suite fails a route whose
 // permission nobody registered. `jobs` and `nodes` (E5.1) are the queue's admin routes
 // (`/api/admin/jobs/*`, `jobs:read|write`) and the worker-node fleet
-// (`/api/nodes/*`, `/api/admin/nodes/*`, `/api/node-credentials`).
+// (`/api/nodes/*`, `/api/admin/nodes/*`, `/api/node-credentials`). `notifications` (E7.1)
+// declares `broadcasts:*` and `push:*` (system, admin) and `org_broadcasts:*` (org, org_admin).
 import type { PlatformPermissionOptions } from '@marinoscar/platform-api/manifest';
 
 import { VAULT_PERMISSIONS } from '../app-registrations/permissions';
 
 export const PERMISSION_OPTIONS = {
-  slices: ['identity', 'settings', 'storage', 'jobs', 'nodes'],
+  slices: ['identity', 'settings', 'storage', 'jobs', 'nodes', 'notifications'],
   app: { permissions: [VAULT_PERMISSIONS] },
 } satisfies PlatformPermissionOptions;

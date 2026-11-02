@@ -1091,6 +1091,26 @@ Vault registers no node-eligible job type: every handler is server-only, so a re
 
 ---
 
+### Email and Notifications
+
+Email and notifications are the platform's slices (`@marinoscar/platform-api/email` and `/notifications`, E7.1), mounted in `apps/api/src/platform/email/` and `apps/api/src/platform/notifications/`. The per-endpoint reference is the generated OpenAPI at `/api/docs`. **SMTP, SES and Web Push (VAPID) are configured at runtime in the admin UI and have no environment variable**; the secrets live in the credential store (purposes `smtp`, `email_ses`, `push_vapid`).
+
+| Routes | Permission | Notes |
+|---|---|---|
+| `GET /email-settings` | `system_settings:read` | The transport, sender and which secrets are set (never a secret value) |
+| `PUT /email-settings`, `POST /email-settings/test` | `system_settings:write` | Save the transport; the test send goes to the caller's own address only |
+| `GET /notifications`, `/notifications/unread-count`, `/notifications/stream` (SSE), `/notifications/events`, `/notifications/channels`, `/notifications/config` | signed-in user | The caller's own inbox and the preference catalog |
+| `POST /notifications/:id/read`, `/notifications/read-all` | signed-in user | Mark the caller's rows read |
+| `POST` / `DELETE /notifications/push/subscriptions` | signed-in user | Register or remove the caller's Web Push subscription |
+| `GET /admin/push-config` | `push:read` | Web Push configuration (public key, subject, private-key status) |
+| `PUT`, `DELETE /admin/push-config`, `POST /admin/push-config/generate`, `/rotate`, `/test` | `push:write` | Manage the VAPID key pair; the private key never leaves the credential store |
+| `GET /admin/broadcasts`, `/admin/broadcasts/audience`, `/admin/broadcasts/:id` | `broadcasts:read` or `org_broadcasts:read` | Either admits; the service scopes to the caller's organization for the org permission |
+| `POST /admin/broadcasts`, `/admin/broadcasts/test`, `/:id/cancel`, `/:id/resume`; `DELETE /admin/broadcasts/:id` | `broadcasts:write` or `org_broadcasts:write` | An admin broadcast fans out through the `admin.broadcast.start` and `admin.broadcast.chunk` jobs into every recipient's inbox (the bell) and, when chosen, email and push |
+
+`broadcasts:*` and `push:*` are system permissions held by `admin`; `org_broadcasts:*` is an organization permission held by `org_admin`. The `notifications` namespace of `/system-settings` is the deployment policy (a channel can be switched off for everyone) and the `notifications` namespace of `/user-settings` holds each user's per-channel preferences. The identity events are `user.welcome` (email), `allowlist.invitation` (email) and `security.role_changed` (email and the bell, mandatory), raised through `IDENTITY_NOTIFIER`. Event keys, channel ids and template names are persisted: never rename one. Vault's own events (secret expiry, backups, shares) arrive with E7.2 (#86); the bell, preference pages, admin pages and the push service worker are the web follow-up.
+
+---
+
 ### Storage Objects
 
 The storage system provides file upload and management capabilities with support for large files (GB scale) through resumable multipart uploads.

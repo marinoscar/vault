@@ -300,17 +300,20 @@ describeWithDb('platform settings routes bound by Vault (real Postgres)', () => 
 
     it('a PUT without ai keeps the stored ai block and the key; an ai member replaces only the non-secret fields', async () => {
       const smuggled = 'z'.repeat(30);
+      // PUT replaces the document: namespaces declared `requiredOnPut` (the platform's
+      // `notifications`, E7.1) must be sent back, as a client that GETs then PUTs does.
+      const current = await http().get('/api/system-settings').set(as('admin'));
       const res = await http()
         .put('/api/system-settings')
         .set(as('admin'))
-        .send({ ui: { allowUserThemeOverride: true }, features: { onlyFlag: true }, ai: { enabled: true, provider: 'openai', model: 'gpt-4o-mini', maxCallsPerUserPerDay: 9, apiKey: smuggled } });
+        .send({ notifications: current.body.data.notifications, ui: { allowUserThemeOverride: true }, features: { onlyFlag: true }, ai: { enabled: true, provider: 'openai', model: 'gpt-4o-mini', maxCallsPerUserPerDay: 9, apiKey: smuggled } });
 
       expect(res.status).toBe(200);
       expect(res.body.data.features).toEqual({ onlyFlag: true });
       expect(res.body.data.ai).toMatchObject({ enabled: true, maxCallsPerUserPerDay: 9, apiKeyConfigured: true, apiKeyLast4: 'mnop' });
       expect(JSON.stringify((await globalRow()).value)).not.toContain(smuggled);
 
-      const without = await http().put('/api/system-settings').set(as('admin')).send({ ui: { allowUserThemeOverride: true }, features: {} });
+      const without = await http().put('/api/system-settings').set(as('admin')).send({ notifications: current.body.data.notifications, ui: { allowUserThemeOverride: true }, features: {} });
       expect(without.status).toBe(200);
       expect(without.body.data.ai).toMatchObject({ enabled: true, maxCallsPerUserPerDay: 9, apiKeyLast4: 'mnop' });
       expect((await globalRow()).value).toMatchObject({ futureThing: { keep: 'me' } });
