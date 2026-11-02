@@ -7,8 +7,16 @@
 # -----------------------------------------------------------------------------
 FROM node:24-alpine AS base
 WORKDIR /app
-# Install OpenSSL for Prisma compatibility
-RUN apk add --no-cache openssl openssl-dev
+# Install OpenSSL for Prisma compatibility.
+#
+# `postgresql17-client` is pg_dump, pg_restore and psql, for the platform db-backup slice
+# (whole-database backup and restore, E9.1). It is in the BASE stage so development and
+# production both have it. THE MAJOR IS PINNED EXPLICITLY, never the floating
+# `postgresql-client` meta-package: pg_dump REFUSES a server newer than itself, and a
+# base-image refresh must not move the client silently. A newer client dumping an older
+# server is supported. The pin is asserted against the platform's floor
+# (`MIN_PG_CLIENT_MAJOR`) by test/pg-client-version.spec.ts.
+RUN apk add --no-cache openssl openssl-dev postgresql17-client
 RUN corepack enable
 
 # -----------------------------------------------------------------------------

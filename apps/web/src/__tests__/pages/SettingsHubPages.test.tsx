@@ -111,7 +111,7 @@ describe('/settings (per-user hub)', () => {
 describe('/admin/settings (Console hub)', () => {
   it('shows every admin card to an admin, grouped', () => {
     setViewportWidth(1440);
-    renderHub('admin', withPerms(mockAdminUser, ['push:read', 'broadcasts:read']));
+    renderHub('admin', withPerms(mockAdminUser, ['push:read', 'broadcasts:read', 'db_backup:read']));
 
     expect(screen.getByRole('heading', { name: 'Console' })).toBeInTheDocument();
     expect(cardTitles()).toEqual([
@@ -122,6 +122,7 @@ describe('/admin/settings (Console hub)', () => {
       'Maintenance',
       'Doctor',
       'About',
+      'Database Backup',
       'Email',
       'Web Push',
       'Broadcasts',
@@ -153,11 +154,12 @@ describe('/admin/settings (Console hub)', () => {
 
     // AI needs ai_config:read since E8.2 (the platform AI admin controller).
     expect(cardTitles()).toEqual(['General', 'Backups', 'Maintenance', 'Doctor', 'About', 'Email']);
+    // db_backup:read is a pair of its own (admin only): system_settings:read alone does not show Database Backup.
   });
 
   it('shows AI models and AI usage only while AI is on, and the AI card always (E8.2)', () => {
     setViewportWidth(1440);
-    const admin = withPerms(mockAdminUser, ['push:read', 'broadcasts:read']);
+    const admin = withPerms(mockAdminUser, ['push:read', 'broadcasts:read', 'db_backup:read']);
     const { unmount } = renderHub('admin', admin);
     expect(cardTitles()).toContain('AI');
     expect(cardTitles()).not.toContain('AI models');
@@ -175,6 +177,7 @@ describe('/admin/settings (Console hub)', () => {
       'Maintenance',
       'Doctor',
       'About',
+      'Database Backup',
       'Email',
       'Web Push',
       'Broadcasts',

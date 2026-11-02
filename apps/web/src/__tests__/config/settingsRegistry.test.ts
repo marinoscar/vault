@@ -28,6 +28,7 @@ import rolesSource from '../../../../api/src/common/constants/roles.constants.ts
 import settingsPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/settings/settings.permissions.js?raw';
 import usersPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/identity/users/users.permissions.js?raw';
 import allowlistPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/identity/allowlist/allowlist.permissions.js?raw';
+import dbBackupPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/db-backup/db-backup.permissions.js?raw';
 import notificationsPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/notifications/notifications.permissions.js?raw';
 import aiPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/ai/ai.permissions.js?raw';
 import aiAdminControllerSource from '../../../../../node_modules/@marinoscar/platform-api/dist/ai/config/ai-admin.controller.js?raw';
@@ -54,6 +55,7 @@ const API_PERMISSIONS = new Set([
   ...declaredIds(usersPermissionsSource),
   ...declaredIds(allowlistPermissionsSource),
   ...declaredIds(notificationsPermissionsSource),
+  ...declaredIds(dbBackupPermissionsSource),
   ...declaredIds(aiPermissionsSource),
 ]);
 
@@ -95,6 +97,8 @@ const CONTROLLER_MIRROR: Record<string, string | undefined> = {
   '/admin/settings/broadcasts': 'broadcasts:read',
   // UserNotificationsPage reads the caller's preferences from GET /api/user-settings
   '/settings/notifications': 'user_settings:read',
+  // E9.1, the platform db-backup slice: DatabaseBackupController GET /api/admin/db-backup/config (db_backup:read)
+  '/admin/settings/db-backup': 'db_backup:read',
   // ai-admin.controller GET /api/admin/ai/models (ai_config:read)
   '/admin/settings/ai/models': 'ai_config:read',
   // ai-usage-admin.controller GET /api/admin/ai/usage (ai_config:read)
@@ -238,6 +242,7 @@ describe('the registries as a whole', () => {
       'Maintenance',
       'Doctor',
       'About',
+      'Database Backup',
       'Email',
       'Web Push',
       'Broadcasts',

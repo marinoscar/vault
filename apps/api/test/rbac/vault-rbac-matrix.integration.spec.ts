@@ -104,6 +104,10 @@ const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
     'push:write',
     'org_broadcasts:read',
     'org_broadcasts:write',
+    // E9.1: the db-backup slice (system scope, admin only)
+    'db_backup:read',
+    'db_backup:write',
+    'db_backup:restore',
   ],
   contributor: [...SECRETS_RW, ...USER_SETTINGS, 'storage:read', 'storage:write', 'ai:use'],
   viewer: ['secrets:read', 'secret_types:read', 'media:read', ...USER_SETTINGS, 'storage:read'],
@@ -137,6 +141,9 @@ const SYSTEM_PERMISSIONS = new Set([
   'broadcasts:write',
   'push:read',
   'push:write',
+  'db_backup:read',
+  'db_backup:write',
+  'db_backup:restore',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -294,6 +301,19 @@ const ROUTES: readonly Route[] = [
   ['POST', `/api/admin/broadcasts/${ID}/cancel`, BROADCAST_WRITE],
   ['POST', `/api/admin/broadcasts/${ID}/resume`, BROADCAST_WRITE],
   ['DELETE', `/api/admin/broadcasts/${ID}`, BROADCAST_WRITE],
+  // Whole-database backup and restore (E9.1): system scope, admin only. Restore and rollback are
+  // gated by their own permission (and by DEPLOYMENT_MODE, which a permitted caller meets second).
+  ['GET', '/api/admin/db-backup/config', 'db_backup:read'],
+  ['PUT', '/api/admin/db-backup/config', 'db_backup:write'],
+  ['POST', '/api/admin/db-backup/runs', 'db_backup:write'],
+  ['GET', '/api/admin/db-backup/runs', 'db_backup:read'],
+  ['GET', '/api/admin/db-backup/node-credential-preflight', 'db_backup:read'],
+  ['GET', `/api/admin/db-backup/runs/${ID}`, 'db_backup:read'],
+  ['GET', `/api/admin/db-backup/runs/${ID}/download`, 'db_backup:read'],
+  ['POST', `/api/admin/db-backup/runs/${ID}/cancel`, 'db_backup:write'],
+  ['POST', `/api/admin/db-backup/runs/${ID}/restore`, 'db_backup:restore'],
+  ['POST', `/api/admin/db-backup/runs/${ID}/rollback`, 'db_backup:restore'],
+  ['DELETE', `/api/admin/db-backup/runs/${ID}`, 'db_backup:write'],
 ];
 
 /**
@@ -418,6 +438,7 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
         'NotificationsController',
         'PushConfigController',
         'BroadcastsController',
+        'DatabaseBackupController',
       ]);
       const discovered = new Map<string, RoutePermission>();
       for (const controller of discoverControllers(AppModule)) {
@@ -460,7 +481,7 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
       const grants = catalogGrants(buildPermissionCatalog());
       const heldBy = (roleNames: string[]) =>
         grants.filter((g) => roleNames.includes(g.role)).map((g) => g.permission);
-      const mine = (permissions: readonly string[]) => permissions.filter((p) => /^(secrets|secret_types|media|jobs|nodes|ai|ai_config|org_ai_config|broadcasts|org_broadcasts|push):/.test(p));
+      const mine = (permissions: readonly string[]) => permissions.filter((p) => /^(secrets|secret_types|media|jobs|nodes|ai|ai_config|org_ai_config|broadcasts|org_broadcasts|push|db_backup):/.test(p));
 
       expect(mine(heldBy(['admin', 'org_admin'])).sort()).toEqual(mine(ROLE_PERMISSIONS.admin).sort());
       expect(mine(heldBy(['contributor'])).sort()).toEqual(mine(ROLE_PERMISSIONS.contributor).sort());

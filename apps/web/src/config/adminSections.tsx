@@ -21,6 +21,7 @@
  */
 
 import type { SettingsSectionDef } from '@marinoscar/platform-web/settings/ui';
+import { dbBackupAdminSections } from '@marinoscar/platform-web/db-backup/ui';
 import { doctorSettingsPage } from '@marinoscar/platform-web/doctor/ui';
 import { identityAdminSections } from '@marinoscar/platform-web/identity/ui';
 import './settingsFeatures';
@@ -133,6 +134,17 @@ export const ADMIN_SECTIONS: SettingsSectionDef[] = [
         // The platform about controller `GET /api/admin/about` (default permission
         // system_settings:read; deliberately no `about:read`).
         permission: 'system_settings:read',
+      },
+      {
+        // E9.1 (#89), APPENDED last in Operations. The packaged `Database Backup` card as data:
+        // `/admin/settings/db-backup`, `db_backup:read` (the platform DatabaseBackupController
+        // `GET /api/admin/db-backup/config` and the run list; scheduling needs db_backup:write,
+        // restore and rollback db_backup:restore, gated inside the page). The description is
+        // Vault's own so it is not mistaken for the `Backups` card above, which is the encrypted
+        // secret backup (docs/SECRETS.md).
+        ...dbBackupAdminSections.operations[0],
+        description:
+          'Whole-database disaster recovery: scheduled pg_dump backups of everything, and restoring the entire database. Not the encrypted secret backups.',
       },
     ],
   },

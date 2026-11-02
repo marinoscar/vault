@@ -48,6 +48,12 @@ const PINNED_JOB_TYPES = [
   'vault.user_backup.run',
   // card expiry reminders (E7.2): the daily scan, server-only
   'vault.cards.expiry_scan',
+  // db-backup slice (`DbBackupModule.forRoot`, E9.1): whole-database backup and restore.
+  // `db.backup.run` is the platform's one node-eligible type; `db.restore.run` is server-only forever
+  'db.backup.run',
+  'db.backup.sweep',
+  'db.restore.run',
+  'db.restore.old-db-drop',
 ] as const;
 
 describe('job type snapshot (issue #81)', () => {
