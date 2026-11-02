@@ -47,7 +47,7 @@ Every remaining difference is one of: **permanent** (the host binds a slice with
 Tracked by epic [#151](https://github.com/marinoscar/vault/issues/151); the issue number follows each item.
 
 1. **Web Push to a closed tab** ([local-exceptions](local-exceptions.md#status-at-close-out-e113-101)): needs a built service worker. [#152](https://github.com/marinoscar/vault/issues/152)
-2. **Shell and DataTable preferences in `localStorage`**: the API already serves the `navigation` and `dataTables` namespaces; the web still uses the two E4 shims. [#153](https://github.com/marinoscar/vault/issues/153)
+2. ~~**Shell and DataTable preferences in `localStorage`**~~ (closed by #153): the API already serves the `navigation` and `dataTables` namespaces; the web still uses the two E4 shims. [#153](https://github.com/marinoscar/vault/issues/153)
 3. **Factory-reset summary shim**: waits for the platform fix (EAB seam request 1058). [#154](https://github.com/marinoscar/vault/issues/154)
 4. **Legacy `infra/deploy/`, `infra/nginx/nginx.prod.conf`, `scripts/dev.ps1`** still ship; `vault deploy` is the supported path. [#155](https://github.com/marinoscar/vault/issues/155)
 5. **`useUserSettings` profile shim** (`imageSource` to `useProviderImage`) in `vault-web`, until the platform profile page replaces `ProfileSettings`. [#156](https://github.com/marinoscar/vault/issues/156)
