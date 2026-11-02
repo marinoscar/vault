@@ -1,3 +1,6 @@
+// Role, permission, user-owned-model and model-ownership registrations (issue #77).
+import '../src/app-registrations/registrations';
+
 import { config } from 'dotenv';
 import { resolve } from 'path';
 
