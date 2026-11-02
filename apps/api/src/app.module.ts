@@ -22,6 +22,10 @@ import { AiModule } from './ai/ai.module';
 import { BackupsModule } from './backups/backups.module';
 import { LoggerModule } from './common/logger/logger.module';
 
+// MUST precede `settings.config`: the jobs and nodes slices ensure the `jobs`,
+// `retention` and `nodes` system-settings namespaces, which the platform refuses
+// once `SettingsModule.forRoot()` has composed the request bodies.
+import { jobsModule, nodesModule } from './platform/jobs/jobs.config';
 import { identityModule } from './platform/identity/identity.config';
 import { platformHostModule } from './platform/platform-host.module';
 import { settingsModule } from './platform/settings/settings.config';
@@ -66,6 +70,13 @@ import configuration from './config/configuration';
     // /api/org-settings from the platform slice. GLOBAL: SystemSettingsService,
     // UserSettingsService and SettingsResolver resolve everywhere.
     settingsModule,
+    // Jobs (issue #81, E5.1): the queue, the worker pool, the lease reaper, the
+    // history purge and `/api/admin/jobs/*`. GLOBAL: `JobsService` and the handler
+    // registry resolve everywhere (identity's cleanup handlers register on it).
+    jobsModule,
+    // Worker nodes (E5.1): `/api/nodes/*`, `/api/admin/nodes/*`, the fleet sweep and
+    // prune and the brokered-secret sweep. Needs `jobsModule` in the same app.
+    nodesModule,
     // The AI key stays write-only on the credential store (interceptor on /api/system-settings).
     AiKeyProjectionModule,
     // Host core: event bus, maintenance mode (the only APP_GUARD), the

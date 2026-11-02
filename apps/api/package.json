@@ -40,6 +40,7 @@
     "prisma:typecheck": "tsc -p prisma/tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@app/shared": "*",
     "@aws-sdk/client-s3": "^3.975.0",
     "@aws-sdk/lib-storage": "^3.975.0",
     "@aws-sdk/s3-request-presigner": "^3.975.0",

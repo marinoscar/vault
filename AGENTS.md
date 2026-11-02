@@ -94,12 +94,12 @@ Every settings surface, admin or per-user, is a registry-driven hub (in force si
 4. **Reuse the packaged `SettingsHub`** (`@marinoscar/platform-web/settings/ui`); never fork it.
 5. **The five coupled breakpoint gates move together or not at all** (all at `sm`, 600px, never `md`): `ShellLayout` `showRail` and `<main>` `pb`, `ShellBottomNav` self-gate, `SettingsHub` `isCompactWindow`, `ShellAppBar` `isCompactWindow`. They are the platform's; the app reads no breakpoint of its own for them.
 
-## MANDATORY: Every Long-Running Activity Is a Queue Job (TARGET from E5)
+## MANDATORY: Every Long-Running Activity Is a Queue Job (in force since E5.1/E5.3, with listed shims)
 
 Design: EAB `docs/specs/job-queue.md`; recipe: [`add-job-type` skill](.claude/skills/add-job-type/SKILL.md).
 
 1. **No long-running work outside the queue.** Anything that outlives the HTTP request or cron tick is a registered `JobHandler` with a declared `type`, enqueued through `JobsService` with an explicit `orgId`. A detached `void this.doX()`, an `@OnEvent` body that downloads or spawns, and a `@Cron` body that works inline are violations. A `@Cron` only decides whether work is due and enqueues (`enqueueHousekeepingJob`).
-2. **Known exception until E5:** `apps/api/src/backups/backup-runner.service.ts` runs backups in-process (`@Cron` every minute, detached `launch()`, Postgres advisory locks). It becomes the job types `vault.backup.run` and `vault.user_backup.run`. Do not copy this pattern; it is listed in [local-exceptions](docs/platform-adoption/local-exceptions.md).
+2. **Known exceptions, each a `PLATFORM-ADOPTION-SHIM` with a written reason in `apps/api/test/jobs/cron-source-roots.ts`:** `apps/api/src/backups/backup-runner.service.ts` runs backups in-process (`@Cron` every minute, detached `launch()`, Postgres advisory locks); until E5.2 it becomes the job types `vault.backup.run` and `vault.user_backup.run`. The storage cleanup `@Cron` and the upload-processing `@OnEvent` stay until E6. Do not copy these patterns; they are listed in [local-exceptions](docs/platform-adoption/local-exceptions.md). The queue is `apps/api/src/platform/jobs/`; the `cron-enqueue-only` suite (`test/conformance.spec.ts`) and `test/jobs/on-event-no-io.spec.ts` enforce the rule.
 3. **Backup jobs are server-only**: the archive password and `VAULT_ENCRYPTION_KEY` never go to a worker node (no `nodeResultSchema`/`persistNodeResult`). A node never persists a job-scoped credential.
 4. A job declares `profile` `{ maxRuntimeMs, maxAttempts }` or takes the default; never add `leaseMs` or `heartbeatMs`. A job `type` string is permanent once jobs of that type exist.
 

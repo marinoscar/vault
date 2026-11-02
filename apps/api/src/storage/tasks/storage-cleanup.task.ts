@@ -18,6 +18,9 @@ export class StorageCleanupTask {
     private readonly storageProvider: StorageProvider,
   ) {}
 
+  // PLATFORM-ADOPTION-SHIM(E6): aborts multipart uploads and deletes rows inline. Exempt from
+  // `cron-enqueue-only` (test/jobs/cron-source-roots.ts); the platform storage slice replaces it
+  // with its stale-upload cleanup job.
   @Cron(CronExpression.EVERY_DAY_AT_4AM)
   async handleCleanup(): Promise<void> {
     this.logger.log('Starting storage cleanup task');

@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Interval } from '@nestjs/schedule';
 
 import {
   BURST_MAX_IN_WINDOW,
@@ -40,6 +39,9 @@ const LONGEST_WINDOW_MS = Math.max(
   VERIFY_BURST.windowMs,
 );
 
+/** At most one lazy sweep per this interval, so `consume` stays O(1) amortised. */
+const SWEEP_EVERY_MS = 60_000;
+
 /**
  * Per-user sliding-window burst limiter for AI extractions.
  *
@@ -62,6 +64,9 @@ export class AiBurstLimiterService {
   /** bucket key -> ascending timestamps of accepted attempts in the window. */
   private readonly hits = new Map<string, number[]>();
 
+  /** When the last lazy sweep ran; sweeps ride on `consume`, there is no timer. */
+  private lastSweepAt = 0;
+
   /**
    * Record an attempt if the window allows it.
    *
@@ -76,6 +81,8 @@ export class AiBurstLimiterService {
     now: number = Date.now(),
     config: BurstWindowConfig = EXTRACT_BURST,
   ): BurstDecision {
+    this.sweepIfDue(now);
+
     const cutoff = now - config.windowMs;
     const recent = (this.hits.get(key) ?? []).filter(
       (timestamp) => timestamp > cutoff,
@@ -109,10 +116,13 @@ export class AiBurstLimiterService {
    * Drop windows that have fully aged out.
    *
    * Without this the map grows one entry per user who has ever scanned a card
-   * and never shrinks - a slow leak in a long-lived process. Uses the
-   * `ScheduleModule` already registered at the app root.
+   * and never shrinks - a slow leak in a long-lived process.
+   *
+   * LAZY, NOT TIMED (E5.3): this is in-memory bookkeeping, not work, so it needs
+   * neither a timer nor a queue job. {@link consume} calls {@link sweepIfDue}, so
+   * the map is pruned at most once a minute while the limiter is in use, and an
+   * idle process holds nothing that grows.
    */
-  @Interval('ai-burst-limiter-sweep', 60_000)
   sweep(now: number = Date.now()): void {
     const cutoff = now - LONGEST_WINDOW_MS;
     let removed = 0;
@@ -132,8 +142,16 @@ export class AiBurstLimiterService {
     }
   }
 
+  /** Runs {@link sweep} when a minute has passed since the last one. */
+  private sweepIfDue(now: number): void {
+    if (now - this.lastSweepAt < SWEEP_EVERY_MS) return;
+    this.lastSweepAt = now;
+    this.sweep(now);
+  }
+
   /** Test/diagnostic helper. */
   reset(): void {
     this.hits.clear();
+    this.lastSweepAt = 0;
   }
 }
