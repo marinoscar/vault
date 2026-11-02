@@ -222,10 +222,8 @@ const ROUTES: readonly Route[] = [
   ['GET', `/api/backups/me/${ID}/download`, 'secrets:read'],
   ['DELETE', `/api/backups/me/${ID}`, 'secrets:read'],
   // AI
-  // The compatibility alias of the platform's GET /api/ai/config (not behind the kill switch).
   // The platform's own /api/ai/* and /api/admin/ai/* routes are held by the `ai-rbac-matrix`
   // conformance suite (test/ai-conformance.spec.ts).
-  ['GET', '/api/ai/status', null],
   // Storage objects and status (the platform storage slice since E6.1; ownership-scoped on top)
   ['GET', '/api/storage/objects', 'storage:read'],
   ['GET', `/api/storage/objects/${ID}`, 'storage:read'],
@@ -490,7 +488,6 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
         'BackupsController',
         'MyBackupsController',
         'CardExtractController',
-        'AiStatusController',
         'ObjectsController',
         'StorageStatusController',
         'StorageConfigController',

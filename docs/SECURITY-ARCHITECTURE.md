@@ -1252,7 +1252,7 @@ The egress is gated by the platform's kill switch and policy, all administrator-
 2. **The OpenAI provider must be switched on** (`ai.providers.openai.enabled`), the model enabled in the catalogue, and a **deployment key stored** (`PUT /api/admin/ai/config`, `ai_config:write`, Admin only).
 3. **The caller needs `secrets:write` and `ai:use`** (Contributors and organization administrators; not Viewers).
 
-Any authenticated user can check availability through `GET /api/ai/status` (alias of the platform's `GET /api/ai/config`): a boolean, no model name, key hint or reason.
+Any authenticated user can check availability through the platform's `GET /api/ai/config` (open while AI is off): whether AI is on, the key policy and per provider whether a deployment key is stored; no model name, key hint or reason.
 
 Per-user and per-organization caps bound how much data can flow: `ai.limits.perUser.requestsPerMinute` / `requestsPerDay` and `ai.limits.perOrg.*`, enforced from `ai_usage_events` (a UTC day). The earlier per-replica burst window and the `audit_events`-counted rolling budget are gone.
 

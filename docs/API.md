@@ -1564,21 +1564,11 @@ A flag left out takes its default (`includeSecrets` and `includeAttachments` tru
 
 Since E8.1 ([#87](https://github.com/marinoscar/vault/issues/87)) card scanning runs on the **platform AI slice** (`@marinoscar/platform-api/ai`, mounted in `apps/api/src/platform/ai/`). Vault has no provider code, key reader, verify probe or burst limiter of its own. The platform serves, under the usual `{ data }` envelope and `/api/docs`:
 
-- `GET /api/ai/config` (any signed-in user, open while AI is off): whether AI is on, the key policy, each provider and whether a deployment key is stored. The web moves to it in E10; until then `GET /api/ai/status` is the compatibility alias below.
+- `GET /api/ai/config` (any signed-in user, open while AI is off): whether AI is on, the key policy, each provider and whether a deployment key is stored. The web derives card-scan availability from it (the `openai` provider is `enabled` with `hasOrgKey`, and the key policy is `byok_with_org_fallback`); `GET /api/ai/status` was removed.
 - `/api/admin/ai/*` (`ai_config:read` / `ai_config:write`, **not** behind the kill switch): the deployment policy (the `ai` system-settings namespace), the deployment provider key (write-only, stored at credential `('ai', 'openai')`, where Vault's key has been since E4.2), the model catalogue (`ai_models`: enable a model, run the key test), usage. `/api/admin/ai/org-*` are the organization's own (`org_ai_config:*`).
 - `/api/ai/*` consumer routes (`AiEnabledGuard` + `ai:use`): responses, runs, features, usage, own keys. Vault's UI uses none of them yet.
 
 The feature id is `card_extract` (lower snake case: the platform refuses a hyphen). Admin walkthrough: [runbooks/ai-platform-migration.md](runbooks/ai-platform-migration.md).
-
-#### GET /ai/status
-
-**Requires Authentication** (no permission). Compatibility alias of `GET /ai/config`, kept until E11 for the web (`useAiStatus`) and unchanged on the wire:
-
-```json
-{ "data": { "enabled": true, "features": { "cardExtract": true } } }
-```
-
-`enabled` is true only when the caller's organization has AI on, the OpenAI provider is switched on, the deployment key is stored, and the key policy is `byok_with_org_fallback` (Vault users hold no key of their own; a policy of `byok` makes the alias answer false). It is not behind the kill switch, and exposes no model, key hint or reason.
 
 ---
 

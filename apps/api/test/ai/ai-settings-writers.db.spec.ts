@@ -4,8 +4,7 @@
 //
 // The `ai` block of the `global` row has two writers: `PATCH /api/system-settings`
 // (Vault's `cardExtractModel`) and the packaged admin AI routes (`PUT /api/admin/ai/config`,
-// the key and model routes). Proves each leaves the other's fields alone, and that
-// `GET /api/ai/status` carries the `features.cardExtract` flag the web reads.
+// the key and model routes). Proves each leaves the other's fields alone.
 //
 // A `*.db.spec.ts`: run by `npm run test:db`, skipped without a reachable Postgres superuser.
 // =============================================================================
@@ -253,11 +252,5 @@ describeWithDb('the ai block across its writers (real Postgres)', () => {
     expect(patch.status).toBe(200);
 
     expect(await aiBlock()).toEqual(before);
-  });
-
-  it('GET /api/ai/status carries features.cardExtract, the flag the web reads', async () => {
-    const res = await http().get('/api/ai/status').set(as('contributor'));
-    expect(res.status).toBe(200);
-    expect(res.body.data).toEqual({ enabled: true, features: { cardExtract: true } });
   });
 });

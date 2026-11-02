@@ -17,9 +17,6 @@
 //                   with permissions from the SAME catalog the seed writes.
 //   openApiDocument the document the routes are DISCOVERED from, never hand-listed.
 //
-// Vault's own `/api/ai/status` alias (a bare `@Auth()` compatibility route, not behind the
-// kill switch by design: it is how the web learns AI is off) is left out of the discovered
-// document, like KVox leaves out its own routes; it is pinned by `src/ai/ai-status.controller.spec.ts`.
 // =============================================================================
 
 import {
@@ -56,8 +53,6 @@ import { setupBaseMocks } from '../fixtures/mock-setup.helper';
 
 /** The organization the minted users belong to (a plain string, as the harness expects). */
 export const AI_CONFORMANCE_ORG_ID = 'org-default';
-
-const OWN_ROUTES = new Set(['/api/ai/status']);
 
 /** What each role holds, from the catalog the seed writes (`admin` also holds `org_admin`'s). */
 function catalogPermissionsOf(roleName: string): string[] {
@@ -101,13 +96,6 @@ function installUserLookup(): void {
     async ({ where }: { where: { id?: string; email?: string } }) =>
       (where.id ? users.get(where.id) : [...users.values()].find((u) => u.email === where.email)) ?? null,
   );
-}
-
-function withoutOwnRoutes(document: AiConformanceOpenApiDocument): AiConformanceOpenApiDocument {
-  const paths = Object.fromEntries(
-    Object.entries(document.paths ?? {}).filter(([path]) => !OWN_ROUTES.has(path)),
-  );
-  return { ...document, paths };
 }
 
 type HarnessSnapshot = { policy: string; script: unknown; delayMs: number };
@@ -253,7 +241,7 @@ export const aiConformanceFixture: AiConformanceFixture = {
     return { id: userId, accessToken };
   },
   openApiDocument: (app: AiConformanceNestApp) =>
-    withoutOwnRoutes(createOpenApiDocument(app as never, APP_OPENAPI) as unknown as AiConformanceOpenApiDocument),
+    createOpenApiDocument(app as never, APP_OPENAPI) as unknown as AiConformanceOpenApiDocument,
   defaultOrgId: AI_CONFORMANCE_ORG_ID,
   rolePermissions: AI_ROLE_PERMISSIONS,
 };

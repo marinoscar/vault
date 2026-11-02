@@ -24,7 +24,7 @@ The migration touches **only** the `ai` key of `system_settings.global` and adds
 1. The build with E8.1 is deployed, the database is migrated (`npm run prisma:migrate`; E8.1 adds **no migration**: the platform AI tables came with the baseline) and the seed has run (`npm run prisma:seed`): the seed registers the new permissions `ai:use`, `ai_config:read/write`, `org_ai_config:read/write` and grants them (`ai:use` to `contributor` and `org_admin`).
 2. Pre-E4.2 databases: `npm run vault:migrate-ai-key -- --apply` first ([ai-key-migration.md](ai-key-migration.md)). The command below refuses (`PROBLEM:`) while an `ai.apiKey` ciphertext block remains.
 3. `SECRETS_ENCRYPTION_KEY` is set (the command only *describes* the key).
-4. Between deploying the build and running the command, card scanning answers `503 AI_NOT_CONFIGURED` and `GET /api/ai/status` says disabled (the platform reads the old block as "no provider on"); nothing errors. Run the command in the same window as the deploy.
+4. Between deploying the build and running the command, card scanning answers `503 AI_NOT_CONFIGURED` and `GET /api/ai/config` says disabled (the platform reads the old block as "no provider on"); nothing errors. Run the command in the same window as the deploy.
 
 ## 1. Back up
 
@@ -67,7 +67,7 @@ Idempotent: a rerun reports `already-migrated`, leaves the row version and the c
 
 ## 4. Verify
 
-1. `GET /api/ai/status` as any user: `{ "enabled": true, ... }`.
+1. `GET /api/ai/config` as any user: `{ "data": { "enabled": true, ... } }` with the `openai` provider `enabled` and `hasOrgKey` true.
 2. As a Contributor, scan a card (front and back). The result has no `cvv` (the form asks the user to type it). On `/admin/settings/ai` (or `GET /api/admin/ai/usage`) one usage row appears under feature `card_extract`.
 3. As a Viewer, the scan route answers `403` (no `secrets:write`, no `ai:use`).
 4. Optional: set `ai.limits.perUser.requestsPerMinute` for a short burst limit.

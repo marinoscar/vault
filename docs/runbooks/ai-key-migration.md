@@ -12,7 +12,7 @@ Issue [#80](https://github.com/marinoscar/vault/issues/80), epic #54. Applies on
 
 `(ai, openai)` is the address the platform AI slice reads, so E8 did not move the key a second time. The rest of `system_settings.ai` (`enabled`, `model`, `maxCallsPerUserPerDay`) moves with `npm run vault:migrate-ai-platform` (E8.1, [ai-platform-migration.md](ai-platform-migration.md)); run this command first. **Secret values, backups and the scheduled-backup password are not touched**: they stay under `VAULT_ENCRYPTION_KEY`.
 
-There is deliberately **no fallback read** of the old field. After you deploy the new build and before you run the command, AI card scanning reports "not configured" (`503 AI_NOT_CONFIGURED`, `GET /api/ai/status` says disabled). Run the command in the same maintenance window as the deploy.
+There is deliberately **no fallback read** of the old field. After you deploy the new build and before you run the command, AI card scanning reports "not configured" (`503 AI_NOT_CONFIGURED`, `GET /api/ai/config` shows no usable provider). Run the command in the same maintenance window as the deploy.
 
 ## 0. Prerequisites
 
@@ -74,7 +74,7 @@ Order of operations: decrypt with `VAULT_ENCRYPTION_KEY`, store the credential u
 
 1. `GET /api/system-settings` (admin): `ai.apiKeyConfigured` is `true`, `apiKeyLast4` matches the mask printed in the dry run, and the body has no key material.
 2. In the admin AI settings use **Verify connection** (`POST /api/system-settings/ai/verify`). It resolves the key from the credential store and makes a minimal call; success proves the whole path.
-3. `GET /api/ai/status` reports `enabled: true` (when the feature flag is on). Optionally scan one card.
+3. `GET /api/ai/config` reports `enabled: true` with the `openai` provider `hasOrgKey: true` (when the feature flag is on). Optionally scan one card.
 4. In the database: `SELECT purpose, name, hint FROM credentials WHERE purpose = 'ai';` shows one row, and `SELECT value->'ai'->'apiKey' FROM system_settings WHERE key = 'global';` is `null`.
 5. Re-run the dry run: `outcome: nothing-to-migrate`, `credential ai/openai: present`.
 

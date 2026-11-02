@@ -12,7 +12,7 @@
 //     `ai_runs`, `audit_events` or `credentials`, and the key is never in a response;
 //   * the platform caps replace the old budget: `ai.limits.perUser.requestsPerDay` answers
 //     429 AI_QUOTA_EXCEEDED with Retry-After;
-//   * the gates: AI off, no enabled model, a viewer, the GET /api/ai/status alias.
+//   * the gates: AI off, no enabled model, a viewer, GET /api/ai/config staying open.
 //
 // A `*.db.spec.ts`: run by `npm run test:db`, skipped without a reachable Postgres superuser.
 // =============================================================================
@@ -269,22 +269,14 @@ describeWithDb('card extraction over the platform AI slice (real Postgres, fake 
     expect(bad.body.code).toBe('AI_INVALID_IMAGE');
   });
 
-  it('GET /api/ai/status is the compatibility alias: any signed-in user, two booleans', async () => {
-    for (const who of ['contributor', 'viewer'] as const) {
-      const res = await http().get('/api/ai/status').set(as(who));
-      expect(res.status).toBe(200);
-      expect(res.body.data).toEqual({ enabled: true, features: { cardExtract: true } });
-    }
-    expect((await http().get('/api/ai/status')).status).toBe(401);
-  });
-
-  it('with AI switched off the route answers 403 AI_DISABLED and the alias says false', async () => {
+  it('with AI switched off the route answers 403 AI_DISABLED and GET /api/ai/config says disabled', async () => {
     await setAi({ enabled: false });
     const res = await extract();
     expect(res.status).toBe(403);
     expect(res.body.details?.reason).toBe('AI_DISABLED');
-    const status = await http().get('/api/ai/status').set(as('contributor'));
-    expect(status.body.data).toEqual({ enabled: false, features: { cardExtract: false } });
+    const config = await http().get('/api/ai/config').set(as('contributor'));
+    expect(config.status).toBe(200);
+    expect(config.body.data.enabled).toBe(false);
     await setAi({ enabled: true });
   }, 30_000);
 

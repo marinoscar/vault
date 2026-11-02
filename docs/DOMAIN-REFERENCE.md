@@ -92,7 +92,7 @@ The platform settings slice serves these (E4.1); Vault's namespaces are `ui`, `f
 - `DELETE /api/secret-types/{id}` - Delete a custom secret type (409 if secrets reference it)
 
 ### AI (Card Scanning)
-- `GET /api/ai/status` - Whether AI-backed features are available to the current user (no permission required); a compatibility alias of the platform's `GET /api/ai/config`, kept until E11
+- `GET /api/ai/config` - The platform's public AI capabilities for the current user (no permission required, open while AI is off); the web derives card-scan availability from it
 - `POST /api/secrets/cards/extract` - Extract candidate card fields from card photos through the platform AI slice (`secrets:write` + `ai:use`, behind the platform kill switch). Persists nothing; the CVV is never requested or returned. Disabled by default - see `docs/SECRETS.md` and `docs/API.md`.
 - `GET /api/ai/config`, `/api/ai/*`, `/api/admin/ai/*` (`ai_config:*`, `org_ai_config:*`) - the platform AI slice: policy, deployment key, model catalogue, usage. See `docs/API.md` (AI card extraction).
 
