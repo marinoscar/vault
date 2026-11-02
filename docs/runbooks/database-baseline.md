@@ -1,6 +1,8 @@
 # Runbook: Baseline the Vault Database Onto the Platform Migration History
 
-> **WARNING: `main` is not deploy-safe between this change and E3.2.** The platform migrations change who holds `contributor` and `viewer` (0024) and make `storage_objects.org_id` NOT NULL (0025). Vault's legacy auth and storage code only keep working because of two `PLATFORM-ADOPTION-SHIM`s (`src/auth/membership-role-shim.ts`, `src/prisma/default-org.ts`). Do **not** deploy `main` from this change until the shim has been verified on a restored copy of production (section 6, "Verify"). The shim is removed in E3.2 (identity). Also: the PR that ships E2.1 and E2.2 **must be deployed as one**; the composed schema describes the database after platform 0040 and fails at runtime ("column does not exist") against a database that has not run `prisma:migrate`.
+> **End-to-end order for a production upgrade: [production-cutover.md](production-cutover.md).** This runbook is the baseline's detail (dry run, declared deviations, rollback); the cutover guide says when to run it relative to the application role, the data moves and `vault deploy`.
+
+> **Historical warning (E2, superseded by E3.2).** The two `PLATFORM-ADOPTION-SHIM`s this note described (`membership-role-shim.ts`, `default-org.ts`) are gone: identity is the platform's slice and the deploy freeze is lifted ([local-exceptions](../platform-adoption/local-exceptions.md)). What still holds: the composed schema describes the database **after** platform 0040 and fails at runtime ("column does not exist") against a database that has not run `prisma:migrate`, so deploy the application and migrate the database as one.
 
 Use this **once per database**, when Vault first adopts `@marinoscar/platform-db` (E2.1 [#73](https://github.com/marinoscar/vault/issues/73) and E2.2 [#74](https://github.com/marinoscar/vault/issues/74), program epic [#54](https://github.com/marinoscar/vault/issues/54)). It proves the live schema equals the platform schema at version 0002, lets Prisma record nothing new for the two migrations Vault already ran, and then lets `prisma migrate deploy` apply platform 0003 to 0040 and Vault's `media_folder_files` migration for real.
 
@@ -87,6 +89,7 @@ The 49 declared statements are Vault's `deviations` in `platform.lock`; each is 
 | `vault:storage-media-folder-id` | 3 | `storage_objects.media_folder_id` (the column, printed with the twelfth early `DROP DEFAULT`, its index and its foreign key). Removed by `add_media_folder_files` |
 | `vault:domain-schema` | 35 | every table, index and foreign key of the seven Vault tables (`secret_types`, `secrets`, `secret_versions`, `secret_attachments`, `media_folders`, `backup_schedules`, `backup_runs`) |
 | `vault:media-folder-files` | 5 | the `media_folder_files` table, appearing in a diff only **after** that migration ran |
+| `vault:backup-runs-job-id` | 3 | `backup_runs.job_id` with its index and foreign key to `jobs`, appearing in a diff only **after** `20261102140000_backup_runs_job_id` ran (the pre-migration shape stays declared by `vault:domain-schema`) |
 | `vault:attachments-org-id` | 2 | `secret_attachments` with `org_id` and its composite foreign key, appearing in a diff only **after** `20261103090000_attachments_composite_fk_media_rls` ran. That migration also adds the `media_folder_files_org_isolation` policy, listed in `rlsPolicies`: run the pre-migration gate as `npm run db:baseline:pre-migrate` (a lock copy without `rlsPolicies`), since the policy does not exist before the migration |
 
 **If the dry run reports a difference the lock does not declare** (a different count, a `BLOCKING:` line), production is not the database Vault rehearsed: stop. Regenerate the declarations from the report with the proving script, **read what it refuses**, and never declare an unexplained statement:
@@ -116,10 +119,10 @@ Expected: `B5 act: 0 to resolve, 38 to install only`, `B6 verify: ok`, `baseline
 
 ```bash
 cd apps/api
-npm run prisma:migrate             # applies 0003-0040 (38) + 20261102130000_add_media_folder_files: THE real change
+npm run prisma:migrate             # applies 0003-0040 (38) + the 3 Vault migrations (41 in all): THE real change
 npm run prisma:seed                # roles with scope, org_admin grants, permissions, system secret types
 npm run db:check                   # offline: 40 installed platform migrations equal the package
-npm run db:check:database          # ledger rows match the files (46 on a copy of today's production)
+npm run db:check:database          # ledger rows match the files (48 after the migrate: the 7 existing + 41 applied)
 npm run db:drift                   # migrations equal the composed schema; 12 raw-SQL indexes, 12 RLS policies
 npm run db:baseline                # "nothing to do"
 npx ts-node --transpile-only --project prisma/tsconfig.json scripts/verify-vault-data.ts
@@ -129,18 +132,18 @@ npx ts-node --transpile-only --project prisma/tsconfig.json scripts/verify-vault
 
 **After `prisma:migrate`, a `--through 2` run is no longer meaningful.** It prints the new tables and RLS policies as blocking differences. Use the plain `npm run db:baseline` (it defaults to the newest migration), which must say `nothing to do`.
 
-**Verify (this is what "the shim is verified" means):**
+**Verify (the checks that prove the membership-role path works on real data; the shim of E2 is gone):**
 
-1. `verify-vault-data.ts` prints only counts and exits 0: one default org; every storage object and chunk in it; every user has an org membership; `user_roles` holds only `admin`; every secret has exactly one current version; a **sample of current versions decrypts** with `VAULT_ENCRYPTION_KEY`; every attachment resolves to a ready object; every media link survived and the old column is gone. Compare the counts with the same query run on the copy *before* `prisma:migrate`.
+1. Run `verify-vault-data.ts` as the **bootstrap superuser** (override `POSTGRES_USER`/`POSTGRES_PASSWORD` for that command): it does not set the RLS bypass, so as `vault_app` the forced-RLS `storage_objects` rows are hidden and it reports false failures. It prints only counts and exits 0: one default org; every storage object and chunk in it; every user has an org membership; `user_roles` holds only `admin`; every secret has exactly one current version; a **sample of current versions decrypts** with `VAULT_ENCRYPTION_KEY`; every attachment resolves to a ready object; every media link survived and the old column is gone. Compare the counts with the same query run on the copy *before* `prisma:migrate`.
 2. Start the API against the copy and log in as an admin, a contributor and a viewer (`/api/auth/test/login` in test mode, or real OAuth against the copy). `GET /api/auth/me` must list the **same permissions each role had before**; open a secret, a media folder, an attachment download, a system backup export and a "My backups" export. These are the paths 0024 would have emptied without the shim.
 3. In the admin Users page the role chips are unchanged (admins show `admin`; contributors `contributor`; viewers `viewer`), a role change persists, and a new user created by sign-in has a membership of the default organization.
-4. **Fresh-database proof.** Empty database, then `prisma:migrate`, `prisma:seed`, `db:drift`: the 46 directories apply in order from nothing. CI does this on every PR (`db-check`).
+4. **Fresh-database proof.** Empty database, then `prisma:migrate`, `prisma:seed`, `db:drift`: the 48 directories apply in order from nothing. CI does this on every PR (`db-check`).
 
 ## 7. Production
 
 Only when the rehearsal on a **real backup** matched section 4 and section 6.
 
-1. Open a maintenance window: Vault has no maintenance mode yet, so stop the API container (`docker compose stop api`) and announce downtime. Keep it open until step 9. Start only the migration commands (`docker compose run --rm api ...`) while it is stopped.
+1. Open a maintenance window. The platform host has maintenance mode (`MAINTENANCE_MODE` break-glass in `.env`, the admin Maintenance page and `vault deploy update --maintenance`; see the EnterpriseAppBase maintenance-mode runbook), but it only exists in the **new** build and it lets requests reach an API that is about to be migrated. **The API must be stopped for the migration regardless**: the previous image cannot run against the migrated schema and the new image cannot run against the old one. So stop the API container (`docker compose stop api`; on a legacy `install-vault.sh` host stop the whole legacy stack, as [production-cutover.md](production-cutover.md#6-production-steps) step 6.2 does) and announce downtime. Keep it open until step 9. Start only the migration commands (`docker compose run --rm api ...`) while it is stopped.
 2. **Take a fresh `pg_dump -Fc`** and note where it is. It is the rollback.
 3. **Check `POSTGRES_*`.** They must name production. Read them twice.
 4. Dry run on production and compare line by line with the rehearsal's report:
@@ -150,10 +153,10 @@ Only when the rehearsal on a **real backup** matched section 4 and section 6.
    ```
 
    Expected: identical to section 4 (`0 blocking, 49 declared`, ..., `nothing to do`). Any difference: stop; do not migrate.
-5. **Migrate.** `docker compose run --rm api npm run prisma:migrate` (38 platform migrations + `media_folder_files`).
+5. **Migrate.** `docker compose run --rm api npm run prisma:migrate` (38 platform migrations + the 3 Vault migrations: `media_folder_files`, `backup_runs_job_id`, `attachments_composite_fk_media_rls`).
 6. **Seed.** `docker compose run --rm api npm run prisma:seed`.
 7. **Check.** `npm run db:check:database`, `npm run db:drift`, plain `npm run db:baseline` (`nothing to do`), `verify-vault-data.ts` (with `VAULT_ENCRYPTION_KEY` in the environment so the decrypt sample runs).
-8. Deploy the application version with the shims (it is the one in the same image: the composed schema needs the migrated database). Smoke test with an admin and a contributor.
+8. Deploy the application version from the same image (the composed schema needs the migrated database; on a legacy host this is `vault deploy update`, see [production-cutover.md](production-cutover.md#6-production-steps)). Smoke test with an admin and a contributor.
 9. Close the window.
 
 `--apply` is **not** run on production: the directories and the lock ship in the image, 0001 and 0002 are already recorded in the ledger, and a second apply would refuse (`LOCK_NOT_EMPTY`) and has nothing to resolve.
@@ -162,7 +165,7 @@ The image must contain `@marinoscar/platform-db` (its `platform` bin), `scripts/
 
 ## 8. After production
 
-- API still connects as a superuser, so RLS is inert. Plan **E2.3** (application role `vault_app`, `NOSUPERUSER NOBYPASSRLS`, ownership transfer) for right after the window. Paths that need `forOrg` / `runInOrg` the moment RLS bites are listed in [local-exceptions](../platform-adoption/local-exceptions.md#rls-readiness-paths-that-need-an-org-scope-in-e23).
+- If the API still connects as a superuser, RLS is inert: move it to the application role ([application-role.md](application-role.md)). The [production cutover guide](production-cutover.md) does this **before** the baseline dry run, as CI's baseline rehearsal does (everything runs as `vault_app`). `verify-vault-data.ts` does not set the RLS bypass, so run it as the bootstrap superuser (RLS hides `storage_objects` from `vault_app`). On a first cutover the role comes first (before the baseline and `prisma:migrate`); this section covers a database still reached as a superuser. Paths that need `forOrg` / `runInOrg` the moment RLS bites are listed in [local-exceptions](../platform-adoption/local-exceptions.md#rls-readiness-paths-that-need-an-org-scope-in-e23).
 - Record the rehearsal (section 11).
 
 ## 9. A failed migration row
@@ -181,7 +184,7 @@ Look at what the migration did and left behind, then `npm run prisma -- migrate 
 The baseline writes only ledger rows (none for Vault). The migration step is what changes data, and 0024, 0025 and `add_media_folder_files` are **forward-only**.
 
 - **Before `prisma:migrate`**: nothing to undo.
-- **After `prisma:migrate`**: restore the backup from step 2 of section 7 (`createdb` a new database, `pg_restore --no-owner --no-acl` into it and switch `POSTGRES_DB`; Vault has no in-app database restore yet) **and** redeploy the previous application version. The previous version does not work against the migrated database (0024, 0025), and the new version does not work against the old one.
+- **After `prisma:migrate`**: restore the backup from step 2 of section 7 (`createdb` a new database, `pg_restore --no-owner --no-acl` into it and switch `POSTGRES_DB`; the in-app database restore is in [database-restore.md](database-restore.md)) **and** redeploy the previous application version. The previous version does not work against the migrated database (0024, 0025), and the new version does not work against the old one.
 - Drop rehearsal databases when done.
 
 ## 11. Troubleshooting
@@ -194,7 +197,7 @@ The baseline writes only ledger rows (none for Vault). The migration step is wha
 | `APP_MIGRATION_OUT_OF_ORDER` / `org_id` does not exist | An app migration sorts before the installed 0025 | Rename it (only while no database has applied it) to a timestamp after `20261102120038` |
 | `LEDGER_CHECKSUM_MISMATCH` | A migration file was edited after it was applied | Restore it from Git |
 | `permission denied to create database` | No `CREATEDB` for the shadow database | Create an empty database and pass `--shadow-database-url` |
-| After migrate, every non-admin user gets 403 | The auth shim is missing from the running build | Deploy the build that contains `membership-role-shim.ts` |
+| After migrate, every non-admin user gets 403 | The running build is older than the migrated schema (0024 moved the roles to memberships) | Deploy the build of the same commit as the migrations |
 | `Default organization not found` at runtime | `prisma:migrate` has not run (0023 creates the org) | Migrate; the composed schema needs the migrated database |
 | `P3005` | The database was never managed by Prisma Migrate | Not the case for Vault production; see the platform-db README |
 | `ERESOLVE` on `npm install` | `@marinoscar/platform-db` needs `zod ^4.4.3` (E1 zod bump) | Land the zod 4 change first |
@@ -215,4 +218,4 @@ Fill in per rehearsal and keep it with the PR.
 | Permissions per role before / after | |
 | Fresh-database `db:drift` | |
 
-Recorded so far: the fixture rehearsal (`baseline-rehearsal.sh`, PostgreSQL 16, this change's author, local): dry run `0 blocking, 49 declared`, `prisma:migrate` applied 39 migrations, `db:check:database` ok (46 ledger rows), `db:drift` ok (12 raw-SQL indexes, 12 RLS policies), `verify-vault-data.ts` all checks passed (decrypt sample skipped: the fixture ciphertext is not real). **No real-backup rehearsal has been done.**
+Recorded so far: the fixture rehearsal (`baseline-rehearsal.sh`, PostgreSQL 16, this change's author, local): dry run `0 blocking, 49 declared`, `prisma:migrate` applied 39 migrations, `db:check:database` ok (46 ledger rows) [figures from the fixture rehearsal when main had 46 directories; today main has 48 and `prisma:migrate` applies 41, adding `backup_runs_job_id` and `attachments_composite_fk_media_rls`], `db:drift` ok (12 raw-SQL indexes, 12 RLS policies), `verify-vault-data.ts` all checks passed (decrypt sample skipped: the fixture ciphertext is not real). **No real-backup rehearsal has been done.**
