@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
-import { render } from '../utils/test-utils';
+import { render, mockUser } from '../utils/test-utils';
 import UserSettingsPage from '../../pages/UserSettingsPage';
 
 // Mock the hooks
@@ -306,6 +306,21 @@ describe('UserSettingsPage', () => {
       await waitFor(() => {
         expect(screen.getByText(/settings/i)).toBeInTheDocument();
       });
+    });
+  });
+  describe('Secret types link (E10.2)', () => {
+    it('links to the secret types pages for a user with secret_types:read', () => {
+      render(<UserSettingsPage />, {
+        wrapperOptions: { user: { ...mockUser, permissions: [...mockUser.permissions, 'secret_types:read'] } },
+      });
+
+      expect(screen.getByRole('link', { name: /secret types/i })).toHaveAttribute('href', '/secret-types');
+    });
+
+    it('is hidden without secret_types:read', () => {
+      render(<UserSettingsPage />);
+
+      expect(screen.queryByRole('link', { name: /secret types/i })).not.toBeInTheDocument();
     });
   });
 });

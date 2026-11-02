@@ -1,7 +1,7 @@
 import { ReactNode } from 'react';
 import { vi } from 'vitest';
 import { ThemeProvider } from '@mui/material/styles';
-import { lightTheme, darkTheme } from '../../theme';
+import { vaultLightTheme as lightTheme, vaultDarkTheme as darkTheme } from '../../theme';
 
 // Theme Context Mock
 export const mockThemeContext = {

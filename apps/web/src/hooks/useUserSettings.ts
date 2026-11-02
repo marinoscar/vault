@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api, ApiError } from '../services/api';
 import { UserSettings } from '../types';
-import { useThemeContext } from '../contexts/ThemeContext';
+import { useOptionalShellTheme } from '@marinoscar/platform-web/shell/headless';
 
 interface UseUserSettingsReturn {
   settings: UserSettings | null;
@@ -19,7 +19,11 @@ export function useUserSettings(): UseUserSettingsReturn {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const { setMode } = useThemeContext();
+  // The stored `theme` setting drives the shell's light / dark / system choice.
+  // Optional: a hook test may render without a ShellRoot.
+  // Keyed on the stable setter, not the context value: a theme change must not refetch.
+  const setShellMode = useOptionalShellTheme()?.setMode;
+  const setMode = useCallback((mode: UserSettings['theme']) => setShellMode?.(mode), [setShellMode]);
 
   const fetchSettings = useCallback(async () => {
     try {

@@ -2,7 +2,7 @@ import { renderHook, RenderHookOptions, RenderHookResult } from '@testing-librar
 import { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
-import { lightTheme } from '../../theme';
+import { vaultLightTheme as lightTheme } from '../../theme';
 
 interface HookWrapperOptions {
   route?: string;
