@@ -16,7 +16,7 @@ import type { SettingsCardDef, SettingsSectionDef } from '@marinoscar/platform-w
 
 import { ADMIN_HUB_PATH, ADMIN_SECTIONS } from '../../config/adminSections';
 import { USER_HUB_PATH, USER_SETTINGS_SECTIONS } from '../../config/userSettingsSections';
-import { DESTINATIONS } from '../../config/destinations';
+import { DESTINATIONS } from '@marinoscar/vault-web/navigation';
 import { VAULT_NAVIGATION } from '../../config/shell';
 import appSource from '../../App.tsx?raw';
 // The API's permission catalog (E3.2): roles.constants.ts DERIVES `PERMISSIONS` from

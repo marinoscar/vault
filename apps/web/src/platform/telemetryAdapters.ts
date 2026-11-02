@@ -24,7 +24,7 @@ import type {
   TelemetryAssistantModelsState,
   TelemetryWebAdapters,
 } from '@marinoscar/platform-web/telemetry/headless';
-import { LoadingSpinner } from '../components/common/LoadingSpinner';
+import { LoadingSpinner } from '@marinoscar/vault-web/core/ui';
 
 /** The id the catalogue gives a model that can call tools (the assistant needs it). */
 const TOOLS_CAPABILITY = 'tools';

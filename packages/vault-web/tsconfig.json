@@ -1,0 +1,24 @@
+{
+  // Typecheck only (src and test), with the bundler resolution Vitest and the
+  // host's Vite use (under NodeNext, `@testing-library/user-event`'s CommonJS
+  // types hide `userEvent.setup`). The NodeNext rules for src (every relative
+  // import keeps its `.js` extension, or a consumer's ESM loader fails with
+  // ERR_MODULE_NOT_FOUND) are checked by the build, tsconfig.build.json.
+  // The lint flags match apps/web, where this code came from.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "types": ["node", "vite/client", "vitest/globals", "@testing-library/jest-dom"]
+  },
+  "include": ["src", "test"]
+}

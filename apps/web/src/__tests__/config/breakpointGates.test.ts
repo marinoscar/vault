@@ -7,8 +7,8 @@ import { describe, expect, it } from 'vitest';
  * below fails, and each listed file says why it is not a gate.
  */
 const ALLOWED: Record<string, string> = {
-  'components/admin/AdminBackupDownloadDialog.tsx':
-    'a domain dialog goes full-screen on a phone; content adaptation, not navigation chrome',
+  // Empty since E12.3 (#104): the one domain dialog that adapts its content to a
+  // phone moved to @marinoscar/vault-web, whose own breakpoint test lists it.
 };
 
 const PATTERN = /useMediaQuery\(|breakpoints\.(up|down|between|only)\(/;
@@ -38,7 +38,8 @@ describe('breakpoint gates', () => {
   });
 
   it('scans the app (sanity) and the shell binding reads none', () => {
-    expect(Object.keys(SOURCES).length).toBeGreaterThan(50);
+    // The host only (E12.3: the domain pages are @marinoscar/vault-web's).
+    expect(Object.keys(SOURCES).length).toBeGreaterThan(20);
     expect(SOURCES['components/common/Layout.tsx']).toBeDefined();
     expect(SOURCES['components/common/Layout.tsx']).not.toMatch(PATTERN);
   });

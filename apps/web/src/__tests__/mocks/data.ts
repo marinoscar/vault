@@ -1,5 +1,5 @@
 import type { AuthProviderInfo } from '@marinoscar/platform-web/identity/headless';
-import { User, UserSettings, SystemSettings } from '../../types';
+import type { User, UserSettings, SystemSettings } from '@marinoscar/vault-web/core/headless';
 
 export const mockUsers: User[] = [
   {

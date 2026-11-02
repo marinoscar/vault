@@ -26,7 +26,7 @@ import {
 } from '../../platform/dataTablePreferences';
 import { ADMIN_SECTIONS } from '../../config/adminSections';
 import { USER_SETTINGS_SECTIONS } from '../../config/userSettingsSections';
-import { PRODUCT_NAME, PRODUCT_TAGLINE } from '../../theme/tokens';
+import { PRODUCT_NAME, PRODUCT_TAGLINE } from '@marinoscar/vault-web/brand';
 
 const SLOW = { timeout: 5000 };
 

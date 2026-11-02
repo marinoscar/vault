@@ -1,0 +1,138 @@
+{
+  "name": "@marinoscar/vault-web",
+  "version": "0.1.0-next.0",
+  "description": "The React side of the Vault domain: pages, components, hooks, navigation destinations and the brand, one subpath per slice (ESM). apps/web is the host.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=24"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marinoscar/vault.git",
+    "directory": "packages/vault-web"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./core/headless": {
+      "types": "./dist/core/headless/index.d.ts",
+      "default": "./dist/core/headless/index.js"
+    },
+    "./core/ui": {
+      "types": "./dist/core/ui/index.d.ts",
+      "default": "./dist/core/ui/index.js"
+    },
+    "./secrets/headless": {
+      "types": "./dist/secrets/headless/index.d.ts",
+      "default": "./dist/secrets/headless/index.js"
+    },
+    "./secrets/ui": {
+      "types": "./dist/secrets/ui/index.d.ts",
+      "default": "./dist/secrets/ui/index.js"
+    },
+    "./cards/headless": {
+      "types": "./dist/cards/headless/index.d.ts",
+      "default": "./dist/cards/headless/index.js"
+    },
+    "./cards/ui": {
+      "types": "./dist/cards/ui/index.d.ts",
+      "default": "./dist/cards/ui/index.js"
+    },
+    "./media/headless": {
+      "types": "./dist/media/headless/index.d.ts",
+      "default": "./dist/media/headless/index.js"
+    },
+    "./media/ui": {
+      "types": "./dist/media/ui/index.d.ts",
+      "default": "./dist/media/ui/index.js"
+    },
+    "./backups/headless": {
+      "types": "./dist/backups/headless/index.d.ts",
+      "default": "./dist/backups/headless/index.js"
+    },
+    "./backups/ui": {
+      "types": "./dist/backups/ui/index.d.ts",
+      "default": "./dist/backups/ui/index.js"
+    },
+    "./home/headless": {
+      "types": "./dist/home/headless/index.d.ts",
+      "default": "./dist/home/headless/index.js"
+    },
+    "./home/ui": {
+      "types": "./dist/home/ui/index.d.ts",
+      "default": "./dist/home/ui/index.js"
+    },
+    "./settings/ui": {
+      "types": "./dist/settings/ui/index.d.ts",
+      "default": "./dist/settings/ui/index.js"
+    },
+    "./brand": {
+      "types": "./dist/brand/index.d.ts",
+      "default": "./dist/brand/index.js"
+    },
+    "./brand/assets/vault-mark.png": "./dist/brand/assets/vault-mark.png",
+    "./navigation": {
+      "types": "./dist/navigation/index.d.ts",
+      "default": "./dist/navigation/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "prebuild": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "prepack": "node ../../scripts/vault-packages/copy-license.mjs",
+    "build": "tsc -p tsconfig.build.json",
+    "postbuild": "node scripts/copy-assets.mjs",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit",
+    "test": "vitest",
+    "test:run": "vitest run"
+  },
+  "peerDependencies": {
+    "@marinoscar/platform-web": "0.1.0-next.21",
+    "@marinoscar/vault-contract": ">=0.0.0-0 || >=0.1.0-0",
+    "@mui/icons-material": "^9.1.0",
+    "@mui/material": "^9.1.0",
+    "@mui/utils": "^9.0.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-router-dom": "^7.17.0"
+  },
+  "devDependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@marinoscar/platform-web": "0.1.0-next.21",
+    "@marinoscar/vault-contract": "0.1.0-next.0",
+    "@mui/icons-material": "^9.1.0",
+    "@mui/material": "^9.1.0",
+    "@mui/utils": "^9.0.0",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^22.20.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "jsdom": "^29.1.1",
+    "msw": "^2.14.6",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-router-dom": "^7.17.0",
+    "typescript": "^5.x",
+    "vite": "^8.0.16",
+    "vitest": "^4.1.8",
+    "vitest-axe": "^1.0.0-pre.5"
+  }
+}

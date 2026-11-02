@@ -7,8 +7,8 @@
 import type { ShellNavigation } from '@marinoscar/platform-web/shell/headless';
 
 import { ADMIN_HUB_PATH, ADMIN_HUB_TITLE, ADMIN_SECTIONS } from './adminSections';
-import { DESTINATIONS, DESTINATION_ROUTES } from './destinations';
-import type { DestinationKey } from './destinations';
+import { DESTINATIONS, DESTINATION_ROUTES } from '@marinoscar/vault-web/navigation';
+import type { DestinationKey } from '@marinoscar/vault-web/navigation';
 import { USER_HUB_PATH, USER_HUB_TITLE, USER_SETTINGS_SECTIONS } from './userSettingsSections';
 
 export const VAULT_NAVIGATION: ShellNavigation<DestinationKey> = {

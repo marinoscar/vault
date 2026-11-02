@@ -22,11 +22,11 @@ import { appTelemetryAdapters } from './platform/telemetryAdapters';
 import { AppTelemetryConfigProvider } from './platform/TelemetryConfigBinding';
 import { VAULT_THEMES } from './theme';
 import { Layout } from './components/common/Layout';
-import { ErrorBoundary } from './components/common/ErrorBoundary';
+import { ErrorBoundary, LoadingSpinner } from '@marinoscar/vault-web/core/ui';
 
-// Pages (lazy loaded)
+// Pages (lazy loaded). The Vault domain pages are @marinoscar/vault-web's (E12.3,
+// #104): one lazy chunk per slice (`<slice>/ui`); the host only routes to them.
 import { Suspense, lazy } from 'react';
-import { LoadingSpinner } from './components/common/LoadingSpinner';
 
 // The login page is the packaged one with Vault's brand in its slots; the
 // callback, device activation, Access Tokens and Users & Allowlist pages are
@@ -44,21 +44,21 @@ const UserTokensPage = lazy(() =>
 const UsersPage = lazy(() =>
   import('@marinoscar/platform-web/identity/ui').then((m) => ({ default: m.UsersPage })),
 );
-const HomePage = lazy(() => import('./pages/HomePage'));
+const HomePage = lazy(() => import('@marinoscar/vault-web/home/ui').then((m) => ({ default: m.HomePage })));
 // The two settings hubs and their card pages (E10.3, #94): config/adminSections.tsx
 // and config/userSettingsSections.tsx declare the cards; each card path is a route below.
 const UserSettingsHubPage = lazy(() => import('./pages/UserSettingsHubPage'));
-const ProfileSettingsPage = lazy(() => import('./pages/settings/ProfileSettingsPage'));
-const AppearanceSettingsPage = lazy(() => import('./pages/settings/AppearanceSettingsPage'));
-const MyBackupsPage = lazy(() => import('./pages/settings/MyBackupsPage'));
+const ProfileSettingsPage = lazy(() => import('@marinoscar/vault-web/settings/ui').then((m) => ({ default: m.ProfileSettingsPage })));
+const AppearanceSettingsPage = lazy(() => import('@marinoscar/vault-web/settings/ui').then((m) => ({ default: m.AppearanceSettingsPage })));
+const MyBackupsPage = lazy(() => import('@marinoscar/vault-web/backups/ui').then((m) => ({ default: m.MyBackupsPage })));
 const AdminSettingsHubPage = lazy(() => import('./pages/admin/AdminSettingsHubPage'));
-const GeneralSettingsPage = lazy(() => import('./pages/admin/GeneralSettingsPage'));
+const GeneralSettingsPage = lazy(() => import('@marinoscar/vault-web/settings/ui').then((m) => ({ default: m.GeneralSettingsPage })));
 // The AI card is the packaged AiConfigPage with Vault's card-scanning-model
 // section in a slot; AI models and AI usage are the packaged pages as they are.
-const AiSettingsPage = lazy(() => import('./pages/admin/AiSettingsPage'));
+const AiSettingsPage = lazy(() => import('@marinoscar/vault-web/cards/ui').then((m) => ({ default: m.AiSettingsPage })));
 const AiModelsPage = lazy(() => import('@marinoscar/platform-web/ai/ui/models-page'));
 const AiUsagePage = lazy(() => import('@marinoscar/platform-web/ai/ui/usage-page'));
-const BackupSettingsPage = lazy(() => import('./pages/admin/BackupSettingsPage'));
+const BackupSettingsPage = lazy(() => import('@marinoscar/vault-web/backups/ui').then((m) => ({ default: m.BackupSettingsPage })));
 const DbBackupSettingsPage = lazy(() => import('./pages/admin/DbBackupSettingsPage'));
 // Packaged pages, read through the platform host (platform/platformHost.tsx).
 const DoctorPage = lazy(() =>
@@ -97,23 +97,23 @@ const SetupGuideRoute = lazy(() => import('./components/onboarding/SetupGuideRou
 const StorageConfigPage = lazy(() =>
   import('@marinoscar/platform-web/storage/ui').then((m) => ({ default: m.StorageConfigPage })),
 );
-const SecretsPage = lazy(() => import('./pages/SecretsPage'));
-const CardsPage = lazy(() => import('./pages/CardsPage'));
-const ImportCardPage = lazy(() => import('./pages/ImportCardPage'));
-const RenewCardPage = lazy(() => import('./pages/RenewCardPage'));
-const CreateSecretPage = lazy(() => import('./pages/CreateSecretPage'));
-const SecretDetailPage = lazy(() => import('./pages/SecretDetailPage'));
-const EditSecretPage = lazy(() => import('./pages/EditSecretPage'));
-const SecretTypesPage = lazy(() => import('./pages/SecretTypesPage'));
-const CreateSecretTypePage = lazy(() => import('./pages/CreateSecretTypePage'));
-const EditSecretTypePage = lazy(() => import('./pages/EditSecretTypePage'));
-const MediaFoldersPage = lazy(() => import('./pages/MediaFoldersPage'));
-const CreateFolderPage = lazy(() => import('./pages/CreateFolderPage'));
-const EditFolderPage = lazy(() => import('./pages/EditFolderPage'));
-const MediaFolderPage = lazy(() => import('./pages/MediaFolderPage'));
-const MediaUploadPage = lazy(() => import('./pages/MediaUploadPage'));
-const RenameMediaFilePage = lazy(() => import('./pages/RenameMediaFilePage'));
-const MediaPlayerPage = lazy(() => import('./pages/MediaPlayerPage'));
+const SecretsPage = lazy(() => import('@marinoscar/vault-web/secrets/ui').then((m) => ({ default: m.SecretsPage })));
+const CardsPage = lazy(() => import('@marinoscar/vault-web/cards/ui').then((m) => ({ default: m.CardsPage })));
+const ImportCardPage = lazy(() => import('@marinoscar/vault-web/cards/ui').then((m) => ({ default: m.ImportCardPage })));
+const RenewCardPage = lazy(() => import('@marinoscar/vault-web/cards/ui').then((m) => ({ default: m.RenewCardPage })));
+const CreateSecretPage = lazy(() => import('@marinoscar/vault-web/secrets/ui').then((m) => ({ default: m.CreateSecretPage })));
+const SecretDetailPage = lazy(() => import('@marinoscar/vault-web/secrets/ui').then((m) => ({ default: m.SecretDetailPage })));
+const EditSecretPage = lazy(() => import('@marinoscar/vault-web/secrets/ui').then((m) => ({ default: m.EditSecretPage })));
+const SecretTypesPage = lazy(() => import('@marinoscar/vault-web/secrets/ui').then((m) => ({ default: m.SecretTypesPage })));
+const CreateSecretTypePage = lazy(() => import('@marinoscar/vault-web/secrets/ui').then((m) => ({ default: m.CreateSecretTypePage })));
+const EditSecretTypePage = lazy(() => import('@marinoscar/vault-web/secrets/ui').then((m) => ({ default: m.EditSecretTypePage })));
+const MediaFoldersPage = lazy(() => import('@marinoscar/vault-web/media/ui').then((m) => ({ default: m.MediaFoldersPage })));
+const CreateFolderPage = lazy(() => import('@marinoscar/vault-web/media/ui').then((m) => ({ default: m.CreateFolderPage })));
+const EditFolderPage = lazy(() => import('@marinoscar/vault-web/media/ui').then((m) => ({ default: m.EditFolderPage })));
+const MediaFolderPage = lazy(() => import('@marinoscar/vault-web/media/ui').then((m) => ({ default: m.MediaFolderPage })));
+const MediaUploadPage = lazy(() => import('@marinoscar/vault-web/media/ui').then((m) => ({ default: m.MediaUploadPage })));
+const RenameMediaFilePage = lazy(() => import('@marinoscar/vault-web/media/ui').then((m) => ({ default: m.RenameMediaFilePage })));
+const MediaPlayerPage = lazy(() => import('@marinoscar/vault-web/media/ui').then((m) => ({ default: m.MediaPlayerPage })));
 
 // Test login page (development only)
 const TestLoginPage = import.meta.env.PROD

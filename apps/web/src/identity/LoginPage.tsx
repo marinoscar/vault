@@ -17,8 +17,7 @@ import type { ReactElement } from 'react';
 import { LoginPage as PackagedLoginPage } from '@marinoscar/platform-web/identity/ui';
 import type { LoginPageSlots } from '@marinoscar/platform-web/identity/ui';
 
-import markUrl from '../assets/brand/vault-mark.png';
-import { PRODUCT_NAME, PRODUCT_TAGLINE } from '../theme/tokens';
+import { PRODUCT_NAME, PRODUCT_TAGLINE, VAULT_MARK_URL as markUrl } from '@marinoscar/vault-web/brand';
 
 function VaultLogo(): ReactElement {
   return (

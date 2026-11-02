@@ -23,10 +23,10 @@
 import { createIdentityApi } from '@marinoscar/platform-web/identity/headless';
 import type { IdentityWebAdapters } from '@marinoscar/platform-web/identity/headless';
 
-import { LoadingSpinner } from '../components/common/LoadingSpinner';
+import { LoadingSpinner } from '@marinoscar/vault-web/core/ui';
 import { LazyIdentityDataTable } from './LazyIdentityDataTable';
 import { vaultPlatformApi } from '../platform/platformHost';
-import { PRODUCT_NAME } from '../theme/tokens';
+import { PRODUCT_NAME } from '@marinoscar/vault-web/brand';
 
 export const vaultIdentityAdapters: IdentityWebAdapters = Object.freeze<IdentityWebAdapters>({
   appName: PRODUCT_NAME,
