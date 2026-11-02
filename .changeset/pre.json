@@ -7,7 +7,12 @@
     "web": "1.0.0",
     "@app/shared": "1.0.0",
     "@marinoscar/vault-contract": "0.1.0-next.0",
-    "@marinoscar/vault-db": "0.1.0-next.0"
+    "@marinoscar/vault-db": "0.1.0-next.0",
+    "@marinoscar/vault-api": "0.1.0-next.0",
+    "@marinoscar/vault-web": "0.1.0-next.0"
   },
-  "changesets": []
+  "changesets": [
+    "vault-api-domain-package",
+    "vault-web-package"
+  ]
 }
