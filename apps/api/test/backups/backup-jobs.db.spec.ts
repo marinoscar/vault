@@ -23,7 +23,7 @@
 
 import '../../src/app-registrations/registrations';
 
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { Logger } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { NestFastifyApplication, FastifyAdapter } from '@nestjs/platform-fastify';
@@ -41,7 +41,8 @@ import { CryptoService } from '../../src/common/services/crypto.service';
 import { PERMISSION_OPTIONS } from '../../src/platform/permissions';
 import { DEFAULT_SYSTEM_SETTINGS } from '../../src/settings/registry/default-system-settings';
 import { STORAGE_PROVIDER } from '@marinoscar/platform-api/storage';
-import { BACKUP_FAILURE_MESSAGES } from '../../src/backups/backup-runner.service';
+import { BACKUP_FAILURE_MESSAGES, BackupRunnerService } from '../../src/backups/backup-runner.service';
+import { systemBackupStorageKey } from '../../src/backups/backup-archive';
 import { BACKUP_RUN_JOB_TYPE, USER_BACKUP_RUN_JOB_TYPE } from '../../src/backups/jobs/backup-job-types';
 import {
   findAdminCredentials,
@@ -327,8 +328,6 @@ describeWithDb('backups as queue jobs (real Postgres, worker on)', () => {
 
       const ids4: string[] = [];
       for (let i = 0; i < 4; i += 1) {
-        // Storage keys carry the start time to the second: runs a second apart keep distinct objects.
-        await new Promise((resolve) => setTimeout(resolve, 1100));
         const res = await http().post('/api/admin/backups/run').set(as('admin'));
         expect(res.status).toBe(202);
         ids4.push(res.body.data.id);
@@ -343,6 +342,35 @@ describeWithDb('backups as queue jobs (real Postgres, worker on)', () => {
       expect(storage.objects.size).toBe(2);
       expect(storage.objects.has(rows[3].storageKey!)).toBe(true);
       expect(storage.objects.has(rows[0].storageKey!)).toBe(false);
+    });
+
+    it('keeps both archives when two runs share a start second (#130)', async () => {
+      expect((await putSchedule({ keepCount: 1 })).status).toBe(200);
+      await prisma.backupRun.deleteMany({});
+      storage.objects.clear();
+
+      const startedAt = new Date('2026-07-01T10:00:00.000Z');
+      const older = randomUUID();
+      const newer = randomUUID();
+      const keyOlder = systemBackupStorageKey(startedAt, older);
+      const keyNewer = systemBackupStorageKey(startedAt, newer);
+      expect(keyOlder).not.toBe(keyNewer);
+      for (const [id, key, at] of [
+        [older, keyOlder, startedAt],
+        [newer, keyNewer, new Date(startedAt.getTime() + 500)],
+      ] as const) {
+        storage.objects.set(key, Buffer.from(id));
+        await prisma.backupRun.create({
+          data: { id, scope: 'system', status: 'succeeded', trigger: 'manual', storageKey: key, startedAt: at },
+        });
+      }
+
+      await app.get(BackupRunnerService).applyRetention(newer);
+
+      expect(storage.objects.has(keyOlder)).toBe(false);
+      expect(storage.objects.has(keyNewer)).toBe(true);
+      const survivor = await prisma.backupRun.findUnique({ where: { id: newer } });
+      expect(survivor?.deletedAt).toBeNull();
     });
 
     it('fails the run with a static message and fails the job when the upload fails', async () => {
@@ -470,7 +498,6 @@ describeWithDb('backups as queue jobs (real Postgres, worker on)', () => {
     it("keeps each user's newest 10 saved backups", async () => {
       await prisma.backupRun.deleteMany({ where: { scope: 'user', ownerId: ids.b } });
       for (let i = 0; i < 11; i += 1) {
-        await new Promise((resolve) => setTimeout(resolve, 1100));
         const res = await http().post('/api/backups/me').set(as('b')).send({ password: USER_PASSWORD_B });
         expect(res.status).toBe(202);
         await runStatus(res.body.data.id, 'succeeded');
