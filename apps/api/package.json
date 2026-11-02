@@ -34,6 +34,8 @@
     "db:baseline": "node scripts/platform-env.js db baseline",
     "db:baseline:pre-migrate": "node scripts/baseline-pre-migrate.mjs",
     "db:policies": "platform db policies",
+    "openapi:dump": "ts-node -P scripts/tsconfig.json --transpile-only scripts/dump-openapi.ts",
+    "openapi:typecheck": "tsc -p scripts/tsconfig.json",
     "db:test": "node scripts/test-db-connection.js",
     "vault:migrate-ai-key": "ts-node --project prisma/tsconfig.json --transpile-only scripts/migrate-ai-key.ts",
     "vault:migrate-ai-platform": "ts-node --project prisma/tsconfig.json --transpile-only scripts/migrate-ai-platform.ts",
