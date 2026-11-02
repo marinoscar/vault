@@ -160,7 +160,7 @@ describe('the registries as a whole', () => {
   it('lists the E10.3 cards in append order', () => {
     expect(ADMIN_CARDS.map((card) => card.title)).toEqual([
       'General',
-      'Users & allowlist',
+      'Users & Allowlist',
       'AI',
       'Backups',
       'Maintenance',
@@ -170,7 +170,7 @@ describe('the registries as a whole', () => {
     expect(USER_CARDS.map((card) => card.title)).toEqual([
       'Profile',
       'Appearance',
-      'Access tokens',
+      'Access Tokens',
       'My backups',
       'Secret types',
     ]);

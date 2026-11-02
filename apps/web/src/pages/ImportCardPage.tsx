@@ -30,7 +30,7 @@ import {
   type CapturedCardPhoto,
   type CapturedCardSide,
 } from '../hooks/useCardImport';
-import { usePermissions } from '../hooks/usePermissions';
+import { usePermissions } from '@marinoscar/platform-web/identity/headless';
 import type { CardCropBox } from '../types';
 import {
   cropImageFileToBox,

@@ -77,3 +77,14 @@ describe('Vault themes', () => {
     expect(vaultLightTheme.shape.borderRadius).toBe(8);
   });
 });
+
+describe('product identity strings', () => {
+  it('keeps the sign-in tagline and the product name in sync with packages/shared/identity.json', async () => {
+    const { PRODUCT_NAME, PRODUCT_TAGLINE } = await import('../../theme/tokens');
+    const identity = JSON.parse(
+      (await import('../../../../../packages/shared/identity.json?raw')).default,
+    ) as { productName: string; tagline: string };
+    expect(PRODUCT_TAGLINE).toBe(identity.tagline);
+    expect(PRODUCT_NAME).toBe(identity.productName);
+  });
+});

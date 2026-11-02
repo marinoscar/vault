@@ -10,7 +10,9 @@ import {
 import type { BackupRun, BackupSchedule } from '../../../types';
 import { BACKUP_NOTHING_SELECTED_MESSAGE } from '../../../utils/backupContents';
 
-vi.mock('../../../services/api', () => ({
+vi.mock('../../../services/api', async (importOriginal) => ({
+  // The real client (`api`), which the platform host wraps; the calls under test are mocked.
+  api: (await importOriginal<typeof import('../../../services/api')>()).api,
   getBackupSchedule: vi.fn(),
   updateBackupSchedule: vi.fn(),
   runBackupNow: vi.fn(),
@@ -24,7 +26,8 @@ vi.mock('../../../utils/saveBlob', () => ({
   saveBlobAsFile: vi.fn(),
 }));
 
-vi.mock('../../../hooks/usePermissions', () => ({
+vi.mock('@marinoscar/platform-web/identity/headless', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@marinoscar/platform-web/identity/headless')>()),
   usePermissions: vi.fn(),
 }));
 
@@ -48,7 +51,7 @@ import {
   updateBackupSchedule,
 } from '../../../services/api';
 import { startUrlDownload } from '../../../utils/backupSchedule';
-import { usePermissions } from '../../../hooks/usePermissions';
+import { usePermissions } from '@marinoscar/platform-web/identity/headless';
 
 const mockGetSchedule = vi.mocked(getBackupSchedule);
 const mockGetRuns = vi.mocked(getBackupRuns);
