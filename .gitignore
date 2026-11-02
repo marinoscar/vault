@@ -55,3 +55,6 @@ nul
 # Playwright output (tests/e2e, tests/visual)
 test-results/
 playwright-report/
+
+# Copied into each package by its prepack script (scripts/vault-packages/copy-license.mjs)
+packages/*/LICENSE
