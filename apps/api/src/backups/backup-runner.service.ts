@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import type { Job } from '@marinoscar/platform-api/jobs';
 
 import { PrismaService } from '../prisma/prisma.service';
@@ -25,6 +25,7 @@ import {
   BackupRunFailure,
   describeError,
 } from './backup-archive.service';
+import { BackupNotifier } from './backup-notifier.service';
 import { decryptBackupPassword } from './backup-password';
 import { pickRunsToDelete } from './backup-retention';
 import { BACKUP_RUN_INCLUDE, BackupRunRow, BackupRunTrigger } from './dto/backup-responses';
@@ -114,6 +115,8 @@ export class BackupRunnerService {
     private readonly storageProvider: StorageProvider,
     private readonly archive: BackupArchiveService,
     private readonly exportService: SecretsExportService,
+    // Optional: unit specs build the runner by hand; the module always provides it (E7.2, #86).
+    @Optional() private readonly notifier?: BackupNotifier,
   ) {}
 
   /** True when an object-storage bucket is configured. */
@@ -267,6 +270,7 @@ export class BackupRunnerService {
       data: { status: 'failed', finishedAt: new Date(), error },
     });
     await this.auditCompleted(run, auditAction, 'failed', null, null, null);
+    await this.notifier?.runSettled(run, { status: 'failed', finishedAt: new Date(), sizeBytes: null, counts: null, error });
     return { status: 'failed', error };
   }
 
@@ -318,6 +322,8 @@ export class BackupRunnerService {
           `${counts.warningCount} warning(s), ${sizeBytes} bytes`,
       );
       await this.auditCompleted(run, job.auditAction, 'succeeded', sizeBytes, counts, selection);
+      // After the run row committed, outside any transaction (E7.2, #86).
+      await this.notifier?.runSettled(run, { status: 'succeeded', finishedAt, sizeBytes, counts });
 
       await job.retention();
       return { status: 'succeeded' };
@@ -348,6 +354,7 @@ export class BackupRunnerService {
         },
       });
       await this.auditCompleted(run, job.auditAction, 'failed', null, null, selection);
+      await this.notifier?.runSettled(run, { status: 'failed', finishedAt: new Date(), sizeBytes: null, counts: null, error: message });
       return { status: 'failed', error: message };
     }
   }

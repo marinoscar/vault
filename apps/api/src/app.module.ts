@@ -20,6 +20,7 @@ import { SecretsModule } from './secrets/secrets.module';
 import { MediaModule } from './media/media.module';
 import { AiModule } from './ai/ai.module';
 import { BackupsModule } from './backups/backups.module';
+import { CardExpiryModule } from './card-expiry/card-expiry.module';
 import { LoggerModule } from './common/logger/logger.module';
 
 // MUST precede `settings.config`: the jobs and nodes slices ensure the `jobs`,
@@ -107,7 +108,7 @@ import configuration from './config/configuration';
     MediaModule,
     AiModule,
     BackupsModule,
-
+    CardExpiryModule,
   ],
   providers: [
     // Global validation pipe (Zod)
