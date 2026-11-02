@@ -55,7 +55,7 @@ describe('BackupStatusPanel', () => {
       renderPanel({ mine: resource({ data: runs([]) }) });
 
       expect(screen.getByText('You have not saved a backup yet')).toBeInTheDocument();
-      expect(screen.getByRole('link', { name: 'Back up now' })).toHaveAttribute('href', '/settings');
+      expect(screen.getByRole('link', { name: 'Back up now' })).toHaveAttribute('href', '/settings/backups');
     });
 
     it('shows the last run status, age, size and count', () => {
@@ -107,7 +107,7 @@ describe('BackupStatusPanel', () => {
       expect(within(block).getByText(/Storage upload failed/)).toBeInTheDocument();
       expect(within(block).getByRole('link', { name: 'Open backup settings' })).toHaveAttribute(
         'href',
-        '/admin/settings',
+        '/admin/settings/backups',
       );
     });
 

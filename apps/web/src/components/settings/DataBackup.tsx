@@ -69,7 +69,7 @@ function errorMessage(err: unknown, fallback: string): string {
  * owns (secrets by default, optionally their media library), either
  * downloaded to this device or saved to the storage account, plus the list
  * of the user's saved backups. Rendering is gated by `secrets:read` at the
- * call site (UserSettingsPage).
+ * call site (`pages/settings/MyBackupsPage.tsx`, the My backups card).
  */
 export function DataBackup() {
   const [passwordValue, setPasswordValue] = useState<BackupPasswordValue>(EMPTY_PASSWORD);

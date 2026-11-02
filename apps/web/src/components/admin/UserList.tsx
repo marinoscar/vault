@@ -1,3 +1,4 @@
+import { breakableEmail } from '../../utils/breakableEmail';
 import { useState, useEffect } from 'react';
 import {
   Paper,
@@ -26,6 +27,20 @@ import { useUsers } from '../../hooks/useUsers';
 import type { UserListItem } from '../../types';
 
 const AVAILABLE_ROLES = ['admin', 'contributor', 'viewer'];
+
+/**
+ * Columns dropped below 900px so the table fits a phone without a sideways
+ * scroll: the display name folds under the email, the created date is left
+ * to the wide layout. Content adaptation through `sx`, not a breakpoint gate.
+ */
+const WIDE_ONLY = { display: { xs: 'none', md: 'table-cell' } } as const;
+
+/**
+ * Below 600px the Roles column goes too (and the avatar): email, status and
+ * the row menu fit a 390px phone. Roles stay one tap away in the row menu's
+ * "Change Roles" checklist.
+ */
+const NOT_PHONE = { display: { xs: 'none', sm: 'table-cell' } } as const;
 
 export function UserList() {
   const {
@@ -171,10 +186,10 @@ export function UserList() {
               <TableHead>
                 <TableRow>
                   <TableCell>User</TableCell>
-                  <TableCell>Display Name</TableCell>
-                  <TableCell>Roles</TableCell>
+                  <TableCell sx={WIDE_ONLY}>Display Name</TableCell>
+                  <TableCell sx={NOT_PHONE}>Roles</TableCell>
                   <TableCell>Status</TableCell>
-                  <TableCell>Created</TableCell>
+                  <TableCell sx={WIDE_ONLY}>Created</TableCell>
                   <TableCell align="right">Actions</TableCell>
                 </TableRow>
               </TableHead>
@@ -186,15 +201,26 @@ export function UserList() {
                         <Avatar
                           src={user.profileImageUrl || undefined}
                           alt={user.email}
-                          sx={{ width: 32, height: 32 }}
+                          sx={{ width: 32, height: 32, display: { xs: 'none', sm: 'flex' } }}
                         >
                           {user.email[0].toUpperCase()}
                         </Avatar>
-                        <Typography variant="body2">{user.email}</Typography>
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography variant="body2" sx={{ overflowWrap: 'break-word' }}>
+                            {breakableEmail(user.email)}
+                          </Typography>
+                          {/* Below 900px the Display Name column folds in here. */}
+                          <Typography
+                            variant="caption"
+                            sx={{ color: 'text.secondary', display: { xs: 'block', md: 'none' } }}
+                          >
+                            {getDisplayName(user)}
+                          </Typography>
+                        </Box>
                       </Box>
                     </TableCell>
-                    <TableCell>{getDisplayName(user)}</TableCell>
-                    <TableCell>
+                    <TableCell sx={WIDE_ONLY}>{getDisplayName(user)}</TableCell>
+                    <TableCell sx={NOT_PHONE}>
                       <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
                         {user.roles.map((role) => (
                           <Chip key={role} label={role} size="small" />
@@ -202,7 +228,7 @@ export function UserList() {
                       </Box>
                     </TableCell>
                     <TableCell>{getStatusChip(user.isActive)}</TableCell>
-                    <TableCell>{formatDate(user.createdAt)}</TableCell>
+                    <TableCell sx={WIDE_ONLY}>{formatDate(user.createdAt)}</TableCell>
                     <TableCell align="right">
                       <IconButton
                         size="small"

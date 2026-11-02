@@ -89,11 +89,12 @@ export const DESTINATIONS: readonly Destination[] = [
  * The route prefixes each destination OWNS (lights up on). Child routes are
  * covered by their prefix.
  *
- * - `settings` also owns `/secret-types`: secret types are a settings card
- *   (spec §6), not a destination; the routes stay where they are until E10.3
- *   moves them under the card with a redirect.
- * - `console` navigates to `/admin/settings` but owns all of `/admin`
- *   (`/admin/users` too), which is also the prefix of the rail's Console mode.
+ * - `settings` also owns `/secret-types`: since E10.3 the secret types pages
+ *   live under their card (`/settings/secret-types/*`) and the old routes are
+ *   redirects kept for bookmarks; they still light up Settings.
+ * - `console` navigates to `/admin/settings` but owns all of `/admin` (the
+ *   `/admin` and `/admin/users` redirects too), which is also the prefix of
+ *   the rail's Console mode.
  */
 export const DESTINATION_ROUTES: Readonly<Record<DestinationKey, readonly string[]>> = {
   home: ['/'],

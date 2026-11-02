@@ -1,9 +1,8 @@
 /**
  * Where the Home dashboard links to, in one place.
  *
- * The settings destinations are the pages that exist today; E10.3 moves them
- * into hub cards (`/settings/backups`, `/admin/settings/backups`) and only
- * these constants change.
+ * The backup links point at their settings cards (E10.3, #94): the user's
+ * My backups card and the Console's Backups card.
  */
 export const HOME_LINKS = {
   secrets: '/secrets',
@@ -18,8 +17,8 @@ export const HOME_LINKS = {
   scanCard: '/cards/import',
   renewCard: (id: string) => `/cards/${encodeURIComponent(id)}/renew`,
   media: '/media',
-  /** "Back up my data" (saved backups) on the user's settings page. */
-  myBackups: '/settings',
-  /** The scheduled (system) backups on the admin settings page. */
-  systemBackups: '/admin/settings',
+  /** The user's My backups card (`USER_SETTINGS_SECTIONS`). */
+  myBackups: '/settings/backups',
+  /** The Console's Backups card (`ADMIN_SECTIONS`): the scheduled system backups. */
+  systemBackups: '/admin/settings/backups',
 } as const;

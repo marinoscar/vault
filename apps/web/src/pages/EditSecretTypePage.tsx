@@ -88,7 +88,7 @@ export default function EditSecretTypePage() {
         fields,
         allowAttachments,
       });
-      navigate('/secret-types');
+      navigate('/settings/secret-types');
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Failed to update secret type');
     } finally {
@@ -115,11 +115,11 @@ export default function EditSecretTypePage() {
   return (
     <Container maxWidth="md" sx={{ py: 3 }}>
       <Breadcrumbs sx={{ mb: 2 }}>
-        <Link color="inherit" href="/" onClick={(e) => { e.preventDefault(); navigate('/'); }}>
-          Home
+        <Link color="inherit" href="/settings" onClick={(e) => { e.preventDefault(); navigate('/settings'); }}>
+          Settings
         </Link>
-        <Link color="inherit" href="/secret-types" onClick={(e) => { e.preventDefault(); navigate('/secret-types'); }}>
-          Secret Types
+        <Link color="inherit" href="/settings/secret-types" onClick={(e) => { e.preventDefault(); navigate('/settings/secret-types'); }}>
+          Secret types
         </Link>
         <Typography sx={{
           color: "text.primary"
@@ -192,7 +192,7 @@ export default function EditSecretTypePage() {
             <FieldDefinitionBuilder fields={fields} onChange={setFields} />
 
             <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 1 }}>
-              <Button onClick={() => navigate('/secret-types')} disabled={isSubmitting}>
+              <Button onClick={() => navigate('/settings/secret-types')} disabled={isSubmitting}>
                 Cancel
               </Button>
               <Button type="submit" variant="contained" disabled={isSubmitting}>
