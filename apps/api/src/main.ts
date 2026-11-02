@@ -6,11 +6,12 @@ import {
   FastifyAdapter,
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger } from '@nestjs/common';
 import fastifyCookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
+import { buildCorsOptions, registerPlatformDocs } from '@marinoscar/platform-api/host';
 import { AppModule } from './app.module';
+import { APP_OPENAPI } from './openapi/document';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -52,47 +53,39 @@ async function bootstrap() {
   // Global prefix for all routes
   app.setGlobalPrefix('api');
 
-  // Enable CORS (same-origin by default, configurable)
-  app.enableCors({
-    origin: process.env.CORS_ORIGIN || true,
-    credentials: true,
-    // Response headers a cross-origin client may read. The backup download
-    // (POST /api/secrets/export) reports its file name and counts in these.
-    exposedHeaders: [
-      'Content-Disposition',
-      'X-Vault-Export-Secrets',
-      'X-Vault-Export-Attachments',
-      'X-Vault-Export-Media-Files',
-      'X-Vault-Export-Users',
-    ],
-  });
+  // Enable CORS (same-origin by default: CORS_ORIGIN unset sends no CORS
+  // headers; a comma-separated list gives exactly those origins).
+  app.enableCors(
+    buildCorsOptions(process.env.CORS_ORIGIN, {
+      // Response headers a cross-origin client may read. The backup downloads
+      // (POST /api/secrets/export, POST /api/admin/backups/export) report their
+      // file name and counts in these.
+      exposedHeaders: [
+        'Content-Disposition',
+        'X-Vault-Export-Secrets',
+        'X-Vault-Export-Attachments',
+        'X-Vault-Export-Media-Files',
+        'X-Vault-Export-Users',
+      ],
+    }),
+  );
 
-  // Swagger/OpenAPI setup
-  const config = new DocumentBuilder()
-    .setTitle('Vault API')
-    .setDescription('API documentation for the Vault application')
-    .setVersion('1.0')
-    .addBearerAuth(
-      {
-        type: 'http',
-        scheme: 'bearer',
-        bearerFormat: 'JWT',
-        description: 'Enter JWT token',
-      },
-      'JWT-auth',
-    )
-    .build();
-
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document, {
-    jsonDocumentUrl: 'api/openapi.json',
-  });
+  // OpenAPI: the document and the two routes that serve it (`/api/docs`, the
+  // Scalar API reference, and `/api/openapi.json`), built by the platform host
+  // slice from `APP_OPENAPI`. After `setGlobalPrefix('api')` because the
+  // introspection reads the prefix off the application. Degrades to a 503 on
+  // both paths, never the boot, if generation throws.
+  const docsReady = registerPlatformDocs(app, APP_OPENAPI, logger);
 
   const port = process.env.PORT || 3000;
   await app.listen(port, '0.0.0.0');
 
   logger.log(`Application running on port ${port}`);
-  logger.log(`Swagger UI available at /api/docs`);
+  logger.log(
+    docsReady
+      ? 'API reference available at /api/docs'
+      : 'API reference DEGRADED: /api/docs and /api/openapi.json return 503 (see error above)',
+  );
 }
 
 bootstrap();

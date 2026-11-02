@@ -31,22 +31,22 @@ Access tokens are short-lived (15 minutes by default). Use the refresh token flo
 
 ### Error Response
 
+Errors are produced by the platform `HttpExceptionFilter` (`@marinoscar/platform-api/host`):
+
 ```json
 {
   "statusCode": 400,
+  "code": "BAD_REQUEST",
   "message": "Human readable error message",
-  "error": "BadRequest"
+  "details": { },
+  "timestamp": "2024-01-01T00:00:00.000Z",
+  "path": "/api/..."
 }
 ```
 
-For validation errors:
-```json
-{
-  "statusCode": 400,
-  "message": ["Field validation error 1", "Field validation error 2"],
-  "error": "BadRequest"
-}
-```
+`details` is present only when the error carries some (validation issues, a maintenance window, a non-production stack). `code` is the machine-readable code: the status default (`BAD_REQUEST`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `PRECONDITION_FAILED`, `PAYLOAD_TOO_LARGE`, `UNPROCESSABLE_ENTITY`, `TOO_MANY_REQUESTS`, `INTERNAL_ERROR`, and `ERROR` for any other status, for example a `502` or `503` that names no application code; before the platform host these two were `BAD_GATEWAY` and `SERVICE_UNAVAILABLE`) or an application code Vault registered for that status (see [Error Codes](#error-codes)). A code that is not registered for the status it was thrown with is replaced by the status default, so a new code a client reads must be registered in `apps/api/src/app-registrations/error-codes.ts`.
+
+During a maintenance window every non-exempt request answers `503` with `details.reason: "MAINTENANCE_MODE"` and a `Retry-After` header (`/api/health/*`, `/api/admin/maintenance`, `/api/admin/about`, `/api/admin/doctor` and admins stay reachable).
 
 ## Pagination
 
@@ -1618,7 +1618,7 @@ Fields are `null` (with confidence `0`) only when nothing is visible for that fi
 
 A `429`/`502` response may include a `Retry-After` header (seconds).
 
-**Known limitation — issue #35:** the codes above are what `AiException` actually carries in its response body, but the API's global `HttpExceptionFilter` (`apps/api/src/common/filters/http-exception.filter.ts`) unconditionally overwrites any custom `code` with one derived purely from the HTTP status before the response is sent. **In the app's current state, a client cannot distinguish `AI_RATE_LIMITED` from `AI_QUOTA_EXCEEDED` (both arrive as `TOO_MANY_REQUESTS`), or `AI_UPSTREAM_AUTH` from any other 502, by the `code` field alone** — every one of the codes in the table above is present in the exception that is thrown, but is discarded before the client sees it. Callers must currently branch on HTTP status instead. The web client's `describeCardExtractionError()` (`apps/web/src/hooks/useCardImport.ts`) already works around this by checking `code` first (for when #35 is fixed) and falling back to status-only messaging that intentionally hedges between the two 429 causes. This is a known, tracked defect, not intended behavior — fix it in the exception filter, not by re-deriving codes on the client.
+**Registered codes.** Every `AI_*` code, `ENCRYPTION_UNAVAILABLE` and `DATABASE_SEED_REQUIRED` is registered in `apps/api/src/app-registrations/error-codes.ts` with the status it is thrown with, so the platform `HttpExceptionFilter` delivers it unchanged (the former issue #35 limitation, where clients saw only the status default, no longer applies).
 
 **Rate limiting on this endpoint specifically:** unlike the rest of the API (see [Rate Limits](#rate-limits) below), `POST /secrets/cards/extract` has real, enforced limits: a per-user, per-API-replica in-memory burst window (10 calls / 5 minutes, reset on deploy, does not add up across replicas) and a per-user durable daily budget (counts `ai.card.extract` audit rows in the last 24 hours, so it is restart-proof and correct across replicas). Only the daily budget is meant to bound spend; the burst window exists solely to stop a stuck client from hammering the provider.
 
@@ -2047,56 +2047,49 @@ Deletes the stored object and sets `deletedAt`; the row stays in your list. Retu
 
 ### Health
 
-**Public endpoints** - Used for Kubernetes liveness/readiness probes.
-
-#### GET /health
-Full health check - includes database connectivity test. Equivalent to GET /health/ready.
-
-**Response:**
-```json
-{
-  "status": "ok",
-  "timestamp": "2024-01-01T00:00:00.000Z",
-  "checks": {
-    "database": "ok"
-  }
-}
-```
-
-**Error Cases:**
-- 503 Service Unavailable - Database connection failed
-
----
+**Public endpoints**, served by the platform host core (`PlatformHostCoreModule`); used for liveness and readiness probes. All three are reachable during a maintenance window except `/health/ready`, which answers `503` while a window is open. Bodies are wrapped like every other response (`{ "data": ..., "meta": ... }`).
 
 #### GET /health/live
-Liveness check - always returns 200 if service is running.
+Liveness: `200` whenever the process runs. Runs no indicator, never touches the database.
 
-**Response:**
 ```json
-{
-  "status": "ok",
-  "timestamp": "2024-01-01T00:00:00.000Z"
-}
+{ "data": { "status": "ok", "timestamp": "2024-01-01T00:00:00.000Z" } }
 ```
 
 ---
 
 #### GET /health/ready
-Readiness check - includes database connectivity test.
+Readiness: the critical indicators (the `database` indicator is a timed `SELECT 1`). `200` when all are up; `503` with the standard error body when one is down or a maintenance window is open.
 
-**Response:**
 ```json
 {
-  "status": "ok",
-  "timestamp": "2024-01-01T00:00:00.000Z",
-  "checks": {
-    "database": "ok"
+  "data": {
+    "status": "ok",
+    "info": { "database": { "status": "up", "responseTime": "3ms" } },
+    "error": {},
+    "details": { "database": { "status": "up", "responseTime": "3ms" } },
+    "timestamp": "2024-01-01T00:00:00.000Z"
   }
 }
 ```
 
-**Error Cases:**
-- 503 Service Unavailable - Database connection failed
+---
+
+#### GET /health
+Full health check: every registered indicator. Same body as `/health/ready`; `503` when any is down.
+
+---
+
+### Host and operations (admin)
+
+All require `system_settings:read` unless noted; served by the platform (`PlatformHostCoreModule`, `DoctorModule`, `AboutModule`).
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/admin/doctor` | Runs every read-only health check (platform: `db.connection`, `db.migrations`, `db.rls_role`, `secrets.encryption-key`, `maintenance.mode`, ...; Vault: `vault.encryption_key`, `vault.backup_schedule`) and reports pass / warn / fail / skip with a remedy |
+| `GET /api/admin/doctor/support-bundle` | Redacted diagnostic archive |
+| `GET /api/admin/about` | API version, deployment mode, deploy record and a database liveness fact |
+| `GET /api/admin/maintenance`, `PUT /api/admin/maintenance` (`system_settings:write`) | Read or set the maintenance window (stored under the `maintenance` key of the `global` system-settings row) |
 
 ---
 
@@ -2139,12 +2132,16 @@ Readiness check - includes database connectivity test.
 | `AI_UPSTREAM_UNAVAILABLE` | 502 | OpenAI 5xx, network failure, or the API's own request timeout |
 | `AI_NOT_CONFIGURED` | 503 | AI card scanning disabled, or no API key stored |
 | `AI_KEY_UNREADABLE` | 503 | Stored OpenAI API key cannot be decrypted (`VAULT_ENCRYPTION_KEY` missing or rotated) |
+| `AI_API_KEY_UNREADABLE` | 503 | Same condition, raised when the key is read from system settings |
+| `ENCRYPTION_UNAVAILABLE` | 503 | `VAULT_ENCRYPTION_KEY` is not configured, so a key or backup password could not be stored |
+| `DATABASE_SEED_REQUIRED` | 500 | Migrations ran but the seed data is missing |
+| `ERROR` | 502, 503, any other | Fallback for a status without a registered code: an object-storage failure (502), a failed readiness probe (503), a maintenance window (503, `details.reason: "MAINTENANCE_MODE"`) |
 
 **`AI_*` codes are never 401/403, on purpose.** An upstream OpenAI credential rejection is surfaced as `502 AI_UPSTREAM_AUTH`, not 401/403 — the web client (`apps/web/src/services/api.ts`) treats any 401 as an expired session and reactively refreshes the token and retries, which could sign a user out over nothing more than an administrator's stale OpenAI key.
 
 **[`POST /system-settings/ai/verify`](#post-system-settingsaiverify) goes further and uses no error status at all for provider failures**: a rejected key, an unknown model or a model that cannot read images all come back as `200` with `{ "ok": false, "reason": ... }` in the body. Only the endpoint's *own* failures (`AI_RATE_LIMITED`, `AI_NOT_CONFIGURED`, `AI_KEY_UNREADABLE`) are HTTP errors, so that endpoint is also immune to the issue #35 code-overwriting defect described above — its `reason` field travels in a success body and is never rewritten by the exception filter.
 
-**Known limitation — issue #35 — every code above except the first nine is currently unreachable by clients in practice.** The `AI_*` codes (and any other custom `code` an `HttpException`'s response body carries) are computed correctly by the throwing code, but `HttpExceptionFilter` (`apps/api/src/common/filters/http-exception.filter.ts`) unconditionally overwrites `code` with a value derived purely from the HTTP status before the response is sent — the custom code is read from the exception body and then immediately discarded on the next line. Until that filter is fixed, a card-extraction client sees `TOO_MANY_REQUESTS` (for both `AI_RATE_LIMITED` and `AI_QUOTA_EXCEEDED`), `BAD_REQUEST`, `UNPROCESSABLE_ENTITY`, or a generic `ERROR` (for the 502/503 cases, which have no entry in the filter's status-to-code map) instead of the specific `AI_*` code — HTTP status and the `message` string are the only reliable signals right now. See [AI Card Extraction](#ai-card-extraction) for how the web client currently compensates.
+**Registered codes.** Every `AI_*` code, `ENCRYPTION_UNAVAILABLE` and `DATABASE_SEED_REQUIRED` is registered in `apps/api/src/app-registrations/error-codes.ts` with the status it is thrown with, so the platform `HttpExceptionFilter` delivers it unchanged (the former issue #35 limitation, where clients saw only the status default, no longer applies).
 
 ---
 
@@ -2168,17 +2165,14 @@ Readiness check - includes database connectivity test.
 
 ---
 
-## Swagger/OpenAPI Documentation
+## API Reference (Scalar / OpenAPI)
 
-Interactive API documentation with request/response examples is available at:
+Interactive API documentation is served by the platform host slice (`registerPlatformDocs`) from the OpenAPI 3.1 document it generates from the code:
 
-**Development:** http://localhost:3535/api/docs
+- **Reference UI (Scalar):** http://localhost:3535/api/docs
+- **Machine-readable document:** http://localhost:3535/api/openapi.json
 
-The Swagger UI allows you to:
-- Explore all endpoints
-- View request/response schemas
-- Test API calls directly from the browser
-- Authenticate with JWT tokens
+The routes sit outside Nest's router (so outside the maintenance guard) and answer `503` instead of failing the boot if the document cannot be generated. Authenticated operations declare the `JWT-auth` bearer scheme.
 
 ---
 
@@ -2189,7 +2183,7 @@ The API uses a **same-origin architecture**. Both the frontend and API are serve
 - Frontend: `http://localhost:3535/`
 - API: `http://localhost:3535/api`
 
-This eliminates CORS complexity and improves security. No cross-origin requests are required.
+This eliminates CORS complexity and improves security. No cross-origin requests are required. With `CORS_ORIGIN` unset the API sends **no** CORS headers (same-origin only); a comma-separated list of exact origins (`https://a.example,https://b.example`) allows exactly those origins with credentials; a wildcard or a malformed origin stops the boot (`buildCorsOptions`).
 
 ---
 

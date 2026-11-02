@@ -1,6 +1,7 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
+// Dates are the wire format (ISO-8601 strings): the OpenAPI generator cannot represent z.date().
 export const userResponseSchema = z.object({
   id: z.string().uuid(),
   email: z.string().email(),
@@ -10,8 +11,8 @@ export const userResponseSchema = z.object({
   providerProfileImageUrl: z.string().url().nullable(),
   isActive: z.boolean(),
   roles: z.array(z.string()),
-  createdAt: z.date(),
-  updatedAt: z.date(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
 });
 
 export class UserResponseDto extends createZodDto(userResponseSchema) {}
