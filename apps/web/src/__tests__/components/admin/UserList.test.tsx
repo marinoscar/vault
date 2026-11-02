@@ -213,7 +213,8 @@ describe('UserList', () => {
       });
 
       await waitFor(() => {
-        expect(screen.getByText('Active User')).toBeInTheDocument();
+        // The Display Name column, and the same name folded under the email for phones.
+        expect(screen.getAllByText('Active User')).toHaveLength(2);
       });
     });
 
@@ -236,7 +237,8 @@ describe('UserList', () => {
       });
 
       await waitFor(() => {
-        expect(screen.getByText('Inactive User')).toBeInTheDocument();
+        // The Display Name column, and the same name folded under the email for phones.
+        expect(screen.getAllByText('Inactive User')).toHaveLength(2);
       });
     });
 

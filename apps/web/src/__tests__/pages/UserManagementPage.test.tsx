@@ -86,7 +86,7 @@ describe('UserManagementPage', () => {
       });
 
       // Should redirect - page content should not render
-      expect(screen.queryByText(/user management/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/users & allowlist/i)).not.toBeInTheDocument();
       expect(screen.queryByRole('tab')).not.toBeInTheDocument();
     });
 
@@ -95,7 +95,7 @@ describe('UserManagementPage', () => {
         wrapperOptions: { user: mockAdminUser },
       });
 
-      expect(screen.getByText(/user management/i)).toBeInTheDocument();
+      expect(screen.getByText(/users & allowlist/i)).toBeInTheDocument();
     });
 
     it('should check users:read permission', () => {
@@ -126,7 +126,7 @@ describe('UserManagementPage', () => {
       });
 
       expect(
-        screen.getByRole('heading', { name: /user management/i })
+        screen.getByRole('heading', { name: /users & allowlist/i })
       ).toBeInTheDocument();
     });
 
@@ -484,7 +484,7 @@ describe('UserManagementPage', () => {
         wrapperOptions: { user: mockAdminUser },
       });
 
-      const heading = screen.getByRole('heading', { name: /user management/i });
+      const heading = screen.getByRole('heading', { name: /users & allowlist/i });
       expect(heading.tagName).toBe('H1');
     });
 
@@ -549,12 +549,12 @@ describe('UserManagementPage', () => {
         wrapperOptions: { user: mockAdminUser },
       });
 
-      expect(screen.getByText(/user management/i)).toBeInTheDocument();
+      expect(screen.getByText(/users & allowlist/i)).toBeInTheDocument();
 
       // Force a rerender
       rerender(<UserManagementPage />);
 
-      expect(screen.getByText(/user management/i)).toBeInTheDocument();
+      expect(screen.getByText(/users & allowlist/i)).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: /users/i })).toHaveAttribute(
         'aria-selected',
         'true'
@@ -566,7 +566,7 @@ describe('UserManagementPage', () => {
         wrapperOptions: { user: mockAdminUser },
       });
 
-      expect(screen.getByText(/user management/i)).toBeInTheDocument();
+      expect(screen.getByText(/users & allowlist/i)).toBeInTheDocument();
 
       // Unmount should not throw
       expect(() => unmount()).not.toThrow();
@@ -588,7 +588,7 @@ describe('UserManagementPage', () => {
 
       render(<UserManagementPage />, {
         wrapperOptions: {
-          route: '/admin/users',
+          route: '/admin/settings/users',
           user: {
             id: 'viewer-id',
             email: 'viewer@example.com',
@@ -603,7 +603,7 @@ describe('UserManagementPage', () => {
       });
 
       // Should not render page content
-      expect(screen.queryByText(/user management/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/users & allowlist/i)).not.toBeInTheDocument();
     });
 
     it('should use replace navigation for redirect', () => {
@@ -620,13 +620,13 @@ describe('UserManagementPage', () => {
 
       render(<UserManagementPage />, {
         wrapperOptions: {
-          route: '/admin/users',
+          route: '/admin/settings/users',
           user: null,
         },
       });
 
       // Navigate component uses replace prop
-      expect(screen.queryByText(/user management/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/users & allowlist/i)).not.toBeInTheDocument();
     });
   });
 });

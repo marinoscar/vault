@@ -1,30 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { render, mockAdminUser } from '../utils/test-utils';
-import SystemSettingsPage from '../../pages/SystemSettingsPage';
+import { render, mockAdminUser } from '../../utils/test-utils';
+import GeneralSettingsPage from '../../../pages/admin/GeneralSettingsPage';
 
 // Mock the hooks
-vi.mock('../../hooks/useSystemSettings', () => ({
+vi.mock('../../../hooks/useSystemSettings', () => ({
   useSystemSettings: vi.fn(),
 }));
 
-vi.mock('../../hooks/usePermissions', () => ({
+vi.mock('../../../hooks/usePermissions', () => ({
   usePermissions: vi.fn(),
 }));
 
-// ScheduledBackups loads its own data; the page test only checks the tab wiring.
-vi.mock('../../components/admin/ScheduledBackups', () => ({
-  ScheduledBackups: () => <div data-testid="scheduled-backups">Scheduled backups panel</div>,
-}));
-
-import { useSystemSettings } from '../../hooks/useSystemSettings';
-import { usePermissions } from '../../hooks/usePermissions';
+import { useSystemSettings } from '../../../hooks/useSystemSettings';
+import { usePermissions } from '../../../hooks/usePermissions';
 
 const mockUseSystemSettings = vi.mocked(useSystemSettings);
 const mockUsePermissions = vi.mocked(usePermissions);
 
-describe('SystemSettingsPage', () => {
+describe('GeneralSettingsPage (the General card; was the UI Settings and Feature Flags tabs)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
@@ -75,7 +70,7 @@ describe('SystemSettingsPage', () => {
         isAdmin: false,
       });
 
-      render(<SystemSettingsPage />, {
+      render(<GeneralSettingsPage />, {
         wrapperOptions: {
           user: {
             id: 'viewer-id',
@@ -91,16 +86,16 @@ describe('SystemSettingsPage', () => {
       });
 
       // Should redirect - component should not render
-      expect(screen.queryByText(/system settings/i)).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'General' })).not.toBeInTheDocument();
     });
 
     it('should load settings for admin users', async () => {
-      render(<SystemSettingsPage />, {
+      render(<GeneralSettingsPage />, {
         wrapperOptions: { user: mockAdminUser },
       });
 
       await waitFor(() => {
-        expect(screen.getByText(/system settings/i)).toBeInTheDocument();
+        expect(screen.getByRole('heading', { level: 1, name: 'General' })).toBeInTheDocument();
       });
     });
 
@@ -116,7 +111,7 @@ describe('SystemSettingsPage', () => {
         isAdmin: false,
       });
 
-      render(<SystemSettingsPage />, {
+      render(<GeneralSettingsPage />, {
         wrapperOptions: {
           user: {
             ...mockAdminUser,
@@ -145,7 +140,7 @@ describe('SystemSettingsPage', () => {
         refresh: vi.fn(),
       });
 
-      render(<SystemSettingsPage />, {
+      render(<GeneralSettingsPage />, {
         wrapperOptions: { user: mockAdminUser },
       });
 
@@ -166,7 +161,7 @@ describe('SystemSettingsPage', () => {
         refresh: vi.fn(),
       });
 
-      render(<SystemSettingsPage />, {
+      render(<GeneralSettingsPage />, {
         wrapperOptions: { user: mockAdminUser },
       });
 
@@ -176,105 +171,44 @@ describe('SystemSettingsPage', () => {
     });
   });
 
-  describe('Tabs', () => {
-    it('should display all tabs', async () => {
-      render(<SystemSettingsPage />, {
-        wrapperOptions: { user: mockAdminUser },
-      });
+  describe('Card content (E10.3: one page, no tabs)', () => {
+    it('renders the UI settings and the feature flags on one page, with no tab strip', async () => {
+      render(<GeneralSettingsPage />, { wrapperOptions: { user: mockAdminUser } });
 
-      await waitFor(() => {
-        expect(screen.getByRole('tab', { name: /ui settings/i })).toBeInTheDocument();
-        expect(screen.getByRole('tab', { name: /feature flags/i })).toBeInTheDocument();
-        expect(screen.getByRole('tab', { name: /advanced.*json/i })).toBeInTheDocument();
-      });
+      expect(await screen.findByRole('heading', { level: 1, name: 'General' })).toBeInTheDocument();
+      expect(screen.getByText('User Interface')).toBeInTheDocument();
+      expect(screen.getByText('Feature Flags')).toBeInTheDocument();
+      expect(screen.queryByRole('tab')).not.toBeInTheDocument();
     });
 
-    it('should display the Backups tab between AI and Advanced', async () => {
-      render(<SystemSettingsPage />, {
-        wrapperOptions: { user: mockAdminUser },
-      });
+    it('drops the Advanced (JSON) editor (spec section 6)', async () => {
+      render(<GeneralSettingsPage />, { wrapperOptions: { user: mockAdminUser } });
 
-      const tabs = await screen.findAllByRole('tab');
-      const names = tabs.map((t) => t.textContent);
-
-      expect(names).toContain('Backups');
-      expect(names.indexOf('Backups')).toBe(names.indexOf('AI') + 1);
-      expect(names.indexOf('Backups')).toBeLessThan(names.indexOf('Advanced (JSON)'));
+      await screen.findByRole('heading', { level: 1, name: 'General' });
+      expect(screen.queryByText(/advanced/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/json/i)).not.toBeInTheDocument();
     });
 
-    it('should not render the backups panel until the Backups tab is selected', async () => {
-      render(<SystemSettingsPage />, {
-        wrapperOptions: { user: mockAdminUser },
-      });
+    it('does not host the AI or Backups content (each is its own card)', async () => {
+      render(<GeneralSettingsPage />, { wrapperOptions: { user: mockAdminUser } });
 
-      await screen.findByRole('tab', { name: 'Backups' });
-
-      expect(screen.queryByTestId('scheduled-backups')).not.toBeInTheDocument();
-    });
-
-    it('should render ScheduledBackups when the Backups tab is selected', async () => {
-      const user = userEvent.setup();
-      render(<SystemSettingsPage />, {
-        wrapperOptions: { user: mockAdminUser },
-      });
-
-      const backupsTab = await screen.findByRole('tab', { name: 'Backups' });
-      await user.click(backupsTab);
-
-      expect(backupsTab).toHaveAttribute('aria-selected', 'true');
-      expect(screen.getByTestId('scheduled-backups')).toBeInTheDocument();
-    });
-
-    it('should show the Backups tab to read-only users', async () => {
-      mockUsePermissions.mockReturnValue({
-        permissions: new Set(['system_settings:read']),
-        roles: new Set(['viewer']),
-        hasPermission: (perm: string) => perm === 'system_settings:read',
-        hasAnyPermission: vi.fn(),
-        hasAllPermissions: vi.fn(),
-        hasRole: vi.fn(),
-        hasAnyRole: vi.fn(),
-        isAdmin: false,
-      });
-      const user = userEvent.setup();
-      render(<SystemSettingsPage />, {
-        wrapperOptions: { user: { ...mockAdminUser, permissions: ['system_settings:read'] } },
-      });
-
-      await user.click(await screen.findByRole('tab', { name: 'Backups' }));
-
-      expect(screen.getByTestId('scheduled-backups')).toBeInTheDocument();
-    });
-
-    it('should switch tabs on click', async () => {
-      const user = userEvent.setup();
-
-      render(<SystemSettingsPage />, {
-        wrapperOptions: { user: mockAdminUser },
-      });
-
-      await waitFor(() => {
-        expect(screen.getByRole('tab', { name: /feature flags/i })).toBeInTheDocument();
-      });
-
-      const featureFlagsTab = screen.getByRole('tab', { name: /feature flags/i });
-      await user.click(featureFlagsTab);
-
-      expect(featureFlagsTab).toHaveAttribute('aria-selected', 'true');
+      await screen.findByRole('heading', { level: 1, name: 'General' });
+      expect(screen.queryByText(/api key/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/scheduled backups/i)).not.toBeInTheDocument();
     });
   });
 
   describe('UI Settings Tab', () => {
     it('should display UI settings', async () => {
-      render(<SystemSettingsPage />, {
+      render(<GeneralSettingsPage />, {
         wrapperOptions: { user: mockAdminUser },
       });
 
       await waitFor(() => {
-        expect(screen.getByText(/system settings/i)).toBeInTheDocument();
+        expect(screen.getByRole('heading', { level: 1, name: 'General' })).toBeInTheDocument();
       });
 
-      // UI Settings should be the default tab
+      expect(screen.getByRole('switch', { name: /allow users to override system theme/i })).toBeChecked();
     });
   });
 
@@ -304,17 +238,14 @@ describe('SystemSettingsPage', () => {
         refresh: vi.fn(),
       });
 
-      render(<SystemSettingsPage />, {
+      render(<GeneralSettingsPage />, {
         wrapperOptions: { user: mockAdminUser },
       });
 
-      await waitFor(() => {
-        expect(screen.getByRole('tab', { name: /feature flags/i })).toBeInTheDocument();
-      });
-
-      await user.click(screen.getByRole('tab', { name: /feature flags/i }));
-
-      // Feature flags should be visible
+      // Both flags are listed on the page itself, no tab to click.
+      expect(await screen.findByText('betaFeature')).toBeInTheDocument();
+      expect(screen.getByText('newDashboard')).toBeInTheDocument();
+      expect(user).toBeDefined();
     });
   });
 
@@ -343,7 +274,7 @@ describe('SystemSettingsPage', () => {
         refresh: vi.fn(),
       });
 
-      render(<SystemSettingsPage />, {
+      render(<GeneralSettingsPage />, {
         wrapperOptions: { user: mockAdminUser },
       });
 
@@ -353,12 +284,12 @@ describe('SystemSettingsPage', () => {
     });
 
     it('should not display updatedBy when not available', async () => {
-      render(<SystemSettingsPage />, {
+      render(<GeneralSettingsPage />, {
         wrapperOptions: { user: mockAdminUser },
       });
 
       await waitFor(() => {
-        expect(screen.getByText(/system settings/i)).toBeInTheDocument();
+        expect(screen.getByRole('heading', { level: 1, name: 'General' })).toBeInTheDocument();
       });
 
       expect(screen.queryByText(/last updated by/i)).not.toBeInTheDocument();
@@ -387,28 +318,34 @@ describe('SystemSettingsPage', () => {
         refresh: vi.fn(),
       });
 
-      render(<SystemSettingsPage />, {
+      render(<GeneralSettingsPage />, {
         wrapperOptions: { user: mockAdminUser },
       });
 
       await waitFor(() => {
-        expect(screen.getByText(/system settings/i)).toBeInTheDocument();
+        expect(screen.getByRole('heading', { level: 1, name: 'General' })).toBeInTheDocument();
       });
 
-      // Settings components will call updateSettings via handleSave
-      expect(updateSettings).toBeDefined();
+      const user = userEvent.setup();
+      await user.click(screen.getByRole('switch', { name: /allow users to override system theme/i }));
+      // The first Save Changes is the User Interface section's (feature flags has its own).
+      await user.click(screen.getAllByRole('button', { name: 'Save Changes' })[0]);
+
+      expect(updateSettings).toHaveBeenCalledWith({ ui: { allowUserThemeOverride: false } });
+      expect(await screen.findByText('Settings saved')).toBeInTheDocument();
     });
 
     it('should show success message after save', async () => {
-      render(<SystemSettingsPage />, {
+      render(<GeneralSettingsPage />, {
         wrapperOptions: { user: mockAdminUser },
       });
 
       await waitFor(() => {
-        expect(screen.getByText(/system settings/i)).toBeInTheDocument();
+        expect(screen.getByRole('heading', { level: 1, name: 'General' })).toBeInTheDocument();
       });
 
-      // Snackbar should be present in component
+      // Nothing saved yet: no snackbar until a save resolves.
+      expect(screen.queryByText('Settings saved')).not.toBeInTheDocument();
     });
 
     it('should show error message when save fails', async () => {
@@ -432,13 +369,20 @@ describe('SystemSettingsPage', () => {
         refresh: vi.fn(),
       });
 
-      render(<SystemSettingsPage />, {
+      render(<GeneralSettingsPage />, {
         wrapperOptions: { user: mockAdminUser },
       });
 
       await waitFor(() => {
-        expect(screen.getByText(/system settings/i)).toBeInTheDocument();
+        expect(screen.getByRole('heading', { level: 1, name: 'General' })).toBeInTheDocument();
       });
+
+      const user = userEvent.setup();
+      await user.click(screen.getByRole('switch', { name: /allow users to override system theme/i }));
+      // The first Save Changes is the User Interface section's (feature flags has its own).
+      await user.click(screen.getAllByRole('button', { name: 'Save Changes' })[0]);
+
+      expect(await screen.findByText('Save failed')).toBeInTheDocument();
     });
   });
 
@@ -462,12 +406,12 @@ describe('SystemSettingsPage', () => {
         refresh: vi.fn(),
       });
 
-      render(<SystemSettingsPage />, {
+      render(<GeneralSettingsPage />, {
         wrapperOptions: { user: mockAdminUser },
       });
 
-      // Components should receive disabled prop
-      expect(screen.getByText(/system settings/i)).toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 1, name: 'General' })).toBeInTheDocument();
+      expect(screen.getByRole('switch', { name: /allow users to override system theme/i })).toBeDisabled();
     });
 
     it('should disable controls for read-only users', async () => {
@@ -482,7 +426,7 @@ describe('SystemSettingsPage', () => {
         isAdmin: false,
       });
 
-      render(<SystemSettingsPage />, {
+      render(<GeneralSettingsPage />, {
         wrapperOptions: {
           user: {
             ...mockAdminUser,
@@ -493,8 +437,9 @@ describe('SystemSettingsPage', () => {
       });
 
       await waitFor(() => {
-        expect(screen.getByText(/system settings/i)).toBeInTheDocument();
+        expect(screen.getByRole('heading', { level: 1, name: 'General' })).toBeInTheDocument();
       });
+      expect(screen.getByRole('switch', { name: /allow users to override system theme/i })).toBeDisabled();
     });
   });
 });

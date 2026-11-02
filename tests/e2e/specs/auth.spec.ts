@@ -36,9 +36,9 @@ test.describe('Test Authentication', () => {
     await loginAsAdmin(page, 'admin-access-test@test.local');
 
     // Navigate to admin page
-    await page.goto('/admin/users');
+    await page.goto('/admin/settings/users');
 
     // Should be able to access admin page
-    await expect(page).toHaveURL('/admin/users');
+    await expect(page).toHaveURL('/admin/settings/users');
   });
 });
