@@ -1,273 +1,390 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { screen } from '@testing-library/react';
-import { render, mockUser } from '../utils/test-utils';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { http, HttpResponse } from 'msw';
+import { server } from '../mocks/server';
+import { render, mockUser, type MockUser } from '../utils/test-utils';
 import HomePage from '../../pages/HomePage';
-import type { SecretListItem, SecretType, MediaFolder } from '../../types';
+import type { SecretDetail, SecretListItem } from '../../types';
+import {
+  HOUR,
+  NOW,
+  ago,
+  cardType,
+  loginType,
+  makeRun,
+  makeSchedule,
+  makeSecret,
+} from '../components/home/homeFixtures';
 
-// HomePage delegates all of its data to these three hooks and simply wires
-// their state into child components. Mocking them keeps these tests focused
-// on HomePage's own composition/wiring logic rather than re-testing the
-// hooks' internal fetch behaviour (or requiring a real network layer).
-vi.mock('../../hooks/useSecrets', () => ({ useSecrets: vi.fn() }));
-vi.mock('../../hooks/useSecretTypes', () => ({ useSecretTypes: vi.fn() }));
-vi.mock('../../hooks/useMediaFolders', () => ({ useMediaFolders: vi.fn() }));
+const API = '*/api';
 
-import { useSecrets } from '../../hooks/useSecrets';
-import { useSecretTypes } from '../../hooks/useSecretTypes';
-import { useMediaFolders } from '../../hooks/useMediaFolders';
+// ---------------------------------------------------------------------------
+// Users: each permission set the dashboard gates on.
+// ---------------------------------------------------------------------------
+const withPerms = (permissions: string[], extra: Partial<MockUser> = {}): MockUser => ({
+  ...mockUser,
+  displayName: 'Person A',
+  permissions: ['user_settings:read', 'user_settings:write', ...permissions],
+  ...extra,
+});
+const READER = withPerms(['secrets:read']);
+const WRITER = withPerms(['secrets:read', 'secrets:write', 'media:read']);
+const ADMIN = withPerms(['secrets:read', 'secrets:write', 'media:read', 'system_settings:read'], {
+  roles: [{ name: 'admin' }],
+});
+const NO_ACCESS = withPerms([]);
 
-const mockFetchSecrets = vi.fn();
-const mockFetchTypes = vi.fn();
-const mockFetchFolders = vi.fn();
+// ---------------------------------------------------------------------------
+// Invented data: test PANs only, expiries relative to NOW (2026-11-02).
+// ---------------------------------------------------------------------------
+const RECENT: SecretListItem[] = [
+  makeSecret('s1', 'Product X admin', 0.5 * HOUR),
+  makeSecret('s2', 'Org Alpha deploy key', 5 * HOUR),
+  makeSecret('s3', 'Staging database', 26 * HOUR),
+];
 
-const mockSecretType: SecretType = {
-  id: 'type-1',
-  name: 'Password',
-  description: null,
-  icon: 'Key',
-  fields: [],
-  allowAttachments: false,
-  isSystem: true,
-  createdAt: '2024-01-01T00:00:00.000Z',
-};
+function card(id: string, name: string, number: string, month: string, year: string): SecretDetail {
+  return {
+    id,
+    name,
+    description: null,
+    type: cardType,
+    currentVersion: 1,
+    createdAt: ago(900 * HOUR),
+    updatedAt: ago(300 * HOUR),
+    values: { number, exp_month: month, exp_year: year },
+    createdBy: null,
+    attachments: [],
+  };
+}
+const CARDS = [
+  card('c1', 'Test Visa travel', '4242424242424242', '10', '2026'), // expired
+  card('c2', 'Test Mastercard', '5555555555554444', '12', '2026'), // expiring within 60 days
+  card('c3', 'Test Discover', '6011111111111117', '08', '2029'), // valid
+];
 
-const mockSecret: SecretListItem = {
-  id: 'secret-1',
-  name: 'GitHub',
-  description: 'Personal access token',
-  type: mockSecretType,
-  currentVersion: 2,
-  createdAt: '2024-01-01T00:00:00.000Z',
-  updatedAt: '2024-01-01T00:00:00.000Z',
-};
+interface ApiOptions {
+  recentTotal?: number;
+  recent?: SecretListItem[];
+  failRecent?: boolean;
+  aiEnabled?: boolean;
+  systemFailed?: boolean;
+}
 
-const mockFolder: MediaFolder = {
-  id: 'folder-1',
-  name: 'Receipts',
-  userId: mockUser.id,
-  fileCount: 3,
-  createdAt: '2024-01-01T00:00:00.000Z',
-  updatedAt: '2024-01-01T00:00:00.000Z',
-};
+const requests: string[] = [];
+const DASHBOARD_ENDPOINT = /^\/api\/(secrets|secret-types|backups|admin|media|ai)\b/;
 
-function mockData(overrides: {
-  secrets?: SecretListItem[];
-  totalSecrets?: number;
-  secretsLoading?: boolean;
-  types?: SecretType[];
-  typesLoading?: boolean;
-  folders?: MediaFolder[];
-  totalFolders?: number;
-  foldersLoading?: boolean;
-} = {}) {
-  vi.mocked(useSecrets).mockReturnValue({
-    secrets: overrides.secrets ?? [],
-    totalItems: overrides.totalSecrets ?? (overrides.secrets?.length ?? 0),
-    page: 1,
-    pageSize: 5,
-    totalPages: 1,
-    isLoading: overrides.secretsLoading ?? false,
-    error: null,
-    fetchSecrets: mockFetchSecrets,
-    createSecret: vi.fn(),
-    deleteSecret: vi.fn(),
-  });
+function mockApi(options: ApiOptions = {}) {
+  const recent = options.recent ?? RECENT;
+  let recentFailures = options.failRecent ? 1 : 0;
+  server.use(
+    http.get(`${API}/secret-types`, () => HttpResponse.json({ data: [loginType, cardType] })),
+    http.get(`${API}/secrets`, ({ request }) => {
+      const url = new URL(request.url);
+      if (url.searchParams.get('typeId') === cardType.id) {
+        const items = CARDS.map(({ values: _v, createdBy: _c, attachments: _a, ...item }) => item);
+        return HttpResponse.json({
+          data: { items, meta: { page: 1, pageSize: 100, totalItems: items.length, totalPages: 1 } },
+        });
+      }
+      if (recentFailures > 0) {
+        recentFailures -= 1;
+        return HttpResponse.json({ message: 'Recent secrets are down' }, { status: 500 });
+      }
+      return HttpResponse.json({
+        data: {
+          items: recent,
+          meta: { page: 1, pageSize: 5, totalItems: options.recentTotal ?? 37, totalPages: 8 },
+        },
+      });
+    }),
+    http.get(`${API}/secrets/:id`, ({ params }) => {
+      const found = CARDS.find((c) => c.id === params.id);
+      return found ? HttpResponse.json({ data: found }) : new HttpResponse(null, { status: 404 });
+    }),
+    http.get(`${API}/backups/me`, () =>
+      HttpResponse.json({ data: { items: [makeRun()], total: 4, page: 1, pageSize: 1, totalPages: 4 } }),
+    ),
+    http.get(`${API}/admin/backups`, () =>
+      HttpResponse.json({
+        data: {
+          items: [
+            makeRun({
+              id: 'run-9',
+              trigger: 'schedule',
+              status: options.systemFailed ? 'failed' : 'succeeded',
+              error: options.systemFailed ? 'Storage upload failed' : null,
+            }),
+          ],
+          total: 1,
+          page: 1,
+          pageSize: 1,
+          totalPages: 1,
+        },
+      }),
+    ),
+    http.get(`${API}/admin/backups/schedule`, () => HttpResponse.json({ data: makeSchedule() })),
+    http.get(`${API}/media/folders`, () =>
+      HttpResponse.json({ data: { items: [], meta: { page: 1, pageSize: 1, totalItems: 6, totalPages: 6 } } }),
+    ),
+    http.get(`${API}/ai/status`, () =>
+      HttpResponse.json({
+        data: { enabled: options.aiEnabled ?? true, features: { cardExtract: options.aiEnabled ?? true } },
+      }),
+    ),
+  );
+}
 
-  vi.mocked(useSecretTypes).mockReturnValue({
-    types: overrides.types ?? [],
-    isLoading: overrides.typesLoading ?? false,
-    error: null,
-    fetchTypes: mockFetchTypes,
-    createType: vi.fn(),
-    updateType: vi.fn(),
-    deleteType: vi.fn(),
-  });
+/** Requests per path (query string dropped), dashboard endpoints only. */
+function countsByPath(): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const entry of requests) {
+    const path = entry.split('?')[0];
+    if (DASHBOARD_ENDPOINT.test(path)) counts[path] = (counts[path] ?? 0) + 1;
+  }
+  return counts;
+}
 
-  vi.mocked(useMediaFolders).mockReturnValue({
-    folders: overrides.folders ?? [],
-    totalItems: overrides.totalFolders ?? (overrides.folders?.length ?? 0),
-    page: 1,
-    pageSize: 5,
-    totalPages: 1,
-    isLoading: overrides.foldersLoading ?? false,
-    error: null,
-    fetchFolders: mockFetchFolders,
-    createFolder: vi.fn(),
-    deleteFolder: vi.fn(),
-    renameFolder: vi.fn(),
-  });
+function renderHome(user: MockUser) {
+  return render(<HomePage />, { wrapperOptions: { authenticated: true, user } });
+}
+
+/** Wait until every panel the user can see has settled. */
+async function settled() {
+  await waitFor(() => expect(document.querySelectorAll('[aria-busy="true"]')).toHaveLength(0));
+  await waitFor(() => expect(document.querySelectorAll('.MuiSkeleton-root')).toHaveLength(0));
 }
 
 describe('HomePage', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    mockData();
-
-    // WelcomeHeader's greeting depends on the wall-clock hour; pin it so the
-    // heading text is deterministic across CI/local runs.
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date(2024, 0, 1, 10, 0, 0)); // 10:00 -> "Good morning"
+    // Only Date is faked: MSW and React still need real timers and promises.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    requests.length = 0;
+    server.events.removeAllListeners('request:start');
+    server.events.on('request:start', ({ request }) => {
+      const url = new URL(request.url);
+      requests.push(`${url.pathname}${url.search}`);
+    });
   });
 
   afterEach(() => {
+    server.events.removeAllListeners('request:start');
     vi.useRealTimers();
   });
 
-  describe('Greeting header', () => {
-    it("should render the greeting with the user's display name", () => {
-      render(<HomePage />, { wrapperOptions: { authenticated: true, user: mockUser } });
+  describe('Greeting', () => {
+    it('greets the user by name for the time of day, with the subtitle', async () => {
+      mockApi();
+      renderHome(READER);
+
+      expect(screen.getByRole('heading', { level: 1, name: 'Good morning, Person A' })).toBeInTheDocument();
+      expect(screen.getByText("Here's what's happening in your vault")).toBeInTheDocument();
+      await settled();
+    });
+
+    it('greets without a name when there is none', async () => {
+      mockApi();
+      renderHome({ ...READER, displayName: null });
+
+      expect(screen.getByRole('heading', { level: 1, name: 'Good morning' })).toBeInTheDocument();
+      await settled();
+    });
+
+    it('renders inside a max-width lg container without gutters of its own', async () => {
+      mockApi();
+      const { container } = renderHome(READER);
+
+      const box = container.querySelector('.MuiContainer-maxWidthLg');
+      expect(box).toBeInTheDocument();
+      expect(box).toHaveClass('MuiContainer-disableGutters');
+      await settled();
+    });
+  });
+
+  describe('Administrator', () => {
+    it('loads every panel in parallel, each with its own skeleton first', async () => {
+      mockApi();
+      renderHome(ADMIN);
+
+      expect(screen.getByLabelText('Loading cards')).toBeInTheDocument();
+      expect(screen.getByLabelText('Loading recent secrets')).toBeInTheDocument();
+      expect(screen.getByTestId('home-backups-mine').querySelector('[aria-busy="true"]')).not.toBeNull();
+      expect(screen.getByTestId('home-backups-system').querySelector('[aria-busy="true"]')).not.toBeNull();
+      expect(screen.getByTestId('stat-skeleton-secrets')).toBeInTheDocument();
+      await settled();
+    });
+
+    it('shows the cards needing attention, recent secrets, backups and stats', async () => {
+      mockApi({ systemFailed: true });
+      renderHome(ADMIN);
+      await settled();
+
+      const cardsPanel = screen.getByRole('region', { name: 'Cards needing attention' });
+      const cardRows = within(cardsPanel).getAllByRole('link', { name: /Test / });
+      expect(cardRows.map((r) => r.textContent)).toEqual([
+        expect.stringContaining('Test Visa travel'),
+        expect.stringContaining('Test Mastercard'),
+      ]);
+      expect(within(cardsPanel).queryByText('Test Discover')).not.toBeInTheDocument();
+
+      const recent = screen.getByRole('region', { name: 'Recently updated' });
+      expect(within(recent).getAllByRole('link', { name: /Product X|Org Alpha|Staging/ })).toHaveLength(3);
+
+      expect(screen.getByRole('link', { name: 'View Secrets (37)' })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'View Cards (3)' })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'View Need attention (2)' })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'View Media folders (6)' })).toBeInTheDocument();
+
+      const system = screen.getByTestId('home-backups-system');
+      expect(within(system).getByText('Last backup failed')).toBeInTheDocument();
+      expect(within(system).getByRole('link', { name: 'Open backup settings' })).toBeInTheDocument();
+      expect(within(screen.getByTestId('home-backups-mine')).getByText('Last backup succeeded')).toBeInTheDocument();
+
+      const actions = screen.getByRole('navigation', { name: 'Quick actions' });
+      expect(within(actions).getAllByRole('link').map((l) => l.textContent)).toEqual([
+        'New secret',
+        'Scan a card',
+        'Back up now',
+      ]);
+    });
+
+    it('makes exactly one request per source and one detail request per card (no N+1 beyond the cards)', async () => {
+      mockApi();
+      renderHome(ADMIN);
+      await settled();
+
+      expect(countsByPath()).toEqual({
+        '/api/secret-types': 1,
+        '/api/secrets': 2, // recent page + the Card-type page
+        '/api/secrets/c1': 1,
+        '/api/secrets/c2': 1,
+        '/api/secrets/c3': 1,
+        '/api/backups/me': 1,
+        '/api/admin/backups': 1,
+        '/api/admin/backups/schedule': 1,
+        '/api/media/folders': 1,
+        '/api/ai/status': 1,
+      });
+      // No detail request for a recent (non-card) secret: list rows are never decrypted.
+      expect(requests.some((r) => /^\/api\/secrets\/s\d/.test(r))).toBe(false);
+      // Small pages: the recent list, and a single row for each "latest"/count.
+      expect(requests).toContain('/api/secrets?page=1&pageSize=5&sortBy=updatedAt&sortOrder=desc');
+      expect(requests).toContain('/api/backups/me?page=1&pageSize=1');
+      expect(requests).toContain('/api/admin/backups?page=1&pageSize=1');
+      expect(requests).toContain('/api/media/folders?page=1&pageSize=1');
+    });
+  });
+
+  describe('Permission gating', () => {
+    it('never asks for or shows system backups without system_settings:read', async () => {
+      mockApi();
+      renderHome(WRITER);
+      await settled();
+
+      expect(screen.queryByTestId('home-backups-system')).not.toBeInTheDocument();
+      expect(screen.getByTestId('home-backups-mine')).toBeInTheDocument();
+      expect(requests.some((r) => r.startsWith('/api/admin/'))).toBe(false);
+    });
+
+    it('gives a read-only user no create or scan action and never asks for the AI status', async () => {
+      mockApi();
+      renderHome(READER);
+      await settled();
+
+      const actions = screen.getByRole('navigation', { name: 'Quick actions' });
+      expect(within(actions).getAllByRole('link').map((l) => l.textContent)).toEqual(['Back up now']);
+      expect(countsByPath()['/api/ai/status']).toBeUndefined();
+      // Expiring card rows open the detail, not the renew flow.
+      expect(screen.getByRole('link', { name: /Test Visa travel/ })).toHaveAttribute('href', '/secrets/c1');
+    });
+
+    it('shows no media count and asks for no media without media:read', async () => {
+      mockApi();
+      renderHome(READER);
+      await settled();
+
+      expect(screen.queryByRole('link', { name: /Media folders/ })).not.toBeInTheDocument();
+      expect(countsByPath()['/api/media/folders']).toBeUndefined();
+    });
+
+    it('hides "Scan a card" when card scanning is off', async () => {
+      mockApi({ aiEnabled: false });
+      renderHome(WRITER);
+      await settled();
+
+      expect(screen.getByRole('link', { name: 'New secret' })).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Scan a card' })).not.toBeInTheDocument();
+    });
+
+    it('fetches nothing and says so for a user without access to secrets, media or settings', async () => {
+      mockApi();
+      renderHome(NO_ACCESS);
 
       expect(
-        screen.getByRole('heading', { level: 1, name: `Good morning, ${mockUser.displayName}` }),
+        screen.getByText('Nothing to show yet. Ask an administrator for access to secrets or media.'),
       ).toBeInTheDocument();
+      expect(screen.queryByRole('region', { name: 'Recently updated' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('region', { name: 'Cards needing attention' })).not.toBeInTheDocument();
+      expect(screen.queryByTestId('home-backups')).not.toBeInTheDocument();
+      expect(screen.queryByRole('navigation', { name: 'Quick actions' })).not.toBeInTheDocument();
+      // Give any stray effect a chance to fire before asserting silence.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(countsByPath()).toEqual({});
     });
 
-    it('should render the greeting without a trailing name when displayName is null', () => {
-      render(<HomePage />, {
-        wrapperOptions: { authenticated: true, user: { ...mockUser, displayName: null } },
-      });
+    it('shows only the system backup panel to an admin without secrets:read', async () => {
+      mockApi();
+      renderHome(withPerms(['system_settings:read']));
+      await settled();
 
-      expect(screen.getByRole('heading', { level: 1, name: 'Good morning' })).toBeInTheDocument();
-    });
-
-    it('should render the greeting without a name when there is no user', () => {
-      render(<HomePage />, { wrapperOptions: { authenticated: true, user: null } });
-
-      expect(screen.getByRole('heading', { level: 1, name: 'Good morning' })).toBeInTheDocument();
-    });
-
-    it('should render the vault subtitle', () => {
-      render(<HomePage />);
-
-      expect(screen.getByText("Here's what's happening in your vault")).toBeInTheDocument();
+      expect(screen.getByTestId('home-backups-system')).toBeInTheDocument();
+      expect(screen.queryByTestId('home-backups-mine')).not.toBeInTheDocument();
+      expect(Object.keys(countsByPath()).sort()).toEqual(['/api/admin/backups', '/api/admin/backups/schedule']);
     });
   });
 
-  describe('Data fetching on mount', () => {
-    it('should fetch the 5 most recently updated secrets', () => {
-      render(<HomePage />);
+  describe('Independent sources', () => {
+    it('keeps the other panels working when one source fails, and retries only that source', async () => {
+      mockApi({ failRecent: true });
+      const user = userEvent.setup();
+      renderHome(WRITER);
+      await settled();
 
-      expect(mockFetchSecrets).toHaveBeenCalledWith({
-        pageSize: 5,
-        sortBy: 'updatedAt',
-        sortOrder: 'desc',
-      });
-    });
+      const recent = screen.getByRole('region', { name: 'Recently updated' });
+      expect(within(recent).getByRole('alert')).toHaveTextContent('Recent secrets are down');
+      expect(screen.getByRole('link', { name: 'View Secrets' })).toHaveTextContent('—');
+      // Cards and backups still render their data.
+      expect(screen.getByRole('link', { name: /Test Visa travel/ })).toBeInTheDocument();
+      expect(screen.getByText('Last backup succeeded')).toBeInTheDocument();
 
-    it('should fetch secret types', () => {
-      render(<HomePage />);
+      const before = { ...countsByPath() };
+      await user.click(within(recent).getByRole('button', { name: 'Try again' }));
+      await waitFor(() => expect(within(recent).getAllByRole('link', { name: /Product X/ })).toHaveLength(1));
 
-      expect(mockFetchTypes).toHaveBeenCalledWith();
-    });
-
-    it('should fetch the 5 most recently created media folders', () => {
-      render(<HomePage />);
-
-      expect(mockFetchFolders).toHaveBeenCalledWith({
-        pageSize: 5,
-        sortBy: 'createdAt',
-        sortOrder: 'desc',
-      });
+      const after = countsByPath();
+      expect(after['/api/secrets']).toBe(before['/api/secrets'] + 1);
+      expect(after['/api/secret-types']).toBe(before['/api/secret-types']);
+      expect(after['/api/backups/me']).toBe(before['/api/backups/me']);
     });
   });
 
-  describe('Composition', () => {
-    it('should render all dashboard sections', () => {
-      render(<HomePage />);
+  describe('First run', () => {
+    it('shows one call to action instead of empty panels and stats', async () => {
+      mockApi({ recent: [], recentTotal: 0 });
+      renderHome(WRITER);
+      await settled();
 
-      // Each section renders its title as a heading; query by role/name so
-      // this doesn't collide with the "Secret Types" stat label below.
-      expect(screen.getByRole('heading', { name: 'Recent Secrets' })).toBeInTheDocument();
-      expect(screen.getByRole('heading', { name: 'Recent Media' })).toBeInTheDocument();
-      expect(screen.getByRole('heading', { name: 'Quick Actions' })).toBeInTheDocument();
-      expect(screen.getByRole('heading', { name: 'Secret Types' })).toBeInTheDocument();
-    });
-
-    it('should render inside a max-width lg Container', () => {
-      const { container } = render(<HomePage />);
-
-      expect(container.querySelector('.MuiContainer-maxWidthLg')).toBeInTheDocument();
-    });
-  });
-
-  describe('Stats summary', () => {
-    it('should display the total secrets, media folders, and secret type counts from the hooks', () => {
-      mockData({
-        totalSecrets: 12,
-        folders: [mockFolder],
-        totalFolders: 7,
-        types: [mockSecretType, { ...mockSecretType, id: 'type-2', name: 'API Key' }],
-      });
-
-      render(<HomePage />);
-
-      expect(screen.getByText('12')).toBeInTheDocument();
-      expect(screen.getByText('Secrets')).toBeInTheDocument();
-      expect(screen.getByText('7')).toBeInTheDocument();
-      expect(screen.getByText('Media Folders')).toBeInTheDocument();
-      expect(screen.getByText('2')).toBeInTheDocument();
-      // "Secret Types" also labels this stat AND titles the SecretTypesOverview
-      // card below, so two matches are expected here.
-      expect(screen.getAllByText('Secret Types')).toHaveLength(2);
-    });
-
-    it('should render skeleton placeholders instead of counts while any source is still loading', () => {
-      mockData({ secretsLoading: true });
-
-      const { container } = render(<HomePage />);
-
-      expect(container.querySelectorAll('.MuiSkeleton-root').length).toBeGreaterThan(0);
-      expect(screen.queryByText('Secrets')).not.toBeInTheDocument();
-    });
-  });
-
-  describe('Recent Secrets', () => {
-    it("should list the current user's recent secrets", () => {
-      mockData({ secrets: [mockSecret] });
-
-      render(<HomePage />);
-
-      expect(screen.getByText('GitHub')).toBeInTheDocument();
-      expect(screen.getByText('Personal access token')).toBeInTheDocument();
-    });
-
-    it('should show an empty state when there are no secrets yet', () => {
-      render(<HomePage />);
-
-      expect(screen.getByText('No secrets yet')).toBeInTheDocument();
-    });
-  });
-
-  describe('Recent Media', () => {
-    it('should list recent media folders', () => {
-      mockData({ folders: [mockFolder] });
-
-      render(<HomePage />);
-
-      expect(screen.getByText('Receipts')).toBeInTheDocument();
-      expect(screen.getByText('3 files')).toBeInTheDocument();
-    });
-
-    it('should show an empty state when there are no media folders yet', () => {
-      render(<HomePage />);
-
-      expect(screen.getByText('No media folders yet')).toBeInTheDocument();
-    });
-  });
-
-  describe('Secret Types Overview', () => {
-    it('should list secret type chips', () => {
-      mockData({ types: [mockSecretType] });
-
-      render(<HomePage />);
-
-      expect(screen.getByText('Password')).toBeInTheDocument();
-    });
-
-    it('should show an empty state when there are no secret types', () => {
-      render(<HomePage />);
-
-      expect(screen.getByText('No secret types available')).toBeInTheDocument();
+      const firstRun = screen.getByRole('region', { name: 'Your vault is empty' });
+      expect(within(firstRun).getByRole('link', { name: 'Add your first secret' })).toHaveAttribute(
+        'href',
+        '/secrets/new',
+      );
+      expect(screen.queryByRole('region', { name: 'Recently updated' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('region', { name: 'Cards needing attention' })).not.toBeInTheDocument();
+      expect(screen.queryByTestId('home-stats')).not.toBeInTheDocument();
+      expect(screen.getByTestId('home-backups-mine')).toBeInTheDocument();
     });
   });
 });
