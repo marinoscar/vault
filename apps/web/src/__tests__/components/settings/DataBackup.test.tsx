@@ -13,7 +13,9 @@ import type { BackupRun, BackupRunsResponse } from '../../../types';
 import { BACKUP_PASSWORD_WARNING } from '../../../utils/backupPassword';
 import { BACKUP_NOTHING_SELECTED_MESSAGE } from '../../../utils/backupContents';
 
-vi.mock('../../../services/api', () => ({
+vi.mock('../../../services/api', async (importOriginal) => ({
+  // The real client (`api`), which the platform host wraps; the calls under test are mocked.
+  api: (await importOriginal<typeof import('../../../services/api')>()).api,
   downloadSecretsBackup: vi.fn(),
   getMyBackupsConfig: vi.fn(),
   saveMyBackupToStorage: vi.fn(),

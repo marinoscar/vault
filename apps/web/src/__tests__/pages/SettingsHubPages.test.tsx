@@ -51,7 +51,7 @@ describe('/settings (per-user hub)', () => {
     expect(cardTitles()).toEqual([
       'Profile',
       'Appearance',
-      'Access tokens',
+      'Access Tokens',
       'My backups',
       'Secret types',
       'Notifications',
@@ -62,14 +62,14 @@ describe('/settings (per-user hub)', () => {
     setViewportWidth(1440);
     renderHub('user', mockUser);
 
-    expect(cardTitles()).toEqual(['Profile', 'Appearance', 'Access tokens', 'Notifications']);
+    expect(cardTitles()).toEqual(['Profile', 'Appearance', 'Access Tokens', 'Notifications']);
   });
 
-  it('always shows Access tokens (ownership-scoped, no permission)', () => {
+  it('always shows Access Tokens (ownership-scoped, no permission)', () => {
     setViewportWidth(1440);
     renderHub('user', { ...mockUser, permissions: [] });
 
-    expect(cardTitles()).toEqual(['Access tokens']);
+    expect(cardTitles()).toEqual(['Access Tokens']);
   });
 
   it('navigates to the card route', async () => {
@@ -101,7 +101,7 @@ describe('/admin/settings (Console hub)', () => {
     expect(screen.getByRole('heading', { name: 'Console' })).toBeInTheDocument();
     expect(cardTitles()).toEqual([
       'General',
-      'Users & allowlist',
+      'Users & Allowlist',
       'AI',
       'Backups',
       'Maintenance',
@@ -124,11 +124,11 @@ describe('/admin/settings (Console hub)', () => {
     expect(cardTitles()).not.toContain('Broadcasts');
   });
 
-  it('shows only Users & allowlist to a users:read-only operator (Operations group dropped)', () => {
+  it('shows only Users & Allowlist to a users:read-only operator (Operations group dropped)', () => {
     setViewportWidth(1440);
     renderHub('admin', { ...mockUser, permissions: ['users:read'] });
 
-    expect(cardTitles()).toEqual(['Users & allowlist']);
+    expect(cardTitles()).toEqual(['Users & Allowlist']);
     expect(screen.queryByText('Operations')).not.toBeInTheDocument();
   });
 

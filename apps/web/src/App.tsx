@@ -1,37 +1,48 @@
 import { Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { ShellPreferencesProvider } from '@marinoscar/platform-web/shell/headless';
 import { ShellRoot } from '@marinoscar/platform-web/shell/ui';
-import { AuthProvider } from './contexts/AuthContext';
-import { PlatformAuthBridge } from './platform/PlatformAuthBridge';
-import { PlatformHostBridge } from './platform/PlatformHostBridge';
+// Identity is the platform's (E3.3, #78): the session provider, the route
+// guards and the identity pages come from @marinoscar/platform-web/identity.
+import { RequireAuth, RequirePermission } from '@marinoscar/platform-web/identity/headless';
+import { IdentityProviders } from './identity/IdentityProviders';
+import { VaultPlatformHostProvider } from './platform/platformHost';
 import { shellPreferencesPort } from './platform/shellPreferences';
 import { VAULT_THEMES } from './theme';
-import { ProtectedRoute } from './components/common/ProtectedRoute';
 import { Layout } from './components/common/Layout';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
-import { RequirePermission } from './components/common/RequirePermission';
 
 // Pages (lazy loaded)
 import { Suspense, lazy } from 'react';
 import { LoadingSpinner } from './components/common/LoadingSpinner';
 
-const LoginPage = lazy(() => import('./pages/LoginPage'));
-const AuthCallbackPage = lazy(() => import('./pages/AuthCallbackPage'));
-const ActivateDevicePage = lazy(() => import('./pages/ActivateDevicePage'));
+// The login page is the packaged one with Vault's brand in its slots; the
+// callback, device activation, Access Tokens and Users & Allowlist pages are
+// used as packaged.
+const LoginPage = lazy(() => import('./identity/LoginPage'));
+const AuthCallbackPage = lazy(() =>
+  import('@marinoscar/platform-web/identity/ui').then((m) => ({ default: m.AuthCallbackPage })),
+);
+const ActivateDevicePage = lazy(() =>
+  import('@marinoscar/platform-web/identity/ui').then((m) => ({ default: m.ActivateDevicePage })),
+);
+const UserTokensPage = lazy(() =>
+  import('@marinoscar/platform-web/identity/ui').then((m) => ({ default: m.UserTokensPage })),
+);
+const UsersPage = lazy(() =>
+  import('@marinoscar/platform-web/identity/ui').then((m) => ({ default: m.UsersPage })),
+);
 const HomePage = lazy(() => import('./pages/HomePage'));
 // The two settings hubs and their card pages (E10.3, #94): config/adminSections.tsx
 // and config/userSettingsSections.tsx declare the cards; each card path is a route below.
 const UserSettingsHubPage = lazy(() => import('./pages/UserSettingsHubPage'));
 const ProfileSettingsPage = lazy(() => import('./pages/settings/ProfileSettingsPage'));
 const AppearanceSettingsPage = lazy(() => import('./pages/settings/AppearanceSettingsPage'));
-const AccessTokensPage = lazy(() => import('./pages/settings/AccessTokensPage'));
 const MyBackupsPage = lazy(() => import('./pages/settings/MyBackupsPage'));
 const AdminSettingsHubPage = lazy(() => import('./pages/admin/AdminSettingsHubPage'));
 const GeneralSettingsPage = lazy(() => import('./pages/admin/GeneralSettingsPage'));
 const AiSettingsPage = lazy(() => import('./pages/admin/AiSettingsPage'));
 const BackupSettingsPage = lazy(() => import('./pages/admin/BackupSettingsPage'));
-const UserManagementPage = lazy(() => import('./pages/UserManagementPage'));
-// Packaged pages, read through PlatformHostBridge.
+// Packaged pages, read through the platform host (platform/platformHost.tsx).
 const DoctorPage = lazy(() =>
   import('@marinoscar/platform-web/doctor/ui').then((m) => ({ default: m.DoctorPage })),
 );
@@ -101,7 +112,7 @@ function AppRoutes() {
           )}
 
           {/* Protected routes */}
-          <Route element={<ProtectedRoute />}>
+          <Route element={<RequireAuth loading={<LoadingSpinner fullScreen />} />}>
             {/* Device activation page - without layout for full-screen experience */}
             <Route path="/activate" element={<ActivateDevicePage />} />
 
@@ -132,8 +143,8 @@ function AppRoutes() {
                 path="/settings/appearance"
                 element={<RequirePermission permission="user_settings:read" fallback={TO_SETTINGS}><AppearanceSettingsPage /></RequirePermission>}
               />
-              {/* Ownership-scoped (pat.controller.ts bare @Auth()): no gate. */}
-              <Route path="/settings/tokens" element={<AccessTokensPage />} />
+              {/* Ownership-scoped (the platform's pat.controller.ts, bare @Auth()): no gate. */}
+              <Route path="/settings/tokens" element={<UserTokensPage />} />
               <Route
                 path="/settings/backups"
                 element={<RequirePermission permission="secrets:read" fallback={TO_SETTINGS}><MyBackupsPage /></RequirePermission>}
@@ -171,7 +182,7 @@ function AppRoutes() {
               />
               <Route
                 path="/admin/settings/users"
-                element={<RequirePermission permission="users:read" fallback={TO_HOME}><UserManagementPage /></RequirePermission>}
+                element={<RequirePermission permission="users:read" fallback={TO_HOME}><UsersPage /></RequirePermission>}
               />
               <Route
                 path="/admin/settings/ai"
@@ -227,24 +238,23 @@ function AppRoutes() {
 
 /**
  * The tree, outermost first: `ShellRoot` (the Vault themes, the viewer's
- * light / dark / system choice, CssBaseline), Vault's own session, the bridge
- * that re-publishes it to the platform's identity context the shell reads,
- * the platform host the packaged pages read (Vault's client and session), and
- * the shell's preferences port (the rail's collapse). The shell itself is
+ * light / dark / system choice, CssBaseline), the platform's identity
+ * providers (the session over Vault's one HTTP client, the identity pages'
+ * adapters, the tables' layout store), the platform host the packaged pages
+ * read (Vault's client, the signed-in viewer, the theme setter), and the
+ * shell's preferences port (the rail's collapse). The shell itself is
  * `components/common/Layout.tsx`, the layout route below.
  */
 export default function App() {
   return (
     <ShellRoot themes={VAULT_THEMES}>
-      <AuthProvider>
-        <PlatformAuthBridge>
-          <PlatformHostBridge>
-            <ShellPreferencesProvider port={shellPreferencesPort}>
-              <AppRoutes />
-            </ShellPreferencesProvider>
-          </PlatformHostBridge>
-        </PlatformAuthBridge>
-      </AuthProvider>
+      <IdentityProviders>
+        <VaultPlatformHostProvider>
+          <ShellPreferencesProvider port={shellPreferencesPort}>
+            <AppRoutes />
+          </ShellPreferencesProvider>
+        </VaultPlatformHostProvider>
+      </IdentityProviders>
     </ShellRoot>
   );
 }

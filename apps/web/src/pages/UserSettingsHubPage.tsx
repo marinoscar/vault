@@ -1,5 +1,5 @@
 import { SettingsHub } from '@marinoscar/platform-web/settings/ui';
-import { usePermissions } from '../hooks/usePermissions';
+import { usePermissions } from '@marinoscar/platform-web/identity/headless';
 import { USER_HUB_TITLE, USER_SETTINGS_SECTIONS } from '../config/userSettingsSections';
 
 /**

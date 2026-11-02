@@ -12,9 +12,9 @@
  */
 
 import type { SettingsSectionDef } from '@marinoscar/platform-web/settings/ui';
+import { identityUserSettingsSections } from '@marinoscar/platform-web/identity/ui';
 import PersonIcon from '@mui/icons-material/PersonOutlined';
 import PaletteIcon from '@mui/icons-material/PaletteOutlined';
-import TokenIcon from '@mui/icons-material/VpnKeyOutlined';
 import BackupIcon from '@mui/icons-material/BackupOutlined';
 import CategoryIcon from '@mui/icons-material/CategoryOutlined';
 import NotificationsIcon from '@mui/icons-material/NotificationsOutlined';
@@ -45,13 +45,10 @@ export const USER_SETTINGS_SECTIONS: SettingsSectionDef[] = [
         // user-settings.controller.ts `GET /api/user-settings` (the `theme` field).
         permission: 'user_settings:read',
       },
-      {
-        title: 'Access tokens',
-        description: 'Personal access tokens for the CLI and scripts.',
-        Icon: TokenIcon,
-        path: '/settings/tokens',
-        // pat.controller.ts: bare `@Auth()`, ownership-scoped. No permission.
-      },
+      // The packaged identity card (E3.3, #78), spread where Vault's own
+      // `Access tokens` card was: `Access Tokens`, `/settings/tokens`, no
+      // permission (the platform's pat.controller.ts: bare `@Auth()`, ownership-scoped).
+      ...identityUserSettingsSections.security,
     ],
   },
   {

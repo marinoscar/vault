@@ -6,7 +6,8 @@
  * E10.2 (#93) seeded it with two cards; E10.3 (#94) split the tab-based
  * `SystemSettingsPage` into one routed page per card: the first card became
  * `General` (UI settings and feature flags, was the whole tab strip), Users
- * moved under the hub, and the rest were APPENDED. Rules (AGENTS.md, Settings
+ * moved under the hub, and the rest were APPENDED. E3.3 (#78) replaced the
+ * Users card in place with the packaged identity card (cards ship as data). Rules (AGENTS.md, Settings
  * UI Pattern):
  *
  *  - append, never insert between existing cards;
@@ -21,8 +22,9 @@
 
 import type { SettingsSectionDef } from '@marinoscar/platform-web/settings/ui';
 import { doctorSettingsPage } from '@marinoscar/platform-web/doctor/ui';
+import { identityAdminSections } from '@marinoscar/platform-web/identity/ui';
+import './settingsFeatures';
 import TuneIcon from '@mui/icons-material/TuneOutlined';
-import PeopleIcon from '@mui/icons-material/PeopleOutlined';
 import AiIcon from '@mui/icons-material/AutoAwesomeOutlined';
 import BackupIcon from '@mui/icons-material/BackupOutlined';
 import MaintenanceIcon from '@mui/icons-material/ConstructionOutlined';
@@ -49,14 +51,13 @@ export const ADMIN_SECTIONS: SettingsSectionDef[] = [
         // system-settings.controller.ts `GET /api/system-settings`; saving needs system_settings:write.
         permission: 'system_settings:read',
       },
-      {
-        title: 'Users & allowlist',
-        description: 'Who can sign in, and their roles.',
-        Icon: PeopleIcon,
-        path: '/admin/settings/users',
-        // users.controller.ts `GET /api/users`; the allowlist half gates itself on allowlist:read.
-        permission: 'users:read',
-      },
+      // The packaged identity card (E3.3, #78), spread where Vault's own
+      // `Users & allowlist` card was: `Users & Allowlist`, `/admin/settings/users`,
+      // `users:read` (the platform's users.controller.ts `GET /api/users`; the
+      // Allowlist tab gates itself on allowlist:read inside the page). The
+      // `organizations` cards are not spread: Vault runs single-organization
+      // (they carry `feature: 'orgs'` and would never show).
+      ...identityAdminSections.access,
       {
         title: 'AI',
         description: 'Switch card scanning on, the OpenAI key, model and daily budget.',
