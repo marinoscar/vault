@@ -51,17 +51,17 @@ Baseline classification of every Vault module against EnterpriseAppBase (EAB) an
 | `components/settings/{ProfileSettings,ThemeSettings,ImageUpload}` | noise | platform Profile / Appearance pages | E4 / E10 | |
 | `components/settings/{PersonalAccessTokens,CreatePatDialog,PatTokenRevealDialog}` | noise | identity PAT UI | E3 / E10 | **Done in E3.3 (#78): deleted, replaced by `@marinoscar/platform-web/identity` (headless + ui), bound in `apps/web/src/identity/`.** |
 | `components/settings/{AiSettings}` | noise | platform AI pages | E8 / E10 | |
-| `components/settings/{DataBackup,BackupContentsGroup,BackupPasswordFields,BackupRunsTable}`, `components/admin/{ScheduledBackups,AdminBackupDownloadDialog}`, `utils/{backupContents,backupPassword,backupSchedule}` | domain | vault-web; become settings cards "My backups" and "Backups" | E10 / E12 | |
+| `components/settings/{DataBackup,BackupContentsGroup,BackupPasswordFields,BackupRunsTable}`, `components/admin/{ScheduledBackups,AdminBackupDownloadDialog}`, `utils/{backupContents,backupPassword,backupSchedule}` | domain | vault-web; become settings cards "My backups" and "Backups" | E10 / E12 | **Moved to `@marinoscar/vault-web` in E12.3 (#104).** |
 | `components/navigation` (`Sidebar`, `AppBar`, `UserMenu`), `components/common/Layout.tsx` | vault-divergence | platform `ShellLayout` + `ShellNavigation` | E10 | Flat sidebar replaced by destinations |
 | `theme/` (`light`, `dark`, `components`) | backport | `createShellTheme` with Vault brand tokens | E10 | Tokens in [ux-refresh](../specs/ux-refresh.md#5-brand-tokens) |
-| `pages/{SecretsPage,SecretDetailPage,CreateSecretPage,EditSecretPage}`, `components/secrets`, `hooks/{useSecrets,useSecretDetail}` | domain | vault-web; list on `platform-web/datatable` | E10 / E12 | |
-| `pages/{SecretTypesPage,CreateSecretTypePage,EditSecretTypePage}`, `components/secret-types`, `hooks/useSecretTypes` | domain | vault-web | E12 | Candidate settings card "Secret types" |
-| `pages/{CardsPage,ImportCardPage,RenewCardPage}`, `components/cards`, `hooks/{useCards,useCardImport,useCardRenewal,useAiStatus}`, `utils/{cardExpiry,cardFormat,cardImage}` | domain | vault-web | E8 / E10 / E12 | |
-| `pages/Media*`, `pages/{CreateFolderPage,EditFolderPage,RenameMediaFilePage}`, `components/media`, `hooks/{useMediaFiles,useMediaFolders}` | domain | vault-web | E12 | |
+| `pages/{SecretsPage,SecretDetailPage,CreateSecretPage,EditSecretPage}`, `components/secrets`, `hooks/{useSecrets,useSecretDetail}` | domain | vault-web; list on `platform-web/datatable` | E10 / E12 | **Moved to `@marinoscar/vault-web` in E12.3 (#104).** |
+| `pages/{SecretTypesPage,CreateSecretTypePage,EditSecretTypePage}`, `components/secret-types`, `hooks/useSecretTypes` | domain | vault-web | E12 | Candidate settings card "Secret types" **Moved to `@marinoscar/vault-web` in E12.3 (#104).** |
+| `pages/{CardsPage,ImportCardPage,RenewCardPage}`, `components/cards`, `hooks/{useCards,useCardImport,useCardRenewal,useAiStatus}`, `utils/{cardExpiry,cardFormat,cardImage}` | domain | vault-web | E8 / E10 / E12 | **Moved to `@marinoscar/vault-web` in E12.3 (#104).** |
+| `pages/Media*`, `pages/{CreateFolderPage,EditFolderPage,RenameMediaFilePage}`, `components/media`, `hooks/{useMediaFiles,useMediaFolders}` | domain | vault-web | E12 | **Moved to `@marinoscar/vault-web` in E12.3 (#104).** |
 | `pages/HomePage`, `components/home/*` | vault-divergence | Home dashboard on shell | E10 | |
 | `hooks/{useSystemSettings,useUserSettings,useAllowlist,useUsers,usePersonalAccessTokens}` | noise | platform hooks | E3 / E4 | |
 | `services/api.ts` | backport | `createPlatformApiClient` + domain endpoint functions | E3 | Raw-zip downloads use `saveBlob`; keep outside the envelope parser |
-| `utils/{clipboard,saveBlob}`, `hooks/useCopyToClipboard` | domain | vault-web | stays | |
+| `utils/{clipboard,saveBlob}`, `hooks/useCopyToClipboard` | domain | vault-web | stays | **Moved to `@marinoscar/vault-web` in E12.3 (#104).** |
 | `__tests__/` | domain | stay; platform conformance added | E11 | Vitest already |
 
 ## CLIs (`tools/`)
