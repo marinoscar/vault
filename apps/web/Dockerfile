@@ -42,10 +42,15 @@ RUN set -e; \
     ws=""; \
     for d in packages/*/; do ws="$ws --workspace=${d%/}"; done; \
     npm ci --workspace=web $ws --include-workspace-root
-# Compile the workspace packages that have a `build` script (see the API
-# Dockerfile for the ordering note).
-RUN set -e; \
-    for d in packages/*/; do \
+# Compile the workspace packages that have a `build` script, vault-contract
+# and vault-db first (see the API Dockerfile). vault-api is skipped: the web
+# app never imports it, and it types against a Prisma client this image does
+# not generate.
+RUN set -e; built=""; \
+    for d in packages/vault-contract/ packages/vault-db/ packages/*/; do \
+      case " $built " in *" $d "*) continue ;; esac; built="$built $d"; \
+      case "$d" in packages/vault-api/) continue ;; esac; \
+      [ -d "$d" ] || continue; \
       npm run build --if-present --workspace="${d%/}"; \
     done
 
