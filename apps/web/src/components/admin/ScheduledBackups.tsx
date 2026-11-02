@@ -17,6 +17,7 @@ import {
   Divider,
   FormControl,
   FormControlLabel,
+  FormHelperText,
   IconButton,
   InputAdornment,
   InputLabel,
@@ -87,6 +88,9 @@ import {
 
 /** How often the history is refreshed while a run is in progress. */
 export const BACKUP_POLL_INTERVAL_MS = 5000;
+
+/** Hourly runs are anchored to local midnight, not to the save time. */
+export const BACKUP_HOURLY_HELPER_TEXT = 'Runs on the hour, counted from midnight';
 
 export const BACKUP_SCHEDULE_SAVED_MESSAGE = 'Backup schedule saved';
 
@@ -335,6 +339,7 @@ function BackupScheduleCard({ schedule, canWrite, onSaved }: ScheduleCardProps) 
                       </MenuItem>
                     ))}
                   </Select>
+                  <FormHelperText>{BACKUP_HOURLY_HELPER_TEXT}</FormHelperText>
                 </FormControl>
               ) : (
                 <TextField
