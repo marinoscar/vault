@@ -1,76 +1,81 @@
-import { Card, CardActionArea, CardContent, Typography, Grid, Avatar } from '@mui/material';
+import type { ReactNode } from 'react';
+import { Box, Button } from '@mui/material';
 import {
-  AddCircleOutlineOutlined as CreateIcon,
-  CloudUpload as UploadIcon,
-  Category as TypesIcon,
-  Settings as SettingsIcon,
+  Add as AddIcon,
+  DocumentScannerOutlined as ScanIcon,
+  Backup as BackupIcon,
 } from '@mui/icons-material';
-import { alpha, useTheme } from '@mui/material/styles';
-import { useNavigate } from 'react-router-dom';
+import { Link as RouterLink } from 'react-router-dom';
+import { HOME_LINKS } from './homeLinks';
 
-const cardSx = {
-  textAlign: 'center' as const,
-  transition: 'all 0.2s',
-  '&:hover': { transform: 'translateY(-2px)', boxShadow: 4 },
-  height: '100%',
-};
+interface QuickAction {
+  key: string;
+  label: string;
+  to: string;
+  icon: ReactNode;
+  primary?: boolean;
+}
 
-export function QuickActions() {
-  const navigate = useNavigate();
-  const theme = useTheme();
+interface QuickActionsProps {
+  /** `secrets:write` */
+  canCreateSecret: boolean;
+  /** `secrets:write` and card scanning enabled (`GET /api/ai/status`). */
+  canScanCard: boolean;
+  /** `secrets:read` (`/api/backups/me`). */
+  canBackUp: boolean;
+}
 
-  const actions = [
-    { title: 'Create Secret', description: 'Store a new secret', icon: CreateIcon, color: theme.palette.primary.main, path: '/secrets/new' },
-    { title: 'Upload Media', description: 'Upload files', icon: UploadIcon, color: theme.palette.secondary.main, path: '/media' },
-    { title: 'Browse Types', description: 'Manage secret types', icon: TypesIcon, color: theme.palette.success.main, path: '/secret-types' },
-    { title: 'Settings', description: 'Your preferences', icon: SettingsIcon, color: theme.palette.warning.main, path: '/settings' },
-  ];
+/**
+ * The few things people come to Home to start. Each is a link (the work
+ * happens on its own page) and appears only for a user who may do it.
+ */
+export function QuickActions({ canCreateSecret, canScanCard, canBackUp }: QuickActionsProps) {
+  const actions: QuickAction[] = [];
+  if (canCreateSecret) {
+    actions.push({ key: 'new-secret', label: 'New secret', to: HOME_LINKS.newSecret, icon: <AddIcon />, primary: true });
+  }
+  if (canScanCard) {
+    actions.push({ key: 'scan-card', label: 'Scan a card', to: HOME_LINKS.scanCard, icon: <ScanIcon /> });
+  }
+  if (canBackUp) {
+    actions.push({ key: 'back-up', label: 'Back up now', to: HOME_LINKS.myBackups, icon: <BackupIcon /> });
+  }
+  if (actions.length === 0) return null;
 
   return (
-    <Card sx={{ height: '100%' }}>
-      <CardContent>
-        <Typography variant="h6" gutterBottom sx={{
-          fontWeight: 600
-        }}>Quick Actions</Typography>
-        <Grid container spacing={2}>
-          {actions.map((action) => (
-            <Grid
-              key={action.path}
-              size={{
-                xs: 6,
-                sm: 3
-              }}>
-              <Card variant="outlined" sx={cardSx}>
-                {/* CardActionArea renders a real <button>: tab-reachable, activated by
-                    Enter/Space, with a visible focus ring. A Card with a bare onClick
-                    is a div and is invisible to assistive tech as an interactive element. */}
-                <CardActionArea
-                  onClick={() => navigate(action.path)}
-                  aria-label={`${action.title}: ${action.description}`}
-                  sx={{ height: '100%' }}
-                >
-                  <CardContent sx={{ py: 2.5, px: 1.5 }}>
-                    <Avatar
-                      sx={{
-                        mx: 'auto', mb: 1.5, width: 48, height: 48,
-                        bgcolor: alpha(action.color, 0.12), color: action.color,
-                      }}
-                    >
-                      <action.icon />
-                    </Avatar>
-                    <Typography variant="subtitle2" sx={{
-                      fontWeight: 600
-                    }}>{action.title}</Typography>
-                    <Typography variant="caption" sx={{
-                      color: "text.secondary"
-                    }}>{action.description}</Typography>
-                  </CardContent>
-                </CardActionArea>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-      </CardContent>
-    </Card>
+    <Box
+      component="nav"
+      aria-label="Quick actions"
+      sx={{
+        display: 'grid',
+        // Phone: equal columns, icon over label, so three actions fit 390px
+        // without wrapping. Wider: a compact row of ordinary buttons.
+        gridTemplateColumns: { xs: `repeat(${actions.length}, minmax(0, 1fr))`, sm: `repeat(${actions.length}, auto)` },
+        gap: 1,
+        justifyContent: { sm: 'end' },
+      }}
+    >
+      {actions.map((action) => (
+        <Button
+          key={action.key}
+          component={RouterLink}
+          to={action.to}
+          variant={action.primary ? 'contained' : 'outlined'}
+          sx={{
+            flexDirection: { xs: 'column', sm: 'row' },
+            gap: { xs: 0.25, sm: 1 },
+            py: { xs: 1, sm: 0.75 },
+            px: { xs: 1, sm: 2 },
+            minHeight: 44,
+            whiteSpace: 'nowrap',
+            lineHeight: 1.3,
+            '& .MuiSvgIcon-root': { fontSize: 20 },
+          }}
+        >
+          {action.icon}
+          {action.label}
+        </Button>
+      ))}
+    </Box>
   );
 }
