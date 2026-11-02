@@ -1,138 +1,71 @@
-import { useState, useEffect, FormEvent } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import {
-  Container,
-  Typography,
-  Breadcrumbs,
-  Link,
-  Paper,
-  TextField,
-  Button,
-  Box,
-  Alert,
-  CircularProgress,
-  Chip,
-} from '@mui/material';
-import { DynamicSecretFields } from '../components/secrets/DynamicSecretFields';
+import { useEffect, useState } from 'react';
+import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom';
+import { Alert, Box, Button, Chip, CircularProgress, Typography } from '@mui/material';
+import { ArrowBack as BackIcon } from '@mui/icons-material';
+import { SecretForm } from '../components/secrets/SecretForm';
 import { SecretTypeIcon } from '../components/secrets/SecretTypeIcon';
 import { getSecret, updateSecret } from '../services/api';
-import type { SecretDetail, FieldDefinition } from '../types';
+import type { SecretDetail } from '../types';
 
-function validateFields(
-  fields: FieldDefinition[],
-  data: Record<string, unknown>,
-): Record<string, string> {
-  const errors: Record<string, string> = {};
-  for (const field of fields) {
-    if (field.required) {
-      const val = data[field.name];
-      if (val === undefined || val === null || String(val).trim() === '') {
-        errors[field.name] = `${field.label} is required`;
-      }
-    }
-  }
-  return errors;
-}
-
+/**
+ * Edit a secret (E10.4, issue #95): `PUT /api/secrets/:id`. The API mints a
+ * new version only when the field values changed; the type never changes.
+ */
 export default function EditSecretPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-
   const [secret, setSecret] = useState<SecretDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [fieldData, setFieldData] = useState<Record<string, unknown>>({});
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [formError, setFormError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
+    let current = true;
     setIsLoading(true);
     getSecret(id)
-      .then((result) => {
-        setSecret(result);
-        setName(result.name);
-        setDescription(result.description ?? '');
-        setFieldData(result.values ?? {});
+      .then((result) => current && setSecret(result))
+      .catch((err: unknown) => {
+        if (current) setLoadError(err instanceof Error ? err.message : 'Failed to load secret');
       })
-      .catch((err) => {
-        setFormError(err instanceof Error ? err.message : 'Failed to load secret');
-      })
-      .finally(() => setIsLoading(false));
+      .finally(() => current && setIsLoading(false));
+    return () => {
+      current = false;
+    };
   }, [id]);
-
-  const fields = secret?.type?.fields ?? [];
-
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!id || !secret) return;
-    setFormError(null);
-
-    if (!name.trim()) {
-      setFormError('Name is required');
-      return;
-    }
-
-    if (fields.length > 0) {
-      const errors = validateFields(fields, fieldData);
-      if (Object.keys(errors).length > 0) {
-        setFieldErrors(errors);
-        return;
-      }
-    }
-
-    setIsSubmitting(true);
-    try {
-      await updateSecret(id, {
-        name: name.trim(),
-        description: description.trim() || undefined,
-        data: fieldData,
-      });
-      navigate(`/secrets/${id}`);
-    } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Failed to update secret');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   if (isLoading) {
     return (
-      <Container maxWidth="md" sx={{ py: 3, display: 'flex', justifyContent: 'center' }}>
-        <CircularProgress />
-      </Container>
+      <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+        <CircularProgress aria-label="Loading secret" />
+      </Box>
     );
   }
 
-  if (!secret) {
+  if (!secret || !id) {
     return (
-      <Container maxWidth="md" sx={{ py: 3 }}>
-        <Alert severity="error">{formError || 'Secret not found'}</Alert>
-      </Container>
+      <Box sx={{ maxWidth: 760, mx: 'auto' }}>
+        <Alert severity="error">{loadError || 'Secret not found'}</Alert>
+      </Box>
     );
   }
 
   return (
-    <Container maxWidth="md" sx={{ py: 3 }}>
-      <Breadcrumbs sx={{ mb: 2 }}>
-        <Link color="inherit" href="/" onClick={(e) => { e.preventDefault(); navigate('/'); }}>
-          Home
-        </Link>
-        <Link color="inherit" href="/secrets" onClick={(e) => { e.preventDefault(); navigate('/secrets'); }}>
-          Secrets
-        </Link>
-        <Link color="inherit" href={`/secrets/${id}`} onClick={(e) => { e.preventDefault(); navigate(`/secrets/${id}`); }}>
+    <Box sx={{ maxWidth: 760, mx: 'auto', minWidth: 0 }}>
+      <Button
+        component={RouterLink}
+        to={`/secrets/${id}`}
+        startIcon={<BackIcon />}
+        size="small"
+        sx={{ mb: 1.5, ml: -1, color: 'text.secondary', maxWidth: '100%' }}
+      >
+        <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {secret.name}
-        </Link>
-        <Typography sx={{
-          color: "text.primary"
-        }}>Edit</Typography>
-      </Breadcrumbs>
-
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-        <Typography variant="h4">Edit Secret</Typography>
+        </Box>
+      </Button>
+      <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1.5, mb: 2 }}>
+        <Typography variant="h5" component="h1" sx={{ fontWeight: 700 }}>
+          Edit secret
+        </Typography>
         {secret.type && (
           <Chip
             icon={<SecretTypeIcon icon={secret.type.icon} fontSize="small" />}
@@ -142,55 +75,28 @@ export default function EditSecretPage() {
           />
         )}
       </Box>
-
-      <Paper sx={{ p: 3 }}>
-        <form onSubmit={handleSubmit}>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {formError && <Alert severity="error">{formError}</Alert>}
-
-            <TextField
-              label="Name"
-              fullWidth
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              disabled={isSubmitting}
-              autoFocus
-            />
-
-            <TextField
-              label="Description"
-              fullWidth
-              multiline
-              minRows={2}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              disabled={isSubmitting}
-            />
-
-            {fields.length > 0 && (
-              <DynamicSecretFields
-                fields={fields}
-                data={fieldData}
-                onChange={setFieldData}
-                errors={fieldErrors}
-              />
-            )}
-
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 1 }}>
-              <Button
-                onClick={() => navigate(`/secrets/${id}`)}
-                disabled={isSubmitting}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" variant="contained" disabled={isSubmitting}>
-                {isSubmitting ? 'Saving...' : 'Save Changes'}
-              </Button>
-            </Box>
-          </Box>
-        </form>
-      </Paper>
-    </Container>
+      <SecretForm
+        mode="edit"
+        types={secret.type ? [secret.type] : []}
+        initial={{
+          name: secret.name,
+          description: secret.description ?? '',
+          typeId: secret.type?.id ?? '',
+          data: secret.values ?? {},
+        }}
+        submitLabel="Save changes"
+        submittingLabel="Saving…"
+        onCancel={() => navigate(`/secrets/${id}`)}
+        onSubmit={async (values) => {
+          await updateSecret(id, {
+            name: values.name,
+            // An emptied description clears it (the API accepts null).
+            description: values.description === '' ? null : values.description,
+            data: values.data,
+          });
+          navigate(`/secrets/${id}`);
+        }}
+      />
+    </Box>
   );
 }

@@ -19,7 +19,8 @@
     "vault:migrate-ai-key": "npm -w apps/api run vault:migrate-ai-key --",
     "cli": "node apps/cli/dist/cli.js",
     "cli:build": "npm run build --workspace=cli",
-    "vault": "node apps/cli/dist/cli.js"
+    "vault": "node apps/cli/dist/cli.js",
+    "platform:infra:sync": "platform-infra sync"
   },
   "overrides": {
     "@nestjs/common": "^11.1.12",
@@ -27,6 +28,7 @@
     "@marinoscar/platform-contract": "$@marinoscar/platform-contract"
   },
   "devDependencies": {
-    "@marinoscar/platform-contract": "0.1.0-next.21"
+    "@marinoscar/platform-contract": "0.1.0-next.21",
+    "@marinoscar/platform-infra": "0.1.0-next.21"
   }
 }

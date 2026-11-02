@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { render } from '../utils/test-utils';
+import { render, mockUser, type MockUser } from '../utils/test-utils';
 import { server } from '../mocks/server';
 import SecretDetailPage from '../../pages/SecretDetailPage';
 import type { SecretAttachment, SecretType } from '../../types';
@@ -20,6 +20,17 @@ vi.mock('react-router-dom', async () => {
     useParams: () => ({ id: 'secret-1' }),
   };
 });
+
+const WRITER: MockUser = {
+  ...mockUser,
+  permissions: [...mockUser.permissions, 'secrets:read', 'secrets:write', 'secrets:delete'],
+};
+const READER: MockUser = { ...mockUser, permissions: [...mockUser.permissions, 'secrets:read'] };
+
+/** The page as a user who may edit, delete and manage attachments. */
+function renderPage(user: MockUser = WRITER) {
+  return render(<SecretDetailPage />, { wrapperOptions: { user } });
+}
 
 const CARD_TYPE: SecretType = {
   id: 'card-type',
@@ -114,39 +125,145 @@ describe('SecretDetailPage', () => {
     mockNavigate.mockReset();
   });
 
-  describe('tab dispatch', () => {
-    it('routes each tab correctly when the Attachments tab is present', async () => {
+  describe('layout', () => {
+    it('splits Details and Attachments into tabs and keeps history in a drawer', async () => {
       server.use(...baseHandlers(secret(CARD_TYPE, [cardFace('card_front', 'obj-front')])));
       const user = userEvent.setup();
-      render(<SecretDetailPage />);
+      renderPage();
 
-      await screen.findByRole('tab', { name: 'Attachments' });
+      await screen.findByRole('tab', { name: /Attachments/ });
+      expect(screen.queryByRole('tab', { name: /Version/ })).not.toBeInTheDocument();
 
-      await user.click(screen.getByRole('tab', { name: 'Version History' }));
-      expect(await screen.findByRole('columnheader', { name: 'Version' })).toBeInTheDocument();
-      expect(screen.queryByText('Card Images')).not.toBeInTheDocument();
-
-      await user.click(screen.getByRole('tab', { name: 'Attachments' }));
+      await user.click(screen.getByRole('tab', { name: /Attachments/ }));
       expect(await screen.findByText('Card Images')).toBeInTheDocument();
-      expect(screen.queryByRole('columnheader', { name: 'Version' })).not.toBeInTheDocument();
+      expect(screen.queryByText(/Cardholder Name/)).not.toBeInTheDocument();
 
       await user.click(screen.getByRole('tab', { name: 'Details' }));
       expect(await screen.findByText(/Cardholder Name/)).toBeInTheDocument();
+      expect(screen.queryByText('Card Images')).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'History' }));
+      const drawer = await screen.findByRole('dialog', { name: 'Version history' });
+      expect(within(drawer).getByText('v2')).toBeInTheDocument();
+      expect(within(drawer).getByRole('button', { name: 'Compare version 1 with current' })).toBeInTheDocument();
     });
 
-    it('routes Version History correctly when the Attachments tab is absent', async () => {
+    it('renders no tabs for a type without attachments, and history still opens', async () => {
       server.use(...baseHandlers(secret(NOTE_TYPE)));
       const user = userEvent.setup();
-      render(<SecretDetailPage />);
+      renderPage();
 
-      await screen.findByRole('tab', { name: 'Details' });
-      expect(screen.queryByRole('tab', { name: 'Attachments' })).not.toBeInTheDocument();
-
-      // The trap: with index-based dispatch a missing third tab shifts the
-      // panels. Version History must still render the version table.
-      await user.click(screen.getByRole('tab', { name: 'Version History' }));
-      expect(await screen.findByRole('columnheader', { name: 'Version' })).toBeInTheDocument();
+      expect(await screen.findByText('Body')).toBeInTheDocument();
+      expect(screen.queryByRole('tab')).not.toBeInTheDocument();
       expect(screen.queryByText('Card Images')).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'History' }));
+      expect(await screen.findByRole('dialog', { name: 'Version history' })).toBeInTheDocument();
+    });
+
+    it('shows the type, name, version and last update in the header', async () => {
+      server.use(...baseHandlers(secret(NOTE_TYPE)));
+      renderPage();
+      expect(await screen.findByRole('heading', { level: 1, name: 'My Card' })).toBeInTheDocument();
+      expect(screen.getByText('Note')).toBeInTheDocument();
+      expect(screen.getByText(/^Updated /)).toBeInTheDocument();
+      expect(screen.getAllByText('v2').length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('values', () => {
+    it('masks a sensitive field until revealed and offers copy on every field', async () => {
+      server.use(...baseHandlers(secret(CARD_TYPE)));
+      const user = userEvent.setup();
+      renderPage();
+
+      expect(await screen.findByText('PERSON A')).toBeInTheDocument();
+      expect(screen.queryByText('4242424242424242')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Copy Card Number' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Copy Cardholder Name' })).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Reveal Card Number' }));
+      expect(screen.getByText('4242424242424242')).toBeInTheDocument();
+    });
+  });
+
+  describe('actions', () => {
+    it('edits through the edit route', async () => {
+      server.use(...baseHandlers(secret(NOTE_TYPE)));
+      const user = userEvent.setup();
+      renderPage();
+      await user.click(await screen.findByRole('button', { name: 'Edit' }));
+      expect(mockNavigate).toHaveBeenCalledWith(`/secrets/${SECRET_ID}/edit`);
+    });
+
+    it('deletes the secret only after confirmation, then returns to the list', async () => {
+      const deleted: string[] = [];
+      server.use(
+        ...baseHandlers(secret(NOTE_TYPE)),
+        http.delete(`${API_BASE}/secrets/:id`, ({ params }) => {
+          deleted.push(params.id as string);
+          return new HttpResponse(null, { status: 204 });
+        }),
+      );
+      const user = userEvent.setup();
+      renderPage();
+      await user.click(await screen.findByRole('button', { name: 'More actions' }));
+      await user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+      const dialog = await screen.findByRole('dialog', { name: 'Delete secret?' });
+      expect(deleted).toHaveLength(0);
+      await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+      await waitFor(() => expect(deleted).toEqual([SECRET_ID]));
+      expect(mockNavigate).toHaveBeenCalledWith('/secrets');
+    });
+
+    it('keeps the page and reports the error when the delete fails', async () => {
+      server.use(
+        ...baseHandlers(secret(NOTE_TYPE)),
+        http.delete(`${API_BASE}/secrets/:id`, () =>
+          HttpResponse.json({ message: 'Delete refused' }, { status: 500 }),
+        ),
+      );
+      const user = userEvent.setup();
+      renderPage();
+      await user.click(await screen.findByRole('button', { name: 'More actions' }));
+      await user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+      await user.click(within(await screen.findByRole('dialog', { name: 'Delete secret?' })).getByRole('button', { name: 'Delete' }));
+      expect(await screen.findByText('Delete refused')).toBeInTheDocument();
+      expect(mockNavigate).not.toHaveBeenCalledWith('/secrets');
+    });
+
+    it('hides edit, delete and restore from a read-only user', async () => {
+      server.use(...baseHandlers(secret(NOTE_TYPE)));
+      const user = userEvent.setup();
+      renderPage(READER);
+      await screen.findByRole('heading', { level: 1, name: 'My Card' });
+      expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'More actions' }));
+      expect(screen.queryByRole('menuitem', { name: 'Delete' })).not.toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: 'Download JSON' })).toBeInTheDocument();
+    });
+
+    it('links a card secret to the Cards renewal flow', async () => {
+      server.use(...baseHandlers(secret(CARD_TYPE)));
+      const user = userEvent.setup();
+      renderPage();
+      expect(await screen.findByRole('link', { name: 'renew it with new photos' })).toHaveAttribute(
+        'href',
+        `/cards/${SECRET_ID}/renew`,
+      );
+      await user.click(screen.getByRole('button', { name: 'More actions' }));
+      await user.click(await screen.findByRole('menuitem', { name: 'Renew card' }));
+      expect(mockNavigate).toHaveBeenCalledWith(`/cards/${SECRET_ID}/renew`);
+    });
+
+    it('does not offer renewal for a non-card secret', async () => {
+      server.use(...baseHandlers(secret(DOCUMENT_TYPE)));
+      const user = userEvent.setup();
+      renderPage();
+      await screen.findByRole('heading', { level: 1, name: 'My Card' });
+      expect(screen.queryByRole('link', { name: /renew/ })).not.toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'More actions' }));
+      expect(screen.queryByRole('menuitem', { name: 'Renew card' })).not.toBeInTheDocument();
     });
   });
 
@@ -161,9 +278,9 @@ describe('SecretDetailPage', () => {
         ),
       );
       const user = userEvent.setup();
-      render(<SecretDetailPage />);
+      renderPage();
 
-      await user.click(await screen.findByRole('tab', { name: 'Attachments' }));
+      await user.click(await screen.findByRole('tab', { name: /Attachments/ }));
 
       expect(await screen.findByText('Card Images')).toBeInTheDocument();
       expect(screen.queryByAltText('Front of card')).not.toBeInTheDocument();
@@ -178,9 +295,9 @@ describe('SecretDetailPage', () => {
     it('shows empty slots for a card created before attachments existed', async () => {
       server.use(...baseHandlers(secret(CARD_TYPE, [])));
       const user = userEvent.setup();
-      render(<SecretDetailPage />);
+      renderPage();
 
-      await user.click(await screen.findByRole('tab', { name: 'Attachments' }));
+      await user.click(await screen.findByRole('tab', { name: /Attachments/ }));
 
       expect(await screen.findByText('No front image')).toBeInTheDocument();
       expect(screen.getByText('No back image')).toBeInTheDocument();
@@ -189,7 +306,7 @@ describe('SecretDetailPage', () => {
 
     it('never renders a card face on the Details tab alongside the card number', async () => {
       server.use(...baseHandlers(secret(CARD_TYPE, [cardFace('card_front', 'obj-front')])));
-      render(<SecretDetailPage />);
+      renderPage();
 
       expect(await screen.findByText(/Card Number/)).toBeInTheDocument();
       expect(screen.queryByText('Card Images')).not.toBeInTheDocument();
@@ -199,9 +316,9 @@ describe('SecretDetailPage', () => {
     it('leaves a Document secret unaffected: generic list, no card slots', async () => {
       server.use(...baseHandlers(secret(DOCUMENT_TYPE, [GENERIC_ATTACHMENT])));
       const user = userEvent.setup();
-      render(<SecretDetailPage />);
+      renderPage();
 
-      await user.click(await screen.findByRole('tab', { name: 'Attachments' }));
+      await user.click(await screen.findByRole('tab', { name: /Attachments/ }));
 
       expect(await screen.findByText('contract.pdf')).toBeInTheDocument();
       expect(screen.queryByText('Card Images')).not.toBeInTheDocument();
@@ -215,9 +332,9 @@ describe('SecretDetailPage', () => {
         ),
       );
       const user = userEvent.setup();
-      render(<SecretDetailPage />);
+      renderPage();
 
-      await user.click(await screen.findByRole('tab', { name: 'Attachments' }));
+      await user.click(await screen.findByRole('tab', { name: /Attachments/ }));
 
       expect(await screen.findByText('contract.pdf')).toBeInTheDocument();
       expect(screen.queryByText('card_front.jpg')).not.toBeInTheDocument();
@@ -243,15 +360,12 @@ describe('SecretDetailPage', () => {
       );
 
       const user = userEvent.setup();
-      render(<SecretDetailPage />);
+      renderPage();
 
-      await user.click(await screen.findByRole('tab', { name: 'Version History' }));
-      await waitFor(() => expect(screen.getAllByText('v1').length).toBeGreaterThan(0));
-      // 'v1' appears twice per row (the version cell and the status chip); the
-      // first is the cell inside the clickable row.
-      await user.click(screen.getAllByText('v1')[0]);
+      await user.click(await screen.findByRole('button', { name: 'History' }));
+      await user.click(await screen.findByRole('button', { name: 'Compare version 1 with current' }));
 
-      const dialog = await screen.findByRole('dialog');
+      const dialog = await screen.findByRole('dialog', { name: 'Version 1' });
       expect(await within(dialog).findByText('Card Images (v1)')).toBeInTheDocument();
 
       await user.click(within(dialog).getByRole('button', { name: 'Reveal front image' }));
@@ -278,15 +392,12 @@ describe('SecretDetailPage', () => {
       );
 
       const user = userEvent.setup();
-      render(<SecretDetailPage />);
+      renderPage();
 
-      await user.click(await screen.findByRole('tab', { name: 'Version History' }));
-      await waitFor(() => expect(screen.getAllByText('v1').length).toBeGreaterThan(0));
-      // 'v1' appears twice per row (the version cell and the status chip); the
-      // first is the cell inside the clickable row.
-      await user.click(screen.getAllByText('v1')[0]);
+      await user.click(await screen.findByRole('button', { name: 'History' }));
+      await user.click(await screen.findByRole('button', { name: 'Compare version 1 with current' }));
 
-      const dialog = await screen.findByRole('dialog');
+      const dialog = await screen.findByRole('dialog', { name: 'Version 1' });
       // A Card type always offers slots, but they must render empty, not broken.
       expect(await within(dialog).findByText('Card Images (v1)')).toBeInTheDocument();
       expect(within(dialog).getByText('No front image')).toBeInTheDocument();
@@ -309,15 +420,12 @@ describe('SecretDetailPage', () => {
       );
 
       const user = userEvent.setup();
-      render(<SecretDetailPage />);
+      renderPage();
 
-      await user.click(await screen.findByRole('tab', { name: 'Version History' }));
-      await waitFor(() => expect(screen.getAllByText('v1').length).toBeGreaterThan(0));
-      // 'v1' appears twice per row (the version cell and the status chip); the
-      // first is the cell inside the clickable row.
-      await user.click(screen.getAllByText('v1')[0]);
+      await user.click(await screen.findByRole('button', { name: 'History' }));
+      await user.click(await screen.findByRole('button', { name: 'Compare version 1 with current' }));
 
-      const dialog = await screen.findByRole('dialog');
+      const dialog = await screen.findByRole('dialog', { name: 'Version 1' });
       await waitFor(() => expect(within(dialog).getByText('Version 1')).toBeInTheDocument());
       expect(within(dialog).getByText('No front image')).toBeInTheDocument();
     });
@@ -359,9 +467,9 @@ describe('SecretDetailPage', () => {
       server.use(...handlers);
 
       const user = userEvent.setup();
-      render(<SecretDetailPage />);
+      renderPage();
 
-      await user.click(await screen.findByRole('tab', { name: 'Attachments' }));
+      await user.click(await screen.findByRole('tab', { name: /Attachments/ }));
       expect(await screen.findByText('contract.pdf')).toBeInTheDocument();
       const fetchesBefore = state.fetches;
 
@@ -391,9 +499,9 @@ describe('SecretDetailPage', () => {
       server.use(...handlers);
 
       const user = userEvent.setup();
-      render(<SecretDetailPage />);
+      renderPage();
 
-      await user.click(await screen.findByRole('tab', { name: 'Attachments' }));
+      await user.click(await screen.findByRole('tab', { name: /Attachments/ }));
       expect(await screen.findByText('contract.pdf')).toBeInTheDocument();
       const fetchesBefore = state.fetches;
 
@@ -421,9 +529,9 @@ describe('SecretDetailPage', () => {
       server.use(...handlers);
 
       const user = userEvent.setup();
-      render(<SecretDetailPage />);
+      renderPage();
 
-      await user.click(await screen.findByRole('tab', { name: 'Attachments' }));
+      await user.click(await screen.findByRole('tab', { name: /Attachments/ }));
       expect(await screen.findByText('contract.pdf')).toBeInTheDocument();
       const fetchesBefore = state.fetches;
 

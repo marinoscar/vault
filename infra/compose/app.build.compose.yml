@@ -1,0 +1,20 @@
+# =============================================================================
+# App overlay (every base mode: dev, devdb, prod, vps) - Vault image contexts
+# =============================================================================
+# The platform's base.compose.yml builds both images from the repository root
+# with the Dockerfile of each app (`apps/<name>/Dockerfile`), the layout of a
+# monorepo with shared packages. Vault's Dockerfiles are single-package: they
+# COPY . . from the app directory and expect the app at /app. The build
+# context therefore stays the app directory, as it was before the platform
+# files were generated. A scalar in an overlay replaces the platform value.
+# =============================================================================
+
+services:
+  api:
+    build:
+      context: ../../apps/api
+      dockerfile: Dockerfile
+  web:
+    build:
+      context: ../../apps/web
+      dockerfile: Dockerfile
