@@ -1,6 +1,6 @@
 import { HttpStatus } from '@nestjs/common';
 
-import { RequestUser } from '../auth/interfaces/authenticated-user.interface';
+import { RequestUser } from '@marinoscar/platform-api/identity';
 
 import { AI_ERROR_CODES } from './ai.constants';
 import { AiVerifyController } from './ai-verify.controller';

@@ -7,7 +7,7 @@ import { TextReader, ZipWriter } from '@zip.js/zip.js';
 import { PrismaService } from '../../prisma/prisma.service';
 import { defaultOrgClient } from '../../prisma/default-org';
 import { CryptoService } from '../../common/services/crypto.service';
-import { RequestUser } from '../../auth/interfaces/authenticated-user.interface';
+import { RequestUser } from '@marinoscar/platform-api/identity';
 import { STORAGE_PROVIDER, StorageProvider } from '../../storage/providers';
 import { ExportSecretsOptions } from '../dto/export-secrets.dto';
 import {

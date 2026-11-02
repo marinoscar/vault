@@ -12,7 +12,7 @@ import { ConfigService } from '@nestjs/config';
 import { SecretsService } from './secrets.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CryptoService } from '../common/services/crypto.service';
-import { createMockPrismaService, MockPrismaService } from '../../test/mocks/prisma.mock';
+import { createMockPrismaService, freshTransactionClient, MockPrismaService } from '../../test/mocks/prisma.mock';
 import { createMockStorageProvider } from '../../test/mocks/storage-provider.mock';
 import { STORAGE_PROVIDER, StorageProvider } from '../storage/providers';
 import { PERMISSIONS } from '../common/constants/roles.constants';
@@ -211,7 +211,7 @@ describe('SecretsService', () => {
     (mockPrisma.$transaction as jest.Mock).mockImplementation(
       async (arg: unknown) => {
         if (typeof arg === 'function') {
-          return arg(mockPrisma);
+          return arg(freshTransactionClient(mockPrisma));
         }
         if (Array.isArray(arg)) {
           return Promise.all(arg);
@@ -824,7 +824,7 @@ describe('SecretsService', () => {
           async (arg: unknown) => {
             const result =
               typeof arg === 'function'
-                ? await (arg as (tx: unknown) => Promise<unknown>)(mockPrisma)
+                ? await (arg as (tx: unknown) => Promise<unknown>)(freshTransactionClient(mockPrisma))
                 : arg;
             await new Promise((resolve) => setTimeout(resolve, 0));
             committed();
@@ -2119,7 +2119,7 @@ describe('SecretsService', () => {
           }
           txDepth += 1;
           try {
-            return await (arg as (tx: unknown) => Promise<unknown>)(mockPrisma);
+            return await (arg as (tx: unknown) => Promise<unknown>)(freshTransactionClient(mockPrisma));
           } finally {
             txDepth -= 1;
           }
@@ -3291,7 +3291,7 @@ describe('SecretsService', () => {
           async (arg: unknown) => {
             const result =
               typeof arg === 'function'
-                ? await (arg as (tx: unknown) => Promise<unknown>)(mockPrisma)
+                ? await (arg as (tx: unknown) => Promise<unknown>)(freshTransactionClient(mockPrisma))
                 : arg;
             await new Promise((resolve) => setTimeout(resolve, 0));
             committed();
