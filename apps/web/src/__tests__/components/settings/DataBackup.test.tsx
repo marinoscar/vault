@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { render } from '../../utils/test-utils';
+import { mockUser, render } from '../../utils/test-utils';
 import {
   DataBackup,
   BACKUP_SAVE_STARTED_MESSAGE,
@@ -395,6 +395,21 @@ describe('DataBackup', () => {
       expect(await screen.findByText(BACKUP_STORAGE_NOT_CONFIGURED_HELPER)).toBeInTheDocument();
       expect(storageRadio()).toBeDisabled();
       expect(downloadRadio()).toBeChecked();
+    });
+
+    it('links the helper to Console → Storage only for a storage_config:read holder', async () => {
+      mockConfig.mockResolvedValue({ storageConfigured: false, keepCount: 10 });
+      const { unmount } = render(<DataBackup />);
+
+      expect(await screen.findByTestId('backup-storage-helper')).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: /Console → Storage/ })).not.toBeInTheDocument();
+      unmount();
+
+      render(<DataBackup />, {
+        wrapperOptions: { user: { ...mockUser, permissions: [...mockUser.permissions, 'storage_config:read'] } },
+      });
+      const link = await screen.findByRole('link', { name: 'Set up storage in Console → Storage' });
+      expect(link).toHaveAttribute('href', '/admin/settings/storage');
     });
 
     it('treats a failed config request as not configured and still downloads', async () => {

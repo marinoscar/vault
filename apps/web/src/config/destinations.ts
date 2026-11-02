@@ -83,8 +83,9 @@ export const DESTINATIONS: readonly Destination[] = [
     path: '/admin/settings',
     // Any-of: every Console card is reachable by a holder of one of these
     // (push:read and broadcasts:read are the E7.2 Web Push and Broadcasts cards,
-    // ai_config:read the E8.2 AI, AI models and AI usage cards, db_backup:read the E9.1 Database Backup card).
-    anyPermission: ['system_settings:read', 'users:read', 'push:read', 'broadcasts:read', 'ai_config:read', 'db_backup:read'],
+    // ai_config:read the E8.2 AI, AI models and AI usage cards, db_backup:read the E9.1 Database Backup card,
+    // storage_config:read the E6.1 Storage card).
+    anyPermission: ['system_settings:read', 'users:read', 'push:read', 'broadcasts:read', 'ai_config:read', 'db_backup:read', 'storage_config:read'],
     pinned: true,
   },
 ];

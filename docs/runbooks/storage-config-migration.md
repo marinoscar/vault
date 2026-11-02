@@ -11,6 +11,8 @@ Object storage holds secret attachments, card faces, media files and the logical
 | `AWS_ACCESS_KEY_ID` | `accessKeyId` of the active driver's settings (not secret) |
 | `AWS_SECRET_ACCESS_KEY` | the credential `storage` / `default`, encrypted with `SECRETS_ENCRYPTION_KEY` (never `VAULT_ENCRYPTION_KEY`) |
 
+Where to change it now: **Console → Storage** (`/admin/settings/storage`, the last card of Administration; `storage_config:read` to open it, `storage_config:write` to save, test or create the bucket). The "Object storage is not configured" hints on the Backups and My backups pages link there for an administrator.
+
 Still environment variables, because they bound a deployment and name no account: `MAX_FILE_SIZE`, `ALLOWED_MIME_TYPES`, `SIGNED_URL_EXPIRY`, `STORAGE_PART_SIZE`.
 
 Source of truth: `apps/api/src/platform/storage/` (`storage.config.ts`, `storage-key-prefix.manifest.ts`, `storage-env-import*.ts`), `apps/api/scripts/migrate-storage-config.ts`, `apps/api/src/doctor/checks/vault-storage-env.doctor-check.ts`. The platform's own description of the admin page and the drivers is in the `@marinoscar/platform-api/storage` README.
@@ -86,7 +88,7 @@ Do this once. A maintenance window is optional: while storage is unconfigured up
 
 ## 5. Verify
 
-- `/admin/settings/storage` (once the web card ships; until then `GET /api/admin/storage-config` as an administrator) shows the bucket and `hasValue` for the secret, and **Test** passes all checks.
+- Console → **Storage** (`/admin/settings/storage`, the packaged storage page; an administrator holds `storage_config:read`, saving needs `storage_config:write`) shows the bucket and `hasValue` for the secret, and **Test** passes all checks.
 - `GET /api/storage/status` reports storage as configured.
 - Download an **existing** attachment, card face and media file: they are served from their stored `storage_key` (`uploads/<timestamp>/...`), so they open without any key change. Download a system backup and a "My backups" archive from the Backups pages.
 - Upload a new attachment: its key is `uploads/<orgId>/<timestamp>/<uuid><ext>`.

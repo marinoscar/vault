@@ -31,6 +31,7 @@ import {
 } from '../../services/api';
 import type { BackupRun, MyBackupsConfig } from '../../types';
 import { saveBlobAsFile } from '../../utils/saveBlob';
+import { StorageSettingsLink } from '../common/StorageSettingsLink';
 import { validateBackupPassword } from '../../utils/backupPassword';
 import {
   defaultBackupContents,
@@ -259,7 +260,7 @@ export function DataBackup() {
             </RadioGroup>
             {config && !storageConfigured && (
               <FormHelperText data-testid="backup-storage-helper">
-                {BACKUP_STORAGE_NOT_CONFIGURED_HELPER}
+                {BACKUP_STORAGE_NOT_CONFIGURED_HELPER} <StorageSettingsLink />
               </FormHelperText>
             )}
             {toStorage && (
