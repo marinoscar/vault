@@ -1,0 +1,25 @@
+# apps/api rules
+
+Root rules ([AGENTS.md](../../AGENTS.md)) apply. Endpoint reference: [docs/API.md](../../docs/API.md); testing: [docs/TESTING.md](../../docs/TESTING.md); secrets design: [docs/SECRETS.md](../../docs/SECRETS.md).
+
+## Layout (today)
+
+- `src/<module>/` per feature: `auth`, `users`, `allowlist`, `settings` (system and user), `secrets` (+ `secrets/export`: zip, README and HTML renderers), `secret-types`, `backups` (admin `admin/backups`, user `backups/me`, `backup-runner.service.ts`), `media`, `ai` (generic config/verify/OpenAI provider **and** card extraction `card-extract.*`), `storage` (objects, providers/s3, processing, cleanup task), `pat`, `device-auth`, `health`, `test-auth`, `common` (guards, decorators, `CryptoService`, filters, interceptors, logger), `prisma`.
+- `prisma/schema.prisma` is hand-edited today; `prisma/migrations/` holds seven installed migrations; `prisma/seed.ts` and `system-secret-types.ts` seed roles, permissions and the system secret types. `test/` holds Jest specs (`test/jest.config.js`); `src/**/*.spec.ts` sit beside the code.
+- **Target:** auth, users, allowlist, settings, storage, pat, device-auth, health and `common` are replaced by `src/platform/<slice>/` bindings of `@marinoscar/platform-api` (E3 to E9); the Prisma schema is composed from fragments (E2). Domain modules (secrets, secret-types, backups, media, card extraction) stay in `apps/api/src` until E12. Classification: [module-classification](../../docs/platform-adoption/module-classification.md).
+
+## Rules
+
+- **Every route declares `@Auth(...)`** from `src/auth/decorators` with the exact permission (`PERMISSIONS.*` in `src/common/constants/roles.constants.ts`), or is deliberately public. A route with bare `@Auth()` is ownership-scoped (`/api/pat`, `/api/ai/status`). Add the route to the RBAC tests in `test/rbac/`.
+- **Validate input with Zod** DTOs; annotate OpenAPI/Swagger; update [docs/API.md](../../docs/API.md) and `docs/DOMAIN-REFERENCE.md` when an endpoint changes.
+- **Adding an endpoint**: controller method (auth/RBAC decorators), service method (all business logic), OpenAPI annotations, unit + integration tests, API docs.
+- **Responses** are `{ data, meta? }`; errors `{ code, message, details? }`. The deliberate exceptions return a raw streamed zip: `POST /api/secrets/export` and `POST /api/admin/backups/export`; keep them out of the envelope.
+- **Secrets and crypto**: encrypt and decrypt only through `CryptoService` (`VAULT_ENCRYPTION_KEY`). Never log, return or put in an error/span/audit payload a decrypted value, backup password or AI key. List responses are not decrypted (keep it so). A rotated or missing key must fail loudly (see `backup-password.ts`), not fall back.
+- **Secret versions**: a data change writes a new immutable `secret_versions` row and flips `isCurrent` in one transaction; exactly one current version. Attachments are version-scoped; delete by refcount (see root invariants and [SECRETS.md](../../docs/SECRETS.md)).
+- **Backups**: the archive password is used in memory or stored encrypted, never logged. `backup-runner.service.ts` is a known exception to the queue rule (in-process `@Cron` + detached `launch()` + advisory locks); do not extend it, E5 turns it into `vault.backup.run` and `vault.user_backup.run` job types ([local-exceptions](../../docs/platform-adoption/local-exceptions.md)). Dumps and archives stream; never buffer.
+- **AI**: provider code stays under `src/ai/providers/<provider>/`; card extraction persists nothing and never requests the CVV; budget is counted from `audit_events` (`ai.card.extract`).
+- **Prisma**: use `npm run prisma:*`, never bare `npx prisma`. Never edit an existing migration (comments count). Partial/expression indexes are hand-written SQL, intentional drift. Schema work goes to `database-dev`.
+- **Long-running work is a queue job** (root rule, TARGET E5); **`notify()` after commit** (TARGET E7); platform-owned behaviour is requested by a seam issue on EAB, never copied locally.
+- **A behaviour change carries tests** in the same or the next commit.
+
+Run: `npm test`, `npm run typecheck`, `npm run test:cov` (all from `apps/api`).

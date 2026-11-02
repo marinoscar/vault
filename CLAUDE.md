@@ -1,558 +1,77 @@
 # CLAUDE.md
 
-This file provides guidance for AI assistants working on this codebase.
-
-## Project Overview
-
-Web Application Foundation with React UI + Node API + PostgreSQL. Production-grade foundation with OAuth authentication, RBAC authorization, and flexible settings framework.
-
-## Technology Stack
-
-- **Backend**: Node.js + TypeScript, NestJS with Fastify adapter
-- **Frontend**: React + TypeScript, Material UI (MUI)
-- **Database**: PostgreSQL with Prisma ORM
-- **Auth**: Passport strategies (Google OAuth required)
-- **Testing**: Jest + Supertest (backend), React Testing Library + Jest (frontend)
-- **Observability**: OpenTelemetry, Uptrace, Pino structured logging
-- **Containerization**: Docker + Docker Compose
-- **Reverse Proxy**: Nginx (same-origin routing)
-
-## Repository Structure
-
-```
-/
-  apps/
-    api/                    # Backend API
-      src/
-      test/
-      prisma/
-        schema.prisma
-        migrations/
-      Dockerfile            # API container (near its code)
-    web/                    # Frontend React app
-      src/
-      src/__tests__/
-      Dockerfile            # Web container (near its code)
-  docs/                     # Documentation
-  infra/                    # Infrastructure configuration
-    compose/
-      base.compose.yml       # Core services: api, web, nginx
-      dev.compose.yml        # Development overrides (hot reload, volumes)
-      prod.compose.yml       # Production overrides (resource limits)
-      otel.compose.yml       # Observability: uptrace, clickhouse, otel-collector
-      .env.example           # Environment variables template
-    nginx/
-      nginx.conf             # Nginx routing configuration
-    otel/
-      otel-collector-config.yaml   # OTEL Collector config
-      uptrace.yml            # Uptrace configuration
-  tests/e2e/                # Optional E2E tests
-```
-
-## MANDATORY: Worktree-Based Feature Development
-
-Every feature or fix MUST be developed in a Git worktree. The main checkout stays on `main` at all times.
-
-### Worktree Location & Naming
-- All worktrees live under `worktrees/` in the repo root (git-ignored, never committed)
-- Use **flat short names**: `worktrees/<short-name>` (e.g., `worktrees/add-export`, `worktrees/fix-auth-bug`)
-- The branch name follows conventional format: `feat/<short-name>`, `fix/<short-name>`, etc.
-
-### Workflow (Claude MUST follow)
-
-**Starting feature work:**
-1. From the main checkout, create the worktree:
-   ```bash
-   git worktree add worktrees/<short-name> -b <type>/<short-name>
-   ```
-   Example: `git worktree add worktrees/add-export -b feat/add-export`
-2. All development happens inside `worktrees/<short-name>/`
-3. Commits follow all existing commit rules (see below)
-
-**Finishing feature work:**
-1. Ensure all changes are committed inside the worktree
-2. Remove the worktree:
-   ```bash
-   git worktree remove worktrees/<short-name>
-   ```
-3. The branch remains for PR/merge
-
-### Rules
-- NEVER checkout feature branches in the main working directory
-- NEVER work on features directly in the main checkout
-- One worktree per feature branch (Git enforces this)
-- If the worktree already exists for the requested feature, work inside it (don't recreate)
-
-## MANDATORY: Claude Commit-Only Git Rules
-
-Claude: these rules are **MANDATORY**. Follow them exactly.  
-Your job is **only** to create clean, frequent commits while implementing the requested work.  
-Assume the branch already exists and is checked out. Do **not** create branches or PRs.
-
----
-
-### Core Commit Rules (MANDATORY)
-1. **Commit early, commit often.** Do not leave large uncommitted change sets.
-2. Each commit must be **small, coherent, and reviewable**.
-3. **One intent per commit** (no “misc fixes” bundles).
-4. **Do not include unrelated refactors** unless explicitly requested.
-5. If you change behavior, you must add/adjust tests in the same commit or the next immediate commit.
-
----
-
-### Commit Message Standard (MANDATORY: Conventional Commits)
-Use this format:
-
-`<type>(<scope>): <short imperative summary>`
-
-Allowed types:
-- `feat:` new functionality
-- `fix:` bug fix
-- `refactor:` internal change, no behavior change
-- `test:` add/adjust tests only
-- `docs:` documentation only
-- `chore:` tooling, deps, formatting, build, CI
-
-Scopes (pick one relevant area):
-- `api`, `web`, `db`, `infra`, `auth`, `chat`, `ui`, `core`, `jobs`, `docs`, `tests`
-
-Examples:
-- `feat(chat): add permit search prompt builder`
-- `fix(api): handle missing location gracefully`
-- `test(api): cover permit filter edge cases`
-- `chore(web): run formatter`
-
----
-
-### Commit Cadence (MANDATORY)
-Make commits at these checkpoints:
-
-1) **Scaffold / wiring**
-- New files, routes, handlers, basic plumbing (even if incomplete).
-- Example: `feat(api): scaffold permit lookup endpoint`
-
-2) **Core functionality**
-- Implement the smallest working slice end-to-end.
-- Example: `feat(core): implement permit filtering by location radius`
-
-3) **Edge cases + validation**
-- Input validation, error handling, fallback behavior.
-- Example: `fix(api): validate lat/lng inputs and return 400`
-
-4) **Tests**
-- Unit/integration tests for the new behavior and critical edge cases.
-- Example: `test(api): add coverage for location filter and empty results`
-
-5) **Cleanup**
-- Remove dead code, rename for clarity, small refactors strictly related to the change.
-- Example: `refactor(core): extract permit query builder`
-
-6) **Docs (if needed)**
-- Only if the task requires it.
-- Example: `docs(api): document permit endpoint parameters`
-
----
-
-### What to Include / Exclude (MANDATORY)
-#### Include
-- Code + tests for the same feature area
-- Minimal config changes needed to run/build/test
-- Small, related refactors that reduce complexity for the feature
-
-#### Exclude
-- Repo-wide formatting changes unless required
-- Dependency upgrades unless required
-- Unrelated cleanup in neighboring modules
-
----
-
-### Commit Command Sequence (MANDATORY)
-Before committing:
-1. `git status`
-2. `git diff`
-3. Stage intentionally:
-   - `git add -p` (preferred) or `git add <files>`
-
-Commit:
-- `git commit -m "<type>(<scope>): <summary>"`
-
-After commit:
-- `git status`
-
-Repeat until the next checkpoint is complete, then commit again.
-
----
-
-### Handling Mixed Changes (MANDATORY)
-If you accidentally made unrelated edits:
-- Revert them before committing, or
-- Split into separate commits (preferred). Only keep the unrelated commit if explicitly requested.
-
----
-
-### If Tests Cannot Be Run (MANDATORY)
-If you cannot run tests for a valid reason (missing env, tool not available):
-- Still commit, but include a clear note in the commit body.
-
-Example:
-- Subject: `feat(api): implement permit search by address`
-- Body: `Notes: tests not run (DB env not available).`
-
----
-
-### Golden Rule (MANDATORY)
-If the diff feels “big,” you waited too long. **Split the work and commit sooner.**
-
-## Architecture Principles
-
-1. **Separation of Concerns**: UI handles presentation only; API handles all business logic and authorization
-2. **Same-Origin Hosting**: UI at `/`, API at `/api`, Swagger at `/api/docs`
-3. **Security by Default**: All API endpoints require authentication unless explicitly public
-4. **API-First**: All business logic resides in the API layer
-
-## Key Commands
-
-```bash
-# Setup: copy environment template
-cp infra/compose/.env.example infra/compose/.env
-
-# Start development (from infra/compose folder)
-cd infra/compose && docker compose -f base.compose.yml -f dev.compose.yml up
-
-# Start development with observability (Uptrace UI at http://localhost:14318)
-cd infra/compose && docker compose -f base.compose.yml -f dev.compose.yml -f otel.compose.yml up
-
-# Start production mode
-cd infra/compose && docker compose -f base.compose.yml -f prod.compose.yml up
-
-# Run API tests
-cd apps/api && npm test
-
-# Run frontend tests
-cd apps/web && npm test
-
-# Generate Prisma client after schema changes
-cd apps/api && npm run prisma:generate
-
-# Create a new migration (development)
-cd apps/api && npm run prisma:migrate:dev -- --name <migration_name>
-
-# Apply migrations (production)
-cd apps/api && npm run prisma:migrate
-
-# Note: Use npm scripts (prisma:*) instead of direct npx commands
-# They automatically construct DATABASE_URL from individual env vars
-```
-
-## Service URLs (Development)
-
-- **Application**: http://localhost:3535 (via Nginx)
-- **Swagger UI**: http://localhost:3535/api/docs
-- **Uptrace**: http://localhost:14318 (when otel stack running)
-
-## API Endpoints (MVP)
-
-### Authentication
-- `GET /api/auth/providers` - List enabled OAuth providers
-- `GET /api/auth/google` - Initiate Google OAuth
-- `GET /api/auth/google/callback` - OAuth callback
-- `POST /api/auth/refresh` - Refresh access token
-- `POST /api/auth/logout` - Logout and invalidate session
-- `POST /api/auth/logout-all` - Logout from all devices
-- `GET /api/auth/me` - Get current user
-
-### Device Authorization (RFC 8628)
-- `POST /api/auth/device/code` - Generate device code (Public)
-- `POST /api/auth/device/token` - Poll for authorization (Public)
-- `GET /api/auth/device/activate` - Get activation info
-- `POST /api/auth/device/authorize` - Approve/deny device
-- `GET /api/auth/device/sessions` - List device sessions
-- `DELETE /api/auth/device/sessions/{id}` - Revoke device session
-
-### Users (Admin-only)
-- `GET /api/users` - List users (paginated)
-- `GET /api/users/{id}` - Get user by ID
-- `PATCH /api/users/{id}` - Update user (roles, activation)
-- `PUT /api/users/{id}/roles` - Update user roles
-
-### Settings
-- `GET /api/user-settings` - Get current user's settings
-- `PUT /api/user-settings` - Replace user settings
-- `PATCH /api/user-settings` - Partial update user settings
-- `GET /api/system-settings` - Get system settings
-- `PUT /api/system-settings` - Replace system settings (Admin)
-- `PATCH /api/system-settings` - Partial update system settings (Admin)
-
-### Allowlist (Admin-only)
-- `GET /api/allowlist` - List allowlisted emails (paginated, filterable)
-- `POST /api/allowlist` - Add email to allowlist
-- `DELETE /api/allowlist/{id}` - Remove email from allowlist
-
-### Storage Objects
-- `POST /api/storage/objects/upload/init` - Initialize resumable upload
-- `GET /api/storage/objects/:id/upload/status` - Get upload progress
-- `POST /api/storage/objects/:id/upload/complete` - Complete multipart upload
-- `DELETE /api/storage/objects/:id/upload/abort` - Abort upload
-- `POST /api/storage/objects` - Simple file upload
-- `GET /api/storage/objects` - List objects (paginated)
-- `GET /api/storage/objects/:id` - Get object metadata
-- `GET /api/storage/objects/:id/download` - Get signed download URL
-- `DELETE /api/storage/objects/:id` - Delete object
-- `PATCH /api/storage/objects/:id/metadata` - Update metadata
-
-### Personal Access Tokens
-- `POST /api/pat` - Create a new personal access token
-- `GET /api/pat` - List current user's tokens
-- `DELETE /api/pat/{id}` - Revoke a token
-
-### Secrets
-- `POST /api/secrets` - Create a secret with its initial version
-- `GET /api/secrets` - List secrets (paginated, own secrets unless `secrets:read_any`)
-- `GET /api/secrets/by-name/{name}` - Get a secret by name (decrypted current version)
-- `GET /api/secrets/{id}` - Get a secret with decrypted current version data
-- `PUT /api/secrets/{id}` - Update a secret; creates a new version if data changed
-- `DELETE /api/secrets/{id}` - Delete a secret and all its versions
-- `GET /api/secrets/{id}/versions` - List version history (metadata only)
-- `GET /api/secrets/{id}/versions/{versionId}` - Get a specific version, decrypted, with that version's attachments
-- `POST /api/secrets/{id}/versions/{versionId}/rollback` - Rollback to a version (restores its attachment set)
-- `POST /api/secrets/export` - Download a password-protected (AES-256 zip) backup of the caller's own secrets (`secrets:read`); body `{ password (6-256 chars), includeSecrets? (default true), includeAttachments? (true), includeVersions? (false), includeMedia? (false) }`; `includeSystem` is a 400; response is the raw zip (not wrapped in `{data}`; headers `X-Vault-Export-Secrets`, `-Attachments`, `-Media-Files`), audited as `secrets.export`. 400 messages for the content rules are in `docs/API.md` (Backup content validation). See `docs/SECRETS.md`
-- `POST /api/secrets/{id}/renew` - Renew with new field values, swapping only the attachment roles supplied (e.g. reissued card front/back)
-- `POST /api/secrets/{id}/attachments` - Link a storage object to the secret's current version
-- `GET /api/secrets/{id}/attachments` - List attachments (`versionId`, `role` query filters)
-- `DELETE /api/secrets/{id}/attachments/{attachmentId}` - Unlink; underlying storage object is refcount-deleted, not always deleted
-
-### My Backups (saved user backups)
-- `GET /api/backups/me/config` - `{ storageConfigured, keepCount: 10 }` (`secrets:read`)
-- `POST /api/backups/me` - Save a backup to storage; body as `POST /api/secrets/export`; 202 run; 400 if storage is not configured, 409 if one is already running. Password used in memory only, never stored. Stored as `user-backups/<userId>/vault-backup-<UTC datetime>.zip`, newest 10 kept (`secrets:read`)
-- `GET /api/backups/me` - List own saved backups, newest first, paginated (`secrets:read`)
-- `GET /api/backups/me/{id}/download` - Signed URL (300 s) `{url, expiresAt, fileName}`; 404 if not own (`secrets:read`)
-- `DELETE /api/backups/me/{id}` - Delete own saved backup, 204 (404 if not own, 409 while running) (`secrets:read`). Admins do not see these in the admin list
-
-### Secret Types
-- `POST /api/secret-types` - Create a custom secret type
-- `GET /api/secret-types` - List secret types (system + own/all custom)
-- `GET /api/secret-types/{id}` - Get a secret type by ID
-- `PUT /api/secret-types/{id}` - Update a custom secret type
-- `DELETE /api/secret-types/{id}` - Delete a custom secret type (409 if secrets reference it)
-
-### AI (Card Scanning)
-- `GET /api/ai/status` - Whether AI-backed features are available to the current user (no permission required)
-- `POST /api/secrets/cards/extract` - Extract candidate card fields from cropped card photos via an admin-configured OpenAI vision model (`secrets:write`). Persists nothing; the CVV is never requested or returned. Disabled by default — see `docs/SECRETS.md` and `docs/API.md`.
-
-### Admin Backups
-- `GET /api/admin/backups/schedule` - Get the backup schedule (`system_settings:read`); never returns the password (`passwordConfigured`, `passwordUpdatedAt` only)
-- `PUT /api/admin/backups/schedule` - Replace the schedule; optional write-only `password` (`system_settings:write`)
-- `POST /api/admin/backups/run` - Start a backup now (saved to storage), 202 (`system_settings:write`)
-- `POST /api/admin/backups/export` - Download a backup now: raw streamed zip (not `{data}`), nothing stored, no run row; body `{ password? | useScheduledPassword?: true (exactly one), includeSecrets?, includeAttachments?, includeVersions?, includeMedia?, includeSystem? }`; headers `X-Vault-Export-Users`, `-Secrets`, `-Attachments`, `-Media-Files`; audited as `backups.export` (`system_settings:write`)
-- `GET /api/admin/backups` - List runs (system scope only), newest first, paginated; each run has `scope`, `mediaFileCount`, `contents` (`system_settings:read`)
-- `GET /api/admin/backups/{id}/download` - Signed URL (300 s) `{url, expiresAt, fileName}` (`system_settings:write`)
-- `DELETE /api/admin/backups/{id}` - Delete the backup object, 204 (409 while running, 502 if storage refuses) (`system_settings:write`). See `docs/SECRETS.md`
-
-### Health
-- `GET /api/health/live` - Liveness check
-- `GET /api/health/ready` - Readiness check (includes DB)
-
-## RBAC Model
-
-### Roles
-- **Admin**: Full access, manage users and system settings
-- **Contributor**: Standard capabilities, manage own settings
-- **Viewer**: Least privilege (default), manage own settings
-
-### Key Permissions
-- `system_settings:read/write` - System settings access
-- `user_settings:read/write` - User settings access
-- `users:read/write` - User management
-- `rbac:manage` - Role assignment
-- `allowlist:read/write` - Allowlist management (Admin only)
-- `storage:read/write/delete` - Storage object access (own objects)
-- `storage:read_any/write_any/delete_any` - Storage object access (all objects, Admin only)
-- `secrets:read/write/delete` - Secret access (own secrets)
-- `secrets:read_any/write_any/delete_any` - Secret access (all secrets, Admin only)
-- `secret_types:read/write/delete` - Secret type management (system types are always read-only regardless of permission)
-
-## Database Tables
-
-- `users` - User accounts with profile info
-- `user_identities` - OAuth provider identities (provider + subject)
-- `roles` / `permissions` / `role_permissions` - RBAC
-- `user_roles` - User-to-role assignments
-- `system_settings` - Global app settings (JSONB); as of the card epic, includes a write-only `ai` block (enabled flag, model, daily budget, AES-256-GCM-encrypted OpenAI API key)
-- `user_settings` - Per-user settings (JSONB)
-- `audit_events` - Action audit log; also backs the AI card-extraction daily budget (counts `ai.card.extract` rows in the trailing 24h); also records `secrets.export` (backup downloads) — see `docs/SECRETS.md`
-- `refresh_tokens` - JWT refresh tokens (hashed)
-- `allowed_emails` - Allowlist for access control
-- `device_codes` - Device authorization codes (RFC 8628)
-- `storage_objects` - File metadata, status, storage references
-- `storage_object_chunks` - Multipart upload chunk tracking
-- `personal_access_tokens` - User-created long-lived API tokens (hashed)
-- `secret_types` - Secret type schemas (system + custom); `fields` is a JSONB array of field definitions (`string` \| `number` \| `date` \| `select`, the last requiring `options`)
-- `secrets` - Secret metadata (name, description, type, owner); values live only in `secret_versions`
-- `secret_versions` - One immutable, AES-256-GCM-encrypted row per version of a secret's field data; exactly one `isCurrent = true` per secret
-- `backup_schedules` - Singleton row (`default`): admin backup schedule, keep count, content flags (`include_secrets`, `include_attachments`, `include_versions`, `include_media`, `include_system`), encrypted password, `next_run_at` / `last_run_at`
-- `backup_runs` - History of scheduled, manual and user-saved backups (`scope` `system` | `user`, `owner_id` set for `user` runs and FK to `users` with cascade, status, trigger, `storage_key`, size, counts incl. `media_file_count`, `contents` text[] filled in when the run ends, error, `heartbeat_at`, `deleted_at`); the object is removed by retention or delete, the row stays. Admin routes see `scope = system` only; user routes `scope = user AND owner_id = me`
-- `secret_attachments` - Files linked to a secret. **As of migration `20260727120000_version_scoped_attachments`, scoped to a `secret_version_id` (not just `secret_id`), and carries an optional `role` (`card_front` \| `card_back`).** Unique on `[secret_version_id, storage_object_id]` and `[secret_version_id, role]`; deleting the last reference to a `storage_objects` row deletes it, but a referenced object is never deleted out from under another version or secret still pointing at it
-
-## Access Control: Email Allowlist
-
-The application uses an **email allowlist** to restrict access to pre-authorized users only.
-
-### How It Works
-1. Admins add email addresses to the allowlist before users can login
-2. During OAuth login, the user's email is checked against the allowlist
-3. If the email is not in the allowlist, login is denied with a clear error message
-4. Exception: `INITIAL_ADMIN_EMAIL` always bypasses the allowlist check
-
-### Configuration
-- `INITIAL_ADMIN_EMAIL` environment variable grants initial admin access
-- This email is automatically added to the allowlist during database seeding
-
-### Admin Management
-- Access allowlist management at `/admin/users` (Allowlist tab)
-- Two tabs available:
-  - **Users**: Manage existing registered users
-  - **Allowlist**: Pre-authorize email addresses for future logins
-
-### Status Tracking
-- **Pending**: Email added to allowlist but user hasn't logged in yet
-- **Claimed**: User has successfully logged in and created an account
-- Claimed entries cannot be removed (prevents accidentally removing existing user access)
-
-## Security Guidelines
-
-- Secrets via environment variables only (see `.env.example`)
-- JWT access tokens are short-lived (15 min default)
-- Refresh tokens in HttpOnly cookies with rotation
-- Input validation on all endpoints
-- File uploads: images only, size/type limits, randomized filenames
-- Email allowlist restricts application access to pre-authorized users
-
-## Testing Requirements
-
-- Unit tests: isolated logic (services, guards, validators)
-- Integration tests: API + DB + RBAC flows with test DB
-- Mock OAuth in CI (no real Google dependency)
-- Frontend: component and hook tests
-
-## Environment Variables
-
-Key variables (see `infra/compose/.env.example` for full list):
-
-**Application:**
-- `NODE_ENV` - Environment (development/production)
-- `PORT` - API port (default: 3000)
-- `APP_URL` - Base URL (default: http://localhost:3535)
-
-**Database (individual connection parameters):**
-- `POSTGRES_HOST` - Database hostname (default: localhost)
-- `POSTGRES_PORT` - Database port (default: 5432)
-- `POSTGRES_USER` - Database user (default: postgres)
-- `POSTGRES_PASSWORD` - Database password (default: postgres)
-- `POSTGRES_DB` - Database name (default: appdb)
-- `POSTGRES_SSL` - Enable SSL connection (default: false)
-
-Note: `DATABASE_URL` is constructed automatically from these variables at runtime.
-
-**Authentication:**
-- `JWT_SECRET` - JWT signing secret (min 32 chars)
-- `JWT_ACCESS_TTL_MINUTES` - Access token TTL (default: 15)
-- `JWT_REFRESH_TTL_DAYS` - Refresh token TTL (default: 14)
-- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` - Google OAuth credentials
-- `INITIAL_ADMIN_EMAIL` - First user with this email becomes Admin
-- `DEVICE_CODE_EXPIRY_MINUTES` - Device code lifetime (default: 15)
-- `DEVICE_CODE_POLL_INTERVAL` - Device polling interval in seconds (default: 5)
-
-**Observability:**
-- `OTEL_ENABLED` - Enable OpenTelemetry (default: true)
-- `OTEL_EXPORTER_OTLP_ENDPOINT` - OTEL Collector endpoint
-- `UPTRACE_DSN` - Uptrace connection string
-
-## Common Patterns
-
-### Adding a New API Endpoint
-1. Create controller method with decorators for auth/RBAC
-2. Add service method with business logic
-3. Update OpenAPI annotations
-4. Add unit + integration tests
-5. Update API.md if needed
-
-### Adding a New Setting
-1. Update Zod schema for validation
-2. Add migration if schema structure changes
-3. Update TypeScript types
-4. Add frontend UI if user-facing
+@AGENTS.md
+
+Claude Code loads the shared rules above (project overview, structure, every MANDATORY section, key commands) from [AGENTS.md](AGENTS.md). Area rules load from the nested `AGENTS.md` of the folder you work in (`apps/api`, `apps/web`, `tools`). This file adds only what is specific to Claude Code: the documentation table, the subagent delegation rules and the cloud-session exception. How Claude Code and OpenCode share these files: [docs/AI-ASSISTANTS.md](docs/AI-ASSISTANTS.md).
+
+## MANDATORY: No real people, companies or user material
+
+Never use real people, companies or material a user shares as examples, fixtures or test data; use invented placeholders. Rule and exemptions: [AGENTS.md](AGENTS.md#mandatory-no-real-people-companies-or-user-material).
+
+## Cloud sessions
+
+The worktree rule in AGENTS.md has an exception: in a cloud session, or whenever the environment has already put you on a designated branch, work on the branch the session designates instead of creating a worktree. The PR rules still apply: commit in slices, push that branch, open the PR against `main`.
+
+## Where things are documented
+
+Full index with a "Doc map by task": [docs/README.md](docs/README.md). Read docs by section (`grep -n '^#'`, then offsets); `docs/API.md` is 90 KB.
+
+| Topic | Read |
+|---|---|
+| Architecture, repository layout, data model | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| Endpoint, RBAC, table and env-var quick map (moved from the former CLAUDE.md) | [docs/DOMAIN-REFERENCE.md](docs/DOMAIN-REFERENCE.md) |
+| Secrets, versions, attachments, card types, backup and export | [docs/SECRETS.md](docs/SECRETS.md) |
+| Security design, allowlist, sessions | [docs/SECURITY-ARCHITECTURE.md](docs/SECURITY-ARCHITECTURE.md) |
+| Endpoint reference (per area); live OpenAPI at `/api/docs` | [docs/API.md](docs/API.md) |
+| Dev loop, environment variables, debugging; env sync | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md), [docs/ENV-SYNC.md](docs/ENV-SYNC.md) |
+| Testing tiers, helpers, fixtures | [docs/TESTING.md](docs/TESTING.md) |
+| Device authorization and personal access tokens | [docs/DEVICE-AUTH.md](docs/DEVICE-AUTH.md), [docs/personal-access-tokens.md](docs/personal-access-tokens.md) |
+| Platform migration (program epic #54): plan, module classification, local exceptions, drift baseline | [docs/platform-adoption/README.md](docs/platform-adoption/README.md), [module-classification](docs/platform-adoption/module-classification.md), [local-exceptions](docs/platform-adoption/local-exceptions.md), [drift-baseline](docs/platform-adoption/drift-baseline.md) |
+| Spec: UX refresh (destinations, shell, brand, settings hub, datatable; E10) | [docs/specs/ux-refresh.md](docs/specs/ux-refresh.md) |
+| Original implementation specs 01 to 24 (historical) | [docs/specs/README.md](docs/specs/README.md), [docs/System_Specification_Document.md](docs/System_Specification_Document.md) |
+| Deployment (VPS) and dev VPS setup | [infra/deploy/DEPLOY.md](infra/deploy/DEPLOY.md), [docs/DEV-VPS-SETUP.md](docs/DEV-VPS-SETUP.md) |
+| CLIs: `vaultcli` (domain), `tools/app` (template) | [tools/vaultcli/README.md](tools/vaultcli/README.md), [tools/app/README.md](tools/app/README.md), [tools/AGENTS.md](tools/AGENTS.md) |
+| Area rules (API, web, tools) | [apps/api/AGENTS.md](apps/api/AGENTS.md), [apps/web/AGENTS.md](apps/web/AGENTS.md), [tools/AGENTS.md](tools/AGENTS.md) |
+| Recipe: add a job type (applies from E5) | [.claude/skills/add-job-type/SKILL.md](.claude/skills/add-job-type/SKILL.md) |
+| Recipe: add a settings page (applies from E10; rule now) | [.claude/skills/add-settings-page/SKILL.md](.claude/skills/add-settings-page/SKILL.md) |
+| Recipe: change the schema / platform migration (applies from E2) | [.claude/skills/platform-migration/SKILL.md](.claude/skills/platform-migration/SKILL.md) |
+| Recipe: add a notification (applies from E7) | [.claude/skills/add-notification/SKILL.md](.claude/skills/add-notification/SKILL.md) |
+| Recipe: rename or rebrand (applies from E1) | [.claude/skills/rename-app/SKILL.md](.claude/skills/rename-app/SKILL.md) |
+| How Claude Code and OpenCode share these files | [docs/AI-ASSISTANTS.md](docs/AI-ASSISTANTS.md) |
 
 ## Specialized Subagents (MANDATORY)
 
-**CRITICAL REQUIREMENT**: This project uses specialized subagents for all development work. You MUST delegate tasks to the appropriate subagent. Do NOT attempt to perform development tasks directly without using the designated agent.
+Delegate development work to the matching subagent in `.claude/agents/`. Each agent carries its domain's rules and points to the docs that own the details, so delegation keeps patterns consistent.
 
-### Why Subagents Are Mandatory
-- Each agent contains domain-specific knowledge from the System Specification
-- Agents ensure consistent patterns and conventions across the codebase
-- Agents have the full context needed for their specialized area
-- Direct implementation without agents risks missing requirements
+| Agent | Domain | MUST use for |
+|---|---|---|
+| `backend-dev` | NestJS API, Fastify, auth, RBAC | **Any** backend code: endpoints, services, guards, middleware, JWT, OAuth, backups, job handlers |
+| `frontend-dev` | React, MUI, TypeScript | **Any** frontend code: components, pages, hooks, theming, responsive design |
+| `database-dev` | PostgreSQL, Prisma | **Any** database work: schema, migrations, seeds, queries |
+| `testing-dev` | Jest/Supertest (API), Vitest/RTL (web), node:test (vaultcli) | **Any** testing: unit, integration, typecheck, fixtures |
+| `docs-dev` | Technical documentation | **Any** documentation: ARCHITECTURE.md, SECURITY-ARCHITECTURE.md, API.md, README, specs, runbooks |
+| `ops-dev` | Routine operations (Haiku) | Rebuilding/restarting containers, running Prisma migrations, running typecheck |
 
-### Available Agents
+Delegation rules:
 
-| Agent | Domain | MUST Use For |
-|-------|--------|--------------|
-| `backend-dev` | NestJS API, Fastify, auth, RBAC | **ANY** backend code: endpoints, services, guards, middleware, JWT, OAuth |
-| `frontend-dev` | React, MUI, TypeScript | **ANY** frontend code: components, pages, hooks, theming, responsive design |
-| `database-dev` | PostgreSQL, Prisma | **ANY** database work: schema changes, migrations, seeds, queries |
-| `testing-dev` | Jest, Supertest, RTL | **ANY** testing: unit tests, integration tests, typecheck, test fixtures |
-| `docs-dev` | Technical documentation | **ANY** documentation: ARCHITECTURE.md, SECURITY.md, API.md, README updates |
-| `ops-dev` | Routine operations (Haiku) | Rebuilding/restarting containers, running Prisma migrations, running typecheck. NEVER for state-changing git operations |
+1. Backend code changes → `backend-dev`.
+2. Frontend code changes → `frontend-dev`.
+3. Database/Prisma changes → `database-dev`.
+4. Writing or updating tests → `testing-dev`.
+5. Documentation updates → `docs-dev`.
+6. Routine ops (container rebuilds, migrations, typecheck) → `ops-dev`. `ops-dev` must **never** perform state-changing git operations (pull, merge, push, commit, worktree or branch management); the main agent does those, and `ops-dev` refuses them.
 
-### Mandatory Delegation Rules
+Multi-domain tasks invoke several agents in sequence, for example a new user preference setting: `database-dev` (migration) → `backend-dev` (endpoint) → `frontend-dev` (UI) → `testing-dev` (tests) → `docs-dev` (docs).
 
-1. **Backend code changes** → ALWAYS use `backend-dev`
-2. **Frontend code changes** → ALWAYS use `frontend-dev`
-3. **Database/Prisma changes** → ALWAYS use `database-dev`
-4. **Writing or updating tests** → ALWAYS use `testing-dev`
-5. **Documentation updates** → ALWAYS use `docs-dev`
-6. **Routine ops (container rebuilds, migrations, typecheck)** → use `ops-dev`. IMPORTANT: `ops-dev` must NEVER perform state-changing git operations (pull, merge, push, commit, worktree management, branch operations) — those are always handled by the main agent directly, and `ops-dev` is instructed to refuse them
-
-### Multi-Domain Tasks
-
-For tasks spanning multiple domains, you MUST invoke multiple agents sequentially:
-
-**Example: "Add a new user preference setting"**
-1. `database-dev` → Add migration for schema change
-2. `backend-dev` → Implement API endpoint
-3. `frontend-dev` → Build UI component
-4. `testing-dev` → Write tests for all layers
-5. `docs-dev` → Update API documentation
-
-### Usage Examples
 ```
-# Backend work - MUST use backend-dev
 "Use backend-dev to implement the user settings endpoint"
-
-# Frontend work - MUST use frontend-dev
-"Use frontend-dev to create the theme toggle component"
-
-# Database work - MUST use database-dev
-"Use database-dev to add audit_events table migration"
-
-# Testing work - MUST use testing-dev
 "Use testing-dev to write integration tests for auth"
-
-# Documentation work - MUST use docs-dev
-"Use docs-dev to update SECURITY.md with new auth flow"
-
-# Routine ops - use ops-dev (never for git operations)
 "Use ops-dev to rebuild the api container and run migrations"
 ```
 
-### What You Should NOT Do Directly
-- Do NOT write NestJS controllers, services, or guards without `backend-dev`
-- Do NOT create React components or pages without `frontend-dev`
-- Do NOT modify Prisma schema or create migrations without `database-dev`
-- Do NOT write Jest/RTL tests without `testing-dev`
-- Do NOT update documentation files without `docs-dev`
+Do not write controllers, services, guards, components, Prisma schema, migrations, tests or documentation directly. The only exceptions:
 
-The only exceptions are:
-- Reading files to understand context
-- Answering questions about the codebase
-- Planning and coordination between agents
-- Running simple commands (git status, npm install, etc.)
+- Reading files to understand context.
+- Answering questions about the codebase.
+- Planning and coordinating between agents.
+- Running simple commands (`git status`, `npm install`, etc.).
