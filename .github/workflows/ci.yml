@@ -30,9 +30,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # prisma/schema/ is GENERATED from the platform-db fragments plus
+      # prisma/fragments/*.prisma; a stale or hand-edited copy fails here.
+      - name: Check the composed Prisma schema is up to date
+        run: npm run db:compose:check --workspace=api
+
+      - name: Check installed platform migrations against platform.lock
+        run: npm run db:check --workspace=api
+
       - name: Generate Prisma Client
-        run: npx prisma generate
-        working-directory: apps/api
+        run: npm run prisma:generate --workspace=api
 
       - name: Type check API
         run: npm run typecheck --workspace=api
@@ -80,11 +87,114 @@ jobs:
       - name: Generate Prisma Client
         run: npm run prisma:generate --workspace=api
 
+      - name: Check the composed Prisma schema is up to date
+        run: npm run db:compose:check --workspace=api
+
+      - name: Check installed platform migrations against platform.lock
+        run: npm run db:check --workspace=api
+
+      # A FRESH database: the original 7 migrations, the 38 installed platform
+      # migrations (0003-0040) and the media_folder_files app migration, in order.
       - name: Apply migrations
         run: npm run prisma:migrate --workspace=api
 
       - name: Seed (connects through the PrismaPg adapter)
         run: npm run prisma:seed --workspace=api
+
+      - name: Ledger, lock and files agree
+        run: npm run db:check:database --workspace=api
+
+      - name: Migrations equal the schema (drift)
+        run: npm run db:drift --workspace=api
+
+      - name: Real-Postgres tests
+        run: npm run test:db --workspace=api
+        env:
+          NODE_ENV: test
+
+  baseline-rehearsal:
+    name: Baseline rehearsal (pre-platform database to platform history)
+    runs-on: ubuntu-latest
+    # Rehearses docs/runbooks/database-baseline.md on a database in the shape
+    # production has TODAY: only the original seven migrations, with invented
+    # rows. Proves the committed platform.lock and installed directories adopt
+    # it without --apply (the files are already committed) and that the data
+    # survives the platform migrations. It does not replace the rehearsal on a
+    # restored production backup, which the runbook requires.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: vault
+          POSTGRES_PASSWORD: "p@ss/word:ci"
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vault -d postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: '5432'
+      POSTGRES_USER: vault
+      POSTGRES_PASSWORD: "p@ss/word:ci"
+      POSTGRES_DB: vault_rehearsal
+      PGPASSWORD: "p@ss/word:ci"
+      INITIAL_ADMIN_EMAIL: admin@example.test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build the pre-baseline database (7 original migrations + fixture rows)
+        working-directory: apps/api
+        run: |
+          createdb -h localhost -U vault vault_rehearsal
+          bash scripts/baseline-rehearsal.sh
+
+      # B1-B6 dry run: must end "dry run clean" or "nothing to do". The gate
+      # runs BEFORE prisma:migrate, so it uses --through 2 --allow-rls (see the
+      # runbook: --allow-rls asserts a NOSUPERUSER role that production gets in E2.3).
+      - name: Baseline dry run (through 2)
+        working-directory: apps/api
+        run: |
+          set -o pipefail
+          npm run db:baseline -- --through 2 --allow-rls | tee /tmp/baseline-dry-run.txt
+          grep -q "nothing to do" /tmp/baseline-dry-run.txt
+
+      - name: Apply the installed platform migrations (0003-0040) and the media_folder_files migration
+        run: npm run prisma:migrate --workspace=api
+
+      - name: Seed
+        run: npm run prisma:seed --workspace=api
+
+      - name: Ledger, lock, files and schema agree
+        working-directory: apps/api
+        run: |
+          npm run db:check:database
+          npm run db:drift
+          set -o pipefail
+          npm run db:baseline | tee /tmp/baseline-after.txt
+          grep -q "nothing to do" /tmp/baseline-after.txt
+
+      - name: The data survived (0024 role split, 0025 org backfill, media links)
+        run: |
+          q() { psql -h localhost -U vault -d vault_rehearsal -At -c "$1"; }
+          test "$(q "SELECT count(*) FROM memberships")" = "3"
+          test "$(q "SELECT r.name FROM memberships m JOIN roles r ON r.id = m.role_id JOIN users u ON u.id = m.user_id WHERE u.email = 'contributor@example.test'")" = "contributor"
+          test "$(q "SELECT r.name FROM user_roles ur JOIN roles r ON r.id = ur.role_id")" = "admin"
+          test "$(q "SELECT count(*) FROM storage_objects WHERE org_id IS NULL")" = "0"
+          test "$(q "SELECT count(*) FROM media_folder_files")" = "2"
+          test "$(q "SELECT count(*) FROM secret_versions WHERE is_current")" = "1"
+          test "$(q "SELECT count(*) FROM secret_attachments")" = "1"
 
   web-check:
     name: Web Check
