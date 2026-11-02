@@ -125,7 +125,7 @@ The first user to login with the email matching `INITIAL_ADMIN_EMAIL` (from .env
 Two things to know when running the stack by hand:
 
 - The `.env` template reads `POSTGRES_USER=app`. Vault's CI and runbooks use `vault_app`; set `POSTGRES_USER=vault_app` in `infra/compose/.env` to keep it.
-- Compose files: `base.compose.yml -f dev.compose.yml -f app.build.compose.yml -f app.dev.src-mounts.compose.yml` for development; add `-f telemetry.compose.yml` for GreptimeDB and the collector.
+- Compose files: `base.compose.yml -f dev.compose.yml` for development; add `-f telemetry.compose.yml` for GreptimeDB and the collector.
 
 ## Observability
 
