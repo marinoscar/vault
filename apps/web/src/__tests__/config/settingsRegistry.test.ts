@@ -33,6 +33,9 @@ import aiPermissionsSource from '../../../../../node_modules/@marinoscar/platfor
 import aiAdminControllerSource from '../../../../../node_modules/@marinoscar/platform-api/dist/ai/config/ai-admin.controller.js?raw';
 import aiUsageAdminControllerSource from '../../../../../node_modules/@marinoscar/platform-api/dist/ai/usage/ai-usage-admin.controller.js?raw';
 import telemetryPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/telemetry/telemetry.permissions.js?raw';
+// E6.1 web follow-up (#84): the platform storage slice's configuration permissions and controller.
+import storageConfigPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/storage/config/storage-config.permissions.js?raw';
+import storageConfigControllerSource from '../../../../../node_modules/@marinoscar/platform-api/dist/storage/config/storage-config.controller.js?raw';
 
 const cardsOf = (sections: SettingsSectionDef[]): SettingsCardDef[] => sections.flatMap((s) => s.cards);
 const ADMIN_CARDS = cardsOf(ADMIN_SECTIONS);
@@ -57,6 +60,7 @@ const API_PERMISSIONS = new Set([
   ...declaredIds(notificationsPermissionsSource),
   ...declaredIds(aiPermissionsSource),
   ...declaredIds(telemetryPermissionsSource),
+  ...declaredIds(storageConfigPermissionsSource),
 ]);
 
 /**
@@ -107,6 +111,8 @@ const CONTROLLER_MIRROR: Record<string, string | undefined> = {
   '/admin/settings/ai/models': 'ai_config:read',
   // ai-usage-admin.controller GET /api/admin/ai/usage (ai_config:read)
   '/admin/settings/ai/usage': 'ai_config:read',
+  // E6.1 web follow-up: the platform storage-config.controller GET /api/admin/storage-config (STORAGE_CONFIG_READ)
+  '/admin/settings/storage': 'storage_config:read',
 };
 
 /**
@@ -238,8 +244,39 @@ describe('the AI cards (E8.2, the platform AI slice)', () => {
   });
 });
 
+describe('the Storage card (E6.1 web follow-up, the platform storage slice)', () => {
+  const card = ADMIN_CARDS.find((c) => c.path === '/admin/settings/storage');
+
+  it('is the last Administration card, gated on storage_config:read with no feature', () => {
+    const administration = ADMIN_SECTIONS.find((s) => s.label === 'Administration')!;
+    expect(administration.cards[administration.cards.length - 1]).toBe(card);
+    expect(card?.title).toBe('Storage');
+    expect(card?.permission).toBe('storage_config:read');
+    expect(card?.feature).toBeUndefined();
+  });
+
+  it('names the string the platform storage-config controller enforces on its GET', () => {
+    expect(declaredIds(storageConfigPermissionsSource)).toEqual(
+      expect.arrayContaining(['storage_config:read', 'storage_config:write']),
+    );
+    // The GET handler's decorator block: Get() then Auth({ permissions: [STORAGE_CONFIG_READ] }).
+    expect(storageConfigControllerSource).toMatch(
+      /common_1\.Get\)\(\),\s*\(0, index_1\.Auth\)\(\{ permissions: \[storage_constants_1\.PERMISSIONS\.STORAGE_CONFIG_READ\] \}\)/,
+    );
+    // And not the object-access pair.
+    expect(card?.permission).not.toBe('storage:read');
+  });
+
+  it('routes the packaged StorageConfigPage behind the same permission', () => {
+    expect(appSource).toContain("import('@marinoscar/platform-web/storage/ui')");
+    expect(appSource).toMatch(
+      /path="\/admin\/settings\/storage"\s*element=\{<RequirePermission permission="storage_config:read" fallback=\{TO_HOME\}><StorageConfigPage \/>/,
+    );
+  });
+});
+
 describe('the registries as a whole', () => {
-  it('lists the cards in append order (E10.3, then E7.2, then E8.2)', () => {
+  it('lists the cards in append order (E10.3, then E7.2, then E8.2, then E6.1 Storage)', () => {
     expect(ADMIN_CARDS.map((card) => card.title)).toEqual([
       'General',
       'Users & Allowlist',
@@ -247,6 +284,7 @@ describe('the registries as a whole', () => {
       'Backups',
       'AI models',
       'AI usage',
+      'Storage',
       'Maintenance',
       'Doctor',
       'About',
@@ -336,6 +374,7 @@ describe('the registries as a whole', () => {
       expect.arrayContaining(['telemetry:read', 'telemetry:write', 'telemetry:query']),
     );
     expect(slices).toContain("'telemetry'");
+    expect(slices).toContain("'storage'");
     // No invented string sneaks in through a loose pattern.
     for (const id of API_PERMISSIONS) expect(id).toMatch(/^[a-z_]+:[a-z_]+$/);
   });

@@ -127,6 +127,8 @@ describe('settings routes', () => {
     ['/settings/notifications', '/api/notifications/events', ['user_settings:read']],
     // E8.2: the packaged AI page (the AI card; reachable while AI is off).
     ['/admin/settings/ai', '/api/admin/ai/config', ['ai_config:read']],
+    // E6.1 web follow-up: the packaged StorageConfigPage (the Storage card).
+    ['/admin/settings/storage', '/api/admin/storage-config', ['storage_config:read']],
   ])('%s renders the packaged page, which calls %s through Vault\'s client', async (route, apiPath, permissions) => {
     signInAs(permissions);
     const seen: (string | null)[] = [];
@@ -150,6 +152,7 @@ describe('settings routes', () => {
     ['/admin/settings/ai', '/'],
     ['/admin/settings/ai/models', '/'],
     ['/admin/settings/ai/usage', '/'],
+    ['/admin/settings/storage', '/'],
   ])('sends a viewer without the card permission from %s to %s', async (route, target) => {
     signInAs(['user_settings:read', 'user_settings:write']);
     renderAt(route);
@@ -188,6 +191,37 @@ describe('settings routes', () => {
     await waitFor(() => expect(seen.length).toBeGreaterThan(0), SLOW);
     expect(seen[0]).toMatch(/^Bearer /);
     expect(probe).toBe('/admin/settings/ai/models');
+  });
+
+  it('sends a system_settings:read holder without storage_config:read away from Storage', async () => {
+    signInAs(['system_settings:read']);
+    renderAt('/admin/settings/storage');
+
+    await waitFor(() => expect(probe).toBe('/'), SLOW);
+  });
+
+  it('renders the Storage page for storage_config:read, loading the configuration with the bearer', async () => {
+    signInAs(['storage_config:read']);
+    const seen: (string | null)[] = [];
+    server.use(
+      http.get('*/api/admin/storage-config', ({ request }) => {
+        seen.push(request.headers.get('authorization'));
+        return HttpResponse.json({ message: 'Not available in this test' }, { status: 503 });
+      }),
+    );
+    renderAt('/admin/settings/storage');
+
+    await waitFor(() => expect(seen.length).toBeGreaterThan(0), SLOW);
+    expect(seen.every((h) => /^Bearer /.test(h ?? ''))).toBe(true);
+    expect(probe).toBe('/admin/settings/storage');
+  });
+
+  it('lets a holder of storage_config:read alone into the Console hub (any-of gate)', async () => {
+    signInAs(['storage_config:read']);
+    renderAt('/admin/settings');
+
+    expect(await screen.findByRole('heading', { name: 'Console' }, SLOW)).toBeInTheDocument();
+    expect(await screen.findByText('Storage', undefined, SLOW)).toBeInTheDocument();
   });
 
   it('lets a holder of push:read alone into the Console hub (any-of gate)', async () => {

@@ -39,6 +39,7 @@ import AboutIcon from '@mui/icons-material/InfoOutlined';
 import EmailIcon from '@mui/icons-material/EmailOutlined';
 import PushIcon from '@mui/icons-material/NotificationsActiveOutlined';
 import BroadcastIcon from '@mui/icons-material/CampaignOutlined';
+import StorageIcon from '@mui/icons-material/CloudOutlined';
 
 /** The Console hub's title: the hub's heading and the compact AppBar's fallback. */
 export const ADMIN_HUB_TITLE = 'Console';
@@ -109,6 +110,21 @@ export const ADMIN_SECTIONS: SettingsSectionDef[] = [
         path: '/admin/settings/ai/usage',
         permission: 'ai_config:read',
         feature: 'ai',
+      },
+      {
+        // E6.1 web follow-up (#84), APPENDED last in Administration. The packaged
+        // StorageConfigPage (`@marinoscar/platform-web/storage/ui`). Since E6.1 the
+        // bucket and its key are runtime configuration, never environment variables.
+        // `storage_config:read` is the exact string the platform's
+        // storage-config.controller enforces on `GET /api/admin/storage-config`
+        // (saving, the connection test and Create bucket need storage_config:write,
+        // gated inside the page). Deliberately NOT `storage:read`, which gates object
+        // access. No `feature`: it is where storage is set up.
+        title: 'Storage',
+        description: 'Where attachments, card faces, media and backups are kept: the bucket, its key, and a connection test.',
+        Icon: StorageIcon,
+        path: '/admin/settings/storage',
+        permission: 'storage_config:read',
       },
     ],
   },
