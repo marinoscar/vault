@@ -1,5 +1,11 @@
 # @marinoscar/vault-api
 
+## 0.1.0-next.2
+
+### Minor Changes
+
+- 2318f0a: Remove the `GET /api/ai/status` compatibility route (`AiStatusController`); clients read the platform's `GET /api/ai/config`.
+
 ## 0.1.0-next.1
 
 ### Minor Changes

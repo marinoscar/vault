@@ -12,7 +12,10 @@
     "@marinoscar/vault-web": "0.1.0-next.0"
   },
   "changesets": [
+    "prefs-user-settings",
+    "retire-ai-status-alias",
     "vault-api-domain-package",
+    "vault-web-ai-config",
     "vault-web-package"
   ]
 }
