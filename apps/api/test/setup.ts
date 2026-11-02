@@ -10,6 +10,11 @@ config({ path: resolve(__dirname, '../.env.test') });
 // Set test environment
 process.env.NODE_ENV = 'test';
 
+// The booted AppModule must not poll the queue: a mocked Prisma has no claim
+// result, and a real-database test enqueues and runs jobs explicitly. A suite
+// that wants the worker sets JOBS_WORKER_MODE itself before building the app.
+process.env.JOBS_WORKER_MODE ??= 'off';
+
 // Increase timeout for integration tests
 jest.setTimeout(30000);
 

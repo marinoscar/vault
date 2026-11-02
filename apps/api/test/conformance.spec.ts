@@ -4,10 +4,12 @@
 // Only the suites of the slices Vault has ADOPTED run. Each suite of a slice that
 // is not adopted yet is listed below with the written reason and the epic
 // child that removes the skip (platform-adoption epic #54: E3.1 = #76 host,
-// E3.2 = #77 identity, E4.1 = #79 settings).
+// E3.2 = #77 identity, E4.1 = #79 settings, E5.1 = #81 jobs and nodes,
+// E5.3 = #83 queue rule).
 import '../src/app-registrations/registrations';
 import '@marinoscar/platform-api/host/testing';
 import '@marinoscar/platform-api/identity/testing';
+import '@marinoscar/platform-api/jobs/testing';
 import '@marinoscar/platform-api/settings/testing';
 
 import { Module } from '@nestjs/common';
@@ -23,8 +25,8 @@ import { discoverControllers } from '@marinoscar/platform-api/identity/testing';
 import { runPlatformConformance } from '@marinoscar/platform-api/testing';
 
 import { AppModule } from '../src/app.module';
+import { API_SOURCE_ROOT, CRON_EXEMPTIONS } from './jobs/cron-source-roots';
 
-const SOURCE_ROOT = join(__dirname, '..', 'src');
 const API_DIR = join(__dirname, '..');
 
 /**
@@ -35,7 +37,7 @@ const API_DIR = join(__dirname, '..');
 class IdentityConformanceRoot {}
 
 runPlatformConformance({
-  sourceRoots: [SOURCE_ROOT],
+  sourceRoots: [API_SOURCE_ROOT],
   suites: {
     // MaintenanceGuard is the first (and only) APP_GUARD; no global JWT guard;
     // PlatformHostCoreModule is mounted once. Vault adds no global guard.
@@ -54,10 +56,11 @@ runPlatformConformance({
     // No secret-named field in any registered system or user namespace (the AI key
     // is a credential, E4.2), every default valid against its stored schema, and
     // every org layer gated by a registered org-scope permission (E4.1, #79).
-    // `maintenance` plus Vault's `ui`, `features`, `ai`, `vaultCards`, `vaultBackups`.
+    // `maintenance`, `jobs`, `retention`, `nodes` (E5.1) plus Vault's `ui`, `features`, `ai`,
+    // `vaultCards`, `vaultBackups`.
     settings: {
       permissions: permissionRegistry.list(),
-      minSystemNamespaces: 6,
+      minSystemNamespaces: 9,
     },
 
     // Every foreign key to `User` in the composed schema is registered with a purge
@@ -84,11 +87,20 @@ runPlatformConformance({
       ],
     },
 
-    // KNOWN EXCEPTION until E5.1/E5.2 (#81/#82): `backups/backup-runner.service.ts`
-    // runs backups in-process from a `@Cron` (docs/platform-adoption/local-exceptions.md),
-    // and `storage/` keeps its own cleanup cron until the storage slice lands.
-    cronEnqueueOnly: {
-      skip: 'Vault still runs the backup runner and storage cleanup inline from @Cron; they become queue jobs in E5 (see docs/platform-adoption/local-exceptions.md).',
+    // The `@Cron` half of queue rule 1 (E5.1/E5.3, #81/#83): every `@Cron` body in Vault's own
+    // sources only enqueues a job. The platform's crons (the three permanent exemptions, the
+    // identity cleanups) ship in the package and are held by its tests. The two exemptions are
+    // recorded shims with written reasons (test/jobs/cron-source-roots.ts): the backup runner
+    // (E5.2) and the storage stale-upload sweep (E6). `minCronFiles` is exactly those two plus
+    // none: the scan must keep finding them, so an exemption cannot go stale.
+    cronEnqueueOnly: { exempt: [...CRON_EXEMPTIONS], minCronFiles: CRON_EXEMPTIONS.length },
+
+    // The `@OnEvent` half (`on-event-no-io`) cannot run as a platform suite here: it takes no
+    // per-file exemption and Vault's one listener file is the E6 storage shim, so it would either
+    // fail or pass vacuously. test/jobs/on-event-no-io.spec.ts applies the package's own detector
+    // and markers with the written exemption instead.
+    onEventNoIo: {
+      skip: 'Vault has one @OnEvent file, the E6 storage-processing shim, which downloads inline; the suite takes no per-file exemption. test/jobs/on-event-no-io.spec.ts runs the same detector with that written exemption.',
     },
   },
 });

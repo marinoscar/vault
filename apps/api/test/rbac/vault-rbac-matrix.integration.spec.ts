@@ -85,6 +85,10 @@ const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
     'allowlist:read',
     'allowlist:write',
     'rbac:manage',
+    'jobs:read',
+    'jobs:write',
+    'nodes:read',
+    'nodes:write',
   ],
   contributor: [...SECRETS_RW, ...USER_SETTINGS, 'storage:read', 'storage:write'],
   viewer: ['secrets:read', 'secret_types:read', 'media:read', ...USER_SETTINGS, 'storage:read'],
@@ -106,6 +110,10 @@ const SYSTEM_PERMISSIONS = new Set([
   'allowlist:read',
   'allowlist:write',
   'rbac:manage',
+  'jobs:read',
+  'jobs:write',
+  'nodes:read',
+  'nodes:write',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -178,14 +186,48 @@ const ROUTES: readonly Route[] = [
   ['POST', `/api/storage/objects/${ID}/upload/complete`, null],
   ['DELETE', `/api/storage/objects/${ID}/upload/abort`, null],
   ['POST', '/api/storage/objects', null],
-  // Settings (legacy controllers until E4.1)
+  // Settings (the platform settings slice since E4.1)
   ['GET', '/api/user-settings', 'user_settings:read'],
   ['PUT', '/api/user-settings', 'user_settings:write'],
   ['PATCH', '/api/user-settings', 'user_settings:write'],
   ['GET', '/api/system-settings', 'system_settings:read'],
   ['PUT', '/api/system-settings', 'system_settings:write'],
   ['PATCH', '/api/system-settings', 'system_settings:write'],
+  // Jobs and worker nodes (E5.1: the platform's queue and fleet; system permissions, admin only)
+  ['GET', '/api/admin/jobs/stats', 'jobs:read'],
+  ['GET', '/api/admin/jobs/insights', 'jobs:read'],
+  ['POST', '/api/admin/jobs/insights/reset-history', 'jobs:write'],
+  ['POST', '/api/admin/jobs/retry-failed', 'jobs:write'],
+  ['POST', '/api/admin/jobs/reset-stuck', 'jobs:write'],
+  ['GET', '/api/admin/jobs', 'jobs:read'],
+  ['POST', `/api/admin/jobs/${ID}/retry`, 'jobs:write'],
+  ['DELETE', `/api/admin/jobs/${ID}`, 'jobs:write'],
+  ['GET', '/api/admin/nodes/credentials', 'nodes:read'],
+  ['DELETE', `/api/admin/nodes/credentials/${ID}`, 'nodes:write'],
+  ['GET', '/api/admin/nodes', 'nodes:read'],
+  ['GET', `/api/admin/nodes/${ID}`, 'nodes:read'],
+  ['GET', `/api/admin/nodes/${ID}/events`, 'nodes:read'],
+  ['DELETE', `/api/admin/nodes/${ID}`, 'nodes:write'],
+  ['POST', '/api/nodes/register', 'nodes:write'],
+  ['GET', '/api/nodes/job-types', 'nodes:read'],
+  ['GET', '/api/nodes', 'nodes:read'],
+  ['GET', `/api/nodes/${ID}`, 'nodes:read'],
+  ['GET', `/api/nodes/${ID}/events`, 'nodes:read'],
+  ['POST', `/api/nodes/${ID}/deregister`, 'nodes:write'],
+  ['POST', `/api/nodes/${ID}/heartbeat`, 'nodes:write'],
+  ['POST', `/api/nodes/${ID}/claim`, 'nodes:write'],
+  ['POST', `/api/nodes/${ID}/jobs/${ID}/renew`, 'nodes:write'],
+  ['POST', `/api/nodes/${ID}/jobs/${ID}/download-url`, 'nodes:write'],
+  ['POST', `/api/nodes/${ID}/jobs/${ID}/upload-url`, 'nodes:write'],
+  ['POST', `/api/nodes/${ID}/jobs/${ID}/secret`, 'nodes:write'],
+  ['POST', `/api/nodes/${ID}/jobs/${ID}/result`, 'nodes:write'],
+  ['POST', `/api/nodes/${ID}/jobs/${ID}/failure`, 'nodes:write'],
+  ['POST', `/api/nodes/${ID}/telemetry`, 'nodes:write'],
+  ['POST', '/api/node-credentials', 'nodes:write'],
+  ['GET', '/api/node-credentials', 'nodes:read'],
+  ['DELETE', `/api/node-credentials/${ID}`, 'nodes:write'],
 ];
+
 
 // ---------------------------------------------------------------------------
 // Principal graphs, as production loads them
@@ -293,6 +335,10 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
         'ObjectsController',
         'UserSettingsController',
         'SystemSettingsController',
+        'JobAdminController',
+        'NodesAdminController',
+        'NodesController',
+        'NodeCredentialController',
       ]);
       const discovered = new Map<string, string | null>();
       for (const controller of discoverControllers(AppModule)) {
@@ -330,7 +376,7 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
       const grants = catalogGrants(buildPermissionCatalog());
       const heldBy = (roleNames: string[]) =>
         grants.filter((g) => roleNames.includes(g.role)).map((g) => g.permission);
-      const mine = (permissions: readonly string[]) => permissions.filter((p) => /^(secrets|secret_types|media):/.test(p));
+      const mine = (permissions: readonly string[]) => permissions.filter((p) => /^(secrets|secret_types|media|jobs|nodes):/.test(p));
 
       expect(mine(heldBy(['admin', 'org_admin'])).sort()).toEqual(mine(ROLE_PERMISSIONS.admin).sort());
       expect(mine(heldBy(['contributor'])).sort()).toEqual(mine(ROLE_PERMISSIONS.contributor).sort());

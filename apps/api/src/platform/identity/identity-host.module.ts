@@ -8,7 +8,7 @@
 // resolve there.
 //
 //   IDENTITY_NOTIFIER         -> logging adapter           (E7 binds the notifications slice)
-//   IDENTITY_JOBS             -> no-op shim                (PLATFORM-ADOPTION-SHIM(E5.1))
+//   IDENTITY_JOBS             -> JobsService + registry    (the platform's, E5.1)
 //   USER_DEFAULTS             -> DEFAULT_USER_SETTINGS     (moves with the settings slice, E4.1)
 //   IDENTITY_PROFILE_IMAGES   -> Vault's profile settings  (the storage slice replaces it, E6)
 //   IDENTITY_NODE_CREDENTIALS -> NodeCredentialService     (the platform's, mounted below)
@@ -35,7 +35,7 @@ import {
 } from '@marinoscar/platform-api/identity';
 import { NodeCredentialModule, NodeCredentialService } from '@marinoscar/platform-api/nodes';
 
-import { IdentityJobsShim } from './identity-jobs.shim';
+import { IdentityJobsAdapter } from './identity-jobs.adapter';
 import { LoggingIdentityNotifier } from './identity-notifier.adapter';
 import { VaultProfileImages, VaultUserDefaults } from './identity-user.adapters';
 
@@ -43,12 +43,12 @@ import { VaultProfileImages, VaultUserDefaults } from './identity-user.adapters'
 @Module({
   // `NodeCredentialModule` is @Global and exports `NodeCredentialService`; it also
   // serves `/api/node-credentials` (admin, `nodes:read|write`). Mounted here
-  // because the guard resolves `nod_` tokens through it (the `nodes` tables exist
-  // since platform migration 0009).
+  // because the guard resolves `nod_` tokens through it. `NodesModule.forRoot`
+  // (`platform/jobs/jobs.config.ts`, E5.1) mounts the rest of the nodes slice.
   imports: [NodeCredentialModule],
   providers: [
     { provide: IDENTITY_NOTIFIER, useClass: LoggingIdentityNotifier },
-    { provide: IDENTITY_JOBS, useClass: IdentityJobsShim },
+    { provide: IDENTITY_JOBS, useClass: IdentityJobsAdapter },
     { provide: USER_DEFAULTS, useClass: VaultUserDefaults },
     { provide: IDENTITY_PROFILE_IMAGES, useClass: VaultProfileImages },
     { provide: IDENTITY_NODE_CREDENTIALS, useExisting: NodeCredentialService },
