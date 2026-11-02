@@ -44,6 +44,7 @@ model User {
   mediaFolders           MediaFolder[]         @relation("UserMediaFolders")
   backupSchedulesUpdated BackupSchedule[]      @relation("BackupScheduleUpdater")
   backupRunsTriggered    BackupRun[]           @relation("BackupRunTrigger")
+  backupRunsOwned        BackupRun[]           @relation("BackupRunOwner")
 
   @@map("users")
 }
@@ -470,6 +471,8 @@ model BackupRun {
   status          String // running | succeeded | failed
   trigger         String // schedule | manual
   triggeredById   String?   @map("triggered_by_id") @db.Uuid
+  scope           String    @default("system") // system | user
+  ownerId         String?   @map("owner_id") @db.Uuid // set when scope is user
   storageKey      String?   @map("storage_key")
   sizeBytes       BigInt?   @map("size_bytes")
   userCount       Int       @default(0) @map("user_count")
@@ -486,8 +489,10 @@ model BackupRun {
 
   // Relations
   triggeredBy User? @relation("BackupRunTrigger", fields: [triggeredById], references: [id], onDelete: SetNull)
+  owner       User? @relation("BackupRunOwner", fields: [ownerId], references: [id], onDelete: Cascade)
 
   @@index([status, startedAt])
   @@index([triggeredById])
+  @@index([scope, ownerId, startedAt])
   @@map("backup_runs")
 }

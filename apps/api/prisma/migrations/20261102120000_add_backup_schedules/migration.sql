@@ -31,6 +31,8 @@ CREATE TABLE "backup_runs" (
     "status" TEXT NOT NULL,
     "trigger" TEXT NOT NULL,
     "triggered_by_id" UUID,
+    "scope" TEXT NOT NULL DEFAULT 'system',
+    "owner_id" UUID,
     "storage_key" TEXT,
     "size_bytes" BIGINT,
     "user_count" INTEGER NOT NULL DEFAULT 0,
@@ -57,8 +59,14 @@ CREATE INDEX "backup_runs_status_started_at_idx" ON "backup_runs"("status", "sta
 -- CreateIndex
 CREATE INDEX "backup_runs_triggered_by_id_idx" ON "backup_runs"("triggered_by_id");
 
+-- CreateIndex
+CREATE INDEX "backup_runs_scope_owner_id_started_at_idx" ON "backup_runs"("scope", "owner_id", "started_at");
+
 -- AddForeignKey
 ALTER TABLE "backup_schedules" ADD CONSTRAINT "backup_schedules_updated_by_id_fkey" FOREIGN KEY ("updated_by_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "backup_runs" ADD CONSTRAINT "backup_runs_triggered_by_id_fkey" FOREIGN KEY ("triggered_by_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "backup_runs" ADD CONSTRAINT "backup_runs_owner_id_fkey" FOREIGN KEY ("owner_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
