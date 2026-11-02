@@ -64,7 +64,17 @@ export interface SecretsExportManifest {
   exportedAt: string;
   app: 'vault';
   owner: { id: string; email: string };
-  options: { includeAttachments: boolean; includeVersions: boolean };
+  /**
+   * What the archive was asked to contain. `includeSecrets` is always true in
+   * a `secrets.json` (the file is only written when secrets are selected);
+   * `includeMedia` says whether `media/` is next to it.
+   */
+  options: {
+    includeSecrets: boolean;
+    includeAttachments: boolean;
+    includeVersions: boolean;
+    includeMedia: boolean;
+  };
   counts: { secrets: number; attachments: number };
   warnings: string[];
   secrets: ExportSecretEntry[];

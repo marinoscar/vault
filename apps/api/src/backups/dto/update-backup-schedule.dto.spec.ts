@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 
+import { BACKUP_CONTENT_MESSAGES } from '../../secrets/export/backup-contents';
 import {
   BACKUP_KEEP_COUNT_MAX,
   BACKUP_KEEP_COUNT_MIN,
@@ -173,6 +174,54 @@ describe('UpdateBackupScheduleDto validation', () => {
     it('rejects a non-object body', () => {
       expect(() => parseUpdateBackupScheduleBody(undefined)).toThrow(BadRequestException);
       expect(() => parseUpdateBackupScheduleBody('x')).toThrow(BadRequestException);
+    });
+  });
+  describe('content selection', () => {
+    it('defaults includeSecrets true, includeMedia and includeSystem false (older clients)', () => {
+      const parsed = parseUpdateBackupScheduleBody(valid());
+      expect(parsed).toMatchObject({ includeSecrets: true, includeMedia: false, includeSystem: false });
+    });
+
+    it('accepts every combination that selects something', () => {
+      expect(ok(valid({ includeSecrets: true, includeMedia: true, includeSystem: true }))).toBe(true);
+      expect(
+        ok(valid({ includeSecrets: false, includeAttachments: false, includeVersions: false, includeMedia: true })),
+      ).toBe(true);
+      expect(
+        ok(valid({ includeSecrets: false, includeAttachments: false, includeVersions: false, includeSystem: true })),
+      ).toBe(true);
+    });
+
+    it('400 "Choose at least one thing to back up" when nothing is selected', () => {
+      expect(
+        messages(valid({ includeSecrets: false, includeAttachments: false, includeVersions: false })),
+      ).toEqual([BACKUP_CONTENT_MESSAGES.nothingSelected]);
+    });
+
+    it('rejects attachments or versions true while secrets are off', () => {
+      expect(messages(valid({ includeSecrets: false, includeMedia: true, includeAttachments: true }))).toEqual([
+        BACKUP_CONTENT_MESSAGES.attachmentsWithoutSecrets,
+      ]);
+      expect(
+        messages(valid({ includeSecrets: false, includeSystem: true, includeAttachments: false, includeVersions: true })),
+      ).toEqual([BACKUP_CONTENT_MESSAGES.versionsWithoutSecrets]);
+    });
+
+    it.each(['includeSecrets', 'includeMedia', 'includeSystem'])('rejects a non-boolean %s', (field) => {
+      expect(messages(valid({ [field]: 'yes' }))[0]).toBe(`${field} must be a boolean`);
+    });
+
+    it('the 400 carries the specific message', () => {
+      expect(() =>
+        parseUpdateBackupScheduleBody(valid({ includeSecrets: false, includeAttachments: false })),
+      ).toThrow(BadRequestException);
+      try {
+        parseUpdateBackupScheduleBody(valid({ includeSecrets: false, includeAttachments: false }));
+      } catch (error) {
+        expect(((error as BadRequestException).getResponse() as { message: string }).message).toBe(
+          'Choose at least one thing to back up',
+        );
+      }
     });
   });
 });

@@ -11,7 +11,7 @@ function manifest(overrides: Partial<SecretsExportManifest> = {}): SecretsExport
     exportedAt: '2026-01-02T03:04:05.000Z',
     app: 'vault',
     owner: { id: 'u1', email: 'person.a@example.test' },
-    options: { includeAttachments: true, includeVersions: false },
+    options: { includeSecrets: true, includeAttachments: true, includeVersions: false, includeMedia: false },
     counts: { secrets: 0, attachments: 0 },
     warnings: [],
     secrets: [],
@@ -176,7 +176,7 @@ describe('renderReadme', () => {
 
   it('reflects excluded attachments and all versions', () => {
     const text = renderReadme(
-      manifest({ options: { includeAttachments: false, includeVersions: true } }),
+      manifest({ options: { includeSecrets: true, includeAttachments: false, includeVersions: true, includeMedia: false } }),
     );
     expect(text).toContain('(attachments were excluded)');
     expect(text).toContain('all versions');

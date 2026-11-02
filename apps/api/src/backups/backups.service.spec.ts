@@ -35,6 +35,9 @@ const input = (over: Partial<UpdateBackupScheduleInput> = {}): UpdateBackupSched
   keepCount: 7,
   includeAttachments: true,
   includeVersions: false,
+  includeSecrets: true,
+  includeMedia: false,
+  includeSystem: false,
   ...over,
 });
 
@@ -419,5 +422,72 @@ describe('BackupsService.listRuns', () => {
       expect.objectContaining({ skip: 40, take: 20, orderBy: [{ startedAt: 'desc' }, { id: 'desc' }] }),
     );
     expect(result).toMatchObject({ total: 45, page: 3, pageSize: 20, totalPages: 3, items: [] });
+  });
+});
+
+describe('BackupsService content selection', () => {
+  it('stores and returns includeSecrets / includeMedia / includeSystem and audits them as changed', async () => {
+    const { service, prisma, getStored } = makeService();
+    const response = await service.updateSchedule(
+      input({ includeSecrets: false, includeAttachments: false, includeMedia: true, includeSystem: true }),
+      ACTOR,
+    );
+    expect(getStored()).toMatchObject({ includeSecrets: false, includeMedia: true, includeSystem: true });
+    expect(response).toMatchObject({
+      includeSecrets: false,
+      includeAttachments: false,
+      includeMedia: true,
+      includeSystem: true,
+    });
+    const meta = prisma.auditEvent.create.mock.calls[0][0].data.meta;
+    expect(meta.changedFields).toEqual(
+      expect.arrayContaining(['includeAttachments', 'includeSecrets', 'includeMedia', 'includeSystem']),
+    );
+  });
+
+  it('defaults the new fields for a row saved before they existed', async () => {
+    const { service } = makeService({
+      schedule: {
+        enabled: false,
+        frequency: 'daily',
+        intervalHours: null,
+        timeOfDay: '03:00',
+        dayOfWeek: null,
+        dayOfMonth: null,
+        timezone: 'UTC',
+        keepCount: 7,
+        includeAttachments: true,
+        includeVersions: false,
+        passwordEncrypted: null,
+      },
+    });
+    expect(await service.getSchedule()).toMatchObject({ includeSecrets: true, includeMedia: false, includeSystem: false });
+  });
+
+  it('lists runs with mediaFileCount and contents (known keys, fixed order)', async () => {
+    const { service, prisma } = makeService();
+    prisma.backupRun.findMany.mockResolvedValue([
+      {
+        id: 'r1',
+        status: 'succeeded',
+        trigger: 'manual',
+        triggeredById: null,
+        storageKey: 'system-backups/x.zip',
+        sizeBytes: 10n,
+        userCount: 1,
+        secretCount: 0,
+        attachmentCount: 0,
+        mediaFileCount: 3,
+        warningCount: 0,
+        contents: ['system', 'media', 'bogus'],
+        error: null,
+        startedAt: new Date('2026-05-01T00:00:00Z'),
+        finishedAt: null,
+        deletedAt: null,
+      },
+    ]);
+    prisma.backupRun.count.mockResolvedValue(1);
+    const result = await service.listRuns({ page: 1, pageSize: 20 });
+    expect(result.items[0]).toMatchObject({ mediaFileCount: 3, contents: ['media', 'system'] });
   });
 });

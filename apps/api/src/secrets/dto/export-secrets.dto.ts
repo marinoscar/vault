@@ -2,8 +2,17 @@ import { BadRequestException } from '@nestjs/common';
 import { z } from 'zod';
 import { createZodDto } from 'nestjs-zod';
 
+import {
+  BACKUP_CONTENT_DEFAULTS,
+  contentSelectionIssues,
+  resolveContentSelection,
+} from '../export/backup-contents';
+
 export const EXPORT_PASSWORD_MIN_LENGTH = 6;
 export const EXPORT_PASSWORD_MAX_LENGTH = 256;
+
+const optionalBoolean = (name: string) =>
+  z.boolean({ invalid_type_error: `${name} must be a boolean` }).optional();
 
 /**
  * Body of `POST /api/secrets/export`.
@@ -13,39 +22,61 @@ export const EXPORT_PASSWORD_MAX_LENGTH = 256;
  * trimmed either, because a user who typed a trailing space has to type the
  * same trailing space into 7-Zip to open the file.
  *
+ * Content flags (see `backup-contents.ts`): `includeSecrets` (default true),
+ * `includeAttachments` (default true) and `includeVersions` (default false),
+ * both of which require secrets, and `includeMedia` (default false). At least
+ * one of secrets / media is required. `includeSystem` belongs to the
+ * scheduled system backup only and is rejected here.
+ *
  * Every message below is static text. None of them echoes the submitted value,
  * so a validation error can be logged by the exception filter without leaking
  * the password.
  */
-export const exportSecretsSchema = z.object(
-  {
-    password: z
-      .string({
-        required_error: 'Password is required',
-        invalid_type_error: 'Password must be a string',
-      })
-      .min(
-        EXPORT_PASSWORD_MIN_LENGTH,
-        `Password must be at least ${EXPORT_PASSWORD_MIN_LENGTH} characters`,
-      )
-      .max(
-        EXPORT_PASSWORD_MAX_LENGTH,
-        `Password must be at most ${EXPORT_PASSWORD_MAX_LENGTH} characters`,
-      ),
-    includeAttachments: z
-      .boolean({ invalid_type_error: 'includeAttachments must be a boolean' })
-      .optional()
-      .default(true),
-    includeVersions: z
-      .boolean({ invalid_type_error: 'includeVersions must be a boolean' })
-      .optional()
-      .default(false),
-  },
-  {
-    required_error: 'Request body must be a JSON object',
-    invalid_type_error: 'Request body must be a JSON object',
-  },
-);
+export const exportSecretsSchema = z
+  .object(
+    {
+      password: z
+        .string({
+          required_error: 'Password is required',
+          invalid_type_error: 'Password must be a string',
+        })
+        .min(
+          EXPORT_PASSWORD_MIN_LENGTH,
+          `Password must be at least ${EXPORT_PASSWORD_MIN_LENGTH} characters`,
+        )
+        .max(
+          EXPORT_PASSWORD_MAX_LENGTH,
+          `Password must be at most ${EXPORT_PASSWORD_MAX_LENGTH} characters`,
+        ),
+      includeSecrets: optionalBoolean('includeSecrets'),
+      includeAttachments: optionalBoolean('includeAttachments'),
+      includeVersions: optionalBoolean('includeVersions'),
+      includeMedia: optionalBoolean('includeMedia'),
+      // Accepted by the schema only so it can be rejected with a clear
+      // message instead of being silently stripped as an unknown key.
+      includeSystem: z.unknown().optional(),
+    },
+    {
+      required_error: 'Request body must be a JSON object',
+      invalid_type_error: 'Request body must be a JSON object',
+    },
+  )
+  .superRefine((value, ctx) => {
+    for (const issue of contentSelectionIssues(value, 'user')) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [issue.path], message: issue.message });
+    }
+  })
+  .transform((value) => {
+    const { includeSecrets, includeAttachments, includeVersions, includeMedia } =
+      resolveContentSelection({ ...value, includeSystem: undefined });
+    return {
+      password: value.password,
+      includeSecrets,
+      includeAttachments,
+      includeVersions,
+      includeMedia,
+    };
+  });
 
 export type ExportSecretsOptions = z.infer<typeof exportSecretsSchema>;
 
@@ -99,16 +130,31 @@ export const EXPORT_SECRETS_BODY_SCHEMA: Record<string, unknown> = {
         'Password the zip is AES-256 encrypted with. Never stored or logged; ' +
         'there is no way to recover it.',
     },
+    includeSecrets: {
+      type: 'boolean',
+      default: BACKUP_CONTENT_DEFAULTS.includeSecrets,
+      description:
+        'Include the secrets you own (secrets.html, secrets.json). At least one of includeSecrets ' +
+        'and includeMedia must be true ("Choose at least one thing to back up").',
+    },
     includeAttachments: {
       type: 'boolean',
-      default: true,
-      description: 'Include attachment files (card images and other files).',
+      default: BACKUP_CONTENT_DEFAULTS.includeAttachments,
+      description:
+        'Include attachment files (card images and other files). Requires includeSecrets: ' +
+        'true together with includeSecrets: false is a 400.',
     },
     includeVersions: {
       type: 'boolean',
-      default: false,
+      default: BACKUP_CONTENT_DEFAULTS.includeVersions,
       description:
-        'Include every version of each secret, not just the current one.',
+        'Include every version of each secret, not just the current one. Requires includeSecrets.',
+    },
+    includeMedia: {
+      type: 'boolean',
+      default: BACKUP_CONTENT_DEFAULTS.includeMedia,
+      description:
+        'Include your media library: the ready files of the media folders you own, under media/.',
     },
   },
 };

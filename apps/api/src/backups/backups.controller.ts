@@ -55,6 +55,8 @@ export class BackupsController {
     description:
       'Full replace of the editable fields. password is write-only: omit it to keep the stored one. ' +
       'Enabling requires a password (stored or in this request) and configured object storage. ' +
+      'Content: includeSecrets (default true), includeAttachments/includeVersions (require secrets), ' +
+      'includeMedia and includeSystem (default false); at least one of secrets/media/system. ' +
       'Recomputes nextRunAt. Audited as backups.schedule.update (changed field names only). ' +
       'Requires system_settings:write.',
   })
@@ -89,7 +91,9 @@ export class BackupsController {
   @Auth({ permissions: [PERMISSIONS.SYSTEM_SETTINGS_READ] })
   @ApiOperation({
     summary: 'List backup runs',
-    description: 'Newest first, paginated. Requires system_settings:read.',
+    description:
+      'Newest first, paginated. Each run carries mediaFileCount and contents (the content keys it ' +
+      'was made with: secrets, attachments, versions, media, system). Requires system_settings:read.',
   })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })

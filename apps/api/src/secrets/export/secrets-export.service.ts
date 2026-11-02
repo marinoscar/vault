@@ -15,7 +15,20 @@ import {
   isAlreadyCompressed,
 } from './attachment-file-name';
 import { renderSecretsHtml } from './secrets-export-html.renderer';
-import { renderReadme } from './secrets-export-readme.renderer';
+import { renderUserBackupReadme } from './secrets-export-readme.renderer';
+import {
+  BACKUP_CONTENT_DEFAULTS,
+  UserContentSelection,
+} from './backup-contents';
+import {
+  buildMediaPlan,
+  EXPORT_MEDIA_MANIFEST_PATH,
+  ExportMediaFolderRow,
+  MEDIA_READY_STATUS,
+  MediaExportPlan,
+  PlannedMediaFile,
+  skipPlannedMediaFile,
+} from './media-export';
 import {
   EXPORT_FORMAT_VERSION,
   ExportAttachmentEntry,
@@ -138,12 +151,97 @@ export interface ExportPlan {
   files: PlannedAttachmentFile[];
 }
 
+/** What the blob writer needs from a planned attachment or media file. */
+interface ArchiveBlob {
+  storageObjectId: string;
+  storageKey: string;
+  path: string;
+  mimeType: string;
+}
+
+/** Re-exported for callers that only import the service module. */
+export type { PlannedMediaFile };
+
+/**
+ * One user's part of an archive: the secrets plan when secrets are selected,
+ * the media plan when the media library is selected. Built by
+ * {@link SecretsExportService.prepareUserPlan}, written by
+ * {@link SecretsExportService.writeUserEntries}.
+ */
+export interface UserArchivePlan {
+  owner: { id: string; email: string };
+  exportedAt: Date;
+  selection: UserContentSelection;
+  secrets: ExportPlan | null;
+  media: MediaExportPlan | null;
+}
+
+export interface UserArchiveCounts {
+  secrets: number;
+  attachments: number;
+  mediaFolders: number;
+  mediaFiles: number;
+  /** Secrets warnings, then media warnings. */
+  warnings: string[];
+}
+
+/** Current counts of a user plan (they drop when a blob is skipped). */
+export function userArchiveCounts(plan: UserArchivePlan): UserArchiveCounts {
+  return {
+    secrets: plan.secrets?.manifest.counts.secrets ?? 0,
+    attachments: plan.secrets?.manifest.counts.attachments ?? 0,
+    mediaFolders: plan.media?.manifest.folders.length ?? 0,
+    mediaFiles: plan.media?.files.length ?? 0,
+    warnings: [
+      ...(plan.secrets?.manifest.warnings ?? []),
+      ...(plan.media?.manifest.warnings ?? []),
+    ],
+  };
+}
+
+/** Bytes of every blob a user plan will write (attachments and media). */
+export function userArchiveBlobBytes(plan: UserArchivePlan): number {
+  const sum = (files: Array<{ size: number }>) => files.reduce((n, f) => n + f.size, 0);
+  return sum(plan.secrets?.files ?? []) + sum(plan.media?.files ?? []);
+}
+
+/**
+ * Options of a user export as the service accepts them. The content flags
+ * other than attachments/versions are optional and take the defaults (see
+ * `backup-contents.ts`); the route always passes the parsed, resolved body.
+ */
+export type CreateExportOptions = Pick<
+  ExportSecretsOptions,
+  'password' | 'includeAttachments' | 'includeVersions'
+> &
+  Partial<Pick<ExportSecretsOptions, 'includeSecrets' | 'includeMedia'>>;
+
+/** Selection accepted by {@link SecretsExportService.prepareUserPlan}. */
+export type PrepareUserPlanSelection = Pick<
+  UserContentSelection,
+  'includeAttachments' | 'includeVersions'
+> &
+  Partial<Pick<UserContentSelection, 'includeSecrets' | 'includeMedia'>>;
+
+/** Fill the optional flags with their defaults; attachments/versions need secrets. */
+export function normalizeUserSelection(selection: PrepareUserPlanSelection): UserContentSelection {
+  const includeSecrets = selection.includeSecrets ?? BACKUP_CONTENT_DEFAULTS.includeSecrets;
+  return {
+    includeSecrets,
+    includeAttachments: includeSecrets && selection.includeAttachments,
+    includeVersions: includeSecrets && selection.includeVersions,
+    includeMedia: selection.includeMedia ?? BACKUP_CONTENT_DEFAULTS.includeMedia,
+  };
+}
+
 export interface SecretsExportResult {
   /** `vault-backup-YYYY-MM-DD.zip` (UTC). */
   fileName: string;
   secretCount: number;
   /** Attachment blobs the archive is expected to contain. */
   attachmentCount: number;
+  /** Media files the archive is expected to contain. */
+  mediaFileCount: number;
   /** Warnings known before streaming started (pre-flight). */
   warningCount: number;
   /** The zip bytes. Errors (destroys) if the archive cannot be completed. */
@@ -212,7 +310,10 @@ export function buildExportPlan(
   rows: ExportSecretRow[],
   input: {
     owner: { id: string; email: string };
-    options: Pick<ExportSecretsOptions, 'includeAttachments' | 'includeVersions'>;
+    options: Pick<ExportSecretsOptions, 'includeAttachments' | 'includeVersions'> & {
+      /** Recorded in `options`; the media part itself is planned separately. */
+      includeMedia?: boolean;
+    };
     exportedAt: Date;
     decrypt: DecryptVersion;
     /** Called with ids only when a version cannot be decrypted (for logging). */
@@ -344,8 +445,10 @@ export function buildExportPlan(
     app: 'vault',
     owner: { id: owner.id, email: owner.email },
     options: {
+      includeSecrets: true,
       includeAttachments: options.includeAttachments,
       includeVersions: options.includeVersions,
+      includeMedia: options.includeMedia ?? false,
     },
     counts: { secrets: secrets.length, attachments: files.length },
     warnings,
@@ -407,20 +510,19 @@ export class SecretsExportService {
    */
   async createExport(
     user: Pick<RequestUser, 'id' | 'email'>,
-    options: ExportSecretsOptions,
+    options: CreateExportOptions,
   ): Promise<SecretsExportResult> {
-    const { includeAttachments, includeVersions } = options;
+    const selection = normalizeUserSelection(options);
     const exportedAt = new Date();
 
     const plan = await this.prepareUserPlan(
       { id: user.id, email: user.email },
-      { includeAttachments, includeVersions },
+      selection,
       exportedAt,
     );
 
-    const secretCount = plan.manifest.counts.secrets;
-    const attachmentCount = plan.manifest.counts.attachments;
-    const warningCount = plan.manifest.warnings.length;
+    const counts = userArchiveCounts(plan);
+    const warningCount = counts.warnings.length;
 
     // Recorded before the first byte is sent: an export that is interrupted
     // half way has still disclosed data and must still be on the record.
@@ -431,72 +533,104 @@ export class SecretsExportService {
         targetType: 'user',
         targetId: user.id,
         meta: {
-          secretCount,
-          attachmentCount,
-          includeVersions,
-          includeAttachments,
+          secretCount: counts.secrets,
+          attachmentCount: counts.attachments,
+          mediaFolderCount: counts.mediaFolders,
+          mediaFileCount: counts.mediaFiles,
+          includeSecrets: selection.includeSecrets,
+          includeVersions: selection.includeVersions,
+          includeAttachments: selection.includeAttachments,
+          includeMedia: selection.includeMedia,
           warningCount,
         },
       },
     });
 
     this.logger.log(
-      `Secrets export for user ${user.id}: ${secretCount} secret(s), ` +
-        `${attachmentCount} attachment(s), ${warningCount} warning(s)`,
+      `Secrets export for user ${user.id}: ${counts.secrets} secret(s), ` +
+        `${counts.attachments} attachment(s), ${counts.mediaFiles} media file(s), ` +
+        `${warningCount} warning(s)`,
     );
 
     return {
       fileName: exportArchiveFileName(exportedAt),
-      secretCount,
-      attachmentCount,
+      secretCount: counts.secrets,
+      attachmentCount: counts.attachments,
+      mediaFileCount: counts.mediaFiles,
       warningCount,
       stream: this.streamArchive(plan, options.password, user.id),
     };
   }
 
   /**
-   * Load the secrets `owner` owns, build the manifest and drop blobs missing
-   * from storage. This is the per-user part of an archive, shared by the user
-   * export and the scheduled system backup. Owner-only by construction.
+   * Build one user's part of an archive: the secrets `owner` owns (when
+   * selected) and the media folders `owner` owns (when selected), with blobs
+   * missing from storage dropped. Shared by the user export and the scheduled
+   * system backup. Owner-only by construction, for both parts.
    */
   async prepareUserPlan(
     owner: { id: string; email: string },
-    options: Pick<ExportSecretsOptions, 'includeAttachments' | 'includeVersions'>,
+    options: PrepareUserPlanSelection,
     exportedAt: Date,
     logLabel = 'Secrets export',
-  ): Promise<ExportPlan> {
-    const { includeAttachments, includeVersions } = options;
-    const rows = await this.loadOwnedSecrets(owner.id, includeAttachments, includeVersions);
+  ): Promise<UserArchivePlan> {
+    const selection = normalizeUserSelection(options);
+    const { includeAttachments, includeVersions, includeMedia } = selection;
 
-    const plan = buildExportPlan(rows, {
-      owner: { id: owner.id, email: owner.email },
-      options: { includeAttachments, includeVersions },
-      exportedAt,
-      decrypt: (version) => this.decryptVersion(version),
-      onDecryptFailure: (secretId, versionId) =>
-        this.logger.warn(
-          `${logLabel} for user ${owner.id}: version ${versionId} of secret ${secretId} ` +
-            'could not be decrypted; exported without values',
-        ),
-    });
+    let secrets: ExportPlan | null = null;
+    if (selection.includeSecrets) {
+      const rows = await this.loadOwnedSecrets(owner.id, includeAttachments, includeVersions);
+      secrets = buildExportPlan(rows, {
+        owner: { id: owner.id, email: owner.email },
+        options: { includeAttachments, includeVersions, includeMedia },
+        exportedAt,
+        decrypt: (version) => this.decryptVersion(version),
+        onDecryptFailure: (secretId, versionId) =>
+          this.logger.warn(
+            `${logLabel} for user ${owner.id}: version ${versionId} of secret ${secretId} ` +
+              'could not be decrypted; exported without values',
+          ),
+      });
 
-    await this.preflightAttachments(plan, owner.id, logLabel);
-    return plan;
+      const plan = secrets;
+      const missing = await this.findMissingBlobs(plan.files, owner.id, logLabel);
+      for (const file of plan.files.slice()) {
+        if (missing.has(file)) {
+          skipPlannedFile(plan, file);
+        }
+      }
+    }
+
+    let media: MediaExportPlan | null = null;
+    if (includeMedia) {
+      const folders = await this.loadOwnedMediaFolders(owner.id);
+      media = buildMediaPlan(folders, owner.id);
+
+      const plan = media;
+      const missing = await this.findMissingBlobs(plan.files, owner.id, logLabel);
+      for (const file of plan.files.slice()) {
+        if (missing.has(file)) {
+          skipPlannedMediaFile(plan, file);
+        }
+      }
+    }
+
+    return { owner: { id: owner.id, email: owner.email }, exportedAt, selection, secrets, media };
   }
 
   /**
    * Start writing the archive and return its bytes as a Node stream.
    *
-   * Order inside the zip: attachments first, then `secrets.json`,
-   * `secrets.html` and `README.txt`. The text files are written last so their
-   * counts, links and warnings describe the blobs that were actually written,
-   * including one that failed mid-stream.
+   * Order inside the zip: see {@link writeUserEntries}. The text files are
+   * written after the blobs so their counts, links and warnings describe the
+   * blobs that were actually written, including one that failed mid-stream.
    */
-  streamArchive(plan: ExportPlan, password: string, userId: string): Readable {
+  streamArchive(plan: UserArchivePlan, password: string, userId: string): Readable {
     const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
     const output = Readable.fromWeb(readable as unknown as NodeWebReadableStream<Uint8Array>);
 
-    const zip64 = plan.files.reduce((sum, f) => sum + f.size, 0) > ZIP64_THRESHOLD_BYTES;
+    // Attachments and media both count towards the 32-bit limit.
+    const zip64 = userArchiveBlobBytes(plan) > ZIP64_THRESHOLD_BYTES;
     const zipWriter = new ZipWriter(writable, vaultZipWriterOptions(password, zip64));
 
     void this.writeArchive(plan, zipWriter, userId).catch(async (error: unknown) => {
@@ -515,7 +649,7 @@ export class SecretsExportService {
   }
 
   private async writeArchive(
-    plan: ExportPlan,
+    plan: UserArchivePlan,
     zipWriter: ZipWriter<unknown>,
     userId: string,
   ): Promise<void> {
@@ -524,15 +658,20 @@ export class SecretsExportService {
   }
 
   /**
-   * Write one user's part of an archive into `zipWriter`, under `prefix`:
-   * the attachment blobs, then `secrets.json`, `secrets.html` and (unless
-   * disabled) `README.txt`. Does not close the writer.
+   * Write one user's part of an archive into `zipWriter`, under `prefix`.
+   * Does not close the writer.
    *
-   * Paths inside the manifest (`attachments/0001-01.jpg`) stay relative to the
-   * user's folder, so the HTML report's links work wherever the folder is.
+   * - secrets selected: the attachment blobs, then `secrets.json` and
+   *   `secrets.html`;
+   * - media selected: the media blobs, then `media/media.json`;
+   * - unless disabled: `README.txt`, last, listing what was included.
+   *
+   * Paths inside the manifests (`attachments/0001-01.jpg`, `media/0001/0001.mp4`)
+   * stay relative to the user's folder, so the HTML report's links work
+   * wherever the folder is.
    */
   async writeUserEntries(
-    plan: ExportPlan,
+    plan: UserArchivePlan,
     zipWriter: ZipWriter<unknown>,
     userId: string,
     options: WriteUserEntriesOptions = {},
@@ -541,44 +680,73 @@ export class SecretsExportService {
     const includeReadme = options.includeReadme ?? true;
     const logLabel = options.logLabel ?? 'Secrets export';
 
-    // Copy: skipPlannedFile() mutates plan.files while we iterate.
-    for (const file of plan.files.slice()) {
-      await this.writeAttachment(plan, zipWriter, file, userId, prefix, logLabel);
+    const secrets = plan.secrets;
+    if (secrets) {
+      // Copy: skipPlannedFile() mutates the list while we iterate.
+      for (const file of secrets.files.slice()) {
+        if (!(await this.writeBlob(zipWriter, file, userId, prefix, logLabel))) {
+          skipPlannedFile(secrets, file);
+        }
+      }
+      const manifest = secrets.manifest;
+      await zipWriter.add(
+        `${prefix}secrets.json`,
+        new TextReader(JSON.stringify(manifest, null, 2)),
+      );
+      await zipWriter.add(`${prefix}secrets.html`, new TextReader(renderSecretsHtml(manifest)));
     }
 
-    const manifest = plan.manifest;
-    await zipWriter.add(
-      `${prefix}secrets.json`,
-      new TextReader(JSON.stringify(manifest, null, 2)),
-    );
-    await zipWriter.add(`${prefix}secrets.html`, new TextReader(renderSecretsHtml(manifest)));
+    const media = plan.media;
+    if (media) {
+      for (const file of media.files.slice()) {
+        if (!(await this.writeBlob(zipWriter, file, userId, prefix, logLabel))) {
+          skipPlannedMediaFile(media, file);
+        }
+      }
+      await zipWriter.add(
+        `${prefix}${EXPORT_MEDIA_MANIFEST_PATH}`,
+        new TextReader(JSON.stringify(media.manifest, null, 2)),
+      );
+    }
+
     if (includeReadme) {
-      await zipWriter.add(`${prefix}README.txt`, new TextReader(renderReadme(manifest)));
+      const counts = userArchiveCounts(plan);
+      await zipWriter.add(
+        `${prefix}README.txt`,
+        new TextReader(
+          renderUserBackupReadme({
+            exportedAt: plan.exportedAt.toISOString(),
+            ownerEmail: plan.owner.email,
+            selection: plan.selection,
+            secrets: secrets?.manifest ?? null,
+            media: media ? { folders: counts.mediaFolders, files: counts.mediaFiles } : null,
+            warnings: counts.warnings,
+          }),
+        ),
+      );
     }
   }
 
   /**
-   * Write one blob. A storage failure (cannot open, or the source stream
-   * errors part way) skips the blob with a warning and the archive continues;
-   * zip.js leaves a failed entry out of the central directory, so the zip
-   * stays valid. A failure on the OUTPUT side (the client disconnected) is
-   * rethrown and ends the export.
+   * Write one blob (an attachment or a media file). A storage failure (cannot
+   * open, or the source stream errors part way) returns `false` so the caller
+   * skips it with a warning and the archive continues; zip.js leaves a failed
+   * entry out of the central directory, so the zip stays valid. A failure on
+   * the OUTPUT side (the client disconnected) is rethrown and ends the export.
    */
-  private async writeAttachment(
-    plan: ExportPlan,
+  private async writeBlob(
     zipWriter: ZipWriter<unknown>,
-    file: PlannedAttachmentFile,
+    file: ArchiveBlob,
     userId: string,
     prefix: string,
     logLabel: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
     let source: Readable;
     try {
       source = await this.storageProvider.download(file.storageKey);
     } catch (error) {
       this.warnUnreadable(userId, file, error, logLabel);
-      skipPlannedFile(plan, file);
-      return;
+      return false;
     }
 
     let sourceFailed = false;
@@ -592,12 +760,13 @@ export class SecretsExportService {
         Readable.toWeb(source) as unknown as ReadableStream<Uint8Array>,
         isAlreadyCompressed(file.mimeType) ? { level: 0 } : undefined,
       );
+      return true;
     } catch (error) {
       if (!sourceFailed) {
         throw error;
       }
       this.warnUnreadable(userId, file, error, logLabel);
-      skipPlannedFile(plan, file);
+      return false;
     } finally {
       source.destroy();
     }
@@ -605,7 +774,7 @@ export class SecretsExportService {
 
   private warnUnreadable(
     userId: string,
-    file: PlannedAttachmentFile,
+    file: ArchiveBlob,
     error: unknown,
     logLabel = 'Secrets export',
   ): void {
@@ -617,46 +786,75 @@ export class SecretsExportService {
   }
 
   /**
-   * Drop blobs that are not in storage before any byte is sent, so the
-   * `X-Vault-Export-Attachments` header matches the archive in all but a race.
+   * Find the blobs that are not in storage before any byte is sent, so the
+   * `X-Vault-Export-Attachments` / `-Media-Files` headers match the archive in
+   * all but a race. The caller skips them, in plan order, so warnings are
+   * deterministic.
    */
-  private async preflightAttachments(
-    plan: ExportPlan,
+  private async findMissingBlobs<T extends ArchiveBlob>(
+    files: T[],
     userId: string,
     logLabel: string,
-  ): Promise<void> {
-    const files = plan.files.slice();
-    const missing: PlannedAttachmentFile[] = [];
+  ): Promise<Set<T>> {
+    const queue = files.slice();
+    const missing = new Set<T>();
     let next = 0;
 
     const worker = async (): Promise<void> => {
-      while (next < files.length) {
-        const file = files[next++];
+      while (next < queue.length) {
+        const file = queue[next++];
         let present = false;
         try {
           present = await this.storageProvider.exists(file.storageKey);
         } catch (error) {
           this.warnUnreadable(userId, file, error, logLabel);
-          missing.push(file);
+          missing.add(file);
           continue;
         }
         if (!present) {
           this.warnUnreadable(userId, file, 'object does not exist', logLabel);
-          missing.push(file);
+          missing.add(file);
         }
       }
     };
 
     await Promise.all(
-      Array.from({ length: Math.min(PREFLIGHT_CONCURRENCY, files.length) }, () => worker()),
+      Array.from({ length: Math.min(PREFLIGHT_CONCURRENCY, queue.length) }, () => worker()),
     );
+    return missing;
+  }
 
-    // Skip in plan order so warnings are deterministic.
-    for (const file of files) {
-      if (missing.includes(file)) {
-        skipPlannedFile(plan, file);
-      }
-    }
+  /**
+   * The media folders `userId` owns, with their completed files. Owner-only
+   * (`userId`), whatever the caller's permissions, and only files filed in
+   * one of those folders. `buildMediaPlan` checks both again.
+   */
+  private async loadOwnedMediaFolders(userId: string): Promise<ExportMediaFolderRow[]> {
+    const rows = await this.prisma.mediaFolder.findMany({
+      where: { userId },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: {
+        id: true,
+        name: true,
+        userId: true,
+        createdAt: true,
+        files: {
+          where: { status: MEDIA_READY_STATUS },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          select: {
+            id: true,
+            name: true,
+            size: true,
+            mimeType: true,
+            storageKey: true,
+            status: true,
+            mediaFolderId: true,
+            createdAt: true,
+          },
+        },
+      },
+    });
+    return rows as unknown as ExportMediaFolderRow[];
   }
 
   private async loadOwnedSecrets(

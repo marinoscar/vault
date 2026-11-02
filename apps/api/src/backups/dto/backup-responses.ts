@@ -1,4 +1,5 @@
 import type { BackupFrequency } from '../backup-schedule';
+import { BACKUP_CONTENT_KEYS, BackupContentKey } from '../../secrets/export/backup-contents';
 
 /**
  * Wire shapes of the backups API. Binding contract with the web client
@@ -18,6 +19,9 @@ export interface BackupScheduleResponse {
   keepCount: number;
   includeAttachments: boolean;
   includeVersions: boolean;
+  includeSecrets: boolean;
+  includeMedia: boolean;
+  includeSystem: boolean;
   passwordConfigured: boolean;
   passwordUpdatedAt: string | null;
   nextRunAt: string | null;
@@ -38,7 +42,15 @@ export interface BackupRunResponse {
   userCount: number;
   secretCount: number;
   attachmentCount: number;
+  mediaFileCount: number;
   warningCount: number;
+  /**
+   * The content keys this run was made with, in a fixed order
+   * (`secrets`, `attachments`, `versions`, `media`, `system`). Empty while the
+   * run has not read its schedule yet, and for runs made before content
+   * selection existed.
+   */
+  contents: BackupContentKey[];
   error: string | null;
   startedAt: string;
   finishedAt: string | null;
@@ -73,7 +85,9 @@ export interface BackupRunRow {
   userCount: number;
   secretCount: number;
   attachmentCount: number;
+  mediaFileCount?: number;
   warningCount: number;
+  contents?: string[];
   error: string | null;
   startedAt: Date;
   finishedAt: Date | null;
@@ -103,11 +117,19 @@ export function toBackupRunResponse(row: BackupRunRow): BackupRunResponse {
     userCount: row.userCount,
     secretCount: row.secretCount,
     attachmentCount: row.attachmentCount,
+    mediaFileCount: row.mediaFileCount ?? 0,
     warningCount: row.warningCount,
+    contents: toContentKeys(row.contents),
     error: row.error ?? null,
     startedAt: row.startedAt.toISOString(),
     finishedAt: row.finishedAt ? row.finishedAt.toISOString() : null,
     deletedAt: row.deletedAt ? row.deletedAt.toISOString() : null,
     downloadable: status === 'succeeded' && !row.deletedAt && !!row.storageKey,
   };
+}
+
+/** Known keys only, in {@link BACKUP_CONTENT_KEYS} order. */
+function toContentKeys(stored: string[] | null | undefined): BackupContentKey[] {
+  const set = new Set(stored ?? []);
+  return BACKUP_CONTENT_KEYS.filter((key) => set.has(key));
 }

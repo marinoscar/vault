@@ -124,13 +124,18 @@ function setup(opts: Options = {}) {
 
   // Stand-in for SecretsExportService: user A and C own secrets, B owns none.
   const exportService = {
-    prepareUserPlan: jest.fn(async (owner: { id: string }) => ({
+    prepareUserPlan: jest.fn(async (owner: { id: string; email: string }) => ({
       owner,
-      manifest: {
-        counts: { secrets: owner.id === 'user-b-id' ? 0 : 2, attachments: owner.id === 'user-b-id' ? 0 : 1 },
-        warnings: [],
+      exportedAt: NOW,
+      selection: { includeSecrets: true, includeAttachments: true, includeVersions: false, includeMedia: false },
+      secrets: {
+        manifest: {
+          counts: { secrets: owner.id === 'user-b-id' ? 0 : 2, attachments: owner.id === 'user-b-id' ? 0 : 1 },
+          warnings: [],
+        },
+        files: [],
       },
-      files: [],
+      media: null,
     })),
     writeUserEntries: jest.fn(
       async (_plan: unknown, zipWriter: { add: (n: string, r: unknown) => Promise<unknown> }, userId: string, o: { prefix: string }) => {
@@ -139,8 +144,25 @@ function setup(opts: Options = {}) {
     ),
   };
 
-  const runner = new BackupRunnerService(prisma as never, crypto, storage as never, exportService as never);
-  return { runner, prisma, storage, exportService, uploads };
+  const systemSettings = {
+    getSettings: jest.fn(async () => ({
+      ui: { allowUserThemeOverride: true },
+      features: {},
+      ai: null,
+      updatedAt: NOW,
+      updatedBy: null,
+      version: 1,
+    })),
+  };
+
+  const runner = new BackupRunnerService(
+    prisma as never,
+    crypto,
+    storage as never,
+    exportService as never,
+    systemSettings as never,
+  );
+  return { runner, prisma, storage, exportService, systemSettings, uploads };
 }
 
 describe('BackupRunnerService.runDueSchedule (atomic claim)', () => {

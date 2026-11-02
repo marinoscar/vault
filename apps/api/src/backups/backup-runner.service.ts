@@ -16,6 +16,7 @@ import { CryptoService } from '../common/services/crypto.service';
 import { STORAGE_PROVIDER, StorageProvider } from '../storage/providers';
 import {
   SecretsExportService,
+  userArchiveCounts,
   vaultZipWriterOptions,
   ZIP64_THRESHOLD_BYTES,
 } from '../secrets/export/secrets-export.service';
@@ -28,6 +29,26 @@ import {
   systemBackupStorageKey,
   userFolderName,
 } from './backup-archive';
+import { SystemSettingsService } from '../settings/system-settings/system-settings.service';
+import {
+  BackupContentSelection,
+  resolveContentSelection,
+  selectedContentKeys,
+} from '../secrets/export/backup-contents';
+import {
+  SYSTEM_ALLOWLIST_SELECT,
+  SYSTEM_SECRET_TYPES_SELECT,
+  SYSTEM_SECTION_FILES,
+  SYSTEM_USERS_SELECT,
+  SystemAllowlistRow,
+  SystemSecretTypeRow,
+  SystemSettingsProjectionInput,
+  SystemUserRow,
+  toSystemAllowlist,
+  toSystemSecretTypes,
+  toSystemSettings,
+  toSystemUsers,
+} from './backup-system-section';
 import { decryptBackupPassword } from './backup-password';
 import { pickRunsToDelete } from './backup-retention';
 import { computeNextRunAt } from './backup-schedule';
@@ -63,6 +84,8 @@ export const BACKUP_FAILURE_MESSAGES = {
   storageNotConfigured:
     'Object storage is not configured, so the backup could not be stored. Configure S3 storage and try again.',
   noPassword: 'No backup password is set. Set one in the backup schedule and try again.',
+  nothingSelected:
+    'The backup schedule selects nothing to back up. Choose at least one thing to back up and try again.',
   passwordUnreadable:
     'The stored backup password could not be decrypted (the encryption key may be missing or rotated). Set the password again.',
   archive: 'The backup archive could not be written. See the server log for details.',
@@ -82,6 +105,7 @@ export interface BackupArchiveCounts {
   userCount: number;
   secretCount: number;
   attachmentCount: number;
+  mediaFileCount: number;
   warningCount: number;
 }
 
@@ -151,6 +175,7 @@ export class BackupRunnerService implements OnApplicationBootstrap {
     @Inject(STORAGE_PROVIDER)
     private readonly storageProvider: StorageProvider,
     private readonly exportService: SecretsExportService,
+    private readonly systemSettings: SystemSettingsService,
   ) {}
 
   /** True when an object-storage bucket is configured. */
@@ -310,6 +335,7 @@ export class BackupRunnerService implements OnApplicationBootstrap {
   async execute(run: BackupRunRow): Promise<void> {
     const storageKey = run.storageKey ?? systemBackupStorageKey(run.startedAt);
     let uploadStarted = false;
+    let selection: BackupContentSelection | null = null;
     const heartbeat = this.startHeartbeat(run.id);
 
     try {
@@ -331,16 +357,22 @@ export class BackupRunnerService implements OnApplicationBootstrap {
         throw new BackupRunFailure(BACKUP_FAILURE_MESSAGES.passwordUnreadable, describeError(error));
       }
 
-      const options = {
-        includeAttachments: schedule.includeAttachments,
-        includeVersions: schedule.includeVersions,
-      };
+      selection = resolveContentSelection({
+        includeSecrets: schedule.includeSecrets ?? undefined,
+        includeAttachments: schedule.includeAttachments ?? undefined,
+        includeVersions: schedule.includeVersions ?? undefined,
+        includeMedia: schedule.includeMedia ?? undefined,
+        includeSystem: schedule.includeSystem ?? undefined,
+      });
+      if (!selection.includeSecrets && !selection.includeMedia && !selection.includeSystem) {
+        throw new BackupRunFailure(BACKUP_FAILURE_MESSAGES.nothingSelected);
+      }
 
       uploadStarted = true;
       const { counts, sizeBytes } = await this.writeAndUpload(
         storageKey,
         password,
-        options,
+        selection,
         run.startedAt,
       );
 
@@ -357,7 +389,9 @@ export class BackupRunnerService implements OnApplicationBootstrap {
           userCount: counts.userCount,
           secretCount: counts.secretCount,
           attachmentCount: counts.attachmentCount,
+          mediaFileCount: counts.mediaFileCount,
           warningCount: counts.warningCount,
+          contents: selectedContentKeys(selection),
           error: null,
         },
       });
@@ -368,9 +402,10 @@ export class BackupRunnerService implements OnApplicationBootstrap {
 
       this.logger.log(
         `Backup run ${run.id} succeeded: ${counts.userCount} user(s), ${counts.secretCount} secret(s), ` +
-          `${counts.attachmentCount} attachment(s), ${counts.warningCount} warning(s), ${sizeBytes} bytes`,
+          `${counts.attachmentCount} attachment(s), ${counts.mediaFileCount} media file(s), ` +
+          `${counts.warningCount} warning(s), ${sizeBytes} bytes`,
       );
-      await this.auditCompleted(run, 'succeeded', sizeBytes, counts);
+      await this.auditCompleted(run, 'succeeded', sizeBytes, counts, selection);
 
       await this.applyRetention(run.id);
     } catch (error) {
@@ -392,9 +427,14 @@ export class BackupRunnerService implements OnApplicationBootstrap {
 
       await this.prisma.backupRun.update({
         where: { id: run.id },
-        data: { status: 'failed', finishedAt: new Date(), error: message },
+        data: {
+          status: 'failed',
+          finishedAt: new Date(),
+          error: message,
+          ...(selection ? { contents: selectedContentKeys(selection) } : {}),
+        },
       });
-      await this.auditCompleted(run, 'failed', null, null);
+      await this.auditCompleted(run, 'failed', null, null, selection);
     } finally {
       clearInterval(heartbeat);
     }
@@ -430,10 +470,10 @@ export class BackupRunnerService implements OnApplicationBootstrap {
   private async writeAndUpload(
     storageKey: string,
     password: string,
-    options: { includeAttachments: boolean; includeVersions: boolean },
+    selection: BackupContentSelection,
     createdAt: Date,
   ): Promise<{ counts: BackupArchiveCounts; sizeBytes: number }> {
-    const zip64 = await this.needsZip64(options.includeAttachments);
+    const zip64 = await this.needsZip64(selection);
 
     const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
     const zipBytes = Readable.fromWeb(readable as unknown as NodeWebReadableStream<Uint8Array>);
@@ -472,7 +512,7 @@ export class BackupRunnerService implements OnApplicationBootstrap {
       void abortArchive();
     });
 
-    const writePromise = this.writeArchive(zipWriter, options, createdAt);
+    const writePromise = this.writeArchive(zipWriter, selection, createdAt);
     writePromise.catch(() => {
       firstFailure ??= 'archive';
       void abortArchive();
@@ -493,13 +533,16 @@ export class BackupRunnerService implements OnApplicationBootstrap {
   }
 
   /**
-   * Write every user's folder, then `index.json` and `README.txt`, and close.
-   * Users are processed one at a time, so only one user's decrypted data is in
-   * memory at once.
+   * Write every user's folder, then the `system/` section, `index.json` and
+   * `README.txt`, and close. Users are processed one at a time, so only one
+   * user's decrypted data is in memory at once.
+   *
+   * Each user's part comes from `prepareUserPlan`, which is owner-only for
+   * secrets and for media: a user's folder never holds another user's data.
    */
   private async writeArchive(
     zipWriter: ZipWriter<unknown>,
-    options: { includeAttachments: boolean; includeVersions: boolean },
+    selection: BackupContentSelection,
     createdAt: Date,
   ): Promise<BackupArchiveCounts> {
     const users = await this.prisma.user.findMany({
@@ -507,29 +550,41 @@ export class BackupRunnerService implements OnApplicationBootstrap {
       select: { id: true, email: true, displayName: true },
     });
 
+    const perUser = selection.includeSecrets || selection.includeMedia;
     const entries: SystemBackupUserEntry[] = [];
     const warnings: string[] = [];
     let folderNumber = 0;
+    let usersWithSecrets = 0;
     let secretCount = 0;
     let attachmentCount = 0;
+    let mediaFolderCount = 0;
+    let mediaFileCount = 0;
 
     for (const user of users) {
+      const entry: SystemBackupUserEntry = {
+        folder: null,
+        id: user.id,
+        email: user.email,
+        displayName: user.displayName ?? null,
+        secretCount: 0,
+        attachmentCount: 0,
+        mediaFolderCount: 0,
+        mediaFileCount: 0,
+      };
+      entries.push(entry);
+      if (!perUser) {
+        continue;
+      }
+
       const plan = await this.exportService.prepareUserPlan(
         { id: user.id, email: user.email },
-        options,
+        selection,
         createdAt,
         'System backup',
       );
 
-      if (plan.manifest.counts.secrets === 0) {
-        entries.push({
-          folder: null,
-          id: user.id,
-          email: user.email,
-          displayName: user.displayName ?? null,
-          secretCount: 0,
-          attachmentCount: 0,
-        });
+      const before = userArchiveCounts(plan);
+      if (before.secrets === 0 && before.mediaFolders === 0) {
         continue;
       }
 
@@ -542,27 +597,33 @@ export class BackupRunnerService implements OnApplicationBootstrap {
       });
 
       // Read after writing: a blob that failed mid-stream lowered the count.
-      const counts = plan.manifest.counts;
+      const counts = userArchiveCounts(plan);
+      entry.folder = folder;
+      entry.secretCount = counts.secrets;
+      entry.attachmentCount = counts.attachments;
+      entry.mediaFolderCount = counts.mediaFolders;
+      entry.mediaFileCount = counts.mediaFiles;
+      if (counts.secrets > 0) usersWithSecrets += 1;
       secretCount += counts.secrets;
       attachmentCount += counts.attachments;
-      entries.push({
-        folder,
-        id: user.id,
-        email: user.email,
-        displayName: user.displayName ?? null,
-        secretCount: counts.secrets,
-        attachmentCount: counts.attachments,
-      });
-      for (const warning of plan.manifest.warnings) {
+      mediaFolderCount += counts.mediaFolders;
+      mediaFileCount += counts.mediaFiles;
+      for (const warning of counts.warnings) {
         warnings.push(`${folder}: ${warning}`);
       }
     }
 
-    const unowned = await this.prisma.secret.count({ where: { createdById: null } });
-    if (unowned > 0) {
-      warnings.push(
-        `${unowned} secret(s) have no owner (their user was deleted) and are not in this backup.`,
-      );
+    if (selection.includeSecrets) {
+      const unowned = await this.prisma.secret.count({ where: { createdById: null } });
+      if (unowned > 0) {
+        warnings.push(
+          `${unowned} secret(s) have no owner (their user was deleted) and are not in this backup.`,
+        );
+      }
+    }
+
+    if (selection.includeSystem) {
+      await this.writeSystemSection(zipWriter);
     }
 
     const index: SystemBackupIndex = {
@@ -570,14 +631,20 @@ export class BackupRunnerService implements OnApplicationBootstrap {
       kind: SYSTEM_BACKUP_KIND,
       createdAt: createdAt.toISOString(),
       options: {
-        includeAttachments: options.includeAttachments,
-        includeVersions: options.includeVersions,
+        includeSecrets: selection.includeSecrets,
+        includeAttachments: selection.includeAttachments,
+        includeVersions: selection.includeVersions,
+        includeMedia: selection.includeMedia,
+        includeSystem: selection.includeSystem,
       },
       counts: {
         users: entries.length,
-        usersWithSecrets: folderNumber,
+        usersWithSecrets,
         secrets: secretCount,
         attachments: attachmentCount,
+        mediaFolders: mediaFolderCount,
+        mediaFiles: mediaFileCount,
+        system: selection.includeSystem,
       },
       users: entries,
       warnings,
@@ -591,24 +658,74 @@ export class BackupRunnerService implements OnApplicationBootstrap {
       userCount: entries.length,
       secretCount,
       attachmentCount,
+      mediaFileCount,
       warningCount: warnings.length,
     };
   }
 
   /**
-   * ZIP64 when the attachments could pass the 32-bit limit. Over-estimates
-   * (every ready object that is attached anywhere), which is harmless: 7-Zip
-   * and Keka read ZIP64.
+   * Write `system/*.json`. Every query selects explicit columns and every
+   * file is built by an explicit mapper (see backup-system-section.ts), so no
+   * token, key, credential, ciphertext or password can reach the archive.
    */
-  private async needsZip64(includeAttachments: boolean): Promise<boolean> {
-    if (!includeAttachments) {
-      return false;
+  private async writeSystemSection(zipWriter: ZipWriter<unknown>): Promise<void> {
+    const [users, allowlist, secretTypes, settings] = await Promise.all([
+      this.prisma.user.findMany({
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        select: SYSTEM_USERS_SELECT,
+      }),
+      this.prisma.allowedEmail.findMany({
+        orderBy: [{ addedAt: 'asc' }, { email: 'asc' }],
+        select: SYSTEM_ALLOWLIST_SELECT,
+      }),
+      this.prisma.secretType.findMany({
+        // System types are seeded; only custom ones are configuration.
+        where: { isSystem: false },
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        select: SYSTEM_SECRET_TYPES_SELECT,
+      }),
+      // The masked projection used by GET /api/system-settings.
+      this.systemSettings.getSettings(),
+    ]);
+
+    const files: Array<[string, unknown]> = [
+      [SYSTEM_SECTION_FILES.users, toSystemUsers(users as unknown as SystemUserRow[])],
+      [SYSTEM_SECTION_FILES.allowlist, toSystemAllowlist(allowlist as unknown as SystemAllowlistRow[])],
+      [
+        SYSTEM_SECTION_FILES.secretTypes,
+        toSystemSecretTypes(secretTypes as unknown as SystemSecretTypeRow[]),
+      ],
+      [
+        SYSTEM_SECTION_FILES.settings,
+        toSystemSettings(settings as unknown as SystemSettingsProjectionInput),
+      ],
+    ];
+    for (const [path, data] of files) {
+      await zipWriter.add(path, new TextReader(JSON.stringify(data, null, 2)));
     }
-    const aggregate = await this.prisma.storageObject.aggregate({
-      _sum: { size: true },
-      where: { status: 'ready', secretAttachments: { some: {} } },
-    });
-    const total = Number(aggregate?._sum?.size ?? 0);
+  }
+
+  /**
+   * ZIP64 when the blobs could pass the 32-bit limit. Over-estimates (every
+   * ready object that is attached anywhere, plus every ready file in any media
+   * folder), which is harmless: 7-Zip and Keka read ZIP64.
+   */
+  private async needsZip64(selection: BackupContentSelection): Promise<boolean> {
+    let total = 0;
+    if (selection.includeSecrets && selection.includeAttachments) {
+      const aggregate = await this.prisma.storageObject.aggregate({
+        _sum: { size: true },
+        where: { status: 'ready', secretAttachments: { some: {} } },
+      });
+      total += Number(aggregate?._sum?.size ?? 0);
+    }
+    if (selection.includeMedia) {
+      const aggregate = await this.prisma.storageObject.aggregate({
+        _sum: { size: true },
+        where: { status: 'ready', mediaFolderId: { not: null } },
+      });
+      total += Number(aggregate?._sum?.size ?? 0);
+    }
     return total > ZIP64_THRESHOLD_BYTES;
   }
 
@@ -653,6 +770,7 @@ export class BackupRunnerService implements OnApplicationBootstrap {
     status: 'succeeded' | 'failed',
     sizeBytes: number | null,
     counts: BackupArchiveCounts | null,
+    selection: BackupContentSelection | null,
   ): Promise<void> {
     try {
       await this.prisma.auditEvent.create({
@@ -666,11 +784,13 @@ export class BackupRunnerService implements OnApplicationBootstrap {
             status,
             trigger: run.trigger,
             sizeBytes,
+            contents: selection ? selectedContentKeys(selection) : null,
             counts: counts
               ? {
                   users: counts.userCount,
                   secrets: counts.secretCount,
                   attachments: counts.attachmentCount,
+                  mediaFiles: counts.mediaFileCount,
                   warnings: counts.warningCount,
                 }
               : null,

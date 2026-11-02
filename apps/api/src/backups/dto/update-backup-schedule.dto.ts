@@ -12,6 +12,10 @@ import {
   isValidTimeOfDay,
   isValidTimeZone,
 } from '../backup-schedule';
+import {
+  BACKUP_CONTENT_DEFAULTS,
+  contentSelectionIssues,
+} from '../../secrets/export/backup-contents';
 
 export const BACKUP_KEEP_COUNT_MIN = 1;
 export const BACKUP_KEEP_COUNT_MAX = 365;
@@ -25,9 +29,14 @@ const nullableInt = (name: string) =>
 /**
  * Body of `PUT /api/admin/backups/schedule`.
  *
- * Every editable field is required (a full replace); `password` is
- * write-only: omitted keeps the stored one, a string replaces it. As with the
- * user export the password is free-form (6-256 characters, not trimmed).
+ * Every editable field is required (a full replace), except the content
+ * flags added later (`includeSecrets` default true, `includeMedia` and
+ * `includeSystem` default false), so an older client keeps working.
+ * `includeAttachments` / `includeVersions` true require `includeSecrets`, and
+ * at least one of secrets / media / system must be selected (see
+ * `backup-contents.ts`). `password` is write-only: omitted keeps the stored
+ * one, a string replaces it. As with the user export the password is
+ * free-form (6-256 characters, not trimmed).
  *
  * Every message is static text and never echoes the submitted value, so a
  * validation error is safe to log.
@@ -73,6 +82,18 @@ export const updateBackupScheduleSchema = z
         required_error: 'includeVersions is required',
         invalid_type_error: 'includeVersions must be a boolean',
       }),
+      includeSecrets: z
+        .boolean({ invalid_type_error: 'includeSecrets must be a boolean' })
+        .optional()
+        .default(BACKUP_CONTENT_DEFAULTS.includeSecrets),
+      includeMedia: z
+        .boolean({ invalid_type_error: 'includeMedia must be a boolean' })
+        .optional()
+        .default(BACKUP_CONTENT_DEFAULTS.includeMedia),
+      includeSystem: z
+        .boolean({ invalid_type_error: 'includeSystem must be a boolean' })
+        .optional()
+        .default(BACKUP_CONTENT_DEFAULTS.includeSystem),
       password: z
         .string({ invalid_type_error: 'Password must be a string' })
         .min(
@@ -91,6 +112,9 @@ export const updateBackupScheduleSchema = z
     },
   )
   .superRefine((value, ctx) => {
+    for (const issue of contentSelectionIssues(value, 'system')) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [issue.path], message: issue.message });
+    }
     if (value.frequency === 'hourly') {
       if (
         value.intervalHours === null ||
@@ -200,8 +224,33 @@ export const UPDATE_BACKUP_SCHEDULE_BODY_SCHEMA: Record<string, unknown> = {
       maximum: BACKUP_KEEP_COUNT_MAX,
       description: 'How many successful backups to keep; older ones are deleted after a successful run.',
     },
-    includeAttachments: { type: 'boolean' },
-    includeVersions: { type: 'boolean' },
+    includeSecrets: {
+      type: 'boolean',
+      default: BACKUP_CONTENT_DEFAULTS.includeSecrets,
+      description:
+        "Every user's secrets (users/NNNN/secrets.*). At least one of includeSecrets, includeMedia " +
+        'and includeSystem must be true ("Choose at least one thing to back up").',
+    },
+    includeAttachments: {
+      type: 'boolean',
+      description: 'Attachment files. true requires includeSecrets (400 otherwise).',
+    },
+    includeVersions: {
+      type: 'boolean',
+      description: 'Every version of each secret. true requires includeSecrets (400 otherwise).',
+    },
+    includeMedia: {
+      type: 'boolean',
+      default: BACKUP_CONTENT_DEFAULTS.includeMedia,
+      description: "Every user's media library (users/NNNN/media/).",
+    },
+    includeSystem: {
+      type: 'boolean',
+      default: BACKUP_CONTENT_DEFAULTS.includeSystem,
+      description:
+        'System configuration (system/): users and roles, allowlist, custom secret types and the ' +
+        'redacted system settings. Never tokens, keys, credentials or passwords.',
+    },
     password: {
       type: 'string',
       format: 'password',

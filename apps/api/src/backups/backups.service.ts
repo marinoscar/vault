@@ -49,6 +49,9 @@ export const DEFAULT_BACKUP_SCHEDULE = {
   keepCount: 7,
   includeAttachments: true,
   includeVersions: false,
+  includeSecrets: true,
+  includeMedia: false,
+  includeSystem: false,
 };
 
 /** The editable fields, in the order the audit meta lists changed ones. */
@@ -63,6 +66,9 @@ const EDITABLE_FIELDS = [
   'keepCount',
   'includeAttachments',
   'includeVersions',
+  'includeSecrets',
+  'includeMedia',
+  'includeSystem',
 ] as const;
 
 type EditableSchedule = Pick<typeof DEFAULT_BACKUP_SCHEDULE, (typeof EDITABLE_FIELDS)[number]>;
@@ -134,6 +140,9 @@ export class BackupsService {
       keepCount: input.keepCount,
       includeAttachments: input.includeAttachments,
       includeVersions: input.includeVersions,
+      includeSecrets: input.includeSecrets,
+      includeMedia: input.includeMedia,
+      includeSystem: input.includeSystem,
     };
 
     const now = new Date();
@@ -280,6 +289,9 @@ export class BackupsService {
       keepCount: source.keepCount,
       includeAttachments: source.includeAttachments,
       includeVersions: source.includeVersions,
+      includeSecrets: source.includeSecrets ?? DEFAULT_BACKUP_SCHEDULE.includeSecrets,
+      includeMedia: source.includeMedia ?? DEFAULT_BACKUP_SCHEDULE.includeMedia,
+      includeSystem: source.includeSystem ?? DEFAULT_BACKUP_SCHEDULE.includeSystem,
       passwordConfigured: !!row?.passwordEncrypted,
       passwordUpdatedAt: row?.passwordUpdatedAt ? row.passwordUpdatedAt.toISOString() : null,
       nextRunAt: row?.nextRunAt ? row.nextRunAt.toISOString() : null,

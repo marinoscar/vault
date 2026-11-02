@@ -4,15 +4,23 @@
  * ```
  * README.txt                        what it is, how to open it, counts, warnings
  * index.json                        SystemBackupIndex
- * users/0001/secrets.html           same renderer as the user export
+ * users/0001/secrets.html           same renderer as the user export (secrets selected)
  * users/0001/secrets.json           same shape as the user export's secrets.json
  * users/0001/attachments/0001-01.jpg
+ * users/0001/media/media.json       same shape as the user export's (media selected)
+ * users/0001/media/0001/0001.mp4
+ * system/users.json                 (system selected) see backup-system-section.ts
+ * system/allowlist.json
+ * system/secret-types.json
+ * system/settings.json
  * ```
  *
  * Zip entry NAMES are readable without the password, so folder names are
  * opaque numbers: no email, name or id appears in a path. Which folder is
  * whose is only in the encrypted index.json.
  */
+
+import { describeContents } from '../secrets/export/backup-contents';
 
 export const SYSTEM_BACKUP_FORMAT_VERSION = 1;
 export const SYSTEM_BACKUP_KIND = 'system-backup';
@@ -21,21 +29,38 @@ export const SYSTEM_BACKUP_KIND = 'system-backup';
 export const SYSTEM_BACKUP_KEY_PREFIX = 'system-backups/';
 
 export interface SystemBackupUserEntry {
-  /** `users/0001`, or `null` for a user with no secrets (no folder written). */
+  /** `users/0001`, or `null` for a user with none of the selected content (no folder written). */
   folder: string | null;
   id: string;
   email: string;
   displayName: string | null;
   secretCount: number;
   attachmentCount: number;
+  mediaFolderCount: number;
+  mediaFileCount: number;
 }
 
 export interface SystemBackupIndex {
   formatVersion: typeof SYSTEM_BACKUP_FORMAT_VERSION;
   kind: typeof SYSTEM_BACKUP_KIND;
   createdAt: string;
-  options: { includeAttachments: boolean; includeVersions: boolean };
-  counts: { users: number; usersWithSecrets: number; secrets: number; attachments: number };
+  options: {
+    includeSecrets: boolean;
+    includeAttachments: boolean;
+    includeVersions: boolean;
+    includeMedia: boolean;
+    includeSystem: boolean;
+  };
+  counts: {
+    users: number;
+    usersWithSecrets: number;
+    secrets: number;
+    attachments: number;
+    mediaFolders: number;
+    mediaFiles: number;
+    /** True when the `system/` section is in the archive. */
+    system: boolean;
+  };
   users: SystemBackupUserEntry[];
   warnings: string[];
 }
@@ -91,17 +116,41 @@ export function renderSystemBackupReadme(index: SystemBackupIndex): string {
     'README.txt     This file.',
     `index.json     Which folder belongs to which user, the options and the`,
     `               counts (formatVersion ${index.formatVersion}, kind "${index.kind}").`,
-    'users/NNNN/    One folder per user who owns at least one secret. Folder',
-    '               names are numbers on purpose: file names in a zip are',
-    '               visible without the password, so they reveal nothing.',
-    '               Look the number up in index.json. Users without secrets',
-    '               are listed in index.json but have no folder.',
-    '  secrets.html A readable report of that user\'s secrets. Open it in any',
-    '               web browser.',
-    '  secrets.json The same data in a machine-readable form.',
+    `Contents:      ${describeContents(index.options)}`,
   ];
-  if (index.options.includeAttachments) {
-    lines.push('  attachments/ That user\'s attached files.');
+
+  if (index.options.includeSecrets || index.options.includeMedia) {
+    lines.push(
+      'users/NNNN/    One folder per user who has any of the selected content.',
+      '               Folder names are numbers on purpose: file names in a zip',
+      '               are visible without the password, so they reveal',
+      '               nothing. Look the number up in index.json. Users without',
+      '               content are listed in index.json but have no folder.',
+    );
+  }
+  if (index.options.includeSecrets) {
+    lines.push(
+      '  secrets.html A readable report of that user\'s secrets. Open it in any',
+      '               web browser.',
+      '  secrets.json The same data in a machine-readable form.',
+    );
+    if (index.options.includeAttachments) {
+      lines.push('  attachments/ That user\'s attached files.');
+    }
+  }
+  if (index.options.includeMedia) {
+    lines.push(
+      '  media/       That user\'s media library; media/media.json gives each',
+      '               numbered folder and file its original name.',
+    );
+  }
+  if (index.options.includeSystem) {
+    lines.push(
+      'system/        The system configuration: users.json (users and roles),',
+      '               allowlist.json, secret-types.json (custom secret types)',
+      '               and settings.json (system settings). No tokens, keys,',
+      '               credentials or passwords are included.',
+    );
   }
 
   lines.push(
@@ -110,10 +159,22 @@ export function renderSystemBackupReadme(index: SystemBackupIndex): string {
     '-------',
     `Created at:    ${index.createdAt}`,
     `Users:         ${index.counts.users} (${index.counts.usersWithSecrets} with secrets)`,
-    `Secrets:       ${index.counts.secrets}`,
-    `Attachments:   ${index.counts.attachments}` +
-      (index.options.includeAttachments ? '' : ' (attachments were excluded)'),
-    `Versions:      ${index.options.includeVersions ? 'all versions' : 'current versions only'}`,
+  );
+  if (index.options.includeSecrets) {
+    lines.push(
+      `Secrets:       ${index.counts.secrets}`,
+      `Attachments:   ${index.counts.attachments}` +
+        (index.options.includeAttachments ? '' : ' (attachments were excluded)'),
+      `Versions:      ${index.options.includeVersions ? 'all versions' : 'current versions only'}`,
+    );
+  } else {
+    lines.push('Secrets:       not included');
+  }
+  lines.push(
+    index.options.includeMedia
+      ? `Media:         ${index.counts.mediaFiles} file(s) in ${index.counts.mediaFolders} folder(s)`
+      : 'Media:         not included',
+    `System:        ${index.counts.system ? 'included' : 'not included'}`,
     '',
     'WARNINGS',
     '--------',
