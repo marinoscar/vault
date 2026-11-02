@@ -67,7 +67,12 @@ export function PersonalAccessTokens() {
               <Typography variant="h6" gutterBottom>
                 Personal Access Tokens
               </Typography>
-              <Typography variant="body2" color="text.secondary" paragraph>
+              <Typography
+                variant="body2"
+                sx={{
+                  color: "text.secondary",
+                  marginBottom: "16px"
+                }}>
                 Create tokens to authenticate API requests without OAuth.
               </Typography>
             </Box>
@@ -94,9 +99,11 @@ export function PersonalAccessTokens() {
           ) : tokens.length === 0 ? (
             <Typography
               variant="body2"
-              color="text.secondary"
-              sx={{ textAlign: 'center', py: 4 }}
-            >
+              sx={{
+                color: "text.secondary",
+                textAlign: 'center',
+                py: 4
+              }}>
               No personal access tokens yet. Create one to get started.
             </Typography>
           ) : (

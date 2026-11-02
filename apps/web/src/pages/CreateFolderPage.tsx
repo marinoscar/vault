@@ -62,7 +62,9 @@ export default function CreateFolderPage() {
         >
           Media
         </Link>
-        <Typography color="text.primary">New Folder</Typography>
+        <Typography sx={{
+          color: "text.primary"
+        }}>New Folder</Typography>
       </Breadcrumbs>
 
       <Typography variant="h4" gutterBottom>

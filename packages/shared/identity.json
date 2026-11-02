@@ -1,0 +1,8 @@
+{
+  "productName": "Vault",
+  "tagline": "Your secrets, cards and documents, encrypted and versioned.",
+  "repoSlug": "marinoscar/vault",
+  "themeColor": "#0F5F66",
+  "backgroundColor": "#ffffff",
+  "cliName": "vault"
+}

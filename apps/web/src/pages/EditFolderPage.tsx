@@ -88,7 +88,9 @@ export default function EditFolderPage() {
         >
           Media
         </Link>
-        <Typography color="text.primary">Edit Folder</Typography>
+        <Typography sx={{
+          color: "text.primary"
+        }}>Edit Folder</Typography>
       </Breadcrumbs>
 
       <Typography variant="h4" gutterBottom>

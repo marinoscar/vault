@@ -124,7 +124,9 @@ export function MediaList({
         </Box>
       ) : files.length === 0 ? (
         <Box sx={{ py: 6, textAlign: 'center' }}>
-          <Typography color="text.secondary">
+          <Typography sx={{
+            color: "text.secondary"
+          }}>
             {search
               ? 'No files match your search'
               : 'No files yet. Upload one to get started.'}
@@ -148,7 +150,9 @@ export function MediaList({
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         {getMediaTypeIcon(file.mimeType)}
-                        <Typography variant="body2" fontWeight={500}>
+                        <Typography variant="body2" sx={{
+                          fontWeight: 500
+                        }}>
                           {file.name}
                         </Typography>
                       </Box>

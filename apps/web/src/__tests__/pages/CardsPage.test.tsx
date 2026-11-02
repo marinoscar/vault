@@ -119,7 +119,7 @@ describe('CardsPage', () => {
 
     expect(screen.getByText('GoodCard')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('checkbox', { name: /needs attention/i }));
+    await user.click(screen.getByRole('switch', { name: /needs attention/i }));
 
     await waitFor(() => expect(screen.queryByText('GoodCard')).not.toBeInTheDocument());
     expect(screen.getByText('ExpiredCard')).toBeInTheDocument();

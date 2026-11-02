@@ -158,7 +158,9 @@ export function UserList() {
         </Box>
       ) : users.length === 0 ? (
         <Box sx={{ p: 4, textAlign: 'center' }}>
-          <Typography color="text.secondary">
+          <Typography sx={{
+            color: "text.secondary"
+          }}>
             {search ? 'No users found matching your search' : 'No users found'}
           </Typography>
         </Box>

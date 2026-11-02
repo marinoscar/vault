@@ -109,7 +109,12 @@ export default function MediaPlayerPage() {
         >
           {folderName}
         </Link>
-        <Typography color="text.primary" noWrap sx={{ maxWidth: 200 }}>
+        <Typography
+          noWrap
+          sx={{
+            color: "text.primary",
+            maxWidth: 200
+          }}>
           {fileName}
         </Typography>
       </Breadcrumbs>

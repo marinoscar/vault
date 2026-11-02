@@ -73,7 +73,9 @@ export default function AuthCallbackPage() {
             </Typography>
           )}
         </Alert>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: "text.secondary"
+        }}>
           <a href="/login" style={{ textDecoration: 'none', color: 'inherit' }}>
             Return to login
           </a>

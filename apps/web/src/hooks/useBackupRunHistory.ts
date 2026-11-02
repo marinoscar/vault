@@ -48,19 +48,29 @@ export function useBackupRunHistory(
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   const onRunSettled = useRef(options.onRunSettled);
   onRunSettled.current = options.onRunSettled;
 
   const reload = useCallback(async () => {
     try {
       const res = await fetchRuns({ page: page + 1, pageSize: rowsPerPage });
+      if (!mountedRef.current) return;
       setRuns(res.items);
       setTotal(res.total);
       setError(null);
     } catch (err) {
+      if (!mountedRef.current) return;
       setError(err instanceof Error && err.message ? err.message : errorFallback);
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, [fetchRuns, page, rowsPerPage, errorFallback]);
 

@@ -121,7 +121,9 @@ export default function EditSecretTypePage() {
         <Link color="inherit" href="/secret-types" onClick={(e) => { e.preventDefault(); navigate('/secret-types'); }}>
           Secret Types
         </Link>
-        <Typography color="text.primary">Edit {typeName}</Typography>
+        <Typography sx={{
+          color: "text.primary"
+        }}>Edit {typeName}</Typography>
       </Breadcrumbs>
 
       <Typography variant="h4" gutterBottom>

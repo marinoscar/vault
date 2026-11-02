@@ -115,7 +115,9 @@ export default function MediaFolderPage() {
         >
           Media
         </Link>
-        <Typography color="text.primary">{folderName}</Typography>
+        <Typography sx={{
+          color: "text.primary"
+        }}>{folderName}</Typography>
       </Breadcrumbs>
 
       <Typography variant="h4" gutterBottom>

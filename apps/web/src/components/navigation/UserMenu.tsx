@@ -80,8 +80,8 @@ export function UserMenu() {
         onClick={handleClose}
         transformOrigin={{ horizontal: 'right', vertical: 'top' }}
         anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
-        PaperProps={{
-          sx: { minWidth: 200, mt: 1 },
+        slotProps={{
+          paper: { sx: { minWidth: 200, mt: 1 } },
         }}
       >
         {/* User Info Header */}
@@ -89,7 +89,9 @@ export function UserMenu() {
           <Typography variant="subtitle2" noWrap>
             {user.displayName || 'No name set'}
           </Typography>
-          <Typography variant="body2" color="text.secondary" noWrap>
+          <Typography variant="body2" noWrap sx={{
+            color: "text.secondary"
+          }}>
             {user.email}
           </Typography>
         </Box>

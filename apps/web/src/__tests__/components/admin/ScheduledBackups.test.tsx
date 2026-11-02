@@ -497,7 +497,7 @@ describe('ScheduledBackups', () => {
     it('does not let the schedule be turned on', async () => {
       await renderLoaded();
 
-      expect(screen.getByRole('checkbox', { name: /scheduled backups enabled/i })).toBeDisabled();
+      expect(screen.getByRole('switch', { name: /scheduled backups enabled/i })).toBeDisabled();
     });
 
     it('does not show the warning when storage is configured', async () => {
@@ -818,7 +818,7 @@ describe('ScheduledBackups', () => {
       mockGetSchedule.mockResolvedValue({ ...schedule, frequency: 'weekly', dayOfWeek: 2 });
       await renderLoaded();
 
-      expect(screen.getByRole('checkbox', { name: /scheduled backups enabled/i })).toBeDisabled();
+      expect(screen.getByRole('switch', { name: /scheduled backups enabled/i })).toBeDisabled();
       expect(screen.getByRole('combobox', { name: 'Frequency' })).toHaveAttribute('aria-disabled', 'true');
       expect(screen.getByRole('combobox', { name: 'Day of the week' })).toHaveAttribute('aria-disabled', 'true');
       expect(screen.getByLabelText('Time')).toBeDisabled();

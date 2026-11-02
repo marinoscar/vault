@@ -46,7 +46,7 @@ Epics run in this order; each builds on the previous.
 | Epic | Scope |
 |---|---|
 | E0 | Docs and AI-assistant foundation (this folder, `AGENTS.md`, agents, skills, templates, `docs/specs/ux-refresh.md`) |
-| E1 | Toolchain: Node 24, Prisma 7, React 19 + MUI 7, zod, `packages/shared/identity.json`, rename codemod |
+| E1 | Toolchain: Node 24, Prisma 7, React 19 + MUI 9, zod, `packages/shared/identity.json`, rename codemod |
 | E2 | Database baseline: fragments, `platform db baseline` on live data (rehearsed on a restored copy), app DB role `NOSUPERUSER NOBYPASSRLS`, `platform.lock` |
 | E3 | Host and identity slices (auth, users, allowlist, PAT, device auth, health, request ids) |
 | E4 | Settings and credentials slices (system/user settings registries, encrypted credential store for runtime keys) |

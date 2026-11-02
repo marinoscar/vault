@@ -5,8 +5,8 @@ Shared rules for AI assistants working on this codebase (loaded by OpenCode, and
 ## Project overview
 
 Vault is a secrets vault: typed, versioned, AES-256-GCM-encrypted secrets (logins, API keys, payment cards, notes), card scanning with an admin-configured vision model, media folders, encrypted backups (admin schedule, user "My backups", raw-zip exports), OAuth sign-in with an email allowlist, RBAC, personal access tokens, device authorization and a CLI.
-Current stack: Node 24, NestJS 11 on Fastify, Prisma 7, PostgreSQL, React 18 + MUI 5 + Vite 7, Jest (API), Vitest + React Testing Library (web), OpenTelemetry + Uptrace + Pino, Docker Compose, Nginx same-origin.
-**Target** (program epic #54, children E0 to E12): the `@marinoscar/platform-*` packages from EnterpriseAppBase (EAB), Node 24, Prisma 7, React 19 + MUI 7, the `vault` CLI on `createCli`, then `@marinoscar/vault-*` domain packages. Plan, classification and exceptions: [docs/platform-adoption/README.md](docs/platform-adoption/README.md). Sections below marked **TARGET** apply as soon as their epic lands and are the rule for new work now where stated.
+Current stack: Node 24, NestJS 11 on Fastify, Prisma 7, PostgreSQL, React 19 + MUI 9 + Vite 8, Jest (API), Vitest + React Testing Library (web), OpenTelemetry + Uptrace + Pino, Docker Compose, Nginx same-origin.
+**Target** (program epic #54, children E0 to E12): the `@marinoscar/platform-*` packages from EnterpriseAppBase (EAB), Node 24, Prisma 7, React 19 + MUI 9, the `vault` CLI on `createCli`, then `@marinoscar/vault-*` domain packages. Plan, classification and exceptions: [docs/platform-adoption/README.md](docs/platform-adoption/README.md). Sections below marked **TARGET** apply as soon as their epic lands and are the rule for new work now where stated.
 Start at [README.md](README.md) and [docs/README.md](docs/README.md) (index with a "Doc map by task").
 
 ## Repository structure

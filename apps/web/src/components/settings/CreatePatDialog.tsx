@@ -130,10 +130,12 @@ export function CreatePatDialog({ open, onClose, onCreated, onCreate }: CreatePa
               value={name}
               onChange={(e) => setName(e.target.value)}
               disabled={isSubmitting}
-              inputProps={{ maxLength: 100 }}
               sx={{ mb: 2 }}
               autoFocus
               placeholder="e.g. CI/CD Pipeline, Local Dev"
+              slotProps={{
+                htmlInput: { maxLength: 100 }
+              }}
             />
             <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
               <TextField
@@ -142,8 +144,10 @@ export function CreatePatDialog({ open, onClose, onCreated, onCreate }: CreatePa
                 value={durationValue}
                 onChange={(e) => setDurationValue(e.target.value)}
                 disabled={isSubmitting}
-                inputProps={{ min: 1, max: 999, step: 1 }}
                 sx={{ flex: 1 }}
+                slotProps={{
+                  htmlInput: { min: 1, max: 999, step: 1 }
+                }}
               />
               <TextField
                 select
@@ -161,7 +165,9 @@ export function CreatePatDialog({ open, onClose, onCreated, onCreate }: CreatePa
               </TextField>
             </Box>
             {expiresAt && (
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{
+                color: "text.secondary"
+              }}>
                 Token will expire on {expiresAt.toLocaleDateString()} at{' '}
                 {expiresAt.toLocaleTimeString()}
               </Typography>

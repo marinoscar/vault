@@ -238,20 +238,22 @@ function VerifyResultAlert({
       {serverMessage && (
         <Typography
           variant="body2"
-          color="text.secondary"
-          sx={{ mt: 1 }}
           data-testid="ai-verify-server-message"
-        >
+          sx={{
+            color: "text.secondary",
+            mt: 1
+          }}>
           {serverMessage}
         </Typography>
       )}
       {adapted.length > 0 && (
         <Typography
           variant="body2"
-          color="text.secondary"
-          sx={{ mt: 1 }}
           data-testid="ai-verify-adapted-parameters"
-        >
+          sx={{
+            color: "text.secondary",
+            mt: 1
+          }}>
           {`This model rejected ${adapted.join(', ')}, so the request was ` +
             'resent without it. Card import works, but those settings are ' +
             'ignored for this model.'}
@@ -450,7 +452,12 @@ export function AiSettings({ disabled = false }: AiSettingsProps) {
           <Typography variant="h6" gutterBottom>
             AI Card Recognition
           </Typography>
-          <Typography variant="body2" color="text.secondary" paragraph>
+          <Typography
+            variant="body2"
+            sx={{
+              color: "text.secondary",
+              marginBottom: "16px"
+            }}>
             Use OpenAI to read card images automatically. Configured once for
             the whole instance.
           </Typography>
@@ -508,7 +515,9 @@ export function AiSettings({ disabled = false }: AiSettingsProps) {
                   {`•••• ${ai?.apiKeyLast4 ?? ''}`.trim()}
                 </Typography>
               </Box>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: "text.secondary"
+              }}>
                 {updatedAtLabel
                   ? `Updated ${updatedAtLabel}`
                   : 'Update date unavailable'}
@@ -521,7 +530,12 @@ export function AiSettings({ disabled = false }: AiSettingsProps) {
             </Alert>
           )}
 
-          <Typography variant="body2" color="text.secondary" paragraph>
+          <Typography
+            variant="body2"
+            sx={{
+              color: "text.secondary",
+              marginBottom: "16px"
+            }}>
             The key is stored encrypted and never shown again after saving.
             {apiKeyConfigured
               ? ' Entering a new key replaces the existing one.'
@@ -531,9 +545,10 @@ export function AiSettings({ disabled = false }: AiSettingsProps) {
           <Stack
             direction={{ xs: 'column', sm: 'row' }}
             spacing={2}
-            alignItems={{ xs: 'stretch', sm: 'flex-start' }}
-            sx={{ mb: 1 }}
-          >
+            sx={{
+              alignItems: { xs: 'stretch', sm: 'flex-start' },
+              mb: 1
+            }}>
             <TextField
               label={apiKeyConfigured ? 'Replace API key' : 'Set API key'}
               type={showApiKey ? 'text' : 'password'}
@@ -555,24 +570,26 @@ export function AiSettings({ disabled = false }: AiSettingsProps) {
                   ? `Key must be between ${AI_API_KEY_MIN_LENGTH} and ${AI_API_KEY_MAX_LENGTH} characters`
                   : ' '
               }
-              InputProps={{
-                sx: { fontFamily: 'monospace' },
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton
-                      onClick={() => setShowApiKey((v) => !v)}
-                      edge="end"
-                      size="small"
-                      aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
-                    >
-                      {showApiKey ? (
-                        <VisibilityOffIcon fontSize="small" />
-                      ) : (
-                        <VisibilityIcon fontSize="small" />
-                      )}
-                    </IconButton>
-                  </InputAdornment>
-                ),
+              slotProps={{
+                input: {
+                  sx: { fontFamily: 'monospace' },
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={() => setShowApiKey((v) => !v)}
+                        edge="end"
+                        size="small"
+                        aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
+                      >
+                        {showApiKey ? (
+                          <VisibilityOffIcon fontSize="small" />
+                        ) : (
+                          <VisibilityIcon fontSize="small" />
+                        )}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }
               }}
             />
             <Button
@@ -655,26 +672,29 @@ export function AiSettings({ disabled = false }: AiSettingsProps) {
               disabled={controlsDisabled}
               size="small"
               fullWidth
-              inputProps={{
-                min: AI_MAX_CALLS_MIN,
-                max: AI_MAX_CALLS_MAX,
-                step: 1,
-              }}
               error={!maxCallsValid}
               helperText={
                 maxCallsValid
                   ? ' '
                   : `Enter a whole number between ${AI_MAX_CALLS_MIN} and ${AI_MAX_CALLS_MAX}`
               }
+              slotProps={{
+                htmlInput: {
+                  min: AI_MAX_CALLS_MIN,
+                  max: AI_MAX_CALLS_MAX,
+                  step: 1,
+                }
+              }}
             />
           </Stack>
 
           <Stack
             direction={{ xs: 'column', sm: 'row' }}
             spacing={2}
-            alignItems={{ xs: 'stretch', sm: 'center' }}
-            sx={{ mb: 2 }}
-          >
+            sx={{
+              alignItems: { xs: 'stretch', sm: 'center' },
+              mb: 2
+            }}>
             <Button
               variant="contained"
               onClick={handleSaveSettings}
@@ -729,8 +749,10 @@ export function AiSettings({ disabled = false }: AiSettingsProps) {
           {isVerifying && (
             <Typography
               variant="body2"
-              color="text.secondary"
               data-testid="ai-verify-pending"
+              sx={{
+                color: "text.secondary"
+              }}
             >
               {verifyingModel
                 ? `Calling OpenAI with the saved key and ${verifyingModel}...`

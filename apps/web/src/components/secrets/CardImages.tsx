@@ -254,7 +254,9 @@ function CardImageSlot({
         {!hasImage && (
           <>
             <CreditCardIcon color="disabled" />
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: "text.secondary"
+            }}>
               No {label.toLowerCase()} image
             </Typography>
           </>
@@ -263,7 +265,9 @@ function CardImageSlot({
         {hasImage && !revealed && (
           <>
             <VisibilityOffIcon color="disabled" />
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: "text.secondary"
+            }}>
               {label} image hidden
             </Typography>
             <Button
@@ -282,7 +286,12 @@ function CardImageSlot({
         )}
 
         {hasImage && revealed && status === 'error' && (
-          <Stack spacing={1} alignItems="center" sx={{ width: '100%' }}>
+          <Stack
+            spacing={1}
+            sx={{
+              alignItems: "center",
+              width: '100%'
+            }}>
             <Alert severity="error" sx={{ width: '100%', textAlign: 'left' }}>
               {loadError ?? 'This image could not be loaded.'}
             </Alert>
@@ -396,7 +405,9 @@ export function CardImages({
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
         spacing={2}
-        alignItems="stretch"
+        sx={{
+          alignItems: "stretch"
+        }}
       >
         {SLOTS.map(({ role, label }) => (
           <CardImageSlot

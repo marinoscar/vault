@@ -162,7 +162,9 @@ export function SecretsList({
         </Box>
       ) : secrets.length === 0 ? (
         <Box sx={{ py: 6, textAlign: 'center' }}>
-          <Typography color="text.secondary">
+          <Typography sx={{
+            color: "text.secondary"
+          }}>
             {search || typeFilter
               ? 'No secrets match your filters'
               : 'No secrets yet. Create one to get started.'}
@@ -191,11 +193,15 @@ export function SecretsList({
                   >
                     <TableCell>
                       <Box>
-                        <Typography variant="body2" fontWeight={500}>
+                        <Typography variant="body2" sx={{
+                          fontWeight: 500
+                        }}>
                           {secret.name}
                         </Typography>
                         {secret.description && (
-                          <Typography variant="caption" color="text.secondary">
+                          <Typography variant="caption" sx={{
+                            color: "text.secondary"
+                          }}>
                             {secret.description}
                           </Typography>
                         )}

@@ -92,7 +92,9 @@ export function CardFieldDiff({
             variant="outlined"
             sx={{ height: 20, fontSize: 11 }}
           />
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{
+            color: "text.secondary"
+          }}>
             The old card's code is never reused.
           </Typography>
         </>
@@ -105,7 +107,9 @@ export function CardFieldDiff({
             variant="outlined"
             sx={{ height: 20, fontSize: 11 }}
           />
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{
+            color: "text.secondary"
+          }}>
             Current
           </Typography>
           <Typography
@@ -122,9 +126,12 @@ export function CardFieldDiff({
               />
               <Typography
                 variant="caption"
-                color="primary.main"
-                sx={{ fontFamily: 'monospace', fontWeight: 600, wordBreak: 'break-all' }}
-              >
+                sx={{
+                  color: "primary.main",
+                  fontFamily: 'monospace',
+                  fontWeight: 600,
+                  wordBreak: 'break-all'
+                }}>
                 {formatDiffValue(proposed, field.sensitive)}
               </Typography>
             </>
