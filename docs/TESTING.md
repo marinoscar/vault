@@ -904,13 +904,13 @@ import { test, expect } from '../fixtures/auth.fixture';
 
 test.describe('Admin functionality', () => {
   test('can access user management', async ({ adminPage }) => {
-    await adminPage.goto('/admin/users');
-    await expect(adminPage).toHaveURL('/admin/users');
+    await adminPage.goto('/admin/settings/users');
+    await expect(adminPage).toHaveURL('/admin/settings/users');
   });
 
   test('viewer cannot access admin pages', async ({ viewerPage }) => {
-    await viewerPage.goto('/admin/users');
-    await expect(viewerPage).not.toHaveURL('/admin/users');
+    await viewerPage.goto('/admin/settings/users');
+    await expect(viewerPage).not.toHaveURL('/admin/settings/users');
   });
 });
 ```

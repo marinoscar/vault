@@ -1,6 +1,6 @@
 # The UX Refresh (E10)
 
-> **Status:** specification for E10 of the platform migration (program epic [#54](https://github.com/marinoscar/vault/issues/54)); written in E0 ([#55](https://github.com/marinoscar/vault/issues/55)). **E10.1 ([#92](https://github.com/marinoscar/vault/issues/92)) and E10.2 ([#93](https://github.com/marinoscar/vault/issues/93)) are implemented**: the platform shell (`@marinoscar/platform-web@0.1.0-next.21`), the Vault brand theme and the destinations table (sections 2 to 5). E10.3 to E10.7 are not: the settings hub, the datatable secrets list, the cards gallery, the home dashboard and the accessibility pass are still to come, and the domain pages are unchanged inside the new shell. Web rules: [apps/web/AGENTS.md](../../apps/web/AGENTS.md); classification: [module-classification](../platform-adoption/module-classification.md); stop-gaps: [local-exceptions](../platform-adoption/local-exceptions.md).
+> **Status:** specification for E10 of the platform migration (program epic [#54](https://github.com/marinoscar/vault/issues/54)); written in E0 ([#55](https://github.com/marinoscar/vault/issues/55)). **Implemented:** E10.1 ([#92](https://github.com/marinoscar/vault/issues/92)) and E10.2 ([#93](https://github.com/marinoscar/vault/issues/93)), the platform shell (`@marinoscar/platform-web@0.1.0-next.21`), the Vault brand theme and the destinations table (sections 2 to 5); E10.3 ([#94](https://github.com/marinoscar/vault/issues/94)), the settings hubs (section 6); E10.6 ([#97](https://github.com/marinoscar/vault/issues/97)), the home dashboard (section 9). E10.4, E10.5 and E10.7 (the datatable secrets list, the cards gallery and the accessibility pass) are still to come. Web rules: [apps/web/AGENTS.md](../../apps/web/AGENTS.md); classification: [module-classification](../platform-adoption/module-classification.md); stop-gaps: [local-exceptions](../platform-adoption/local-exceptions.md).
 
 ## 1. Problems with today's UI
 
@@ -106,7 +106,7 @@ Generate favicon, PWA and app-bar marks from `media/app_logo.png` and `media/fav
 
 ## 6. Settings hub
 
-`/settings` (user) and `/admin/settings` (Console) are bindings of the packaged `SettingsHub` over two registries created in E10: `apps/web/src/config/userSettingsSections.tsx` (`USER_SETTINGS_SECTIONS`) and `adminSections.tsx` (`ADMIN_SECTIONS`). A card is `{ title, description, Icon, path?, disabled?, permission?, feature?, alwaysShow? }`. Rules: [AGENTS.md](../../AGENTS.md#mandatory-settings-ui-pattern-target-from-e10-rule-for-new-pages-now). Each card's `permission` is **the exact string the controller enforces**.
+`/settings` (user) and `/admin/settings` (Console) are bindings of the packaged `SettingsHub` over two registries created in E10: `apps/web/src/config/userSettingsSections.tsx` (`USER_SETTINGS_SECTIONS`) and `adminSections.tsx` (`ADMIN_SECTIONS`). A card is `{ title, description, Icon, path?, disabled?, permission?, feature?, alwaysShow? }`. Rules: [AGENTS.md](../../AGENTS.md#mandatory-settings-ui-pattern). Each card's `permission` is **the exact string the controller enforces**.
 
 ### Admin cards (`ADMIN_SECTIONS`)
 
@@ -132,6 +132,30 @@ Generate favicon, PWA and app-bar marks from `media/app_logo.png` and `media/fav
 | AI keys | none today | `ai:use` after E8 | `feature: 'ai'` |
 
 Tabs appear only inside one destination for parallel content (Users and Allowlist). Nothing else is a tab.
+
+**As built (E10.3, [#94](https://github.com/marinoscar/vault/issues/94)).** `/settings` (`pages/UserSettingsHubPage.tsx`) and `/admin/settings` (`pages/admin/AdminSettingsHubPage.tsx`) are thin bindings of the packaged `SettingsHub` (`sections`, `hubKey`, `title`, `subtitle`, `hasPermission` from `usePermissions`; no feature map, since no card is feature-gated before E8). The tab-based `SystemSettingsPage` and the stacked `UserSettingsPage` are deleted; each card is its own routed page built from the existing components without logic change, inside a shared `components/settings/SettingsPageFrame.tsx` (the packaged pages' container and heading).
+
+| Registry | Card | Route | `permission` | Page |
+|---|---|---|---|---|
+| `ADMIN_SECTIONS`, Administration | General | `/admin/settings/general` | `system_settings:read` | `pages/admin/GeneralSettingsPage.tsx`: `UISettings` + `FeatureFlagsList` (was two tabs); controls disabled without `system_settings:write` |
+| | Users & allowlist | `/admin/settings/users` | `users:read` | `pages/UserManagementPage.tsx` (Users and Allowlist tabs: parallel content) |
+| | AI | `/admin/settings/ai` | `system_settings:read` | `pages/admin/AiSettingsPage.tsx`: `AiSettings`; the card that switches AI on, so no `feature` |
+| | Backups | `/admin/settings/backups` | `system_settings:read` | `pages/admin/BackupSettingsPage.tsx`: `ScheduledBackups` (schedule and run history) |
+| `ADMIN_SECTIONS`, Operations | Maintenance | `/admin/settings/maintenance` | `system_settings:read` (platform maintenance controller default) | packaged `MaintenancePage` (`@marinoscar/platform-web/host/ui`) |
+| | Doctor | `/admin/settings/doctor` | `system_settings:read` (`DoctorModule` default) | packaged `DoctorPage`; the card is `doctorSettingsPage.card` |
+| | About | `/admin/settings/about` | `system_settings:read` (platform about controller default) | packaged `AboutPage` |
+| `USER_SETTINGS_SECTIONS`, Account | Profile | `/settings/profile` | `user_settings:read` | `pages/settings/ProfileSettingsPage.tsx`: Vault's `ProfileSettings` (Vault's `/api/user-settings` is not the platform's shape yet, so not the packaged `UserProfilePage`) |
+| | Appearance | `/settings/appearance` | `user_settings:read` | `pages/settings/AppearanceSettingsPage.tsx`: `ThemeSettings`, three equal buttons that stack icon over label below 600px |
+| | Access tokens | `/settings/tokens` | none (`pat.controller.ts` bare `@Auth()`) | `pages/settings/AccessTokensPage.tsx`: `PersonalAccessTokens` |
+| `USER_SETTINGS_SECTIONS`, Data | My backups | `/settings/backups` | `secrets:read` | `pages/settings/MyBackupsPage.tsx`: `DataBackup` with `BackupRunsTable` |
+| | Secret types | `/settings/secret-types` (`/new`, `/:id/edit`) | `secret_types:read` | the existing secret types pages, breadcrumbs rooted at Settings |
+
+- **Routes.** Every card route in `App.tsx` is wrapped in `RequirePermission` with exactly the card's permission (admin cards fall back to `/`, user cards to `/settings`); the Console hub is gated on `system_settings:read` or `users:read`, the same `anyPermission` as the `console` destination; `/settings` itself is ungated. Redirects keep old URLs: `/admin` and `/admin/users` to their Console routes, `/secret-types`, `/secret-types/new` and `/secret-types/:id/edit` to their pages under the Secret types card.
+- **Shell.** `config/shell.ts` lists both hubs as `settingsSurfaces`, so the compact AppBar shows the card title and a back arrow on every card page of either hub; Console mode lists the seven admin cards. The packaged pages read the platform host from `platform/PlatformHostBridge.tsx` (Vault's `api` as a `PlatformApiClient`, Vault's session as the viewer), a stop-gap until E3.3 ([local-exceptions](../platform-adoption/local-exceptions.md)).
+- **Dropped.** "Advanced (JSON)" and `SystemSettingsEditor` are gone; `PUT /api/system-settings` stays in the API. `SecretTypesLink` is replaced by the Secret types card.
+- **Phone.** The users table drops Display Name and Created below 900px (the name folds under the email) and Roles and the avatar below 600px (roles stay in the row menu); the allowlist drops Added By, Added Date and Notes below 900px. Emails break after the `@`. No page scrolls sideways at 390px.
+- **Home.** `components/home/homeLinks.ts`: "Back up now" goes to `/settings/backups`, "Open backup settings" to `/admin/settings/backups`.
+- **Tests.** `__tests__/config/settingsRegistry.test.ts` (cards routed once under their hub, permission declared in `roles.constants.ts` and equal to a controller mirror, each card route gated on exactly that permission, every settings route owned by a card, AI cards' `feature`, redirects, surfaces); `__tests__/pages/SettingsHubPages.test.tsx` (cards per permission, drill-down); `__tests__/SettingsRoutes.test.tsx` (redirects, gates and the packaged pages calling the API with the bearer through the real `App`); one test file per split page.
 
 ## 7. Secrets list
 
@@ -200,7 +224,7 @@ All fixtures use invented data (`Person A`, `@example.test`, published test card
 |---|---|---|
 | E10.1 (#92, done) | Brand tokens and theme: `tokens.ts`, `createShellTheme`, light/dark/system, icons from `media/`, contrast test | E1 |
 | E10.2 (#93, done) | Shell and destinations: `destinations.ts`, `ShellLayout` binding, delete `components/navigation/*` and `Layout` breakpoints, gate test | E3, E10.1 |
-| E10.3 | Settings hub: `adminSections.tsx`, `userSettingsSections.tsx`, move existing settings content into cards, redirect old routes, registry tests | E4, E10.2 |
+| E10.3 (#94, done) | Settings hub: `adminSections.tsx`, `userSettingsSections.tsx`, move existing settings content into cards, redirect old routes, registry tests | E4, E10.2 |
 | E10.4 | Secrets list on datatable with card mode, URL state, version history drawer | E10.2 |
 | E10.5 | Cards gallery and expiry statuses | E10.2 |
 | E10.6 (#97, done) | Home dashboard (expiring cards, recent secrets, last backup status) | E10.2, E5 for job-based backup status |

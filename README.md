@@ -471,7 +471,7 @@ Passport OAuth strategies expect Express-style objects. The `GoogleOAuthGuard` h
 2. Restart containers to apply environment variable changes
 3. Re-run database seeds if needed
 
-If you are not the first admin, ask an existing admin to add your email at `/admin/users` (Allowlist tab).
+If you are not the first admin, ask an existing admin to add your email at `/admin/settings/users` (Allowlist tab; Console, Users & allowlist).
 
 ### Secrets cannot be decrypted
 **Solution:** The `VAULT_ENCRYPTION_KEY` in `.env` does not match the key used when the secrets were written. Restore the original key. If the key is lost, the encrypted data cannot be recovered.

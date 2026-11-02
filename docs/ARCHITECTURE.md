@@ -868,9 +868,8 @@ Before OAuth authentication completes:
 | Login | `/login` | Public | - | OAuth provider selection |
 | Auth Callback | `/auth/callback` | Public | - | Token handling |
 | Home | `/` | Required | Any | Dashboard |
-| User Settings | `/settings` | Required | Any | User preferences |
-| System Settings | `/admin/settings` | Required | Admin | App configuration |
-| User Management | `/admin/users` | Required | Admin | User/allowlist mgmt |
+| Settings hub | `/settings` | Required | Any | Per-user cards: `/settings/profile`, `/appearance`, `/tokens`, `/backups`, `/secret-types` (`USER_SETTINGS_SECTIONS`) |
+| Console hub | `/admin/settings` | Required | `system_settings:read` or `users:read` | Admin cards: `/admin/settings/general`, `/users`, `/ai`, `/backups`, `/maintenance`, `/doctor`, `/about` (`ADMIN_SECTIONS`); `/admin/users` redirects to `/admin/settings/users` |
 | Device Activation | `/device` | Required | Any | Device auth approval |
 | Test Login | `/testing/login` | Public | - | Test auth bypass (dev only) |
 
@@ -1251,8 +1250,9 @@ apps/web/src/
     │   └── ThemeContext.test.tsx
     ├── pages/
     │   ├── LoginPage.test.tsx
-    │   ├── UserSettingsPage.test.tsx
-    │   └── SystemSettingsPage.test.tsx
+    │   ├── SettingsHubPages.test.tsx
+    │   ├── settings/UserSettingsCardPages.test.tsx
+    │   └── admin/GeneralSettingsPage.test.tsx
     └── services/
         └── api.test.ts
 ```
