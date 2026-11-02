@@ -182,7 +182,7 @@ When adding OAuth providers or modifying auth flow:
 
 - `apps/api/src/auth/guards/google-oauth.guard.ts` - Guard implementation
 - `apps/api/src/auth/auth.service.ts` - Auth service with transaction
-- `apps/api/src/common/filters/http-exception.filter.ts` - Exception filter
+- `HttpExceptionFilter` of `@marinoscar/platform-api/core` (mounted by `PlatformHostCoreModule`) - Exception filter
 - `apps/api/src/auth/auth.controller.ts` - Controller with error handling
 - `apps/api/test/mocks/google-oauth.mock.ts` - Mock OAuth strategy
 - `apps/api/test/auth/oauth-flow.e2e.spec.ts` - General OAuth tests
