@@ -7,6 +7,7 @@ import {
 import { Prisma } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { defaultOrgClient } from '../prisma/default-org';
 import { ObjectsService } from '../storage/objects/objects.service';
 import { PERMISSIONS } from '../common/constants/roles.constants';
 
@@ -74,6 +75,15 @@ export class MediaService {
     }
 
     return folder;
+  }
+
+  /**
+   * PLATFORM-ADOPTION-SHIM(E6): `storage_objects` / `storage_object_chunks` are
+   * row-level-security tables and the API is an ordinary role, so every access
+   * runs in the default organization's transaction-local scope.
+   */
+  private get orgDb() {
+    return defaultOrgClient(this.prisma);
   }
 
   // ---------------------------------------------------------------------------
@@ -209,7 +219,7 @@ export class MediaService {
     this.logger.log(`Deleting media folder ${folderId} and all its files`);
 
     // Fetch all storage objects in this folder
-    const files = await this.prisma.storageObject.findMany({
+    const files = await this.orgDb.storageObject.findMany({
       where: { mediaFolderFile: { mediaFolderId: folderId } },
       select: { id: true },
     });
@@ -265,14 +275,14 @@ export class MediaService {
     const skip = (page - 1) * pageSize;
 
     const [items, totalItems] = await Promise.all([
-      this.prisma.storageObject.findMany({
+      this.orgDb.storageObject.findMany({
         where,
         include: { mediaFolderFile: true },
         orderBy: { [sortBy]: sortOrder },
         skip,
         take: pageSize,
       }),
-      this.prisma.storageObject.count({ where }),
+      this.orgDb.storageObject.count({ where }),
     ]);
 
     const totalPages = Math.ceil(totalItems / pageSize);
@@ -301,7 +311,7 @@ export class MediaService {
       userPermissions,
     );
 
-    const file = await this.prisma.storageObject.findUnique({
+    const file = await this.orgDb.storageObject.findUnique({
       where: { id: fileId },
       include: { mediaFolderFile: true },
     });
@@ -317,7 +327,7 @@ export class MediaService {
       lastAccessedAt: new Date().toISOString(),
     };
 
-    const updated = await this.prisma.storageObject.update({
+    const updated = await this.orgDb.storageObject.update({
       where: { id: fileId },
       data: { metadata: updatedMetadata as Prisma.InputJsonValue },
     });
@@ -339,7 +349,7 @@ export class MediaService {
       userPermissions,
     );
 
-    const file = await this.prisma.storageObject.findUnique({
+    const file = await this.orgDb.storageObject.findUnique({
       where: { id: fileId },
       include: { mediaFolderFile: true },
     });
@@ -350,7 +360,7 @@ export class MediaService {
 
     this.logger.log(`Renaming file ${fileId} to "${dto.name}"`);
 
-    const updated = await this.prisma.storageObject.update({
+    const updated = await this.orgDb.storageObject.update({
       where: { id: fileId },
       data: { name: dto.name },
     });
@@ -371,7 +381,7 @@ export class MediaService {
       userPermissions,
     );
 
-    const file = await this.prisma.storageObject.findUnique({
+    const file = await this.orgDb.storageObject.findUnique({
       where: { id: fileId },
       include: { mediaFolderFile: true },
     });
@@ -400,7 +410,7 @@ export class MediaService {
       userPermissions,
     );
 
-    const file = await this.prisma.storageObject.findUnique({
+    const file = await this.orgDb.storageObject.findUnique({
       where: { id: fileId },
       include: { mediaFolderFile: true },
     });
@@ -426,7 +436,7 @@ export class MediaService {
     );
 
     // Verify storage object exists and is owned by the caller
-    const storageObject = await this.prisma.storageObject.findUnique({
+    const storageObject = await this.orgDb.storageObject.findUnique({
       where: { id: dto.storageObjectId },
     });
 
@@ -447,7 +457,7 @@ export class MediaService {
 
     // The link lives in media_folder_files (one row per object); linking an
     // object that is already in a folder moves it.
-    await this.prisma.mediaFolderFile.upsert({
+    await this.orgDb.mediaFolderFile.upsert({
       where: { objectId: storageObject.id },
       create: {
         objectId: storageObject.id,

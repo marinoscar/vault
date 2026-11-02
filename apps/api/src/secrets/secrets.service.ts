@@ -12,6 +12,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { defaultOrgClient, runInDefaultOrg } from '../prisma/default-org';
 import { CryptoService } from '../common/services/crypto.service';
 import { FieldDefinition } from '../secret-types/dto/create-secret-type.dto';
 import { PERMISSIONS } from '../common/constants/roles.constants';
@@ -109,6 +110,15 @@ export class SecretsService {
     @Inject(STORAGE_PROVIDER)
     private readonly storageProvider: StorageProvider,
   ) {}
+
+  /**
+   * PLATFORM-ADOPTION-SHIM(E6): reads that join `storage_objects` (a row-level
+   * security table) run in the default organization's scope, as do the
+   * attachment transactions (`runInDefaultOrg`). The API is an ordinary role.
+   */
+  private get orgDb() {
+    return defaultOrgClient(this.prisma);
+  }
 
   // ---------------------------------------------------------------------------
   // Private helpers
@@ -522,7 +532,7 @@ export class SecretsService {
     userId: string,
     userPermissions: string[],
   ) {
-    const storageObject = await this.prisma.storageObject.findUnique({
+    const storageObject = await this.orgDb.storageObject.findUnique({
       where: { id: storageObjectId },
     });
 
@@ -801,7 +811,7 @@ export class SecretsService {
 
     // Create secret + first version in a transaction
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const secret = await this.prisma.$transaction(async (tx: any) => {
+    const secret = await runInDefaultOrg(this.prisma, async (tx: any) => {
       const created = await tx.secret.create({
         data: {
           name: dto.name,
@@ -942,7 +952,7 @@ export class SecretsService {
       userPermissions,
     );
 
-    const secret = await this.prisma.secret.findUnique({
+    const secret = await this.orgDb.secret.findUnique({
       where: { id },
       include: {
         type: true,
@@ -1041,7 +1051,7 @@ export class SecretsService {
     let carriedAttachments = 0;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const secret = await this.prisma.$transaction(async (tx: any) => {
+    const secret = await runInDefaultOrg(this.prisma, async (tx: any) => {
       // Update metadata
       const updated = await tx.secret.update({
         where: { id },
@@ -1152,7 +1162,7 @@ export class SecretsService {
       userPermissions,
     );
 
-    const version = await this.prisma.secretVersion.findUnique({
+    const version = await this.orgDb.secretVersion.findUnique({
       where: { id: versionId },
       include: {
         createdBy: { select: { id: true, email: true, displayName: true } },
@@ -1227,7 +1237,7 @@ export class SecretsService {
       versionId = currentVersion.id;
     }
 
-    const attachments = await this.prisma.secretAttachment.findMany({
+    const attachments = await this.orgDb.secretAttachment.findMany({
       where: {
         secretId,
         secretVersionId: versionId,
@@ -1277,7 +1287,7 @@ export class SecretsService {
     const { ciphertext, iv, authTag } = this.crypto.encrypt(plaintext);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const newVersion = await this.prisma.$transaction(async (tx: any) =>
+    const newVersion = await runInDefaultOrg(this.prisma, async (tx: any) =>
       this.createNewVersion(tx, {
         secretId,
         encrypted: { ciphertext, iv, authTag },
@@ -1400,7 +1410,7 @@ export class SecretsService {
 
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      newVersion = await this.prisma.$transaction(async (tx: any) => {
+      newVersion = await runInDefaultOrg(this.prisma, async (tx: any) => {
         const version = await this.createNewVersion(tx, {
           secretId,
           encrypted,
@@ -1549,7 +1559,7 @@ export class SecretsService {
     let attachment;
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      attachment = await this.prisma.$transaction(async (tx: any) => {
+      attachment = await runInDefaultOrg(this.prisma, async (tx: any) => {
         const currentVersion = await tx.secretVersion.findFirst({
           where: { secretId, isCurrent: true },
           select: { id: true },
@@ -1679,7 +1689,7 @@ export class SecretsService {
       userPermissions,
     );
 
-    const attachment = await this.prisma.secretAttachment.findUnique({
+    const attachment = await this.orgDb.secretAttachment.findUnique({
       where: { id: attachmentId },
       include: {
         storageObject: { select: { id: true, storageKey: true } },
@@ -1699,7 +1709,8 @@ export class SecretsService {
       `Unlinking attachment ${attachmentId} from secret ${secretId}`,
     );
 
-    const objectDeleted: boolean = await this.prisma.$transaction(
+    const objectDeleted: boolean = await runInDefaultOrg(
+      this.prisma,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       async (tx: any) => {
         // Serializes concurrent unlinks of this same object; the count below is

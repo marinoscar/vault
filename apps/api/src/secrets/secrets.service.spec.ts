@@ -574,7 +574,9 @@ describe('SecretsService', () => {
         writePerms,
       );
 
-      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+      // Two default-org scoped transactions: the storage-object lookup, then the
+      // write (current-version lookup + insert).
+      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(2);
       // The isCurrent lookup must happen inside the transaction, before insert.
       expect(mockPrisma.secretVersion.findFirst).toHaveBeenCalledWith({
         where: { secretId, isCurrent: true },
@@ -1939,7 +1941,8 @@ describe('SecretsService', () => {
       await expect(
         service.renew(secretId, renewDto, userId, writePerms),
       ).rejects.toThrow(NotFoundException);
-      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+      // The storage lookup runs in its own default-org scope; no version was minted.
+      expect(mockPrisma.secretVersion.create).not.toHaveBeenCalled();
     });
 
     it('should throw ForbiddenException when the object belongs to someone else', async () => {
@@ -1951,7 +1954,8 @@ describe('SecretsService', () => {
       await expect(
         service.renew(secretId, renewDto, userId, writePerms),
       ).rejects.toThrow(ForbiddenException);
-      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+      // The storage lookup runs in its own default-org scope; no version was minted.
+      expect(mockPrisma.secretVersion.create).not.toHaveBeenCalled();
     });
 
     it('should let a holder of write_any use an object they did not upload', async () => {
@@ -2028,7 +2032,8 @@ describe('SecretsService', () => {
       ).rejects.toThrow(/application\/pdf/);
 
       // No version was minted for a rejected image.
-      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+      // The storage lookup runs in its own default-org scope; no version was minted.
+      expect(mockPrisma.secretVersion.create).not.toHaveBeenCalled();
       expect(mockPrisma.secretVersion.create).not.toHaveBeenCalled();
     });
 
@@ -2041,7 +2046,8 @@ describe('SecretsService', () => {
       await expect(
         service.renew(secretId, renewDto, userId, writePerms),
       ).rejects.toThrow(/5242880 bytes or smaller/);
-      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+      // The storage lookup runs in its own default-org scope; no version was minted.
+      expect(mockPrisma.secretVersion.create).not.toHaveBeenCalled();
     });
 
     it('should measure an object whose recorded size is 0, exactly as linking does', async () => {
@@ -2073,7 +2079,8 @@ describe('SecretsService', () => {
       await expect(
         service.renew(secretId, renewDto, userId, writePerms),
       ).rejects.toThrow(/do not match any accepted image format/);
-      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+      // The storage lookup runs in its own default-org scope; no version was minted.
+      expect(mockPrisma.secretVersion.create).not.toHaveBeenCalled();
     });
 
     it('should NOT apply the image gate to a role-less addition', async () => {
@@ -3297,7 +3304,8 @@ describe('SecretsService', () => {
         expect(committed).toHaveBeenCalled();
         expect(mockStorage.delete).toHaveBeenCalled();
 
-        const commitOrder = committed.mock.invocationCallOrder[0];
+        // The attachment read commits first; the write transaction is the last one.
+        const commitOrder = committed.mock.invocationCallOrder.at(-1)!;
         const blobDeleteOrder = (mockStorage.delete as jest.Mock).mock
           .invocationCallOrder[0];
 
