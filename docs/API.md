@@ -1087,7 +1087,7 @@ The background queue and the worker-node fleet are the platform's (`@marinoscar/
 | `POST /node-credentials`, `GET /node-credentials`, `DELETE /node-credentials/:id` | `nodes:write` / `nodes:read` | Mint, list, revoke the `nod_` tokens a worker node authenticates with |
 | `/nodes/*` (register, heartbeat, claim, job renew/result/failure/secret/download-url/upload-url, telemetry) | `nodes:write` / `nodes:read` | The worker-node data plane; callers use a `nod_` token |
 
-Vault registers no node-eligible job type: every handler is server-only, so a registered node is never offered a job. The job types in the queue today are the platform's housekeeping ones (`job.history.purge`, `audit.events.purge`, `auth.token.cleanup`, `device-auth.code.cleanup`, `nodes.fleet.sweep`, `nodes.fleet.prune`, `nodes.node_events_purge`); the backup types arrive with E5.2. The `jobs`, `retention` and `nodes` namespaces of `/system-settings` carry the worker, retention and offload settings.
+Vault registers no node-eligible job type: every handler is server-only, so a registered node is never offered a job. The job types in the queue today are the platform's housekeeping ones (`job.history.purge`, `audit.events.purge`, `auth.token.cleanup`, `device-auth.code.cleanup`, `nodes.fleet.sweep`, `nodes.fleet.prune`, `nodes.node_events_purge`); the backup types are `vault.backup.run` (label "Secrets backup") and `vault.user_backup.run` ("My backup"), both server-only, one attempt, up to 30 minutes. The `jobs`, `retention` and `nodes` namespaces of `/system-settings` carry the worker, retention and offload settings.
 
 ---
 
@@ -1912,9 +1912,9 @@ All fields except `password`, `includeSecrets`, `includeMedia` and `includeSyste
 
 #### POST /admin/backups/run
 
-**Requires Authentication** (`system_settings:write`) - Starts a backup now, saved to storage, using the stored schedule password and the schedule's contents. Returns `202 Accepted` with the run (`status: "running"`). The run finishes in the background; poll `GET /admin/backups`. To get a zip straight to the browser instead, use [`POST /admin/backups/export`](#post-adminbackupsexport).
+**Requires Authentication** (`system_settings:write`) - Queues a backup now (the `vault.backup.run` job), saved to storage, using the stored schedule password and the schedule's contents. Returns `202 Accepted` with the run (`status: "running"`, also while the job waits for a worker). The run finishes in the background; poll `GET /admin/backups`. To get a zip straight to the browser instead, use [`POST /admin/backups/export`](#post-adminbackupsexport).
 
-If storage or the password is not configured, the call still returns 202 and the run then fails with a clear message in `error`. If a run is already in progress, the request returns `409 Conflict`.
+If storage or the password is not configured, the call still returns 202 and the run then fails with a clear message in `error`. If a system backup is already queued or running (scheduled or manual), the request returns `409 Conflict` (`A backup is already running`) and creates nothing: the queue allows one active `vault.backup.run` job.
 
 **Audit:** `backups.run` with `{ runId }`.
 
@@ -2044,13 +2044,13 @@ Returns whether saving to storage is available, so a client can disable the opti
 
 #### POST /backups/me
 
-Starts a saved backup. Body: the same as `POST /secrets/export` (`password`, `includeSecrets`, `includeAttachments`, `includeVersions`, `includeMedia`, with the same defaults and [content rules](#backup-content-validation); `includeSystem` is a `400`). Returns `202 Accepted` with the run (`status: "running"`, `contents` already set); poll `GET /backups/me`.
+Starts a saved backup. Body: the same as `POST /secrets/export` (`password`, `includeSecrets`, `includeAttachments`, `includeVersions`, `includeMedia`, with the same defaults and [content rules](#backup-content-validation); `includeSystem` is a `400`). Returns `202 Accepted` with the run (`status: "running"`, `contents` already set); poll `GET /backups/me`. The run is the `vault.user_backup.run` job.
 
-The password is used only while the zip is built, held in memory, and never stored, logged, audited or put in an error. After a successful run the newest 10 saved backups are kept and older ones are deleted.
+The password is used only while the zip is built. It is held in the job payload only as encrypted ciphertext until the run settles (then removed), decrypted in memory, and never logged, audited or put in an error. After a successful run the newest 10 saved backups are kept and older ones are deleted.
 
 **Error Cases:**
 - `400 Bad Request` - validation failed, or storage is not configured: `Saving to storage isn't set up. Ask an administrator, or download the backup instead.`
-- `409 Conflict` - `You already have a backup running` (one running saved backup per user)
+- `409 Conflict` - `You already have a backup running` (one queued or running saved backup per user; the queue's dedup key, so the answer is the same whichever instance is asked)
 - `401 Unauthorized` / `403 Forbidden`
 
 **Audit:** `backups.user.run` with `{ runId, contents }` when started; `backups.user.run.completed` with `{ runId, status, trigger, sizeBytes, contents, counts }` when it ends.

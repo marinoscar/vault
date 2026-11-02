@@ -38,7 +38,7 @@ import { PERMISSIONS_KEY } from '@marinoscar/platform-api/identity';
 import { discoverControllers } from '@marinoscar/platform-api/identity/testing';
 
 import { AppModule } from '../../src/app.module';
-import { BackupRunnerService } from '../../src/backups/backup-runner.service';
+import { BackupQueueService } from '../../src/backups/backup-queue.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { prismaMock, resetPrismaMock } from '../mocks/prisma.mock';
 
@@ -288,8 +288,8 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(PrismaService)
       .useValue(prismaMock)
-      // No route of the matrix may start a real backup.
-      .overrideProvider(BackupRunnerService)
+      // No route of the matrix may queue a real backup job.
+      .overrideProvider(BackupQueueService)
       .useValue(new Proxy({}, { get: (_target, key) => (key === 'then' ? undefined : async () => undefined) }))
       .compile();
 

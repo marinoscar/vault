@@ -65,15 +65,22 @@ function makeService(
     getSignedDownloadUrl: jest.fn(async () => 'https://storage.example.test/signed'),
     delete: jest.fn().mockResolvedValue(undefined),
   };
+  // The archive service (storage check, export counts and stream) and the queue.
   const runner = {
     isStorageConfigured: jest.fn(() => opts.storage ?? true),
-    startRun: jest.fn(),
-    launch: jest.fn(),
   };
+  const queue = { queueSystemRun: jest.fn() };
   // The platform settings service: `vaultBackups` reads as its defaults.
   const systemSettings = { getNamespace: jest.fn(async () => ({ ...(opts.scheduleDefaults ?? {}) })) };
-  const service = new BackupsService(prisma as never, crypto, storageProvider as never, runner as never, systemSettings as never);
-  return { service, prisma, storageProvider, runner, getStored: () => stored };
+  const service = new BackupsService(
+    prisma as never,
+    crypto,
+    storageProvider as never,
+    runner as never,
+    queue as never,
+    systemSettings as never,
+  );
+  return { service, prisma, storageProvider, runner, queue, getStored: () => stored };
 }
 
 const succeededRun = (over: Record<string, unknown> = {}) => ({
@@ -284,8 +291,8 @@ describe('BackupsService.updateSchedule', () => {
 });
 
 describe('BackupsService.runNow', () => {
-  it('starts, audits and launches a manual run', async () => {
-    const { service, runner, prisma } = makeService();
+  it('queues and audits a manual run', async () => {
+    const { service, queue, prisma } = makeService();
     const row = {
       id: 'run-9',
       status: 'running',
@@ -301,19 +308,17 @@ describe('BackupsService.runNow', () => {
       warningCount: 0,
       error: null,
     };
-    runner.startRun.mockResolvedValue(row);
+    queue.queueSystemRun.mockResolvedValue(row);
     const result = await service.runNow(ACTOR);
-    expect(runner.startRun).toHaveBeenCalledWith('manual', ACTOR);
-    expect(runner.launch).toHaveBeenCalledWith(row);
+    expect(queue.queueSystemRun).toHaveBeenCalledWith(ACTOR);
     expect(result).toMatchObject({ id: 'run-9', status: 'running', downloadable: false });
     expect(prisma.auditEvent.create.mock.calls[0][0].data).toMatchObject({ action: BACKUPS_AUDIT_ACTIONS.run });
   });
 
-  it('propagates the 409 while a run is in progress and launches nothing', async () => {
-    const { service, runner, prisma } = makeService();
-    runner.startRun.mockRejectedValue(new ConflictException({ message: 'A backup is already running' }));
+  it('propagates the 409 while a run is queued or running, and audits nothing', async () => {
+    const { service, queue, prisma } = makeService();
+    queue.queueSystemRun.mockRejectedValue(new ConflictException({ message: 'A backup is already running' }));
     await expect(service.runNow(ACTOR)).rejects.toBeInstanceOf(ConflictException);
-    expect(runner.launch).not.toHaveBeenCalled();
     expect(prisma.auditEvent.create).not.toHaveBeenCalled();
   });
 });

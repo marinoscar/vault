@@ -77,10 +77,6 @@ runPlatformConformance({
           why: 'cleanDatabase(): TRUNCATE of every table, refused unless NODE_ENV is test.',
         },
         {
-          file: 'backups/backup-runner.service.ts',
-          why: 'pg_advisory_xact_lock for the one-active-run and per-user serialisation; takes constants and a hashed owner id.',
-        },
-        {
           file: 'secrets/secrets.service.ts',
           why: 'SELECT ... FOR UPDATE on one storage object id the caller already proved it may attach.',
         },
@@ -90,10 +86,11 @@ runPlatformConformance({
     // The `@Cron` half of queue rule 1 (E5.1/E5.3, #81/#83): every `@Cron` body in Vault's own
     // sources only enqueues a job. The platform's crons (the three permanent exemptions, the
     // identity cleanups) ship in the package and are held by its tests. The two exemptions are
-    // recorded shims with written reasons (test/jobs/cron-source-roots.ts): the backup runner
-    // (E5.2) and the storage stale-upload sweep (E6). `minCronFiles` is exactly those two plus
-    // none: the scan must keep finding them, so an exemption cannot go stale.
-    cronEnqueueOnly: { exempt: [...CRON_EXEMPTIONS], minCronFiles: CRON_EXEMPTIONS.length },
+    // recorded shim with a written reason (test/jobs/cron-source-roots.ts): the storage
+    // stale-upload sweep (E6). The backup schedule tick (E5.2) is enqueue-only and not exempt.
+    // `minCronFiles` is the exemptions plus the backup schedule task: the scan must keep finding
+    // them, so an exemption cannot go stale and the scan cannot pass vacuously.
+    cronEnqueueOnly: { exempt: [...CRON_EXEMPTIONS], minCronFiles: CRON_EXEMPTIONS.length + 1 },
 
     // The `@OnEvent` half (`on-event-no-io`) cannot run as a platform suite here: it takes no
     // per-file exemption and Vault's one listener file is the E6 storage shim, so it would either

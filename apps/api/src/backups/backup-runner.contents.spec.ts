@@ -8,6 +8,7 @@ import { CryptoService } from '../common/services/crypto.service';
 import { SecretsExportService } from '../secrets/export/secrets-export.service';
 import { encryptBackupPassword } from './backup-password';
 import { BACKUP_FAILURE_MESSAGES, BACKUP_SCHEDULE_ID, BackupRunnerService } from './backup-runner.service';
+import { BackupArchiveService } from './backup-archive.service';
 import type { BackupRunRow } from './dto/backup-responses';
 
 /**
@@ -192,15 +193,15 @@ function setup(schedule: Record<string, unknown>) {
     })),
   };
   const exportService = new SecretsExportService(prisma as never, crypto, storage as never);
-  const runner = new BackupRunnerService(
+  const archive = new BackupArchiveService(
     prisma as never,
-    crypto,
     storage as never,
     exportService,
     systemSettings as never,
     aiConfig as never,
   );
-  return { runner, prisma, storage, uploads, systemSettings };
+  const runner = new BackupRunnerService(prisma as never, crypto, storage as never, archive, exportService);
+  return { runner, archive, prisma, storage, uploads, systemSettings };
 }
 
 const runRow = (): BackupRunRow => ({
@@ -386,7 +387,7 @@ describe('System backup content selection', () => {
       includeMedia: true,
       includeSystem: true,
     };
-    const stream = await ctx.runner.streamSystemArchive(selection, PASSWORD, NOW);
+    const stream = await ctx.archive.streamSystemArchive(selection, PASSWORD, NOW);
     const chunks: Buffer[] = [];
     for await (const c of stream) chunks.push(Buffer.from(c));
     const zip = await openUpload(Buffer.concat(chunks));
@@ -423,7 +424,7 @@ describe('System backup content selection', () => {
         attachments: [],
       },
     ]);
-    const counts = await ctx.runner.countSystemArchive(
+    const counts = await ctx.archive.countSystemArchive(
       { includeSecrets: true, includeAttachments: true, includeVersions: false, includeMedia: true, includeSystem: false },
       NOW,
     );

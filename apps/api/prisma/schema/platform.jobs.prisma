@@ -334,6 +334,9 @@ model Job {
   // just the required other half of that one-to-one relation.
   backupRun DatabaseBackupRun?
 
+  // composed from app:vault.prisma
+  vaultBackupRuns BackupRun[]
+
   @@index([status, priority, createdAt])
   @@index([status, scheduledFor, priority, createdAt])
   // "Every job for this subject" / "is there already a job for this exact
