@@ -59,6 +59,7 @@ const AiSettingsPage = lazy(() => import('./pages/admin/AiSettingsPage'));
 const AiModelsPage = lazy(() => import('@marinoscar/platform-web/ai/ui/models-page'));
 const AiUsagePage = lazy(() => import('@marinoscar/platform-web/ai/ui/usage-page'));
 const BackupSettingsPage = lazy(() => import('./pages/admin/BackupSettingsPage'));
+const DbBackupSettingsPage = lazy(() => import('./pages/admin/DbBackupSettingsPage'));
 // Packaged pages, read through the platform host (platform/platformHost.tsx).
 const DoctorPage = lazy(() =>
   import('@marinoscar/platform-web/doctor/ui').then((m) => ({ default: m.DoctorPage })),
@@ -195,7 +196,7 @@ function AppRoutes() {
                   `anyPermission` in config/destinations.ts. */}
               <Route
                 path="/admin/settings"
-                element={<RequirePermission permissions={['system_settings:read', 'users:read', 'push:read', 'broadcasts:read', 'ai_config:read']} fallback={TO_HOME}><AdminSettingsHubPage /></RequirePermission>}
+                element={<RequirePermission permissions={['system_settings:read', 'users:read', 'push:read', 'broadcasts:read', 'ai_config:read', 'db_backup:read']} fallback={TO_HOME}><AdminSettingsHubPage /></RequirePermission>}
               />
               <Route
                 path="/admin/settings/general"
@@ -264,6 +265,10 @@ function AppRoutes() {
               <Route
                 path="/admin/settings/broadcasts"
                 element={<RequirePermission permission="broadcasts:read" fallback={TO_HOME}><BroadcastsPage /></RequirePermission>}
+              />
+              <Route
+                path="/admin/settings/db-backup"
+                element={<RequirePermission permission="db_backup:read" fallback={TO_HOME}><DbBackupSettingsPage /></RequirePermission>}
               />
               <Route path="/admin" element={<Navigate to="/admin/settings" replace />} />
               <Route path="/admin/users" element={<Navigate to="/admin/settings/users" replace />} />

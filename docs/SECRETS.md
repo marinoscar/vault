@@ -13,6 +13,7 @@ This document describes the secrets management feature of the Vault application:
 - [Attachments](#attachments)
 - [Backup and export](#backup-and-export)
 - [Scheduled backups (admin)](#scheduled-backups-admin)
+- [Whole-database backup versus encrypted secret backups](#whole-database-backup-versus-encrypted-secret-backups)
 - [API Reference](#api-reference)
 - [RBAC Permissions](#rbac-permissions)
 - [Data Validation](#data-validation)
@@ -504,6 +505,37 @@ Backups run as queue jobs (`vault.backup.run`, `vault.user_backup.run`; server-o
 Tables: `backup_schedules` (singleton row `default`) and `backup_runs`. `backup_runs.scope` is `system` (the admin schedule and Run backup now) or `user` (a [saved user backup](#saved-user-backups)); `owner_id` is set for `user` runs and removed with the user. Admin list, download, delete and retention act on `system` runs only; a user's routes act on `scope = user AND owner_id = me`. The job link (`job_id`) covers both.
 
 ---
+
+## Whole-database backup versus encrypted secret backups
+
+Vault has **two backup systems that do different jobs**. Do not use one where you need the other.
+
+| | Encrypted secret backups (domain feature) | Whole-database backup (platform `db-backup` slice, E9.1) |
+|---|---|---|
+| Purpose | Your own copy of **your** data, readable without Vault; a scheduled system copy for the admin | **Disaster recovery**: the deployment's database after loss, corruption or a bad migration |
+| Who | Any user with `secrets:read` (My backups); `system_settings:write` for the admin schedule | `admin` only (`db_backup:read`, `db_backup:write`, `db_backup:restore`, system scope) |
+| What | Selected secrets (and optionally versions, attachments, media) of one user, or of every user for the system backup | **Everything**: every table of every organization, as it is in PostgreSQL |
+| Secret values | Decrypted on the server and **re-protected with the backup password** (AES-256 zip) | **Not decrypted**: the archive holds the ciphertext under `VAULT_ENCRYPTION_KEY` |
+| Format | Password-protected `.zip`, readable with standard tools | `pg_dump -Fc` custom archive, readable only by `pg_restore` |
+| Restore | Selective and manual: you open the zip and read or re-enter values | **All or nothing**: the whole database is replaced (`db.restore.run`), then the application restarts |
+| Needs a password | Yes (never stored, except the encrypted scheduled one) | No; it needs the **same `VAULT_ENCRYPTION_KEY` and `SECRETS_ENCRYPTION_KEY`** at restore time |
+| Storage prefix | `system-backups/`, `user-backups/<userId>/` | `database-backups/<app>/YYYY/MM/` |
+| Jobs | `vault.backup.run`, `vault.user_backup.run` (server-only) | `db.backup.run` (the platform's one node-eligible type), `db.backup.sweep`, `db.restore.run` (server-only), `db.restore.old-db-drop` |
+| Page | Settings -> My backups, Console -> Backups | Console -> Operations -> Database Backup (`/admin/settings/db-backup`) |
+| Notifications | `vault.backup_succeeded`, `vault.backup_failed` | `db_backup.backup_failed`, `db_backup.restore_completed` (mandatory) |
+| Catalog table | `backup_runs`, `backup_schedules` | `database_backup_runs` |
+
+**Which to use.** A user who wants their data out of Vault, or an admin who wants a portable, password-protected copy: the encrypted secret backup. A lost database, a failed upgrade or a server move: the whole-database backup, with [runbooks/database-restore.md](runbooks/database-restore.md).
+
+**What a whole-database archive contains, and why it is sensitive.** Every row, including `secret_versions.encrypted_data` (ciphertext), user records, the allowlist, the `credentials` table (encrypted under `SECRETS_ENCRYPTION_KEY`), audit events and the backup catalogs. Secrets stay AES-256-GCM encrypted, but the archive is a complete copy of the deployment: protect the bucket and the signed download URLs (valid five minutes) like the database itself. The archive does **not** contain either encryption key.
+
+**The keys are not in the archive.** Restoring a database under a different `VAULT_ENCRYPTION_KEY` makes every secret permanently unreadable; a different `SECRETS_ENCRYPTION_KEY` silently breaks storage, AI, email and Web Push until their credentials are re-entered. Keep both keys with the deployment's other secrets, **separately from the archives**, and rehearse a restore with them ([runbook, section 2](runbooks/database-restore.md#2-keys-the-restored-database-must-match-the-environment)). Never rotate either as part of a restore.
+
+**Row-level security.** The `org` tables force row-level security, so every dump and every restore carries both `--enable-row-security` and `PGOPTIONS=-c app.rls_bypass=on` (the option in the environment, never argv). The flag alone exits 0 with an archive that has the schema and no rows. `apps/api/test/db-backup/db-backup-rls.db.spec.ts` proves it against a real PostgreSQL.
+
+**What a restore does not bring back.** Vault registers no extra restore carry-over (`app-registrations/db-backup.ts`). The platform carries its own backup catalog; after a restore to an older archive the **secret-backup catalog** (`backup_runs`) predates the archive (zips taken since stay in storage, unlisted) and files uploaded since are orphaned objects. See [runbook section 5.5](runbooks/database-restore.md#55-after-the-restore-two-catalogs-are-behind).
+
+**Configuration.** No environment variable of its own beyond `DEPLOYMENT_MODE` (`saas` turns restore off; backups keep working) and `DB_BACKUP_SCHEDULE_ENABLED` (default on; only `false` stops this process scheduling). The schedule, retention and rollback policy are the `databaseBackup` system setting, edited on the page. The API image carries `postgresql17-client` (`pg_dump`, `pg_restore`), pinned in `apps/api/Dockerfile`.
 
 ## API Reference
 
