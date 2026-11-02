@@ -1,8 +1,7 @@
 import type { OnboardingFactDef } from '@marinoscar/platform-api/onboarding';
 import { AiConfigService } from '@marinoscar/platform-api/ai';
 
-import { isCardScanAvailable } from '../../ai/card-scan-availability';
-import { CARD_EXTRACT_FEATURE } from '../../ai/ai.constants';
+import { CARD_EXTRACT_FEATURE, isCardScanAvailable } from '@marinoscar/vault-api/ai';
 import { PrismaService } from '../../prisma/prisma.service';
 
 // =============================================================================

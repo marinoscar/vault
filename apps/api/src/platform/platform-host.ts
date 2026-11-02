@@ -11,7 +11,7 @@
 import { definePlatformHost } from '@marinoscar/platform-api/core';
 import { Auth, Public } from '@marinoscar/platform-api/identity';
 
-import type { PermissionName } from '../common/constants/roles.constants';
+import type { PermissionName } from '@marinoscar/vault-api/core';
 
 export const platformHost = definePlatformHost({
   access: {

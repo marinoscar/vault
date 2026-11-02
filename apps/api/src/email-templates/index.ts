@@ -17,7 +17,7 @@ import {
   VAULT_BACKUP_FAILED_TEMPLATE,
   VAULT_BACKUP_SUCCEEDED_TEMPLATE,
   VAULT_CARD_EXPIRING_TEMPLATE,
-} from '../notifications-registry/vault-notification-data';
+} from '@marinoscar/vault-api/core';
 import { vaultBackupFailedEmail, vaultBackupSucceededEmail } from './vault-backup-result.email';
 import { vaultCardExpiringEmail } from './vault-card-expiring.email';
 

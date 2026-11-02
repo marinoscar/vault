@@ -4,7 +4,7 @@
 
 import { allKeyPrefixes, buildObjectKey, isRegisteredStorageKey, orgKeyPrefixes } from '@marinoscar/platform-api/storage';
 
-import { systemBackupStorageKey, userBackupStorageKey } from '../../backups/backup-archive';
+import { systemBackupStorageKey, userBackupStorageKey } from '@marinoscar/vault-api/backups';
 import './storage-key-prefix.manifest';
 
 const USER = '3f2b8f0e-6c1d-4f4b-9a55-1c2d3e4f5a6b';

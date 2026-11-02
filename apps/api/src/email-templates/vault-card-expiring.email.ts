@@ -13,7 +13,7 @@ import {
   cardExpiryPhrase,
   cardLinkFor,
   type VaultCardExpiringNotificationData,
-} from '../notifications-registry/vault-notification-data';
+} from '@marinoscar/vault-api/core';
 import { absoluteLink, detailRow } from './vault-email-common';
 
 // =============================================================================

@@ -40,7 +40,7 @@ import {
   formatBytes,
   type VaultBackupNotificationData,
   type VaultCardExpiringNotificationData,
-} from './vault-notification-data';
+} from '@marinoscar/vault-api/core';
 
 /** Bell and push copy of `vault.backup_succeeded`. */
 export function vaultBackupSucceededBrowserTemplate(data: VaultBackupNotificationData): BrowserNotificationContent {
