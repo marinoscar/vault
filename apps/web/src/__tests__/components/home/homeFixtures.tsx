@@ -47,6 +47,11 @@ export function makeCardSummary(overrides: Partial<CardSummary> & { id: string }
     expiryLabel: '12/26',
     status: 'expiring_soon',
     expirySortKey: 0,
+    network: 'Visa',
+    kind: 'Credit',
+    issuingBank: 'Org Alpha',
+    cardholderName: 'Person A',
+    hasPhotos: false,
     updatedAt: ago(HOUR),
     ...overrides,
   };

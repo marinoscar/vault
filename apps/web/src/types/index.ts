@@ -456,6 +456,14 @@ export interface CardSummaryItem {
   last4: string | null;
   expMonth: number | null;
   expYear: number | null;
+  /** Issuing network, e.g. 'Visa'; null when not stored. */
+  network: string | null;
+  /** 'Credit' / 'Debit'; null when not stored. */
+  kind: string | null;
+  issuingBank: string | null;
+  cardholderName: string | null;
+  /** True when the current version has card photos attached. */
+  hasPhotos: boolean;
   updatedAt: string;
 }
 

@@ -14,7 +14,19 @@ function item(
   expYear: number | null,
   last4: string | null = '4242',
 ): CardSummaryItem {
-  return { id, name: `Card ${id}`, last4, expMonth, expYear, updatedAt: '2026-01-02T00:00:00.000Z' };
+  return {
+    id,
+    name: `Card ${id}`,
+    last4,
+    expMonth,
+    expYear,
+    network: null,
+    kind: null,
+    issuingBank: null,
+    cardholderName: null,
+    hasPhotos: false,
+    updatedAt: '2026-01-02T00:00:00.000Z',
+  };
 }
 
 /**
@@ -49,6 +61,36 @@ describe('toCardSummary', () => {
     expect(summary.maskedNumber).toBe('•••• 4242');
     expect(summary.expiryLabel).toBe('12/26');
     expect(summary.status).toBe('valid');
+  });
+
+  it('carries the display fields, trimmed', () => {
+    const summary = toCardSummary(
+      {
+        ...item('full', 12, 2029),
+        network: 'Visa',
+        kind: 'Debit',
+        issuingBank: ' Org Alpha Bank ',
+        cardholderName: 'Person A',
+        hasPhotos: true,
+      },
+      NOW,
+    );
+
+    expect(summary.network).toBe('Visa');
+    expect(summary.kind).toBe('Debit');
+    expect(summary.issuingBank).toBe('Org Alpha Bank');
+    expect(summary.cardholderName).toBe('Person A');
+    expect(summary.hasPhotos).toBe(true);
+  });
+
+  it('turns null display fields into empty strings', () => {
+    const summary = toCardSummary(item('bare', 12, 2029), NOW);
+
+    expect(summary.network).toBe('');
+    expect(summary.kind).toBe('');
+    expect(summary.issuingBank).toBe('');
+    expect(summary.cardholderName).toBe('');
+    expect(summary.hasPhotos).toBe(false);
   });
 
   it('classifies an expired and an expiring card', () => {

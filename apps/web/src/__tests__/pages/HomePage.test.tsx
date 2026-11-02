@@ -47,7 +47,19 @@ const RECENT: SecretListItem[] = [
 // The summary endpoint's shape (#118): last four digits and expiry only,
 // already sorted soonest expiry first, as the API returns it.
 function card(id: string, name: string, last4: string, expMonth: number, expYear: number): CardSummaryItem {
-  return { id, name, last4, expMonth, expYear, updatedAt: ago(300 * HOUR) };
+  return {
+    id,
+    name,
+    last4,
+    expMonth,
+    expYear,
+    network: null,
+    kind: null,
+    issuingBank: null,
+    cardholderName: null,
+    hasPhotos: false,
+    updatedAt: ago(300 * HOUR),
+  };
 }
 const CARDS = [
   card('c1', 'Test Visa travel', '4242', 10, 2026), // expired

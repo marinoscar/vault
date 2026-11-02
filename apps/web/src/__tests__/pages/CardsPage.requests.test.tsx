@@ -20,14 +20,34 @@ function item(
   last4: string | null,
   expMonth: number | null,
   expYear: number | null,
+  extra: Partial<CardSummaryItem> = {},
 ): CardSummaryItem {
-  return { id, name, last4, expMonth, expYear, updatedAt: '2026-10-01T00:00:00.000Z' };
+  return {
+    id,
+    name,
+    last4,
+    expMonth,
+    expYear,
+    network: null,
+    kind: null,
+    issuingBank: null,
+    cardholderName: null,
+    hasPhotos: false,
+    updatedAt: '2026-10-01T00:00:00.000Z',
+    ...extra,
+  };
 }
 
 // Sorted soonest expiry first, unknown last, as the API returns them.
 const WALLET = [
   item('c1', 'Test Visa travel', '4242', 10, 2026), // expired
-  item('c2', 'Test Mastercard', '4444', 12, 2026), // expiring soon
+  item('c2', 'Test Mastercard', '4444', 12, 2026, {
+    network: 'Mastercard',
+    kind: 'Credit',
+    issuingBank: 'Org Alpha Bank',
+    cardholderName: 'Person A',
+    hasPhotos: true,
+  }), // expiring soon
   item('c3', 'Test Discover', '1117', 8, 2029), // valid
   item('c4', 'Unreadable card', null, null, null), // malformed: null fields
 ];
@@ -87,6 +107,9 @@ describe('CardsPage requests', () => {
     expect(tiles.map((t) => t.getAttribute('data-status'))).toEqual(['expired', 'expiring_soon', 'valid', 'unknown']);
     expect(within(tiles[1]).getByText('•••• 4444')).toBeInTheDocument();
     expect(within(tiles[1]).getByText('12/26')).toBeInTheDocument();
+    expect(within(tiles[1]).getByText('Mastercard · Credit · Org Alpha Bank')).toBeInTheDocument();
+    expect(within(tiles[1]).getByText('Person A')).toBeInTheDocument();
+    expect(within(tiles[1]).getByTitle('Has card photos')).toBeInTheDocument();
     expect(screen.getByText(/4 cards — 1 expired, 1 expiring soon\./)).toBeInTheDocument();
   });
 
@@ -100,6 +123,9 @@ describe('CardsPage requests', () => {
     expect(within(broken).getByText('•••• —')).toBeInTheDocument();
     expect(within(broken).getByText('Unknown expiry')).toBeInTheDocument();
     expect(broken.textContent).not.toMatch(/null|undefined|NaN/);
+    // Null display fields are omitted, not dashed.
+    expect(within(broken).queryByText('Cardholder')).not.toBeInTheDocument();
+    expect(within(broken).queryByTitle('Has card photos')).not.toBeInTheDocument();
   });
 
   it('pages through a wallet larger than one page (pages of 100 until totalPages)', async () => {

@@ -36,6 +36,11 @@ function makeSummary(overrides: Partial<CardSummary> & { id: string }): CardSumm
     expiryLabel: '12/29',
     status: 'valid',
     expirySortKey: 0,
+    network: 'Visa',
+    kind: 'Credit',
+    issuingBank: '',
+    cardholderName: 'Person A',
+    hasPhotos: false,
     updatedAt: new Date('2024-01-01').toISOString(),
     ...overrides,
   };
@@ -93,13 +98,50 @@ describe('CardsPage', () => {
     );
   });
 
-  it('renders the card name, the last four digits and the expiry', () => {
-    mockCards([makeSummary({ id: 'card-1', name: 'Org Alpha Rewards' })]);
+  it('renders the card facts: name, network · kind · bank, last four, cardholder, expiry', () => {
+    mockCards([
+      makeSummary({ id: 'card-1', name: 'Org Alpha Rewards', issuingBank: 'Org Beta Bank' }),
+    ]);
     render(<CardsPage />);
 
     expect(screen.getByRole('heading', { name: 'Org Alpha Rewards' })).toBeInTheDocument();
+    expect(screen.getByText('Visa · Credit · Org Beta Bank')).toBeInTheDocument();
     expect(screen.getByText('•••• 4242')).toBeInTheDocument();
+    expect(screen.getByText('Cardholder')).toBeInTheDocument();
+    expect(screen.getByText('Person A')).toBeInTheDocument();
     expect(screen.getByText('12/29')).toBeInTheDocument();
+  });
+
+  it('shows the photo indicator only on a card with photos', () => {
+    mockCards([
+      makeSummary({ id: 'a', name: 'With Photos', hasPhotos: true }),
+      makeSummary({ id: 'b', name: 'Without Photos' }),
+    ]);
+    render(<CardsPage />);
+
+    const [withPhotos, withoutPhotos] = screen.getAllByTestId('card-tile');
+    expect(within(withPhotos).getByTitle('Has card photos')).toBeInTheDocument();
+    expect(within(withoutPhotos).queryByTitle('Has card photos')).not.toBeInTheDocument();
+  });
+
+  it('omits missing display fields rather than dashing them', () => {
+    mockCards([
+      makeSummary({
+        id: 'bare',
+        name: 'Bare Card',
+        network: '',
+        kind: '',
+        issuingBank: '',
+        cardholderName: '',
+      }),
+    ]);
+    render(<CardsPage />);
+
+    const tile = screen.getByTestId('card-tile');
+    expect(within(tile).getByText('Bare Card')).toBeInTheDocument();
+    expect(within(tile).queryByText('Cardholder')).not.toBeInTheDocument();
+    // Only the expiry row: no subheading, no cardholder dash.
+    expect(within(tile).queryAllByText('—')).toHaveLength(0);
   });
 
   it('renders a malformed card (null last4 and expiry) with dashes, not guesses', () => {
@@ -117,6 +159,7 @@ describe('CardsPage', () => {
 
     const tile = screen.getByTestId('card-tile');
     expect(within(tile).getByText('Unreadable Card')).toBeInTheDocument();
+    expect(within(tile).getByText('Visa · Credit')).toBeInTheDocument();
     expect(within(tile).getByText('•••• —')).toBeInTheDocument();
     expect(within(tile).getByText('—')).toBeInTheDocument();
     expect(within(tile).getByText('Unknown expiry')).toBeInTheDocument();
@@ -439,6 +482,24 @@ describe('CardsPage', () => {
     expect(screen.getByText('Travel Two')).toBeInTheDocument();
   });
 
+  it.each([
+    ['network', { network: 'Amex' }, 'amex'],
+    ['issuing bank', { issuingBank: 'Org Beta Bank' }, 'beta'],
+    ['cardholder', { cardholderName: 'Person B' }, 'person b'],
+  ] as const)('filters by %s', async (_label, fields, term) => {
+    const user = userEvent.setup();
+    mockCards([
+      makeSummary({ id: 'a', name: 'Card One' }),
+      makeSummary({ id: 'b', name: 'Card Two', ...fields }),
+    ]);
+    render(<CardsPage />);
+
+    await user.type(screen.getByLabelText(/search cards/i), term);
+
+    await waitFor(() => expect(screen.queryByText('Card One')).not.toBeInTheDocument());
+    expect(screen.getByText('Card Two')).toBeInTheDocument();
+  });
+
   it('filters by the last four digits', async () => {
     const user = userEvent.setup();
     mockCards([
@@ -454,22 +515,44 @@ describe('CardsPage', () => {
   });
 
   describe('card tile heading', () => {
-    it('gives two cards distinguishable headings by their own names', () => {
+    it('gives two cards on the same network distinguishable headings', () => {
       mockCards([
-        makeSummary({ id: 'a', name: 'Personal Card' }),
-        makeSummary({ id: 'b', name: 'Business Card' }),
+        makeSummary({ id: 'a', name: 'Personal Amex', network: 'American Express' }),
+        makeSummary({ id: 'b', name: 'Business Amex', network: 'American Express' }),
       ]);
       render(<CardsPage />);
 
-      expect(screen.getByRole('heading', { name: 'Personal Card' })).toBeInTheDocument();
-      expect(screen.getByRole('heading', { name: 'Business Card' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Personal Amex' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Business Amex' })).toBeInTheDocument();
+      // The network is subheading detail on each tile, never a heading.
+      expect(screen.queryByRole('heading', { name: 'American Express' })).not.toBeInTheDocument();
+      expect(screen.getAllByText('American Express · Credit')).toHaveLength(2);
     });
 
-    it('labels the renew button with the card name', () => {
-      mockCards([makeSummary({ id: 'a', name: 'Backup Card' })]);
+    it('does not repeat the network in the subheading when the name equals it', () => {
+      mockCards([
+        makeSummary({ id: 'a', name: 'American Express', network: 'American Express', kind: 'Credit' }),
+      ]);
       render(<CardsPage />);
 
-      expect(screen.getByRole('button', { name: 'Renew Backup Card' })).toBeInTheDocument();
+      expect(screen.getAllByText(/American Express/)).toHaveLength(1);
+      expect(screen.getByText('Credit')).toBeInTheDocument();
+    });
+
+    it('falls back to the network as the heading when the card has no name', () => {
+      mockCards([makeSummary({ id: 'a', name: '', network: 'Mastercard', kind: 'Credit' })]);
+      render(<CardsPage />);
+
+      expect(screen.getAllByText(/Mastercard/)).toHaveLength(1);
+      expect(screen.getByText('Credit')).toBeInTheDocument();
+    });
+
+    it('labels the renew button with the card name, not the network', () => {
+      mockCards([makeSummary({ id: 'a', name: 'Backup Mastercard', network: 'Mastercard' })]);
+      render(<CardsPage />);
+
+      expect(screen.getByRole('button', { name: 'Renew Backup Mastercard' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Renew Mastercard' })).not.toBeInTheDocument();
     });
   });
 });

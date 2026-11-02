@@ -21,8 +21,9 @@ const MAX_CARD_PAGES = 50;
  * view layer never touches raw values beyond what it shows.
  *
  * Built from `GET /api/secrets/cards/summary` (#118), which decrypts server-side
- * and returns only the last four digits and the expiry: the full number and the
- * CVV never reach the browser on Home or in the gallery.
+ * and returns the display fields only (last four digits, expiry, network, kind,
+ * bank, cardholder, photo presence): the full number and the CVV never reach
+ * the browser on Home or in the gallery.
  */
 export interface CardSummary {
   id: string;
@@ -36,7 +37,22 @@ export interface CardSummary {
   status: CardExpiryStatus;
   /** Ascending sort key; unknown expiries sort last. */
   expirySortKey: number;
+  /** Issuing network, e.g. 'Visa'; '' when not stored. */
+  network: string;
+  /** 'Credit' / 'Debit'; '' when not stored. */
+  kind: string;
+  /** '' when not stored. */
+  issuingBank: string;
+  /** '' when not stored. */
+  cardholderName: string;
+  /** True when the card has photos attached. */
+  hasPhotos: boolean;
   updatedAt: string;
+}
+
+/** A nullable display field as a trimmed string; '' for null or non-strings. */
+function displayString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
 }
 
 /**
@@ -55,6 +71,11 @@ export function toCardSummary(item: CardSummaryItem, now: Date = new Date()): Ca
     expiryLabel: formatExpiryForCopy(item.expMonth, item.expYear),
     status: getCardExpiryStatus(item.expMonth, item.expYear, now),
     expirySortKey: getCardExpirySortKey(item.expMonth, item.expYear),
+    network: displayString(item.network),
+    kind: displayString(item.kind),
+    issuingBank: displayString(item.issuingBank),
+    cardholderName: displayString(item.cardholderName),
+    hasPhotos: item.hasPhotos === true,
     updatedAt: item.updatedAt,
   };
 }
