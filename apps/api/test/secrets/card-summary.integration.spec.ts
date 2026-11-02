@@ -51,6 +51,10 @@ describe('GET /api/secrets/cards/summary (Integration)', () => {
     const enc = crypto.encrypt(
       JSON.stringify({
         cardholder_name: 'Person A',
+        card_network: 'Visa',
+        card_kind: 'Credit',
+        issuing_bank: 'Bank X',
+        security_code_2: '5521',
         number: FULL_PAN,
         exp_month: month,
         exp_year: year,
@@ -62,6 +66,7 @@ describe('GET /api/secrets/cards/summary (Integration)', () => {
       id,
       name,
       updatedAt: new Date('2026-01-01T00:00:00Z'),
+      attachments: id.endsWith('2') ? [{ id: 'att' }] : [],
       versions: [{ encryptedData: enc.ciphertext, iv: enc.iv, authTag: enc.authTag }],
     };
   }
@@ -105,6 +110,11 @@ describe('GET /api/secrets/cards/summary (Integration)', () => {
         last4: '1111',
         expMonth: 3,
         expYear: 2027,
+        network: 'Visa',
+        kind: 'Credit',
+        issuingBank: 'Bank X',
+        cardholderName: 'Person A',
+        hasPhotos: true,
         updatedAt: '2026-01-01T00:00:00.000Z',
       },
       {
@@ -113,6 +123,11 @@ describe('GET /api/secrets/cards/summary (Integration)', () => {
         last4: '1111',
         expMonth: 12,
         expYear: 2031,
+        network: 'Visa',
+        kind: 'Credit',
+        issuingBank: 'Bank X',
+        cardholderName: 'Person A',
+        hasPhotos: false,
         updatedAt: '2026-01-01T00:00:00.000Z',
       },
     ]);
@@ -120,7 +135,7 @@ describe('GET /api/secrets/cards/summary (Integration)', () => {
     expect(raw).not.toContain(CVV);
     expect(raw).not.toContain(FULL_PAN);
     expect(raw).not.toContain('4111111111111111');
-    expect(raw).not.toContain('Person A');
+    expect(raw).not.toContain('5521');
     expect(raw).not.toContain('secret note');
     expect(raw).not.toMatch(/cvv|encryptedData|authTag/i);
   });

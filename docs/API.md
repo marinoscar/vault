@@ -1600,6 +1600,11 @@ Sorted by expiry, soonest first; cards with an unknown expiry year last; ties by
         "last4": "1111",
         "expMonth": 3,
         "expYear": 2027,
+        "network": "Visa",
+        "kind": "Credit",
+        "issuingBank": "Bank X",
+        "cardholderName": "Person A",
+        "hasPhotos": true,
         "updatedAt": "2026-01-01T00:00:00.000Z"
       }
     ],
@@ -1608,7 +1613,7 @@ Sorted by expiry, soonest first; cards with an unknown expiry year last; ties by
 }
 ```
 
-`last4` is `string | null`; `expMonth` (1 to 12) and `expYear` (four digits) are `number | null`. A field that is missing or malformed in an old card is `null`; one unreadable card never fails the request (it appears with all three `null`). The full number, the CVV, the secondary security code and every other field are never returned. The route is registered before `GET /secrets/:id`.
+`last4` is `string | null`; `expMonth` (1 to 12) and `expYear` (four digits) are `number | null`. `network`, `kind`, `issuingBank` and `cardholderName` are the card's non-sensitive display fields (`string | null`, trimmed, `null` when blank or absent); `hasPhotos` is `true` when the current version has a `card_front` or `card_back` attachment (read in the same query). A field that is missing or malformed in an old card is `null`; one unreadable card never fails the request (it appears with every decrypted field `null`). The full number, the CVV, the secondary security code, notes and every other field are never returned. The route is registered before `GET /secrets/:id`.
 
 ---
 

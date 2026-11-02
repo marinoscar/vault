@@ -29,26 +29,54 @@ describe('summarizeCardData', () => {
       cvv: '123',
       security_code_2: '999',
     });
-    expect(out).toEqual({ last4: '1111', expMonth: 3, expYear: 2027 });
+    expect(out).toEqual({
+      last4: '1111',
+      expMonth: 3,
+      expYear: 2027,
+      network: null,
+      kind: null,
+      issuingBank: null,
+      cardholderName: null,
+    });
     const json = JSON.stringify(out);
     expect(json).not.toContain('123');
     expect(json).not.toContain('4111 1111');
   });
 
   it('accepts numeric month/year values', () => {
-    expect(summarizeCardData({ number: '4111111111111111', exp_month: 12, exp_year: 2030 })).toEqual({
+    expect(summarizeCardData({ number: '4111111111111111', exp_month: 12, exp_year: 2030 })).toMatchObject({
       last4: '1111',
       expMonth: 12,
       expYear: 2030,
     });
   });
 
-  it('returns nulls for missing, malformed or out-of-range fields', () => {
-    expect(summarizeCardData({})).toEqual({ last4: null, expMonth: null, expYear: null });
-    expect(summarizeCardData(null)).toEqual({ last4: null, expMonth: null, expYear: null });
+  it('reads display facts, trimmed, and null when blank or absent', () => {
     expect(
-      summarizeCardData({ number: 12, exp_month: '13', exp_year: '19999' }),
-    ).toEqual({ last4: null, expMonth: null, expYear: null });
+      summarizeCardData({
+        card_network: 'Visa',
+        card_kind: 'Debit',
+        issuing_bank: '  Bank X ',
+        cardholder_name: '   ',
+        security_code_2: '9999',
+        notes: 'n',
+      }),
+    ).toMatchObject({ network: 'Visa', kind: 'Debit', issuingBank: 'Bank X', cardholderName: null });
+  });
+
+  it('returns nulls for missing, malformed or out-of-range fields', () => {
+    const empty = {
+      last4: null,
+      expMonth: null,
+      expYear: null,
+      network: null,
+      kind: null,
+      issuingBank: null,
+      cardholderName: null,
+    };
+    expect(summarizeCardData({})).toEqual(empty);
+    expect(summarizeCardData(null)).toEqual(empty);
+    expect(summarizeCardData({ number: 12, exp_month: '13', exp_year: '19999' })).toEqual(empty);
   });
 });
 
@@ -58,10 +86,11 @@ describe('CardSummaryService', () => {
   let decrypt: jest.Mock;
   let service: CardSummaryService;
 
-  const row = (id: string, name: string, data: unknown, hasVersion = true) => ({
+  const row = (id: string, name: string, data: unknown, hasVersion = true, photos = false) => ({
     id,
     name,
     updatedAt: now,
+    attachments: photos ? [{ id: 'att' }] : [],
     versions: hasVersion ? [{ encryptedData: JSON.stringify(data), iv: 'iv', authTag: 'tag' }] : [],
   });
 
@@ -90,10 +119,40 @@ describe('CardSummaryService', () => {
     const res = await service.list({ page: 1, pageSize: 20 }, 'u1', []);
 
     expect(res.items.map((i) => i.id)).toEqual(['a', 'c', 'd', 'b', 'n', 'x']);
-    expect(res.items[0]).toEqual({ id: 'a', name: 'Alpha', last4: '0001', expMonth: 5, expYear: 2027, updatedAt: now });
+    expect(res.items[0]).toEqual({
+      id: 'a',
+      name: 'Alpha',
+      last4: '0001',
+      expMonth: 5,
+      expYear: 2027,
+      network: null,
+      kind: null,
+      issuingBank: null,
+      cardholderName: null,
+      hasPhotos: false,
+      updatedAt: now,
+    });
     expect(res.items.find((i) => i.id === 'b')).toMatchObject({ last4: null, expMonth: null, expYear: null });
     expect(res.meta).toEqual({ page: 1, pageSize: 20, totalItems: 6, totalPages: 1 });
     expect(JSON.stringify(res)).not.toContain('777');
+  });
+
+  it('returns display facts and hasPhotos from the attachments relation, in one query', async () => {
+    findMany.mockResolvedValue([
+      row(
+        'p',
+        'Photo',
+        { ...card('4111111111111111', '1', '2030'), card_network: 'Visa', card_kind: 'Credit', issuing_bank: 'Bank X', cardholder_name: 'Person A' },
+        true,
+        true,
+      ),
+    ]);
+    const res = await service.list({ page: 1, pageSize: 20 }, 'u1', []);
+    expect(res.items[0]).toMatchObject({ network: 'Visa', kind: 'Credit', issuingBank: 'Bank X', cardholderName: 'Person A', hasPhotos: true });
+    expect(findMany).toHaveBeenCalledTimes(1);
+    expect(Object.keys(res.items[0]).sort()).toEqual(
+      ['cardholderName', 'expMonth', 'expYear', 'hasPhotos', 'id', 'issuingBank', 'kind', 'last4', 'name', 'network', 'updatedAt'],
+    );
   });
 
   it('paginates after sorting', async () => {

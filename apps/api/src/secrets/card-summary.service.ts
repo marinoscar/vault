@@ -13,8 +13,17 @@ export interface CardSummary {
   last4: string | null;
   expMonth: number | null;
   expYear: number | null;
+  /** Non-sensitive display facts; null when absent. */
+  network: string | null;
+  kind: string | null;
+  issuingBank: string | null;
+  cardholderName: string | null;
+  /** True when the current version has a card_front or card_back image. */
+  hasPhotos: boolean;
   updatedAt: Date;
 }
+
+type CardFields = Omit<CardSummary, 'id' | 'name' | 'updatedAt' | 'hasPhotos'>;
 
 /** Last four digits of a card number, tolerant of spaces and dashes; null if fewer than 4 digits. */
 export function extractLast4(value: unknown): string | null {
@@ -29,23 +38,42 @@ function toIntOrNull(value: string | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function emptyFields(): CardFields {
+  return {
+    last4: null,
+    expMonth: null,
+    expYear: null,
+    network: null,
+    kind: null,
+    issuingBank: null,
+    cardholderName: null,
+  };
+}
+
+/** A trimmed non-empty string, else null. */
+function text(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const t = v.trim();
+  return t ? t : null;
+}
+
 /**
  * Reduce a decrypted card record to the summary fields. Only `number` (to its
- * last four digits), `exp_month` and `exp_year` are read; the CVV and every
+ * last four digits), the expiry and four non-sensitive display fields are read; the CVV and every
  * other field are never touched.
  */
-export function summarizeCardData(
-  data: Record<string, unknown> | null,
-): Pick<CardSummary, 'last4' | 'expMonth' | 'expYear'> {
-  if (!data || typeof data !== 'object') {
-    return { last4: null, expMonth: null, expYear: null };
-  }
+export function summarizeCardData(data: Record<string, unknown> | null): CardFields {
+  if (!data || typeof data !== 'object') return emptyFields();
   const str = (v: unknown): string | null =>
     typeof v === 'string' ? v : typeof v === 'number' ? String(v) : null;
   return {
     last4: extractLast4(str(data.number)),
     expMonth: toIntOrNull(normalizeExpMonth(str(data.exp_month))),
     expYear: toIntOrNull(normalizeExpYear(str(data.exp_year))),
+    network: text(data.card_network),
+    kind: text(data.card_kind),
+    issuingBank: text(data.issuing_bank),
+    cardholderName: text(data.cardholder_name),
   };
 }
 
@@ -92,15 +120,16 @@ export class CardSummaryService {
           select: { encryptedData: true, iv: true, authTag: true },
           take: 1,
         },
+        attachments: {
+          where: { secretVersion: { isCurrent: true }, role: { in: ['card_front', 'card_back'] } },
+          select: { id: true },
+          take: 1,
+        },
       },
     });
 
     const all: CardSummary[] = rows.map((row) => {
-      let fields: ReturnType<typeof summarizeCardData> = {
-        last4: null,
-        expMonth: null,
-        expYear: null,
-      };
+      let fields: CardFields = emptyFields();
       const version = row.versions[0];
       if (version) {
         try {
@@ -115,7 +144,13 @@ export class CardSummaryService {
           this.logger.warn(`Card summary: could not read current version of secret ${row.id}`);
         }
       }
-      return { id: row.id, name: row.name, updatedAt: row.updatedAt, ...fields };
+      return {
+        id: row.id,
+        name: row.name,
+        updatedAt: row.updatedAt,
+        hasPhotos: (row.attachments?.length ?? 0) > 0,
+        ...fields,
+      };
     });
 
     all.sort((a, b) => {
