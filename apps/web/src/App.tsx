@@ -86,6 +86,11 @@ const PushConfigPage = lazy(() =>
 const BroadcastsPage = lazy(() =>
   import('@marinoscar/platform-web/notifications/ui').then((m) => ({ default: m.BroadcastsPage })),
 );
+// E6.1 web follow-up (#84): the platform storage slice's configuration page. It
+// takes no adapters: it reads the platform host (platform/platformHost.tsx).
+const StorageConfigPage = lazy(() =>
+  import('@marinoscar/platform-web/storage/ui').then((m) => ({ default: m.StorageConfigPage })),
+);
 const SecretsPage = lazy(() => import('./pages/SecretsPage'));
 const CardsPage = lazy(() => import('./pages/CardsPage'));
 const ImportCardPage = lazy(() => import('./pages/ImportCardPage'));
@@ -196,7 +201,7 @@ function AppRoutes() {
                   `anyPermission` in config/destinations.ts. */}
               <Route
                 path="/admin/settings"
-                element={<RequirePermission permissions={['system_settings:read', 'users:read', 'push:read', 'broadcasts:read', 'ai_config:read', 'db_backup:read']} fallback={TO_HOME}><AdminSettingsHubPage /></RequirePermission>}
+                element={<RequirePermission permissions={['system_settings:read', 'users:read', 'push:read', 'broadcasts:read', 'ai_config:read', 'db_backup:read', 'storage_config:read']} fallback={TO_HOME}><AdminSettingsHubPage /></RequirePermission>}
               />
               <Route
                 path="/admin/settings/general"
@@ -219,6 +224,13 @@ function AppRoutes() {
               <Route
                 path="/admin/settings/ai/usage"
                 element={<RequirePermission permission="ai_config:read" fallback={TO_HOME}><RequireAiEnabled><AiUsagePage /></RequireAiEnabled></RequirePermission>}
+              />
+              {/* E6.1 web follow-up (#84). `storage_config:read`, the string the platform's
+                  storage-config controller enforces on its GET; writes need
+                  `storage_config:write`, which the page gates. */}
+              <Route
+                path="/admin/settings/storage"
+                element={<RequirePermission permission="storage_config:read" fallback={TO_HOME}><StorageConfigPage /></RequirePermission>}
               />
               <Route
                 path="/admin/settings/backups"

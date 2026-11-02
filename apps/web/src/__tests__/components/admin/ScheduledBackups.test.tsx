@@ -497,6 +497,22 @@ describe('ScheduledBackups', () => {
       expect(screen.getByText('Object storage is not configured.')).toBeInTheDocument();
     });
 
+    it('links the warning to Console → Storage for a storage_config:read holder', async () => {
+      mockUsePermissions.mockReturnValue(
+        permissions(['system_settings:read', 'system_settings:write', 'storage_config:read']),
+      );
+      await renderLoaded();
+
+      const link = screen.getByRole('link', { name: 'Set up storage in Console → Storage' });
+      expect(link).toHaveAttribute('href', '/admin/settings/storage');
+    });
+
+    it('shows no Storage link to a viewer without storage_config:read', async () => {
+      await renderLoaded();
+
+      expect(screen.queryByRole('link', { name: /Console → Storage/ })).not.toBeInTheDocument();
+    });
+
     it('does not let the schedule be turned on', async () => {
       await renderLoaded();
 

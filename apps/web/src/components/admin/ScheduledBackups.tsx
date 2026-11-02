@@ -30,6 +30,7 @@ import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import SaveIcon from '@mui/icons-material/Save';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { usePermissions } from '@marinoscar/platform-web/identity/headless';
+import { StorageSettingsLink } from '../common/StorageSettingsLink';
 import {
   deleteBackupRun,
   getBackupDownloadUrl,
@@ -239,7 +240,8 @@ function BackupScheduleCard({ schedule, canWrite, onSaved }: ScheduleCardProps) 
 
         {!schedule.storageConfigured && (
           <Alert severity="warning" sx={{ mb: 2 }}>
-            Object storage is not configured. Scheduled backups cannot run until it is.
+            Object storage is not configured. Scheduled backups cannot run until it is.{' '}
+            <StorageSettingsLink />
           </Alert>
         )}
 
