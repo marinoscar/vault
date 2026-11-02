@@ -1987,7 +1987,7 @@ If storage or the password is not configured, the call still returns 202 and the
 **Requires Authentication** (`system_settings:write`) - Returns a signed storage URL valid for 300 seconds.
 
 ```json
-{ "data": { "url": "https://storage.example.test/...", "expiresAt": "2026-11-02T09:05:00.000Z", "fileName": "vault-backup-2026-11-02_090000.zip" } }
+{ "data": { "url": "https://storage.example.test/...", "expiresAt": "2026-11-02T09:05:00.000Z", "fileName": "vault-backup-2026-11-02_090000-9d8c7b6a.zip" } }
 ```
 
 `404 Not Found` if the run does not exist, did not succeed or its object was deleted. **Audit:** `backups.download` with `{ runId }`.
@@ -2057,7 +2057,7 @@ Validation errors are ordinary JSON responses sent before any zip byte; a failur
 
 ### My backups
 
-A user's own backups saved to object storage ("Save to the storage account"). The server builds the same zip as [`POST /secrets/export`](#post-secretsexport) in the background and stores it under `user-backups/<userId>/vault-backup-YYYY-MM-DD_HHmmss.zip`. Concepts and risks: [SECRETS.md § Saved user backups](SECRETS.md#saved-user-backups). Base path: `/api/backups/me`. Every route needs `secrets:read` and works on the caller's own saved backups only: another user's id answers `404`, whatever permissions the caller holds, and an administrator does not see these in the admin list. Responses use the standard `{ "data": ... }` envelope; a run has the shape shown under [`GET /admin/backups`](#get-adminbackups) with `scope: "user"`, `trigger: "manual"` and `triggeredBy` set to you.
+A user's own backups saved to object storage ("Save to the storage account"). The server builds the same zip as [`POST /secrets/export`](#post-secretsexport) in the background and stores it under `user-backups/<userId>/vault-backup-YYYY-MM-DD_HHmmss-<runId8>.zip`. Concepts and risks: [SECRETS.md § Saved user backups](SECRETS.md#saved-user-backups). Base path: `/api/backups/me`. Every route needs `secrets:read` and works on the caller's own saved backups only: another user's id answers `404`, whatever permissions the caller holds, and an administrator does not see these in the admin list. Responses use the standard `{ "data": ... }` envelope; a run has the shape shown under [`GET /admin/backups`](#get-adminbackups) with `scope: "user"`, `trigger: "manual"` and `triggeredBy` set to you.
 
 #### GET /backups/me/config
 

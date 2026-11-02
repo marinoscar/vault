@@ -85,17 +85,26 @@ export function systemBackupFileName(date: Date): string {
   );
 }
 
+/**
+ * `vault-backup-YYYY-MM-DD_HHmmss-<runId8>.zip`: the timestamp plus the first 8 hex digits of
+ * the run id, so two runs of one scope in the same second never share an object (#130).
+ */
+export function backupArchiveFileName(date: Date, runId: string): string {
+  const short = runId.replace(/-/g, '').slice(0, 8);
+  return systemBackupFileName(date).replace(/\.zip$/, `-${short}.zip`);
+}
+
 /** Object-storage prefix of the backups users save to storage. */
 export const USER_BACKUP_KEY_PREFIX = 'user-backups/';
 
-/** `user-backups/<userId>/vault-backup-YYYY-MM-DD_HHmmss.zip` (UTC). */
-export function userBackupStorageKey(userId: string, date: Date): string {
-  return `${USER_BACKUP_KEY_PREFIX}${userId}/${systemBackupFileName(date)}`;
+/** `user-backups/<userId>/vault-backup-YYYY-MM-DD_HHmmss-<runId8>.zip` (UTC). */
+export function userBackupStorageKey(userId: string, date: Date, runId: string): string {
+  return `${USER_BACKUP_KEY_PREFIX}${userId}/${backupArchiveFileName(date, runId)}`;
 }
 
-/** `system-backups/vault-backup-YYYY-MM-DD_HHmmss.zip` (UTC). */
-export function systemBackupStorageKey(date: Date): string {
-  return `${SYSTEM_BACKUP_KEY_PREFIX}${systemBackupFileName(date)}`;
+/** `system-backups/vault-backup-YYYY-MM-DD_HHmmss-<runId8>.zip` (UTC). */
+export function systemBackupStorageKey(date: Date, runId: string): string {
+  return `${SYSTEM_BACKUP_KEY_PREFIX}${backupArchiveFileName(date, runId)}`;
 }
 
 /** Renders `README.txt` of the system backup. CRLF, like the user export's README. */

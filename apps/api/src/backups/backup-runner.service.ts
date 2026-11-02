@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { Job } from '@marinoscar/platform-api/jobs';
 
@@ -137,13 +138,15 @@ export class BackupRunnerService {
     const payload = (job.payload ?? {}) as SystemJobPayload;
     const startedAt = new Date();
     const triggeredById = typeof payload.triggeredById === 'string' ? payload.triggeredById : null;
+    const runId = randomUUID();
     return (await this.prisma.backupRun.create({
       data: {
+        id: runId,
         scope: SYSTEM_SCOPE,
         status: 'running',
         trigger: (payload.trigger === 'manual' ? 'manual' : 'schedule') satisfies BackupRunTrigger,
         triggeredById,
-        storageKey: systemBackupStorageKey(startedAt),
+        storageKey: systemBackupStorageKey(startedAt, runId),
         startedAt,
         jobId: job.id,
       },
@@ -167,7 +170,7 @@ export class BackupRunnerService {
   async execute(run: BackupRunRow): Promise<BackupRunOutcome> {
     return this.performRun(run, {
       auditAction: BACKUPS_RUN_COMPLETED_AUDIT_ACTION,
-      fallbackKey: () => systemBackupStorageKey(run.startedAt),
+      fallbackKey: () => systemBackupStorageKey(run.startedAt, run.id),
       prepare: async () => {
         if (!this.isStorageConfigured()) {
           throw new BackupRunFailure(BACKUP_FAILURE_MESSAGES.storageNotConfigured);
@@ -224,7 +227,7 @@ export class BackupRunnerService {
   ): Promise<BackupRunOutcome> {
     return this.performRun(run, {
       auditAction: BACKUPS_USER_RUN_COMPLETED_AUDIT_ACTION,
-      fallbackKey: () => userBackupStorageKey(owner.id, run.startedAt),
+      fallbackKey: () => userBackupStorageKey(owner.id, run.startedAt, run.id),
       prepare: async () => {
         if (!this.isStorageConfigured()) {
           throw new BackupRunFailure(BACKUP_FAILURE_MESSAGES.storageNotConfigured);
