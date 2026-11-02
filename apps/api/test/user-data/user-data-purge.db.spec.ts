@@ -143,7 +143,7 @@ describeWithDb('user data deletion and factory reset over Vault data (real Postg
       },
     });
     storage.objects.set(key, Buffer.from('data'));
-    return { id: object.id, key };
+    return { id: object.id, key, orgId };
   }
 
   async function addSecretWithAttachment(who: 'a' | 'b', name: string, typeId: string) {
@@ -156,7 +156,7 @@ describeWithDb('user data deletion and factory reset over Vault data (real Postg
     });
     const object = await addObject(ids[who], `${who}-${name}`);
     await system.secretAttachment.create({
-      data: { secretId: secret.id, secretVersionId: v2.id, storageObjectId: object.id, role: 'card_front' },
+      data: { secretId: secret.id, secretVersionId: v2.id, storageObjectId: object.id, orgId: object.orgId, role: 'card_front' },
     });
     void v1;
     seeded[who].secrets.push(secret.id);

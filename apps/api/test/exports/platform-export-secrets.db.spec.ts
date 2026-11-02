@@ -185,7 +185,7 @@ describeWithDb('the platform export carries no secret value (real Postgres)', ()
       },
     });
     await system.secretAttachment.create({
-      data: { secretId: secret.id, secretVersionId: v2.id, storageObjectId: object.id, role: 'card_front', label: 'Front of the card' },
+      data: { secretId: secret.id, secretVersionId: v2.id, storageObjectId: object.id, orgId: org.id, role: 'card_front', label: 'Front of the card' },
     });
     await prisma.mediaFolder.create({ data: { name: FOLDER_NAME, userId } });
   }, 300_000);
