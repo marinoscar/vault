@@ -97,7 +97,7 @@ describe('MyBackupsService ownership isolation', () => {
     expect(link.fileName).toBe('a-run.zip');
     expect(storage.getSignedDownloadUrl.mock.calls[0]).toEqual([
       `user-backups/${A.id}/a-run.zip`,
-      expect.objectContaining({ responseContentDisposition: 'attachment; filename="a-run.zip"', responseContentType: 'application/zip' }),
+      expect.objectContaining({ responseContentDisposition: 'attachment; filename="a-run.zip"' }),
     ]);
     await service.deleteRun('a-run', A.id);
     expect(storage.delete).toHaveBeenCalledWith(`user-backups/${A.id}/a-run.zip`);

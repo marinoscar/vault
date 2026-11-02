@@ -3,7 +3,7 @@ import type { Job } from '@marinoscar/platform-api/jobs';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { CryptoService } from '../common/services/crypto.service';
-import { STORAGE_PROVIDER, StorageProvider } from '../storage/providers';
+import { STORAGE_PROVIDER, StorageProvider } from '@marinoscar/platform-api/storage';
 import {
   SecretsExportService,
   userArchiveBlobBytes,

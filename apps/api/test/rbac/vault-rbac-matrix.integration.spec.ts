@@ -6,7 +6,7 @@
 // run over the full `AppModule` with a mocked Prisma client. For each of the
 // three roles and for no credential at all, every Vault route (secrets, secret
 // types, media, admin and user backups, card extraction, exports, storage
-// objects, settings) is called and the answer checked:
+// objects and their configuration, settings) is called and the answer checked:
 //
 //   anonymous                        401
 //   a role without the permission    403
@@ -72,6 +72,8 @@ const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
     'storage:read',
     'storage:write',
     'storage:delete_any',
+    'storage_config:read',
+    'storage_config:write',
     'secrets:read_any',
     'secrets:write_any',
     'secrets:delete_any',
@@ -104,6 +106,8 @@ const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
 /** The scope of every permission the oracle mentions (org permissions come from the membership). */
 const SYSTEM_PERMISSIONS = new Set([
   'storage:delete_any',
+  'storage_config:read',
+  'storage_config:write',
   'secrets:read_any',
   'secrets:write_any',
   'secrets:delete_any',
@@ -191,17 +195,23 @@ const ROUTES: readonly Route[] = [
   // AI
   ['GET', '/api/ai/status', null],
   ['POST', '/api/system-settings/ai/verify', 'system_settings:write'],
-  // Storage objects (bare @Auth: ownership-scoped)
-  ['GET', '/api/storage/objects', null],
-  ['GET', `/api/storage/objects/${ID}`, null],
-  ['GET', `/api/storage/objects/${ID}/download`, null],
-  ['DELETE', `/api/storage/objects/${ID}`, null],
-  ['PATCH', `/api/storage/objects/${ID}/metadata`, null],
-  ['POST', '/api/storage/objects/upload/init', null],
-  ['GET', `/api/storage/objects/${ID}/upload/status`, null],
-  ['POST', `/api/storage/objects/${ID}/upload/complete`, null],
-  ['DELETE', `/api/storage/objects/${ID}/upload/abort`, null],
-  ['POST', '/api/storage/objects', null],
+  // Storage objects and status (the platform storage slice since E6.1; ownership-scoped on top)
+  ['GET', '/api/storage/objects', 'storage:read'],
+  ['GET', `/api/storage/objects/${ID}`, 'storage:read'],
+  ['GET', `/api/storage/objects/${ID}/download`, 'storage:read'],
+  ['DELETE', `/api/storage/objects/${ID}`, 'storage:write'],
+  ['PATCH', `/api/storage/objects/${ID}/metadata`, 'storage:write'],
+  ['POST', '/api/storage/objects/upload/init', 'storage:write'],
+  ['GET', `/api/storage/objects/${ID}/upload/status`, 'storage:write'],
+  ['POST', `/api/storage/objects/${ID}/upload/complete`, 'storage:write'],
+  ['DELETE', `/api/storage/objects/${ID}/upload/abort`, 'storage:write'],
+  ['POST', '/api/storage/objects', 'storage:write'],
+  ['GET', '/api/storage/status', 'storage:read'],
+  // Storage configuration (admin only: system permissions)
+  ['GET', '/api/admin/storage-config', 'storage_config:read'],
+  ['PUT', '/api/admin/storage-config', 'storage_config:write'],
+  ['POST', '/api/admin/storage-config/test', 'storage_config:write'],
+  ['POST', '/api/admin/storage-config/bucket', 'storage_config:write'],
   // Settings (the platform settings slice since E4.1)
   ['GET', '/api/user-settings', 'user_settings:read'],
   ['PUT', '/api/user-settings', 'user_settings:write'],
@@ -385,6 +395,8 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
         'AiController',
         'AiVerifyController',
         'ObjectsController',
+        'StorageStatusController',
+        'StorageConfigController',
         'UserSettingsController',
         'SystemSettingsController',
         'JobAdminController',

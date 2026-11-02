@@ -6,13 +6,14 @@ import {
   UploadPart,
   SignedUrlOptions,
   StorageUploadOptions,
-} from '../../src/storage/providers';
+} from '@marinoscar/platform-api/storage';
 
 /**
  * Creates a mock storage provider for testing
  * All methods return sensible defaults that can be overridden in tests
  */
 export const createMockStorageProvider = (): jest.Mocked<StorageProvider> => ({
+  kind: 's3',
   upload: jest.fn().mockResolvedValue({
     key: 'test-key',
     bucket: 'test-bucket',
@@ -43,6 +44,8 @@ export const createMockStorageProvider = (): jest.Mocked<StorageProvider> => ({
   getSignedDownloadUrl: jest
     .fn()
     .mockResolvedValue('https://mock-presigned-url.com/download'),
+
+  getSignedPutUrl: jest.fn().mockResolvedValue('https://mock-presigned-url.com/put'),
 
   delete: jest.fn().mockResolvedValue(undefined),
 

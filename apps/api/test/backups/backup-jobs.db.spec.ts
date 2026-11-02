@@ -40,7 +40,7 @@ import { AppModule } from '../../src/app.module';
 import { CryptoService } from '../../src/common/services/crypto.service';
 import { PERMISSION_OPTIONS } from '../../src/platform/permissions';
 import { DEFAULT_SYSTEM_SETTINGS } from '../../src/settings/registry/default-system-settings';
-import { STORAGE_PROVIDER } from '../../src/storage/providers/storage-provider.interface';
+import { STORAGE_PROVIDER } from '@marinoscar/platform-api/storage';
 import { BACKUP_FAILURE_MESSAGES } from '../../src/backups/backup-runner.service';
 import { BACKUP_RUN_JOB_TYPE, USER_BACKUP_RUN_JOB_TYPE } from '../../src/backups/jobs/backup-job-types';
 import {
@@ -286,7 +286,12 @@ describeWithDb('backups as queue jobs (real Postgres, worker on)', () => {
       const runId = started.body.data.id as string;
 
       const run = await runStatus(runId, 'succeeded');
-      const job = await prisma.job.findUniqueOrThrow({ where: { id: run.jobId! } });
+      // The handler records the run as succeeded BEFORE the queue settles the job
+      // (the worker marks the job once the handler returns), so wait for the job too.
+      const job = await waitFor('the job to succeed', async () => {
+        const row = await prisma.job.findUniqueOrThrow({ where: { id: run.jobId! } });
+        return row.status === 'succeeded' ? row : null;
+      });
       expect(job).toMatchObject({ type: BACKUP_RUN_JOB_TYPE, status: 'succeeded', orgId: null, dedupKey: buildDedupKey(BACKUP_RUN_JOB_TYPE) });
 
       const bytes = storage.objects.get(run.storageKey!)!;

@@ -30,7 +30,7 @@ Sync never overwrites an app-owned file. `infra/compose/postgres-init/20-*.sh` i
 | `app.build.compose.yml` | every base mode | Builds `api` and `web` from `apps/api` and `apps/web` (their own Dockerfiles). The platform builds from the repository root; Vault's Dockerfiles expect the app directory as context. |
 | `app.dev.src-mounts.compose.yml` | dev, devdb | Hot-reload mounts at `/app/src` and `/app/prisma` (the platform mounts `/app/apps/api/src`). `!override` replaces the list. |
 | `app.vps.no-stack-agent.compose.yml` | vps | Puts `stack-agent` in the `disabled` profile: Vault has no `apps/stack-agent`. |
-| `app.env.example` | `.env.example` | Vault's own variables: `VAULT_ENCRYPTION_KEY`, `CARD_IMAGE_MAX_BYTES`, `STORAGE_PROVIDER`, `S3_BUCKET`, `S3_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`. |
+| `app.env.example` | `.env.example` | Vault's own variables: `VAULT_ENCRYPTION_KEY`, `CARD_IMAGE_MAX_BYTES` (and `OTEL_DEBUG`). The object-store variables are gone since E6.1: storage is runtime configuration ([storage-config-migration](storage-config-migration.md)). |
 | `infra/nginx/app.d/server/body-size.conf` | nginx, server level | `client_max_body_size 10g`. Without it nginx's 1 MiB default refuses uploads. |
 | `infra/nginx/app.d/locations/app-long-requests.conf` | nginx | Exact-match locations for `POST /api/secrets/cards/extract`, `POST /api/secrets/export` and `POST /api/admin/backups/export` with 600 s read timeouts (the generic `/api` location keeps 60 s). |
 

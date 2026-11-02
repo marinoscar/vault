@@ -9,6 +9,8 @@
 //   ai   the platform AI slice's deployment provider key (purpose `'ai'`, name =
 //        provider id). Vault stores its one OpenAI key at `('ai', 'openai')`, the
 //        address the AI slice reads in E8, so the key never has to be moved twice.
+//   storage   the platform storage slice's object-store secret access key (purpose `'storage'`,
+//        name `default`; E6.1). Registered from the slice's own `STORAGE_CREDENTIAL_PURPOSE_DEF`.
 //
 // SHIM(E8): this is a local copy of the platform's `AI_CREDENTIAL_PURPOSE_DEF`
 // (`@marinoscar/platform-api/ai`, `ai/config/ai-credential.constants.ts`). It is
@@ -26,6 +28,7 @@
 // store, on purpose (docs/SECRETS.md).
 // =============================================================================
 
+import { STORAGE_CREDENTIAL_PURPOSE_DEF } from '@marinoscar/platform-api/storage';
 import {
   registerCredentialPurpose,
   type CredentialPurposeDef,
@@ -46,6 +49,8 @@ export const AI_CREDENTIAL_PURPOSE_DEF: CredentialPurposeDef = Object.freeze({
 
 registerCredentialPurpose(AI_CREDENTIAL_PURPOSE_DEF);
 
+// E6.1: the object store's secret access key (`storage` / `default`).
+registerCredentialPurpose(STORAGE_CREDENTIAL_PURPOSE_DEF);
 // E7.1 (#85): the email transports' secrets and the Web Push private key. The
 // platform declares the definitions; the app only registers the ones it stores.
 // SMTP / SES / VAPID are runtime-configured in the admin UI: no environment variable.
