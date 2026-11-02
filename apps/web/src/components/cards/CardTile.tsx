@@ -21,21 +21,23 @@ import { CARD_ASPECT_RATIO } from '../../utils/cardImage';
  * One payment card, drawn as a card (E10.5, issue #96; spec §8).
  *
  * The tile is a card face in the brand colour (a `primary` gradient, read from
- * the theme so light and dark both hold their contrast) carrying the four facts
- * a user scans a wallet for: the name they gave the card, its network, the last
- * four digits and the expiry. Below the face sit the expiry badge and the
- * Renew action.
+ * the theme so light and dark both hold their contrast) carrying the facts a
+ * user scans a wallet for: the name they gave the card, its network, the last
+ * four digits and the expiry, with kind, issuing bank and cardholder as
+ * supporting detail. Below the face sit the expiry badge, a photo indicator and
+ * the Renew action.
  *
  * The heading is the user's own name for the card, not the network. A network
- * does not distinguish anything once a user holds several cards on it — three
- * Amex cards headed "American Express" are three identical tiles — whereas the
- * name is the label the user chose for exactly this purpose ("Shown in your
- * card list" on the import/review form). Network, kind and issuing bank are
- * supporting detail and drop to the subheading.
+ * does not distinguish anything once a user holds several cards on it, whereas
+ * the name is the label the user chose for exactly this purpose. Network, kind
+ * and issuing bank drop to the subheading.
  *
- * Only the masked number is ever rendered here — a list view must never put a
- * full PAN on screen, so this component has no access to one: `CardSummary`
- * carries the masked string and nothing else. Never the CVV either.
+ * The data comes from `GET /api/secrets/cards/summary` (#118), decrypted
+ * server-side. A field the card does not store (null) is simply omitted, never
+ * shown as a dash.
+ *
+ * Only `•••• last4` is ever rendered here — a list view must never put a full
+ * PAN on screen, and this component never receives one. Never the CVV either.
  *
  * Every tile has the same height (the face keeps the ISO card aspect ratio and
  * the footer is one row), so the gallery reads as a uniform grid on a phone.
@@ -56,13 +58,10 @@ interface CardTileProps {
 
 export function CardTile({ card, onClick, onRenew }: CardTileProps) {
   const theme = useTheme();
-  // `name` is required on a secret so it is effectively always present; the
-  // network fallback only guards against a blank-name row reaching the view.
-  const heading = card.name || card.network;
+  // `name` is required on a secret, so the fallbacks only guard a blank row.
+  const heading = card.name || card.network || 'Card';
   // Anything that merely restates the heading is dropped, so a card the user
-  // named "American Express" does not read "American Express · American
-  // Express". Older cards predate card_network / card_kind, hence the falsy
-  // filter as well.
+  // named "Visa" does not read "Visa · Visa". Missing fields are skipped.
   const subheading = [card.network, card.kind, card.issuingBank]
     .filter(
       (part): part is string =>
@@ -171,6 +170,9 @@ export function CardTile({ card, onClick, onRenew }: CardTileProps) {
             }}
           />
 
+          {/* `•••• last4`, then cardholder and expiry. A missing number or
+              expiry reads as a dash, never as a plausible-looking guess; a
+              missing cardholder is simply left out. */}
           <Typography
             variant="body1"
             sx={{
@@ -184,20 +186,24 @@ export function CardTile({ card, onClick, onRenew }: CardTileProps) {
               textOverflow: 'ellipsis',
             }}
           >
-            {card.maskedNumber || '—'}
+            {card.maskedNumber || '•••• —'}
           </Typography>
 
           <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 2, minWidth: 0 }}>
             <Box sx={{ minWidth: 0, flexGrow: 1 }}>
-              <Typography
-                variant="caption"
-                sx={{ color: onFaceMuted, display: 'block', fontSize: 10, letterSpacing: 0.6, textTransform: 'uppercase' }}
-              >
-                Cardholder
-              </Typography>
-              <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
-                {card.cardholderName || '—'}
-              </Typography>
+              {card.cardholderName && (
+                <>
+                  <Typography
+                    variant="caption"
+                    sx={{ color: onFaceMuted, display: 'block', fontSize: 10, letterSpacing: 0.6, textTransform: 'uppercase' }}
+                  >
+                    Cardholder
+                  </Typography>
+                  <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
+                    {card.cardholderName}
+                  </Typography>
+                </>
+              )}
             </Box>
             <Box sx={{ flexShrink: 0, textAlign: 'right' }}>
               <Typography
@@ -207,7 +213,7 @@ export function CardTile({ card, onClick, onRenew }: CardTileProps) {
                 Expires
               </Typography>
               <Typography variant="body2" sx={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>
-                {card.expiryLabel || 'Unknown'}
+                {card.expiryLabel || '—'}
               </Typography>
             </Box>
           </Box>
@@ -230,7 +236,7 @@ export function CardTile({ card, onClick, onRenew }: CardTileProps) {
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
           <CardExpiryBadge status={card.status} expiryLabel={card.expiryLabel} />
-          {card.hasAttachments && (
+          {card.hasPhotos && (
             <PhotoIcon
               fontSize="small"
               titleAccess="Has card photos"

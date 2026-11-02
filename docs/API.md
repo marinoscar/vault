@@ -1582,6 +1582,41 @@ The feature id is `card_extract` (lower snake case: the platform refuses a hyphe
 
 ---
 
+#### GET /secrets/cards/summary
+
+Card summaries for Home and the Cards gallery, so a client needs one request instead of one `GET /secrets/:id` (one decryption each) per card. Permission `secrets:read`. Ownership follows `GET /secrets`: the caller's own card secrets, or every card for a holder of `secrets:read_any`.
+
+Query: `page` (default 1), `pageSize` (default 20, max 100; 400 above it).
+
+Sorted by expiry, soonest first; cards with an unknown expiry year last; ties by name. Sorting happens after decryption, so pagination is applied to the sorted list.
+
+```json
+{
+  "data": {
+    "items": [
+      {
+        "id": "uuid",
+        "name": "Visa travel",
+        "last4": "1111",
+        "expMonth": 3,
+        "expYear": 2027,
+        "network": "Visa",
+        "kind": "Credit",
+        "issuingBank": "Bank X",
+        "cardholderName": "Person A",
+        "hasPhotos": true,
+        "updatedAt": "2026-01-01T00:00:00.000Z"
+      }
+    ],
+    "meta": { "page": 1, "pageSize": 20, "totalItems": 1, "totalPages": 1 }
+  }
+}
+```
+
+`last4` is `string | null`; `expMonth` (1 to 12) and `expYear` (four digits) are `number | null`. `network`, `kind`, `issuingBank` and `cardholderName` are the card's non-sensitive display fields (`string | null`, trimmed, `null` when blank or absent); `hasPhotos` is `true` when the current version has a `card_front` or `card_back` attachment (read in the same query). A field that is missing or malformed in an old card is `null`; one unreadable card never fails the request (it appears with every decrypted field `null`). The full number, the CVV, the secondary security code, notes and every other field are never returned. The route is registered before `GET /secrets/:id`.
+
+---
+
 #### POST /secrets/cards/extract
 
 **Requires Authentication** (`secrets:write` **and** `ai:use`), and the platform kill switch (`AiEnabledGuard`: `403` with `details.reason: "AI_DISABLED"` while AI is off). It runs after authentication, so an anonymous caller still gets `401`. Extracts candidate card field values from one or two card face images.

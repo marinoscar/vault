@@ -1,217 +1,215 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
-import { useCards, toCardSummary } from '../../hooks/useCards';
+import { useCards, toCardSummary, CARD_SUMMARY_PAGE_SIZE } from '../../hooks/useCards';
 import { server } from '../mocks/server';
-import type { SecretDetail, SecretType } from '../../types';
+import type { CardSummaryItem } from '../../types';
 
 const API_BASE = '*/api';
+const NOW = new Date(2026, 6, 15); // 2026-07-15, local
 
-const cardType: SecretType = {
-  id: 'type-card',
-  name: 'Card',
-  description: 'Credit or debit card information',
-  icon: 'CreditCard',
-  fields: [],
-  allowAttachments: true,
-  isSystem: true,
-  createdAt: new Date('2024-01-01').toISOString(),
-};
-
-const loginType: SecretType = {
-  ...cardType,
-  id: 'type-login',
-  name: 'Login',
-  icon: 'VpnKey',
-};
-
-function makeCard(overrides: {
-  id: string;
-  name?: string;
-  values?: Record<string, unknown>;
-  attachments?: SecretDetail['attachments'];
-}): SecretDetail {
+function item(
+  id: string,
+  expMonth: number | null,
+  expYear: number | null,
+  last4: string | null = '4242',
+): CardSummaryItem {
   return {
-    id: overrides.id,
-    name: overrides.name ?? overrides.id,
-    description: null,
-    type: cardType,
-    currentVersion: 1,
-    createdAt: new Date('2024-01-01').toISOString(),
-    updatedAt: new Date('2024-01-02').toISOString(),
-    values: overrides.values ?? {},
-    createdBy: null,
-    attachments: overrides.attachments ?? [],
+    id,
+    name: `Card ${id}`,
+    last4,
+    expMonth,
+    expYear,
+    network: null,
+    kind: null,
+    issuingBank: null,
+    cardholderName: null,
+    hasPhotos: false,
+    updatedAt: '2026-01-02T00:00:00.000Z',
   };
 }
 
-/** Wire up the three calls the hook makes: types, list, then per-card detail. */
-function mockApi(cards: SecretDetail[], options?: { totalItems?: number; types?: SecretType[] }) {
+/**
+ * Serve `all` (already sorted, as the API does) in pages, and record every
+ * request so tests can count them.
+ */
+const requests: string[] = [];
+function mockSummary(all: CardSummaryItem[]) {
   server.use(
-    http.get(`${API_BASE}/secret-types`, () =>
-      HttpResponse.json({ data: options?.types ?? [loginType, cardType] }),
-    ),
-    http.get(`${API_BASE}/secrets`, () =>
-      HttpResponse.json({
+    http.get(`${API_BASE}/secrets/cards/summary`, ({ request }) => {
+      const url = new URL(request.url);
+      requests.push(`${url.pathname}${url.search}`);
+      const page = Number(url.searchParams.get('page'));
+      const pageSize = Number(url.searchParams.get('pageSize'));
+      const items = all.slice((page - 1) * pageSize, page * pageSize);
+      return HttpResponse.json({
         data: {
-          items: cards.map((card) => ({
-            id: card.id,
-            name: card.name,
-            description: card.description,
-            type: card.type,
-            currentVersion: card.currentVersion,
-            createdAt: card.createdAt,
-            updatedAt: card.updatedAt,
-          })),
-          meta: {
-            page: 1,
-            pageSize: 100,
-            totalItems: options?.totalItems ?? cards.length,
-            totalPages: 1,
-          },
+          items,
+          meta: { page, pageSize, totalItems: all.length, totalPages: Math.max(1, Math.ceil(all.length / pageSize)) },
         },
-      }),
-    ),
-    http.get(`${API_BASE}/secrets/:id`, ({ params }) => {
-      const card = cards.find((c) => c.id === params.id);
-      if (!card) return new HttpResponse(null, { status: 404 });
-      return HttpResponse.json({ data: card });
+      });
     }),
   );
 }
 
 describe('toCardSummary', () => {
-  const NOW = new Date(2026, 6, 15); // 2026-07-15, local
+  it('flattens a summary row into display strings', () => {
+    const summary = toCardSummary(item('a', 12, 2026), NOW);
 
-  it('flattens a full card into display strings', () => {
-    const summary = toCardSummary(
-      makeCard({
-        id: 'card-1',
-        name: 'Personal Visa',
-        values: {
-          card_network: 'Visa',
-          card_kind: 'Credit',
-          cardholder_name: 'Person A',
-          issuing_bank: 'Analytical Bank',
-          number: '4242424242424242',
-          exp_month: '12',
-          exp_year: '2026',
-        },
-      }),
-      NOW,
-    );
-
-    expect(summary.network).toBe('Visa');
-    expect(summary.kind).toBe('Credit');
-    expect(summary.cardholderName).toBe('Person A');
-    expect(summary.issuingBank).toBe('Analytical Bank');
+    expect(summary.name).toBe('Card a');
+    expect(summary.last4).toBe('4242');
+    expect(summary.maskedNumber).toBe('•••• 4242');
     expect(summary.expiryLabel).toBe('12/26');
     expect(summary.status).toBe('valid');
   });
 
-  it('masks the number and never exposes the full PAN', () => {
+  it('carries the display fields, trimmed', () => {
     const summary = toCardSummary(
-      makeCard({ id: 'card-1', values: { number: '4242424242424242' } }),
+      {
+        ...item('full', 12, 2029),
+        network: 'Visa',
+        kind: 'Debit',
+        issuingBank: ' Org Alpha Bank ',
+        cardholderName: 'Person A',
+        hasPhotos: true,
+      },
       NOW,
     );
 
-    expect(summary.maskedNumber).toBe('•••• •••• •••• 4242');
-    expect(summary.maskedNumber).not.toContain('424242424242');
-    expect(JSON.stringify(summary)).not.toContain('4242424242424242');
+    expect(summary.network).toBe('Visa');
+    expect(summary.kind).toBe('Debit');
+    expect(summary.issuingBank).toBe('Org Alpha Bank');
+    expect(summary.cardholderName).toBe('Person A');
+    expect(summary.hasPhotos).toBe(true);
   });
 
-  it('renders a pre-#24 card without card_network / card_kind', () => {
-    const summary = toCardSummary(
-      makeCard({
-        id: 'legacy',
-        name: 'Old Card',
-        values: { cardholder_name: 'Grace Hopper', number: '5555444433332222' },
-      }),
-      NOW,
-    );
+  it('turns null display fields into empty strings', () => {
+    const summary = toCardSummary(item('bare', 12, 2029), NOW);
 
     expect(summary.network).toBe('');
     expect(summary.kind).toBe('');
-    expect(summary.cardholderName).toBe('Grace Hopper');
+    expect(summary.issuingBank).toBe('');
+    expect(summary.cardholderName).toBe('');
+    expect(summary.hasPhotos).toBe(false);
+  });
+
+  it('classifies an expired and an expiring card', () => {
+    expect(toCardSummary(item('gone', 6, 2026), NOW).status).toBe('expired');
+    expect(toCardSummary(item('soon', 8, 2026), NOW).status).toBe('expiring_soon');
+  });
+
+  it('survives a malformed card that came back with null fields', () => {
+    const summary = toCardSummary(item('broken', null, null, null), NOW);
+
+    expect(summary.last4).toBeNull();
+    expect(summary.maskedNumber).toBe('');
+    expect(summary.expiryLabel).toBe('');
+    expect(summary.status).toBe('unknown');
+    expect(summary.expirySortKey).toBe(Number.POSITIVE_INFINITY);
+  });
+
+  it('treats a year without a month as unknown', () => {
+    const summary = toCardSummary(item('half', null, 2027), NOW);
     expect(summary.status).toBe('unknown');
     expect(summary.expiryLabel).toBe('');
   });
 
-  it('survives a card with no values at all', () => {
-    const summary = toCardSummary(makeCard({ id: 'empty' }), NOW);
-    expect(summary.status).toBe('unknown');
-    expect(summary.maskedNumber).toBe('');
-    expect(summary.cardholderName).toBe('');
-  });
-
-  it('marks a card that expired last month as expired', () => {
-    const summary = toCardSummary(
-      makeCard({ id: 'gone', values: { exp_month: '06', exp_year: '2026' } }),
-      NOW,
-    );
-    expect(summary.status).toBe('expired');
-  });
-
-  it('reports attachment presence', () => {
-    const withAttachment = toCardSummary(
-      makeCard({
-        id: 'with',
-        attachments: [
-          {
-            id: 'att-1',
-            label: 'front',
-            role: null,
-            storageObject: { id: 'obj-1', name: 'front.jpg', mimeType: 'image/jpeg', size: 100 },
-            createdAt: new Date('2024-01-01').toISOString(),
-          },
-        ],
-      }),
-      NOW,
-    );
-    expect(withAttachment.hasAttachments).toBe(true);
-    expect(toCardSummary(makeCard({ id: 'without' }), NOW).hasAttachments).toBe(false);
+  it('ignores a last4 that is not four digits', () => {
+    expect(toCardSummary(item('odd', 1, 2030, '42424242'), NOW).maskedNumber).toBe('');
   });
 });
 
 describe('useCards', () => {
   beforeEach(() => {
     server.resetHandlers();
+    requests.length = 0;
+  });
+  afterEach(() => {
+    requests.length = 0;
   });
 
-  it('loads only cards of the system Card type', async () => {
-    mockApi([
-      makeCard({ id: 'card-1', values: { exp_month: '01', exp_year: '2030' } }),
-      makeCard({ id: 'card-2', values: { exp_month: '02', exp_year: '2030' } }),
-    ]);
+  it('loads every card from ONE summary request and never asks for a card detail', async () => {
+    const details: string[] = [];
+    server.events.on('request:start', ({ request }) => {
+      if (/\/api\/secrets\/(?!cards\/summary)[^/?]+$/.test(new URL(request.url).pathname)) {
+        details.push(request.url);
+      }
+    });
+    mockSummary([item('a', 1, 2027), item('b', 2, 2030), item('c', null, null, null)]);
 
     const { result } = renderHook(() => useCards());
     await act(async () => {
-      await result.current.fetchCards({ now: new Date(2026, 6, 15) });
+      await result.current.fetchCards({ now: NOW });
     });
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
-    expect(result.current.cards).toHaveLength(2);
+    expect(result.current.cards.map((c) => c.id)).toEqual(['a', 'b', 'c']);
+    expect(result.current.totalItems).toBe(3);
     expect(result.current.error).toBeNull();
+    expect(requests).toEqual([`/api/secrets/cards/summary?page=1&pageSize=${CARD_SUMMARY_PAGE_SIZE}`]);
+    expect(details).toEqual([]);
+    server.events.removeAllListeners('request:start');
   });
 
-  it('sorts cards by expiry, soonest first, with unknown expiries last', async () => {
-    mockApi([
-      makeCard({ id: 'later', values: { exp_month: '12', exp_year: '2029' } }),
-      makeCard({ id: 'unknown', values: { exp_month: '13', exp_year: '2029' } }),
-      makeCard({ id: 'soonest', values: { exp_month: '01', exp_year: '2027' } }),
-    ]);
+  it('pages through every page of 100 for the gallery', async () => {
+    const all = Array.from({ length: 230 }, (_, i) => item(`c${i}`, 1, 2030 + Math.floor(i / 12)));
+    mockSummary(all);
 
     const { result } = renderHook(() => useCards());
     await act(async () => {
-      await result.current.fetchCards({ now: new Date(2026, 6, 15) });
+      await result.current.fetchCards({ now: NOW });
     });
 
-    await waitFor(() => expect(result.current.cards).toHaveLength(3));
-    expect(result.current.cards.map((c) => c.id)).toEqual(['soonest', 'later', 'unknown']);
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.cards).toHaveLength(230);
+    expect(result.current.isTruncated).toBe(false);
+    expect(requests).toEqual([
+      '/api/secrets/cards/summary?page=1&pageSize=100',
+      '/api/secrets/cards/summary?page=2&pageSize=100',
+      '/api/secrets/cards/summary?page=3&pageSize=100',
+    ]);
   });
 
-  it('returns no cards when the Card system type does not exist', async () => {
-    mockApi([], { types: [loginType] });
+  it('stops after the first page once the attention window is passed (Home)', async () => {
+    const all = [
+      item('expired', 5, 2026),
+      item('soon', 8, 2026),
+      ...Array.from({ length: 150 }, (_, i) => item(`v${i}`, 1, 2030)),
+    ];
+    mockSummary(all);
+
+    const { result } = renderHook(() => useCards());
+    await act(async () => {
+      await result.current.fetchCards({ now: NOW, scope: 'attention' });
+    });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(requests).toHaveLength(1);
+    expect(result.current.totalItems).toBe(152);
+    expect(result.current.cards.filter((c) => c.status !== 'valid').map((c) => c.id)).toEqual(['expired', 'soon']);
+    expect(result.current.isTruncated).toBe(false);
+  });
+
+  it('keeps paging on Home while a whole page still needs attention', async () => {
+    const all = [
+      ...Array.from({ length: 100 }, (_, i) => item(`x${i}`, 1, 2025)), // expired
+      item('soon', 8, 2026),
+      item('ok', 1, 2030),
+    ];
+    mockSummary(all);
+
+    const { result } = renderHook(() => useCards());
+    await act(async () => {
+      await result.current.fetchCards({ now: NOW, scope: 'attention' });
+    });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(requests).toHaveLength(2);
+    expect(result.current.cards.some((c) => c.id === 'soon')).toBe(true);
+  });
+
+  it('returns an empty wallet without error', async () => {
+    mockSummary([]);
 
     const { result } = renderHook(() => useCards());
     await act(async () => {
@@ -220,58 +218,12 @@ describe('useCards', () => {
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.cards).toEqual([]);
+    expect(result.current.totalItems).toBe(0);
+    expect(requests).toHaveLength(1);
   });
 
-  it('drops a card whose detail fetch fails rather than failing the view', async () => {
-    const good = makeCard({ id: 'good', values: { exp_month: '01', exp_year: '2030' } });
-    server.use(
-      http.get(`${API_BASE}/secret-types`, () => HttpResponse.json({ data: [cardType] })),
-      http.get(`${API_BASE}/secrets`, () =>
-        HttpResponse.json({
-          data: {
-            items: [
-              { ...good, values: undefined },
-              { ...good, id: 'broken' },
-            ],
-            meta: { page: 1, pageSize: 100, totalItems: 2, totalPages: 1 },
-          },
-        }),
-      ),
-      http.get(`${API_BASE}/secrets/:id`, ({ params }) =>
-        params.id === 'good'
-          ? HttpResponse.json({ data: good })
-          : new HttpResponse(null, { status: 500 }),
-      ),
-    );
-
-    const { result } = renderHook(() => useCards());
-    await act(async () => {
-      await result.current.fetchCards();
-    });
-
-    await waitFor(() => expect(result.current.isLoading).toBe(false));
-    expect(result.current.cards.map((c) => c.id)).toEqual(['good']);
-    expect(result.current.error).toBeNull();
-  });
-
-  it('flags truncation when the API holds more cards than were loaded', async () => {
-    mockApi([makeCard({ id: 'card-1' })], { totalItems: 250 });
-
-    const { result } = renderHook(() => useCards());
-    await act(async () => {
-      await result.current.fetchCards();
-    });
-
-    await waitFor(() => expect(result.current.isLoading).toBe(false));
-    expect(result.current.isTruncated).toBe(true);
-    expect(result.current.totalItems).toBe(250);
-  });
-
-  it('surfaces an error when the list request fails', async () => {
-    server.use(
-      http.get(`${API_BASE}/secret-types`, () => HttpResponse.json({ data: [cardType] })),
-      http.get(`${API_BASE}/secrets`, () => new HttpResponse(null, { status: 500 })),
-    );
+  it('surfaces an error when the summary request fails', async () => {
+    server.use(http.get(`${API_BASE}/secrets/cards/summary`, () => new HttpResponse(null, { status: 500 })));
 
     const { result } = renderHook(() => useCards());
     await act(async () => {
