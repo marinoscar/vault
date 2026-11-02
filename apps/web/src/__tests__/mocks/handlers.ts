@@ -278,6 +278,19 @@ export const handlers = [
     return HttpResponse.json({ data: { browserEnabled: true, pushEnabled: false, vapidPublicKey: null } });
   }),
 
+  // The platform onboarding slice (E9.3): nothing to do and the welcome already seen, so no existing
+  // render opens the welcome dialog. A test that needs a checklist overrides this handler.
+  http.get(`${API_BASE}/onboarding`, () => {
+    const empty = { steps: [], completed: 0, total: 0, requiredDone: true, allResolved: true };
+    return HttpResponse.json({
+      data: {
+        settings: { welcomeSeenAt: '2026-01-01T00:00:00.000Z', checklistDismissedAt: null, adminDismissedAt: null, skipped: [] },
+        user: empty,
+        admin: null,
+      },
+    });
+  }),
+
   http.post(`${API_BASE}/auth/device/authorize`, async ({ request }) => {
     const body = (await request.json()) as { userCode: string; approve: boolean };
 

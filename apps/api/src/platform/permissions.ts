@@ -12,12 +12,13 @@
 // permission nobody registered. `jobs` and `nodes` (E5.1) are the queue's admin routes
 // (`/api/admin/jobs/*`, `jobs:read|write`) and the worker-node fleet
 // (`/api/nodes/*`, `/api/admin/nodes/*`, `/api/node-credentials`). `notifications` (E7.1)
-// declares `broadcasts:*` and `push:*` (system, admin) and `org_broadcasts:*` (org, org_admin).
+// declares `broadcasts:*` and `push:*` (system, admin) and `org_broadcasts:*` (org, org_admin). `user-data` (E9.3)
+// declares `system:factory_reset` and `orgs:offboard` (system, admin only).
 import type { PlatformPermissionOptions } from '@marinoscar/platform-api/manifest';
 
 import { VAULT_PERMISSIONS } from '../app-registrations/permissions';
 
 export const PERMISSION_OPTIONS = {
-  slices: ['identity', 'settings', 'storage', 'jobs', 'nodes', 'ai', 'notifications'],
+  slices: ['identity', 'settings', 'storage', 'jobs', 'nodes', 'ai', 'notifications', 'user-data'],
   app: { permissions: [VAULT_PERMISSIONS] },
 } satisfies PlatformPermissionOptions;

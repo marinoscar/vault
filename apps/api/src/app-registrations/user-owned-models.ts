@@ -12,7 +12,9 @@
 // SECRET MATERIAL NEVER TAKES THE GENERIC EXPORT. `Secret` and `SecretVersion`
 // are `exclude`: a secret leaves the deployment only through Vault's own
 // password-protected export (`POST /api/secrets/export`), never through a
-// plaintext data download.
+// plaintext data download. The `vault-secrets` export source (E9.3,
+// `platform/exports/vault-secrets.source.ts`) adds secret METADATA (names, types,
+// timestamps, counts) by an explicit column list; it reads no value and no ciphertext.
 // =============================================================================
 
 import type { Prisma } from '@prisma/client';
@@ -44,10 +46,14 @@ export const VAULT_USER_OWNED_MODELS: readonly UserOwnedModelDef<Prisma.ModelNam
   },
   {
     model: 'SecretType',
-    actorFields: ['createdById'],
+    ownerField: 'createdById',
+    ownerRelation: 'createdBy',
     purge: 'detach',
-    export: 'exclude',
-    rationale: 'A custom secret type is shared configuration: it survives its author (created_by_id is set null).',
+    export: 'include',
+    rationale:
+      'A custom secret type is shared configuration: it survives its author (created_by_id is set null). The author ' +
+      'owns it for the Danger Zone (deleted when no secret uses it, by the vault.user_data.purge delegate) and for the ' +
+      'export (a type is a list of field names and kinds, never a value). System types have no author.',
   },
   {
     model: 'BackupRun',

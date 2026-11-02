@@ -29,6 +29,7 @@ import settingsPermissionsSource from '../../../../../node_modules/@marinoscar/p
 import usersPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/identity/users/users.permissions.js?raw';
 import allowlistPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/identity/allowlist/allowlist.permissions.js?raw';
 import notificationsPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/notifications/notifications.permissions.js?raw';
+import userDataPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/user-data/user-data.permissions.js?raw';
 import aiPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/ai/ai.permissions.js?raw';
 import aiAdminControllerSource from '../../../../../node_modules/@marinoscar/platform-api/dist/ai/config/ai-admin.controller.js?raw';
 import aiUsageAdminControllerSource from '../../../../../node_modules/@marinoscar/platform-api/dist/ai/usage/ai-usage-admin.controller.js?raw';
@@ -55,6 +56,8 @@ const API_PERMISSIONS = new Set([
   ...declaredIds(allowlistPermissionsSource),
   ...declaredIds(notificationsPermissionsSource),
   ...declaredIds(aiPermissionsSource),
+  // E9.3 (#91): `system:factory_reset` and `orgs:offboard` (the user-data slice, Admin only).
+  ...declaredIds(userDataPermissionsSource),
 ]);
 
 /**
@@ -99,7 +102,24 @@ const CONTROLLER_MIRROR: Record<string, string | undefined> = {
   '/admin/settings/ai/models': 'ai_config:read',
   // ai-usage-admin.controller GET /api/admin/ai/usage (ai_config:read)
   '/admin/settings/ai/usage': 'ai_config:read',
+  // E9.3 (#91): the platform onboarding, exports and user-data slices.
+  // onboarding.controller GET /api/onboarding adds the admin block for `system_settings:read` (adminPermission)
+  '/admin/settings/setup': 'system_settings:read',
+  // user-data.controller FactoryResetController (system:factory_reset, Admin only)
+  '/admin/settings/factory-reset': 'system:factory_reset',
+  // GET /api/onboarding: `user_settings:read` (every role), which the user card does not name (ownership-scoped)
+  '/settings/getting-started': undefined,
+  // GET /api/exports/sources: bare @Auth(); the service checks `user_settings:read` per source (every role)
+  '/settings/data-export': undefined,
+  // UserDataController: `user_settings:write` (every role)
+  '/settings/danger-zone': undefined,
 };
+
+/**
+ * Admin cards whose permission is held ONLY by the Admin system role, which also holds every permission of the
+ * Console hub gate: they are reachable through it without being named in it.
+ */
+const ADMIN_ONLY_CARD_PERMISSIONS = new Set(['system:factory_reset']);
 
 /**
  * Cards that sit BENEATH another card's route rather than directly under the
@@ -227,7 +247,7 @@ describe('the AI cards (E8.2, the platform AI slice)', () => {
 });
 
 describe('the registries as a whole', () => {
-  it('lists the cards in append order (E10.3, then E7.2, then E8.2)', () => {
+  it('lists the cards in append order (E10.3, then E7.2, E8.2 and E9.3)', () => {
     expect(ADMIN_CARDS.map((card) => card.title)).toEqual([
       'General',
       'Users & Allowlist',
@@ -235,20 +255,25 @@ describe('the registries as a whole', () => {
       'Backups',
       'AI models',
       'AI usage',
+      'Setup guide',
       'Maintenance',
       'Doctor',
       'About',
       'Email',
       'Web Push',
       'Broadcasts',
+      'Factory reset',
     ]);
     expect(USER_CARDS.map((card) => card.title)).toEqual([
       'Profile',
       'Appearance',
       'Access Tokens',
+      'Getting started',
       'My backups',
       'Secret types',
+      'Download your data',
       'Notifications',
+      'Delete my data',
     ]);
   });
 
@@ -263,7 +288,10 @@ describe('the registries as a whole', () => {
     const perms = [...hubRoute![1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
     expect(perms).toEqual(consoleDest.anyPermission);
     // Every admin card is reachable by some holder of the hub gate.
-    for (const card of ADMIN_CARDS) expect(perms).toContain(card.permission);
+    for (const card of ADMIN_CARDS) {
+      if (ADMIN_ONLY_CARD_PERMISSIONS.has(card.permission as string)) expect(perms).toContain('system_settings:read');
+      else expect(perms).toContain(card.permission);
+    }
   });
 
   it('leaves the per-user hub ungated (every user owns their settings)', () => {

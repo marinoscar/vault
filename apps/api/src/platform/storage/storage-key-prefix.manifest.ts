@@ -30,6 +30,7 @@
 // `database-backups/` (E9 registers that one alongside).
 // =============================================================================
 
+import { EXPORTS_KEY_PREFIXES } from '@marinoscar/platform-api/exports';
 import {
   STORAGE_SLICE_KEY_PREFIXES,
   registerStorageKeyPrefixes,
@@ -62,6 +63,8 @@ export const VAULT_KEY_PREFIXES: readonly StorageKeyPrefixDef[] = [
 export const ALL_KEY_PREFIXES: readonly StorageKeyPrefixDef[] = [
   ...STORAGE_SLICE_KEY_PREFIXES,
   ...VAULT_KEY_PREFIXES,
+  // E9.3: `exports/users/<userId>/` and `exports/orgs/<orgId>/` (the exports slice's files).
+  ...EXPORTS_KEY_PREFIXES,
 ];
 
 let registered = false;

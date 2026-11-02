@@ -12,9 +12,9 @@ const RUN = '9d8c7b6a-1234-4abc-8def-0123456789ab';
 const WHEN = new Date('2026-06-10T12:34:56.000Z');
 
 describe('storage key prefixes', () => {
-  it('registers the platform six and Vault\'s two backup prefixes', () => {
+  it('registers the platform six, Vault\'s two backup prefixes and the exports slice\'s two', () => {
     const prefixes = allKeyPrefixes();
-    for (const prefix of ['uploads/', 'avatars/', 'node-outputs/', 'storage-config-test/', 'system-backups/', 'user-backups/']) {
+    for (const prefix of ['uploads/', 'avatars/', 'node-outputs/', 'storage-config-test/', 'system-backups/', 'user-backups/', 'exports/users/', 'exports/orgs/']) {
       expect(prefixes).toContain(prefix);
     }
   });
@@ -36,7 +36,7 @@ describe('storage key prefixes', () => {
     expect(isRegisteredStorageKey('uploads/org-id/1717000000000/0b1c2d3e-0000-4000-8000-000000000000.pdf')).toBe(true);
   });
 
-  it('lists an organization\'s uploads under its own segment only', () => {
-    expect(orgKeyPrefixes('org-1')).toEqual(['uploads/org-1/']);
+  it('lists an organization\'s uploads and exports under its own segment only', () => {
+    expect(orgKeyPrefixes('org-1')).toEqual(['uploads/org-1/', 'exports/orgs/org-1/']);
   });
 });

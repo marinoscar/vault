@@ -104,6 +104,9 @@ const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
     'push:write',
     'org_broadcasts:read',
     'org_broadcasts:write',
+    // E9.3: the user-data slice's system permissions (Admin only).
+    'system:factory_reset',
+    'orgs:offboard',
   ],
   contributor: [...SECRETS_RW, ...USER_SETTINGS, 'storage:read', 'storage:write', 'ai:use'],
   viewer: ['secrets:read', 'secret_types:read', 'media:read', ...USER_SETTINGS, 'storage:read'],
@@ -137,6 +140,8 @@ const SYSTEM_PERMISSIONS = new Set([
   'broadcasts:write',
   'push:read',
   'push:write',
+  'system:factory_reset',
+  'orgs:offboard',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -294,6 +299,25 @@ const ROUTES: readonly Route[] = [
   ['POST', `/api/admin/broadcasts/${ID}/cancel`, BROADCAST_WRITE],
   ['POST', `/api/admin/broadcasts/${ID}/resume`, BROADCAST_WRITE],
   ['DELETE', `/api/admin/broadcasts/${ID}`, BROADCAST_WRITE],
+  // Exports (E9.3): any signed-in user reaches the routes; the SERVICE checks each source's permission
+  ['GET', '/api/exports/sources', null],
+  ['POST', '/api/exports', null],
+  ['GET', '/api/exports', null],
+  ['GET', `/api/exports/${ID}`, null],
+  // Per-user data deletion (the Danger Zone): `user_settings:write`, held by every role that may edit its settings
+  ['GET', '/api/user-data/summary', 'user_settings:write'],
+  ['POST', '/api/user-data/deletions', 'user_settings:write'],
+  ['GET', `/api/user-data/deletions/${ID}`, 'user_settings:write'],
+  // Factory reset and organization offboarding: system permissions, Admin only
+  ['GET', '/api/admin/factory-reset/summary', 'system:factory_reset'],
+  ['POST', '/api/admin/factory-reset', 'system:factory_reset'],
+  ['GET', `/api/admin/factory-reset/${ID}`, 'system:factory_reset'],
+  ['GET', `/api/admin/orgs/${ID}/offboarding/summary`, 'orgs:offboard'],
+  ['POST', `/api/admin/orgs/${ID}/offboarding`, 'orgs:offboard'],
+  ['GET', `/api/admin/orgs/${ID}/offboarding/${ID}`, 'orgs:offboard'],
+  // Onboarding: the caller's checklists (`user_settings:read`) and the admin activation metrics
+  ['GET', '/api/onboarding', 'user_settings:read'],
+  ['GET', '/api/admin/onboarding/metrics', 'system_settings:read'],
 ];
 
 /**
@@ -418,6 +442,12 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
         'NotificationsController',
         'PushConfigController',
         'BroadcastsController',
+        'ExportsController',
+        'UserDataController',
+        'FactoryResetController',
+        'OrgOffboardingController',
+        'OnboardingController',
+        'OnboardingAdminController',
       ]);
       const discovered = new Map<string, RoutePermission>();
       for (const controller of discoverControllers(AppModule)) {
@@ -460,7 +490,7 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
       const grants = catalogGrants(buildPermissionCatalog());
       const heldBy = (roleNames: string[]) =>
         grants.filter((g) => roleNames.includes(g.role)).map((g) => g.permission);
-      const mine = (permissions: readonly string[]) => permissions.filter((p) => /^(secrets|secret_types|media|jobs|nodes|ai|ai_config|org_ai_config|broadcasts|org_broadcasts|push):/.test(p));
+      const mine = (permissions: readonly string[]) => permissions.filter((p) => /^(secrets|secret_types|media|jobs|nodes|ai|ai_config|org_ai_config|broadcasts|org_broadcasts|push|system|orgs):/.test(p));
 
       expect(mine(heldBy(['admin', 'org_admin'])).sort()).toEqual(mine(ROLE_PERMISSIONS.admin).sort());
       expect(mine(heldBy(['contributor'])).sort()).toEqual(mine(ROLE_PERMISSIONS.contributor).sort());

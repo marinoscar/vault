@@ -19,6 +19,7 @@
 // =============================================================================
 
 import '../app-registrations/host';
+import './app-metrics.manifest';
 
 import { PlatformHostCoreModule } from '@marinoscar/platform-api/host';
 

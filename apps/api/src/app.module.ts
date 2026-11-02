@@ -35,6 +35,9 @@ import { platformHostModule } from './platform/platform-host.module';
 import { settingsModule } from './platform/settings/settings.config';
 import { hostCoreModule } from './platform/host-core.config';
 import { aboutModule } from './platform/about/about.config';
+import { exportsModule } from './platform/exports/exports.config';
+import { userDataModule } from './platform/user-data/user-data.config';
+import { onboardingModule } from './platform/onboarding/onboarding.config';
 import { doctorModule } from './doctor/doctor.config';
 import { DoctorChecksModule } from './doctor/doctor-checks.module';
 
@@ -111,6 +114,15 @@ import configuration from './config/configuration';
     AiModule,
     BackupsModule,
     CardExpiryModule,
+    // Exports (issue #91, E9.3): `GET /api/exports/sources`, `POST|GET /api/exports`, the server-only
+    // `export.run` / `export.purge` jobs and the expiry cron. Sources: the platform's `user-data` and
+    // Vault's `vault-secrets` (secret METADATA only; values stay in the password-protected zip).
+    exportsModule,
+    // User data (E9.3): the per-user Danger Zone (`/api/user-data/*`, `user.data.purge`), the admin
+    // factory reset (`/api/admin/factory-reset/*`, `system:factory_reset`) and offboarding routes.
+    userDataModule,
+    // Onboarding (E9.3): `GET /api/onboarding`, `GET /api/admin/onboarding/metrics`.
+    onboardingModule,
   ],
   providers: [
     // Global validation pipe (Zod)

@@ -34,6 +34,9 @@ import AboutIcon from '@mui/icons-material/InfoOutlined';
 import EmailIcon from '@mui/icons-material/EmailOutlined';
 import PushIcon from '@mui/icons-material/NotificationsActiveOutlined';
 import BroadcastIcon from '@mui/icons-material/CampaignOutlined';
+import { setupGuideSettingsPage } from '@marinoscar/platform-web/onboarding/ui';
+import { DANGER_ZONE_GROUP_LABEL } from '@marinoscar/platform-web/user-data/headless';
+import { factoryResetSettingsPage } from '@marinoscar/platform-web/user-data/ui';
 
 /** The Console hub's title: the hub's heading and the compact AppBar's fallback. */
 export const ADMIN_HUB_TITLE = 'Console';
@@ -105,6 +108,10 @@ export const ADMIN_SECTIONS: SettingsSectionDef[] = [
         permission: 'ai_config:read',
         feature: 'ai',
       },
+      // E9.3 (#91), APPENDED: the packaged Setup guide. `system_settings:read` is what the
+      // platform adds the `admin` block of `GET /api/onboarding` for (its default `adminPermission`;
+      // no `onboarding:read` exists) and what gates `GET /api/admin/onboarding/metrics`.
+      { ...setupGuideSettingsPage.card, Icon: setupGuideSettingsPage.Icon },
     ],
   },
   {
@@ -172,5 +179,12 @@ export const ADMIN_SECTIONS: SettingsSectionDef[] = [
         permission: 'broadcasts:read',
       },
     ],
+  },
+  {
+    // E9.3 (#91): the packaged factory reset, in a Danger Zone group KEPT LAST of the registry
+    // (`dangerZoneLastViolations`). `system:factory_reset` is the string the platform's factory reset
+    // controller enforces (Admin only; never granted for holding `system_settings:write`).
+    label: DANGER_ZONE_GROUP_LABEL,
+    cards: [{ ...factoryResetSettingsPage.card, Icon: factoryResetSettingsPage.Icon }],
   },
 ];

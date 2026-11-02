@@ -105,6 +105,12 @@ The platform settings slice serves these (E4.1); Vault's namespaces are `ui`, `f
 - `GET /api/admin/backups/{id}/download` - Signed URL (300 s) `{url, expiresAt, fileName}` (`system_settings:write`)
 - `DELETE /api/admin/backups/{id}` - Delete the backup object, 204 (409 while running, 502 if storage refuses) (`system_settings:write`). See `docs/SECRETS.md`
 
+### Exports, user data and onboarding (E9.3)
+- `GET /api/exports/sources`, `POST|GET /api/exports`, `GET /api/exports/{id}` - the platform data export (any signed-in user). Sources `user-data` and `vault-secrets` (secret metadata only: never a value or ciphertext). Values leave only through `POST /api/secrets/export`. See `docs/SECRETS.md`.
+- `GET /api/user-data/summary`, `POST /api/user-data/deletions`, `GET /api/user-data/deletions/{jobId}` - Delete my data (`user_settings:write`); scopes `backups`, `content`, `everything`
+- `GET|POST /api/admin/factory-reset...` - Factory reset (`system:factory_reset`, Admin only); `/api/admin/orgs/{orgId}/offboarding...` (`orgs:offboard`, multi-organization mode only)
+- `GET /api/onboarding` (`user_settings:read`), `GET /api/admin/onboarding/metrics` (`system_settings:read`) - derived first-run checklists. See `docs/API.md`
+
 ### Health
 - `GET /api/health/live` - Liveness check
 - `GET /api/health/ready` - Readiness check (includes DB)
@@ -127,6 +133,7 @@ The platform settings slice serves these (E4.1); Vault's namespaces are `ui`, `f
 - `secrets:read/write/delete` - Secret access (own secrets)
 - `secrets:read_any/write_any/delete_any` - Secret access (all secrets, Admin only)
 - `secret_types:read/write/delete` - Secret type management (system types are always read-only regardless of permission)
+- `system:factory_reset`, `orgs:offboard` - the platform user-data slice (E9.3), system scope, Admin only
 
 ## Database Tables
 

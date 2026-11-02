@@ -4,7 +4,7 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AiConfigService as PlatformAiConfigService } from '@marinoscar/platform-api/ai';
 import { Auth, CurrentUser, type RequestUser } from '@marinoscar/platform-api/identity';
 
-import { AI_PROVIDER_ID } from './ai.constants';
+import { isCardScanAvailable } from './card-scan-availability';
 
 /**
  * `GET /api/ai/status`: compatibility alias for the platform's
@@ -45,12 +45,7 @@ export class AiStatusController {
   })
   async status(@CurrentUser() user: RequestUser) {
     const config = await this.aiConfig.describePublic(user.activeOrgId ?? undefined);
-    const provider = config.providers.find((p) => p.id === AI_PROVIDER_ID);
-    const enabled =
-      config.enabled &&
-      config.keyPolicy === 'byok_with_org_fallback' &&
-      provider?.enabled === true &&
-      provider.hasOrgKey === true;
+    const enabled = isCardScanAvailable(config);
     return { data: { enabled, features: { cardExtract: enabled } } };
   }
 }
