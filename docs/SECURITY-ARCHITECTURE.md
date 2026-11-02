@@ -242,29 +242,15 @@ const COOKIE_OPTIONS = {
 
 ### Token Cleanup Task
 
-Expired and revoked refresh tokens are automatically cleaned up to reduce database size:
-
-```typescript
-@Cron(CronExpression.EVERY_DAY_AT_3AM)
-async handleCron() {
-  const count = await this.authService.cleanupExpiredTokens();
-  logger.log(`Token cleanup: ${count} tokens removed`);
-}
-```
-
-**Cleanup Logic:**
-- Runs daily at 3:00 AM
-- Deletes tokens where:
-  - `expiresAt < NOW()` (expired)
-  - `revokedAt IS NOT NULL` (revoked)
-- Removes sensitive data from database
-- Improves query performance
+Expired and revoked refresh tokens (and expired device codes) are removed by the platform identity slice's two server-only housekeeping jobs, `auth.token.cleanup` and `device-auth.code.cleanup`, each enqueued by an enqueue-only cron. **Until E5.1 binds the job queue** (`IDENTITY_JOBS` is a no-op shim, `apps/api/src/platform/identity/identity-jobs.shim.ts`) they do not run: expired rows accumulate but are inert, because the guards reject them. See [local-exceptions](platform-adoption/local-exceptions.md).
 
 ---
 
 ## 3. Authorization & RBAC
 
 ### Roles and Permissions Model
+
+> **Since E3.2 (#77) identity is the platform's** (`@marinoscar/platform-api/identity`, mounted in `apps/api/src/platform/identity/`, single-organization mode). `admin` is the one SYSTEM role (held in `user_roles`); `org_admin`, `contributor` and `viewer` are ORG roles held on the default-organization membership (`memberships.role_id`). A user's permissions are the grants of their system roles plus those of the membership role. `secrets:*`, `secret_types:*` and `media:*` are org-scoped; their `*_any` forms are system-scoped and `admin` only. The diagram below shows the role tables; the membership relation is described in the platform's identity README. Token hashing (sha256), the `pat_` format and the `refresh_token` cookie (HttpOnly, path `/api/auth`) are unchanged, so credentials issued before E3.2 keep working (pinned by `test/identity/pre-deploy-credentials.db.spec.ts`).
 
 The system implements a flexible Role-Based Access Control (RBAC) model with three predefined roles:
 
@@ -1533,7 +1519,7 @@ Passport expects to work with Node.js `http.IncomingMessage` and `http.ServerRes
 
 The `GoogleOAuthGuard` uses NestJS's execution context to provide Passport with the raw Node.js objects it expects, then copies the authenticated user back to the Fastify request.
 
-**Implementation (`apps/api/src/auth/guards/google-oauth.guard.ts`):**
+**Implementation (the platform's `GoogleOAuthGuard`, `@marinoscar/platform-api/identity`; Vault's own copy at `apps/api/src/auth/guards/` was deleted in E3.2):**
 
 ```typescript
 import { ExecutionContext, Injectable } from '@nestjs/common';
@@ -1706,6 +1692,9 @@ The application provides a test authentication bypass mechanism that enables aut
 ### Key Security Files
 
 **Authentication & Authorization:**
+
+> Since E3.2 these files live in `@marinoscar/platform-api/identity`; Vault keeps only `apps/api/src/platform/identity/` (host ports), `app-registrations/` (permissions, ownership) and `common/constants/roles.constants.ts`. The tree below is the historical layout.
+
 ```
 apps/api/src/auth/
 ├── auth.controller.ts              # Auth endpoints (login, logout, refresh)

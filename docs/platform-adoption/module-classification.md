@@ -16,12 +16,12 @@ Baseline classification of every Vault module against EnterpriseAppBase (EAB) an
 
 | Module | Files | Category | Target slice or package | Epic | Notes and workaround |
 |---|---|---|---|---|---|
-| `auth` (Google OAuth, JWT, refresh, guards, strategies, `token-cleanup.task`) | 28 | noise | platform `identity` | E3 | Platform sign-in, sessions, refresh rotation. Re-bind the Google provider through `registerAuthProvider`; keep cookie and token lifetimes (15 min / 14 days) |
-| `users` | 11 | noise | `identity` users | E3 | |
-| `allowlist` | 8 | noise | `identity` allowlist | E3 | `INITIAL_ADMIN_EMAIL` bypass and claimed-entry rule must survive |
-| `pat` (personal access tokens) | 8 | noise | `identity` PATs | E3 | Existing token hashes must stay valid: verify hash format in the E2/E3 rehearsal |
-| `device-auth` (RFC 8628) | 16 | noise | `identity` device flow | E3 | `vaultcli` login depends on it; test against the new CLI in E11 |
-| `test-auth` (`/api/auth/test/login`) | 7 | vault-divergence | app test-login binding | E3 | Mock OAuth for CI; keep or replace with the platform's test helpers |
+| `auth` (Google OAuth, JWT, refresh, guards, strategies, `token-cleanup.task`) | 28 | noise | platform `identity` | E3 | Platform sign-in, sessions, refresh rotation. Re-bind the Google provider through `registerAuthProvider`; keep cookie and token lifetimes (15 min / 14 days) **Done in E3.2 (#77): deleted, served by `IdentityModule.forRoot` (`apps/api/src/platform/identity/`).** |
+| `users` | 11 | noise | `identity` users | E3 | **Done in E3.2 (#77): deleted, served by `IdentityModule.forRoot` (`apps/api/src/platform/identity/`).** |
+| `allowlist` | 8 | noise | `identity` allowlist | E3 | `INITIAL_ADMIN_EMAIL` bypass and claimed-entry rule must survive **Done in E3.2 (#77): deleted, served by `IdentityModule.forRoot` (`apps/api/src/platform/identity/`).** |
+| `pat` (personal access tokens) | 8 | noise | `identity` PATs | E3 | Existing token hashes must stay valid: verify hash format in the E2/E3 rehearsal **Done in E3.2 (#77): deleted, served by `IdentityModule.forRoot` (`apps/api/src/platform/identity/`).** |
+| `device-auth` (RFC 8628) | 16 | noise | `identity` device flow | E3 | `vaultcli` login depends on it; test against the new CLI in E11 **Done in E3.2 (#77): deleted, served by `IdentityModule.forRoot` (`apps/api/src/platform/identity/`).** |
+| `test-auth` (`/api/auth/test/login`) | 7 | vault-divergence | app test-login binding | E3 | Mock OAuth for CI; keep or replace with the platform's test helpers **Done in E3.2 (#77): deleted, served by `IdentityModule.forRoot` (`apps/api/src/platform/identity/`).** |
 | `health` | 5 | noise | `host` health controller | E3 | **Done in E3.1 (#76)**: deleted; `/api/health`, `/live` and `/ready` are the platform's, pinned by `test/health/health.integration.spec.ts` |
 | `settings` (`system-settings`, `user-settings`) | 13 | backport | `settings` registries | E4 | Vault stores an `ai` block (enabled, model, daily budget, encrypted key) in `system_settings` and UI/feature-flag JSON; become namespace registrations. The encrypted key moves to the credentials store at E4/E8 (data migration) |
 | `common/services/crypto.service.ts` | 1 | vault-divergence | app-owned; platform `credentials` for runtime keys | E4 | **Permanent** for secret ciphertext: `VAULT_ENCRYPTION_KEY`, AES-256-GCM. See local-exceptions |
