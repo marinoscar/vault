@@ -3,52 +3,24 @@ import { render, RenderOptions, RenderResult } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { vi } from 'vitest';
 import { ShellRoot } from '@marinoscar/platform-web/shell/ui';
-import { ShellPreferencesProvider } from '@marinoscar/platform-web/shell/headless';
 
 // The platform's identity context with a fixed session (instead of the
 // packaged `AuthProvider`, which would probe `/auth/refresh`), then what the
-// host mounts around these pages (apps/web/src/App.tsx): a table-layout port, a
-// platform host over the configured Vault client and the shell preferences,
-// under the Vault themes. The host's own bindings are not imported: a package
-// never depends on its host.
+// host mounts around these pages (apps/web/src/App.tsx): a platform host over
+// the configured Vault client, under the Vault themes. Like the host, no
+// preferences provider: the rail and the tables keep their state in
+// `/user-settings` through the platform host (the MSW handlers answer it).
+// The host's own bindings are not imported: a package never depends on its host.
 import { AuthContext, useAuth, usePermissions } from '@marinoscar/platform-web/identity/headless';
 import type {
   AuthContextValue,
   AuthProviderInfo as AuthProviderType,
 } from '@marinoscar/platform-web/identity/headless';
-import { DataTablePreferencesProvider } from '@marinoscar/platform-web/datatable/headless';
-import type { DataTablePreferencesPort } from '@marinoscar/platform-web/datatable/headless';
 import { PlatformHostProvider, createPlatformApiClient } from '@marinoscar/platform-web/core';
 import type { PlatformWebHost } from '@marinoscar/platform-web/core';
-import { createLocalStorageShellPreferencesPort } from '@marinoscar/platform-web/shell/headless';
 import { useMemo } from 'react';
 import { getVaultHttp } from '../../src/core/headless/http.js';
 import { VAULT_THEMES } from '../../src/brand/theme.js';
-
-/** Table layouts in `localStorage`, as the host stores them (apps/web/src/platform/dataTablePreferences.ts). */
-const DATA_TABLE_PREFERENCES_KEY = 'vault.datatable.preferences';
-const dataTablePreferencesPort: DataTablePreferencesPort = {
-  async load() {
-    try {
-      return JSON.parse(window.localStorage.getItem(DATA_TABLE_PREFERENCES_KEY) ?? '{}') as Record<string, unknown>;
-    } catch {
-      return {};
-    }
-  },
-  async save(tableId, entry) {
-    let all: Record<string, unknown> = {};
-    try {
-      all = JSON.parse(window.localStorage.getItem(DATA_TABLE_PREFERENCES_KEY) ?? '{}') as Record<string, unknown>;
-    } catch {
-      all = {};
-    }
-    if (entry === null) delete all[tableId];
-    else all[tableId] = entry;
-    window.localStorage.setItem(DATA_TABLE_PREFERENCES_KEY, JSON.stringify(all));
-  },
-};
-
-const shellPreferencesPort = createLocalStorageShellPreferencesPort('vault.shell.preferences');
 
 /** The packaged platform client over the configured Vault client (test/setup.ts). */
 const testPlatformApi = createPlatformApiClient(getVaultHttp());
@@ -178,11 +150,7 @@ function MockAuthProvider({
 
   return (
     <AuthContext.Provider value={contextValue}>
-      <DataTablePreferencesProvider port={dataTablePreferencesPort}>
-        <TestPlatformHostProvider>
-          <ShellPreferencesProvider port={shellPreferencesPort}>{children}</ShellPreferencesProvider>
-        </TestPlatformHostProvider>
-      </DataTablePreferencesProvider>
+      <TestPlatformHostProvider>{children}</TestPlatformHostProvider>
     </AuthContext.Provider>
   );
 }

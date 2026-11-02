@@ -3,9 +3,8 @@
 // =============================================================================
 //
 // Optional `user_settings` namespaces, in stored key order (append, never
-// insert): the platform's `dataTables` and `navigation`. They give the web's
-// localStorage shell and datatable preference shims
-// (PLATFORM-ADOPTION-SHIM(E4)) a server-side home; the web move is a follow-up.
+// insert): the platform's `dataTables` and `navigation`, where the web's
+// default DataTable layout port and rail-collapse preference store (#153).
 // `theme` and `profile` are core fields the platform composes ahead of these.
 // =============================================================================
 

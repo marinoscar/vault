@@ -88,7 +88,7 @@ function urlWinsPort(
   };
 }
 
-/** The port used when the host mounts no `DataTablePreferencesProvider`: nothing is stored. */
+/** The port used when there is nowhere to keep a layout (no provider and no platform host): nothing is stored. */
 const NO_STORED_LAYOUT: DataTablePreferencesPort = {
   load: async () => ({}),
   save: async () => undefined,
@@ -107,8 +107,9 @@ export default function SecretsPage() {
   const query = useMemo(() => readQuery(params), [params]);
   // Decided once per mount: only the URL the page was opened with may veto
   // the stored layout.
-  // The host's table-layout port (the `DataTablePreferencesProvider` it mounts);
-  // without one, a layout that lives only as long as the page.
+  // The table-layout port in force: a host's `DataTablePreferencesProvider`, else
+  // the platform default over the host's client (`/user-settings`, `dataTables`);
+  // with neither, a layout that lives only as long as the page.
   const dataTablePreferencesPort = useDataTablePreferencesPort() ?? NO_STORED_LAYOUT;
   const [preferencesPort] = useState(() =>
     urlWinsPort(dataTablePreferencesPort, SECRETS_TABLE_ID, {
