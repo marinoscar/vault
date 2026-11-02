@@ -53,7 +53,7 @@ describe('GeneralSettingsPage (the General card; was the UI Settings and Feature
       isSaving: false,
       updateSettings: vi.fn().mockResolvedValue(undefined),
       replaceSettings: vi.fn().mockResolvedValue(undefined),
-      updateAiSettings: vi.fn().mockResolvedValue(undefined),
+      updateCardExtractModel: vi.fn().mockResolvedValue(undefined),
       refresh: vi.fn(),
     });
   });
@@ -137,7 +137,7 @@ describe('GeneralSettingsPage (the General card; was the UI Settings and Feature
         isSaving: false,
         updateSettings: vi.fn(),
         replaceSettings: vi.fn(),
-        updateAiSettings: vi.fn().mockResolvedValue(undefined),
+        updateCardExtractModel: vi.fn().mockResolvedValue(undefined),
         refresh: vi.fn(),
       });
 
@@ -158,7 +158,7 @@ describe('GeneralSettingsPage (the General card; was the UI Settings and Feature
         isSaving: false,
         updateSettings: vi.fn(),
         replaceSettings: vi.fn(),
-        updateAiSettings: vi.fn().mockResolvedValue(undefined),
+        updateCardExtractModel: vi.fn().mockResolvedValue(undefined),
         refresh: vi.fn(),
       });
 
@@ -235,7 +235,7 @@ describe('GeneralSettingsPage (the General card; was the UI Settings and Feature
         isSaving: false,
         updateSettings: vi.fn(),
         replaceSettings: vi.fn(),
-        updateAiSettings: vi.fn().mockResolvedValue(undefined),
+        updateCardExtractModel: vi.fn().mockResolvedValue(undefined),
         refresh: vi.fn(),
       });
 
@@ -271,7 +271,7 @@ describe('GeneralSettingsPage (the General card; was the UI Settings and Feature
         isSaving: false,
         updateSettings: vi.fn(),
         replaceSettings: vi.fn(),
-        updateAiSettings: vi.fn().mockResolvedValue(undefined),
+        updateCardExtractModel: vi.fn().mockResolvedValue(undefined),
         refresh: vi.fn(),
       });
 
@@ -315,7 +315,7 @@ describe('GeneralSettingsPage (the General card; was the UI Settings and Feature
         isSaving: false,
         updateSettings,
         replaceSettings: vi.fn(),
-        updateAiSettings: vi.fn().mockResolvedValue(undefined),
+        updateCardExtractModel: vi.fn().mockResolvedValue(undefined),
         refresh: vi.fn(),
       });
 
@@ -366,7 +366,7 @@ describe('GeneralSettingsPage (the General card; was the UI Settings and Feature
         isSaving: false,
         updateSettings,
         replaceSettings: vi.fn(),
-        updateAiSettings: vi.fn().mockResolvedValue(undefined),
+        updateCardExtractModel: vi.fn().mockResolvedValue(undefined),
         refresh: vi.fn(),
       });
 
@@ -403,7 +403,7 @@ describe('GeneralSettingsPage (the General card; was the UI Settings and Feature
         isSaving: true,
         updateSettings: vi.fn(),
         replaceSettings: vi.fn(),
-        updateAiSettings: vi.fn().mockResolvedValue(undefined),
+        updateCardExtractModel: vi.fn().mockResolvedValue(undefined),
         refresh: vi.fn(),
       });
 

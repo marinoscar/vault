@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
   Alert,
   AlertTitle,
@@ -22,6 +22,7 @@ import { CardFlowStepper, type CardFlowStep } from '../components/cards/CardFlow
 import { CardReviewForm } from '../components/cards/CardReviewForm';
 import { useAiStatus } from '../hooks/useAiStatus';
 import {
+  AI_SETTINGS_PATH,
   LOW_CONFIDENCE_THRESHOLD,
   aiSeededFields,
   buildDefaultCardName,
@@ -78,9 +79,12 @@ export default function ImportCardPage() {
   const navigate = useNavigate();
   const { hasPermission } = usePermissions();
   const {
+    status: aiStatus,
     cardExtractEnabled,
+    canUseAi,
     isLoading: isStatusLoading,
   } = useAiStatus();
+  const canOpenAiSettings = hasPermission('ai_config:read');
   const {
     cardType,
     isTypeLoading,
@@ -344,10 +348,31 @@ export default function ImportCardPage() {
   }
 
   if (!cardExtractEnabled) {
-    // Non-admins get an explanation and nothing else. There is deliberately no
-    // API key input anywhere on this page for any role — credentials are
-    // entered in System Settings, behind the admin gate, and nowhere else.
-    const canConfigure = hasPermission('system_settings:write');
+    // Three reasons, three messages: the viewer may not use AI (no `ai:use`, a
+    // Viewer), AI is switched off, or it is on but card scanning is not set up.
+    // There is deliberately no API key input anywhere on this page for any role:
+    // the key is set on the Console's AI page, behind `ai_config:write`, and
+    // nowhere else. Only a viewer who can open that page is offered the link.
+    const reason: 'forbidden' | 'off' | 'not_set_up' = !canUseAi
+      ? 'forbidden'
+      : aiStatus?.enabled === true
+        ? 'not_set_up'
+        : 'off';
+    const text = {
+      forbidden: {
+        title: 'Card scanning is not available to you',
+        detail: 'Your role does not include AI features. You can still add a card by typing its details.',
+      },
+      off: {
+        title: 'AI is off',
+        detail: 'AI is off — an admin can turn it on in Console → AI.',
+      },
+      not_set_up: {
+        title: 'AI is not set up yet',
+        detail:
+          'AI is not set up yet — an administrator needs to add the OpenAI key and choose the card scanning model in Console → AI.',
+      },
+    }[reason];
     return (
       <Container maxWidth="md" disableGutters>
         <Breadcrumbs sx={{ mb: 2 }}>
@@ -367,14 +392,12 @@ export default function ImportCardPage() {
         </Breadcrumbs>
 
         <Alert severity="info">
-          <AlertTitle>Card scanning is not available</AlertTitle>
-          {canConfigure
-            ? 'AI card scanning is turned off, or no OpenAI API key is stored. Enable it and add a key under System Settings → AI.'
-            : 'AI card scanning is turned off for this application. Ask an administrator to enable it if you need it.'}
+          <AlertTitle>{text.title}</AlertTitle>
+          {text.detail}
           <Box sx={{ mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-            {canConfigure && (
-              <Button variant="contained" onClick={() => navigate('/admin/settings/ai')}>
-                Open AI settings
+            {canOpenAiSettings && reason !== 'forbidden' && (
+              <Button variant="contained" onClick={() => navigate(AI_SETTINGS_PATH)}>
+                Open Console → AI
               </Button>
             )}
             <Button variant="outlined" onClick={() => navigate('/secrets/new')}>
@@ -563,6 +586,13 @@ export default function ImportCardPage() {
             >
               <AlertTitle>{extractionError.title}</AlertTitle>
               {extractionError.detail}
+              {extractionError.adminLink && canOpenAiSettings && (
+                <Box sx={{ mt: 1 }}>
+                  <Link component={RouterLink} to={extractionError.adminLink.to}>
+                    {extractionError.adminLink.label}
+                  </Link>
+                </Box>
+              )}
               <Typography variant="body2" sx={{ mt: 1 }}>
                 Your photos were kept — fill the details in below and they will be
                 attached to the card.

@@ -3,7 +3,8 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { mockAdminUser, mockUser, render } from '../utils/test-utils';
+import { mockAdminUser, mockUser, render as baseRender } from '../utils/test-utils';
+import type { ReactElement } from 'react';
 import { server } from '../mocks/server';
 import ImportCardPage from '../../pages/ImportCardPage';
 import type { CardCropBox } from '../../types';
@@ -157,6 +158,23 @@ function extractOk() {
   );
 }
 
+
+/**
+ * A member who may scan cards: `secrets:write` and the platform's `ai:use` (E8.2:
+ * without `ai:use` the scan option is hidden). Every test renders as this user
+ * unless it passes another one.
+ */
+const SCANNER = {
+  ...mockUser,
+  roles: [{ name: 'contributor' }],
+  permissions: [...mockUser.permissions, 'secrets:read', 'secrets:write', 'ai:use'],
+};
+const ADMIN = { ...mockAdminUser, permissions: [...mockAdminUser.permissions, 'ai:use', 'ai_config:read', 'ai_config:write'] };
+
+function render(ui: ReactElement, options: Parameters<typeof baseRender>[1] = {}) {
+  return baseRender(ui, { ...options, wrapperOptions: { user: SCANNER, ...options.wrapperOptions } });
+}
+
 function extractFails(status: number, code: string, message = 'Extraction failed') {
   return http.post(`${API_BASE}/secrets/cards/extract`, () =>
     HttpResponse.json({ message, code, statusCode: status }, { status }),
@@ -228,41 +246,55 @@ beforeEach(() => {
 });
 
 describe('ImportCardPage — availability gating', () => {
-  it('hides the wizard and explains why when AI is disabled', async () => {
+  it('hides the wizard and says AI is off when an admin switched it off', async () => {
     server.use(aiStatus(false));
     render(<ImportCardPage />);
 
-    expect(
-      await screen.findByText(/card scanning is not available/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('AI is off')).toBeInTheDocument();
+    expect(screen.getByText(/AI is off — an admin can turn it on in Console → AI/)).toBeInTheDocument();
     expect(screen.queryByTestId('card-front-input')).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: /take a photo/i }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /take a photo/i })).not.toBeInTheDocument();
+    // A member cannot open the Console page, so no link is offered.
+    expect(screen.queryByRole('button', { name: /open console → ai/i })).not.toBeInTheDocument();
   });
 
-  it('points an administrator at the AI settings card', async () => {
-    server.use(aiStatus(false));
-    render(<ImportCardPage />, { wrapperOptions: { user: mockAdminUser } });
+  it('says AI is not set up yet when AI is on but card scanning is unavailable', async () => {
+    server.use(
+      http.get(`${API_BASE}/ai/status`, () =>
+        HttpResponse.json({ data: { enabled: true, features: { cardExtract: false } } }),
+      ),
+    );
+    render(<ImportCardPage />);
 
-    const button = await screen.findByRole('button', { name: /open ai settings/i });
+    expect(await screen.findByText('AI is not set up yet')).toBeInTheDocument();
+  });
+
+  it('points an administrator at Console → AI', async () => {
+    server.use(aiStatus(false));
+    render(<ImportCardPage />, { wrapperOptions: { user: ADMIN } });
+
+    const button = await screen.findByRole('button', { name: /open console → ai/i });
     fireEvent.click(button);
 
     expect(mockNavigate).toHaveBeenCalledWith('/admin/settings/ai');
   });
 
-  it('never offers a non-admin an API key form', async () => {
-    server.use(aiStatus(false));
+  it('hides the scan option from a viewer without ai:use, even with AI on', async () => {
+    server.use(aiStatus(true));
     render(<ImportCardPage />, { wrapperOptions: { user: mockUser } });
 
-    await screen.findByText(/card scanning is not available/i);
+    expect(await screen.findByText('Card scanning is not available to you')).toBeInTheDocument();
+    expect(screen.queryByTestId('card-front-input')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /open console → ai/i })).not.toBeInTheDocument();
+  });
 
-    expect(
-      screen.queryByRole('button', { name: /system settings/i }),
-    ).not.toBeInTheDocument();
+  it('never offers anyone an API key form', async () => {
+    server.use(aiStatus(false));
+    render(<ImportCardPage />, { wrapperOptions: { user: ADMIN } });
+
+    await screen.findByText('AI is off');
     // No input of any kind: nothing on this page should ever take a credential.
     expect(screen.queryAllByRole('textbox')).toHaveLength(0);
-    expect(screen.getByText(/ask an administrator/i)).toBeInTheDocument();
   });
 
   it('fails closed when the status call itself errors', async () => {
@@ -273,9 +305,8 @@ describe('ImportCardPage — availability gating', () => {
     );
     render(<ImportCardPage />);
 
-    expect(
-      await screen.findByText(/card scanning is not available/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('AI is off')).toBeInTheDocument();
+    expect(screen.queryByTestId('card-front-input')).not.toBeInTheDocument();
   });
 });
 
@@ -633,13 +664,7 @@ describe('ImportCardPage — error codes get their own message', () => {
       label: 'AI_NOT_CONFIGURED',
       status: 503,
       code: 'AI_NOT_CONFIGURED',
-      expected: /administrator needs to enable AI/i,
-    },
-    {
-      label: 'AI_KEY_UNREADABLE',
-      status: 503,
-      code: 'AI_KEY_UNREADABLE',
-      expected: /could not be read.*re-enter it/i,
+      expected: /AI is not set up yet — an administrator needs to add the OpenAI key/i,
     },
     {
       label: 'AI_INVALID_IMAGE',
@@ -701,6 +726,47 @@ describe('ImportCardPage — error codes get their own message', () => {
     expect(screen.getByText(expected)).toBeInTheDocument();
     // Whatever went wrong, manual entry is always still on the table.
     expect(screen.getByRole('button', { name: /save card/i })).toBeInTheDocument();
+  });
+});
+
+describe('ImportCardPage — AI switched off or not set up mid-flow (E8.2)', () => {
+  function extractDisabled() {
+    return http.post(`${API_BASE}/secrets/cards/extract`, () =>
+      HttpResponse.json(
+        { message: 'AI is disabled', code: 'FORBIDDEN', statusCode: 403, details: { reason: 'AI_DISABLED' } },
+        { status: 403 },
+      ),
+    );
+  }
+
+  it('maps 403 AI_DISABLED to "AI is off" and links an administrator to Console → AI', async () => {
+    server.use(aiStatus(true), secretTypes(), extractDisabled());
+    render(<ImportCardPage />, { wrapperOptions: { user: ADMIN } });
+    await walkToReview();
+
+    expect(screen.getByText(/AI is off — an admin can turn it on in Console → AI/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open Console → AI' })).toHaveAttribute('href', '/admin/settings/ai');
+    // Manual entry stays available, and there is nothing to retry.
+    expect(screen.getByRole('button', { name: /save card/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /try again/i })).not.toBeInTheDocument();
+  });
+
+  it('shows the same message to a member without the link', async () => {
+    server.use(aiStatus(true), secretTypes(), extractDisabled());
+    render(<ImportCardPage />);
+    await walkToReview();
+
+    expect(screen.getByText(/AI is off — an admin can turn it on/)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Open Console → AI' })).not.toBeInTheDocument();
+  });
+
+  it('maps 503 AI_NOT_CONFIGURED to "AI is not set up yet"', async () => {
+    server.use(aiStatus(true), secretTypes(), extractFails(503, 'AI_NOT_CONFIGURED'));
+    render(<ImportCardPage />, { wrapperOptions: { user: ADMIN } });
+    await walkToReview();
+
+    expect(screen.getByText('AI is not set up yet')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open Console → AI' })).toBeInTheDocument();
   });
 });
 

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { usePermissions } from '@marinoscar/platform-web/identity/headless';
 
 import { getAiStatus } from '../services/api';
 import type { AiStatus } from '../types';
@@ -8,8 +9,14 @@ interface UseAiStatusResult {
   isLoading: boolean;
   /** Set when the status call itself failed, not when AI is merely disabled. */
   error: string | null;
-  /** Convenience: true only when card extraction is actually usable. */
+  /**
+   * True only when card extraction is actually usable BY THIS VIEWER: AI is on,
+   * `card_extract` is available, and the viewer holds `ai:use` (the extract route
+   * needs it; a Viewer does not hold it, so the scan entry points stay hidden).
+   */
   cardExtractEnabled: boolean;
+  /** The viewer holds `ai:use` (independent of whether AI is switched on). */
+  canUseAi: boolean;
   refresh: () => Promise<void>;
 }
 
@@ -22,9 +29,15 @@ interface UseAiStatusResult {
  * can only end in an error the user cannot act on.
  *
  * The result is not cached across mounts: an admin can flip the feature on in
- * another tab, and the status call is two booleans.
+ * another tab, and the status call is two booleans. `GET /api/ai/status` is the
+ * compatibility alias of the platform's `GET /api/ai/config` (E8.1), same wire.
+ *
+ * The UI presents, the API authorizes: hiding the scan option from a caller
+ * without `ai:use` saves them a 403, it is not the gate.
  */
 export function useAiStatus(): UseAiStatusResult {
+  const { hasPermission } = usePermissions();
+  const canUseAi = hasPermission('ai:use');
   const [status, setStatus] = useState<AiStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -56,7 +69,8 @@ export function useAiStatus(): UseAiStatusResult {
     status,
     isLoading,
     error,
-    cardExtractEnabled: status?.enabled === true && status.features.cardExtract === true,
+    cardExtractEnabled: canUseAi && status?.enabled === true && status.features.cardExtract === true,
+    canUseAi,
     refresh: load,
   };
 }

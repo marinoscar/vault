@@ -69,6 +69,9 @@ export const mockAdminUser: MockUser = {
     'users:read',
     'users:write',
     'rbac:manage',
+    // The platform AI slice's admin pair (E8.2): the seeded `admin` role holds it.
+    'ai_config:read',
+    'ai_config:write',
   ],
   isActive: true,
   createdAt: new Date().toISOString(),

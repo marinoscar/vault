@@ -1,4 +1,5 @@
 import { SettingsHub } from '@marinoscar/platform-web/settings/ui';
+import { useSettingsFeatures } from '@marinoscar/platform-web/settings/headless';
 import { usePermissions } from '@marinoscar/platform-web/identity/headless';
 import { ADMIN_HUB_TITLE, ADMIN_SECTIONS } from '../../config/adminSections';
 
@@ -13,6 +14,9 @@ import { ADMIN_HUB_TITLE, ADMIN_SECTIONS } from '../../config/adminSections';
  */
 export default function AdminSettingsHubPage() {
   const { hasPermission } = usePermissions();
+  // The registered feature resolvers (config/settingsFeatures.ts): `ai` hides the
+  // `feature: 'ai'` cards while AI is off (E8.2).
+  const features = useSettingsFeatures();
   return (
     <SettingsHub
       sections={ADMIN_SECTIONS}
@@ -20,6 +24,7 @@ export default function AdminSettingsHubPage() {
       title={ADMIN_HUB_TITLE}
       subtitle="Configure Vault for everyone: users, AI, backups and operations."
       hasPermission={hasPermission}
+      features={features}
     />
   );
 }

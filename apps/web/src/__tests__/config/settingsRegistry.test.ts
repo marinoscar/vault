@@ -29,6 +29,9 @@ import settingsPermissionsSource from '../../../../../node_modules/@marinoscar/p
 import usersPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/identity/users/users.permissions.js?raw';
 import allowlistPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/identity/allowlist/allowlist.permissions.js?raw';
 import notificationsPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/notifications/notifications.permissions.js?raw';
+import aiPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/ai/ai.permissions.js?raw';
+import aiAdminControllerSource from '../../../../../node_modules/@marinoscar/platform-api/dist/ai/config/ai-admin.controller.js?raw';
+import aiUsageAdminControllerSource from '../../../../../node_modules/@marinoscar/platform-api/dist/ai/usage/ai-usage-admin.controller.js?raw';
 
 const cardsOf = (sections: SettingsSectionDef[]): SettingsCardDef[] => sections.flatMap((s) => s.cards);
 const ADMIN_CARDS = cardsOf(ADMIN_SECTIONS);
@@ -41,8 +44,8 @@ const declaredIds = (source: string): string[] =>
 /**
  * Every permission string the API declares and seeds: Vault's own
  * (`VAULT_PERMISSIONS`) plus the platform `identity` (users, allowlist) and
- * `settings` slices and the `notifications` slice (`broadcasts:*`, `push:*`, E7),
- * which `PERMISSION_OPTIONS` lists (asserted below, so a slice Vault stops
+ * `settings` slices, the `notifications` slice (`broadcasts:*`, `push:*`, E7)
+ * and the `ai` slice (`ai_config:*`, `ai:use`, E8), which `PERMISSION_OPTIONS` lists (asserted below, so a slice Vault stops
  * seeding drops its strings from this set).
  */
 const API_PERMISSIONS = new Set([
@@ -51,6 +54,7 @@ const API_PERMISSIONS = new Set([
   ...declaredIds(usersPermissionsSource),
   ...declaredIds(allowlistPermissionsSource),
   ...declaredIds(notificationsPermissionsSource),
+  ...declaredIds(aiPermissionsSource),
 ]);
 
 /**
@@ -62,8 +66,8 @@ const CONTROLLER_MIRROR: Record<string, string | undefined> = {
   '/admin/settings/general': 'system_settings:read',
   // users.controller.ts GET /api/users
   '/admin/settings/users': 'users:read',
-  // system-settings.controller.ts (ai namespace); ai-verify.controller.ts needs :write
-  '/admin/settings/ai': 'system_settings:read',
+  // E8.2, the platform AI slice: ai-admin.controller GET /api/admin/ai/config (ai_config:read)
+  '/admin/settings/ai': 'ai_config:read',
   // backups.controller.ts GET /api/admin/backups/schedule and the run list
   '/admin/settings/backups': 'system_settings:read',
   // platform maintenance controller GET /api/admin/maintenance (default)
@@ -91,7 +95,18 @@ const CONTROLLER_MIRROR: Record<string, string | undefined> = {
   '/admin/settings/broadcasts': 'broadcasts:read',
   // UserNotificationsPage reads the caller's preferences from GET /api/user-settings
   '/settings/notifications': 'user_settings:read',
+  // ai-admin.controller GET /api/admin/ai/models (ai_config:read)
+  '/admin/settings/ai/models': 'ai_config:read',
+  // ai-usage-admin.controller GET /api/admin/ai/usage (ai_config:read)
+  '/admin/settings/ai/usage': 'ai_config:read',
 };
+
+/**
+ * Cards that sit BENEATH another card's route rather than directly under the
+ * hub: the AI models and AI usage pages live at the paths the packaged AI pages
+ * link to (`/admin/settings/ai/models`), under the `AI` card (E8.2).
+ */
+const NESTED_CARD_PATHS = new Set(['/admin/settings/ai/models', '/admin/settings/ai/usage']);
 
 /** `App.tsx` routes: path -> the single `permission="..."` its RequirePermission gate names (or null). */
 function appRouteGates(): Map<string, string | null> {
@@ -131,7 +146,14 @@ describe.each([
     for (const path of paths) {
       expect(path).toBeDefined();
       expect(path!.startsWith(`${hubPath}/`)).toBe(true);
-      expect(path!.slice(hubPath.length + 1)).not.toContain('/');
+      if (NESTED_CARD_PATHS.has(path!)) {
+        // Beneath a sibling card, gated alike.
+        const parent = cards.find((c) => c.path !== path && path!.startsWith(`${c.path}/`));
+        expect(parent, path).toBeDefined();
+        expect(parent!.permission).toBe(cards.find((c) => c.path === path)!.permission);
+      } else {
+        expect(path!.slice(hubPath.length + 1)).not.toContain('/');
+      }
       expect(GATES.has(path!)).toBe(true);
     }
   });
@@ -153,7 +175,9 @@ describe.each([
   it('owns every settings route in App.tsx (a card path or a page beneath one)', () => {
     const routes = [...GATES.keys()].filter((path) => path.startsWith(`${hubPath}/`));
     for (const route of routes) {
-      const owner = cards.find((card) => route === card.path || route.startsWith(`${card.path}/`));
+      const owner =
+        cards.find((card) => route === card.path) ??
+        cards.find((card) => route.startsWith(`${card.path}/`));
       expect(owner, route).toBeDefined();
       // A page beneath a card is gated like the card.
       expect(GATES.get(route)).toBe(owner!.permission ?? null);
@@ -169,13 +193,48 @@ describe.each([
   });
 });
 
+describe('the AI cards (E8.2, the platform AI slice)', () => {
+  const byPath = (path: string) => ADMIN_CARDS.find((card) => card.path === path);
+
+  it('gates AI, AI models and AI usage on ai_config:read, the string the platform controllers enforce', () => {
+    for (const path of ['/admin/settings/ai', '/admin/settings/ai/models', '/admin/settings/ai/usage']) {
+      expect(byPath(path)?.permission, path).toBe('ai_config:read');
+    }
+    // The controllers' own route tables name it (the comment block above each class).
+    expect(aiAdminControllerSource).toMatch(/GET\s+\/api\/admin\/ai\/config\s+ai_config:read/);
+    expect(aiAdminControllerSource).toMatch(/GET\s+\/api\/admin\/ai\/models\s+ai_config:read/);
+    expect(aiUsageAdminControllerSource).toMatch(/GET \/api\/admin\/ai\/usage\s+ai_config:read/);
+  });
+
+  it('hides AI models and AI usage while AI is off, never the AI card that switches it on', () => {
+    expect(byPath('/admin/settings/ai')?.feature).toBeUndefined();
+    expect(byPath('/admin/settings/ai/models')?.feature).toBe('ai');
+    expect(byPath('/admin/settings/ai/usage')?.feature).toBe('ai');
+  });
+
+  it('routes the AI models and AI usage pages behind RequireAiEnabled inside the permission gate', () => {
+    for (const page of ['AiModelsPage', 'AiUsagePage']) {
+      expect(appSource).toMatch(
+        new RegExp(`<RequirePermission permission="ai_config:read" fallback=\\{TO_HOME\\}><RequireAiEnabled><${page} />`),
+      );
+    }
+  });
+
+  it('mounts the AI config and the AI adapters (Vault\'s spinner) around the routes', () => {
+    expect(appSource).toContain('<VaultAiConfigProvider>');
+    expect(appSource).toContain('<AiWebAdaptersProvider adapters={vaultAiAdapters}>');
+  });
+});
+
 describe('the registries as a whole', () => {
-  it('lists the cards in append order (E10.3, then E7.2)', () => {
+  it('lists the cards in append order (E10.3, then E7.2, then E8.2)', () => {
     expect(ADMIN_CARDS.map((card) => card.title)).toEqual([
       'General',
       'Users & Allowlist',
       'AI',
       'Backups',
+      'AI models',
+      'AI usage',
       'Maintenance',
       'Doctor',
       'About',
@@ -249,6 +308,10 @@ describe('the registries as a whole', () => {
     expect(declaredIds(allowlistPermissionsSource)).toContain('allowlist:read');
     expect(declaredIds(notificationsPermissionsSource)).toEqual(
       expect.arrayContaining(['broadcasts:read', 'push:read']),
+    );
+    expect(slices).toContain("'ai'");
+    expect(declaredIds(aiPermissionsSource)).toEqual(
+      expect.arrayContaining(['ai_config:read', 'ai_config:write', 'ai:use']),
     );
     // No invented string sneaks in through a loose pattern.
     for (const id of API_PERMISSIONS) expect(id).toMatch(/^[a-z_]+:[a-z_]+$/);

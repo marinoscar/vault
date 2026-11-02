@@ -29,6 +29,8 @@ const CONTROLLER_PERMISSIONS = new Set([
   'users:read',
   'push:read',
   'broadcasts:read',
+  // The platform AI slice's admin controllers (E8.2: AI, AI models, AI usage cards).
+  'ai_config:read',
 ]);
 
 describe('destinations table', () => {
@@ -67,6 +69,7 @@ describe('destinations table', () => {
     expect(isDestinationVisible(consoleDest, holds(['users:read']))).toBe(true);
     expect(isDestinationVisible(consoleDest, holds(['push:read']))).toBe(true);
     expect(isDestinationVisible(consoleDest, holds(['broadcasts:read']))).toBe(true);
+    expect(isDestinationVisible(consoleDest, holds(['ai_config:read']))).toBe(true);
     expect(isDestinationVisible(consoleDest, holds(['secrets:read']))).toBe(false);
   });
 

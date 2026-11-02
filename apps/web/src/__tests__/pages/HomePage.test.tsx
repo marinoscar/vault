@@ -29,8 +29,9 @@ const withPerms = (permissions: string[], extra: Partial<MockUser> = {}): MockUs
   ...extra,
 });
 const READER = withPerms(['secrets:read']);
-const WRITER = withPerms(['secrets:read', 'secrets:write', 'media:read']);
-const ADMIN = withPerms(['secrets:read', 'secrets:write', 'media:read', 'system_settings:read'], {
+// `ai:use` (E8.2): Scan a card needs it as well as secrets:write.
+const WRITER = withPerms(['secrets:read', 'secrets:write', 'media:read', 'ai:use']);
+const ADMIN = withPerms(['secrets:read', 'secrets:write', 'media:read', 'system_settings:read', 'ai:use'], {
   roles: [{ name: 'admin' }],
 });
 const NO_ACCESS = withPerms([]);

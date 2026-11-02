@@ -3,7 +3,21 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { HttpResponse, http } from 'msw';
 import { server } from '../mocks/server';
-import { render } from '../utils/test-utils';
+import type { ReactElement } from 'react';
+import { mockUser, render as baseRender } from '../utils/test-utils';
+
+/**
+ * Renders as a member who may scan (`secrets:write` and `ai:use`, E8.2: the scan
+ * option is hidden without `ai:use`) unless a test passes another user.
+ */
+const SCANNER = {
+  ...mockUser,
+  roles: [{ name: 'contributor' }],
+  permissions: [...mockUser.permissions, 'secrets:read', 'secrets:write', 'ai:use'],
+};
+function render(ui: ReactElement, options: Parameters<typeof baseRender>[1] = {}) {
+  return baseRender(ui, { ...options, wrapperOptions: { user: SCANNER, ...options.wrapperOptions } });
+}
 import CardsPage from '../../pages/CardsPage';
 import type { CardSummary } from '../../hooks/useCards';
 
@@ -314,6 +328,16 @@ describe('CardsPage', () => {
         screen.queryByRole('button', { name: /scan a card/i }),
       ).not.toBeInTheDocument(),
     );
+  });
+
+  it('hides the import action from a viewer without ai:use, even with AI on (E8.2)', async () => {
+    mockCards([makeSummary({ id: 'card-1', name: 'Everyday Card' })]);
+    render(<CardsPage />, { wrapperOptions: { user: mockUser } });
+
+    expect(await screen.findByText('Everyday Card')).toBeInTheDocument();
+    // Give the (enabled) status call time to land: the button must still not appear.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.queryByRole('button', { name: /scan a card/i })).not.toBeInTheDocument();
   });
 
   it('hides the import action when the status check fails', async () => {

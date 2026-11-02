@@ -92,7 +92,6 @@ describe('describeCardExtractionError', () => {
   it('flags the codes only an administrator can clear', () => {
     for (const code of [
       AI_ERROR_CODES.NOT_CONFIGURED,
-      AI_ERROR_CODES.KEY_UNREADABLE,
       AI_ERROR_CODES.UPSTREAM_AUTH,
     ]) {
       expect(
@@ -105,6 +104,37 @@ describe('describeCardExtractionError', () => {
         new ApiError('x', 422, AI_ERROR_CODES.EXTRACTION_FAILED),
       ).adminActionRequired,
     ).toBe(false);
+  });
+
+  it('maps the kill switch (403 FORBIDDEN, details.reason AI_DISABLED) to "AI is off" with a Console link', () => {
+    const off = describeCardExtractionError(
+      new ApiError('AI is disabled', 403, 'FORBIDDEN', { reason: 'AI_DISABLED' }),
+    );
+    expect(off.title).toBe('AI is off');
+    expect(off.detail).toMatch(/AI is off — an admin can turn it on in Console → AI/);
+    expect(off.adminActionRequired).toBe(true);
+    expect(off.retryable).toBe(false);
+    expect(off.adminLink).toEqual({ label: 'Open Console → AI', to: '/admin/settings/ai' });
+  });
+
+  it('maps 503 AI_NOT_CONFIGURED to "AI is not set up yet"', () => {
+    for (const err of [
+      new ApiError('x', 503, AI_ERROR_CODES.NOT_CONFIGURED),
+      new ApiError('x', 503, 'SERVICE_UNAVAILABLE'),
+    ]) {
+      const message = describeCardExtractionError(err);
+      expect(message.title).toBe('AI is not set up yet');
+      expect(message.detail).toMatch(/not set up yet/);
+      expect(message.adminLink?.to).toBe('/admin/settings/ai');
+    }
+  });
+
+  it('maps a 403 without AI_DISABLED (no ai:use) to a role message, never "AI is off"', () => {
+    const forbidden = describeCardExtractionError(new ApiError('Forbidden', 403, 'FORBIDDEN'));
+    expect(forbidden.title).not.toMatch(/AI is off/);
+    expect(forbidden.detail).toMatch(/role/i);
+    expect(forbidden.adminLink).toBeUndefined();
+    expect(forbidden.retryable).toBe(false);
   });
 
   it('falls back to the status when the filter has clobbered the code (issue #35)', () => {

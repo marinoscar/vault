@@ -1,8 +1,8 @@
 /**
  * The settings routes through the real App (E10.3, #94): old URLs redirect to
  * their cards, a card route refuses a viewer without the card's permission,
- * and the packaged Doctor, About, Maintenance, Email, Web Push, Broadcasts and
- * Notifications pages reach the API through Vault's client (platform/platformHost.tsx),
+ * and the packaged Doctor, About, Maintenance, Email, Web Push, Broadcasts,
+ * Notifications and AI pages reach the API through Vault's client (platform/platformHost.tsx),
  * bearer token included.
  */
 import { describe, it, expect } from 'vitest';
@@ -125,6 +125,8 @@ describe('settings routes', () => {
     ['/admin/settings/push', '/api/admin/push-config', ['push:read']],
     ['/admin/settings/broadcasts', '/api/admin/broadcasts', ['broadcasts:read']],
     ['/settings/notifications', '/api/notifications/events', ['user_settings:read']],
+    // E8.2: the packaged AI page (the AI card; reachable while AI is off).
+    ['/admin/settings/ai', '/api/admin/ai/config', ['ai_config:read']],
   ])('%s renders the packaged page, which calls %s through Vault\'s client', async (route, apiPath, permissions) => {
     signInAs(permissions);
     const seen: (string | null)[] = [];
@@ -145,6 +147,9 @@ describe('settings routes', () => {
     ['/admin/settings/email', '/'],
     ['/admin/settings/push', '/'],
     ['/admin/settings/broadcasts', '/'],
+    ['/admin/settings/ai', '/'],
+    ['/admin/settings/ai/models', '/'],
+    ['/admin/settings/ai/usage', '/'],
   ])('sends a viewer without the card permission from %s to %s', async (route, target) => {
     signInAs(['user_settings:read', 'user_settings:write']);
     renderAt(route);
@@ -157,6 +162,32 @@ describe('settings routes', () => {
     renderAt('/settings/notifications');
 
     await waitFor(() => expect(probe).toBe('/settings'), SLOW);
+  });
+
+  it('sends an ai_config:read holder from AI models to / while AI is off (RequireAiEnabled)', async () => {
+    signInAs(['ai_config:read']);
+    renderAt('/admin/settings/ai/models');
+
+    await waitFor(() => expect(probe).toBe('/'), SLOW);
+  });
+
+  it('renders the packaged AI models page while AI is on, calling /api/admin/ai/models with the bearer', async () => {
+    signInAs(['ai_config:read']);
+    const seen: (string | null)[] = [];
+    server.use(
+      http.get('*/api/ai/config', () =>
+        HttpResponse.json({ data: { enabled: true, keyPolicy: 'byok_with_org_fallback', providers: [] } }),
+      ),
+      http.get('*/api/admin/ai/models', ({ request }) => {
+        seen.push(request.headers.get('authorization'));
+        return HttpResponse.json({ data: { items: [], total: 0, page: 1, pageSize: 20 } });
+      }),
+    );
+    renderAt('/admin/settings/ai/models');
+
+    await waitFor(() => expect(seen.length).toBeGreaterThan(0), SLOW);
+    expect(seen[0]).toMatch(/^Bearer /);
+    expect(probe).toBe('/admin/settings/ai/models');
   });
 
   it('lets a holder of push:read alone into the Console hub (any-of gate)', async () => {
