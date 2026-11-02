@@ -2,10 +2,10 @@
  * The identity slice as Vault binds it (E3.3, #78): the packaged
  * `AuthProvider`, guards and pages from `@marinoscar/platform-web/identity`,
  * Vault's brand in the LoginPage slots, the identity cards spread into the
- * settings registries, and the table-layout store that stands in for
- * `/user-settings` until E4.
+ * settings registries. (The tables' layouts are the platform default over
+ * `/user-settings`: platform/userSettingsPreferences.test.tsx.)
  */
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { render as rtlRender, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { http, HttpResponse } from 'msw';
@@ -20,10 +20,6 @@ import App from '../../App';
 import LoginPage, { LOGIN_SLOTS } from '../../identity/LoginPage';
 import { vaultIdentityAdapters } from '../../identity/identityAdapters';
 import { vaultPlatformApi } from '../../platform/platformHost';
-import {
-  DATA_TABLE_PREFERENCES_STORAGE_KEY,
-  dataTablePreferencesPort,
-} from '../../platform/dataTablePreferences';
 import { ADMIN_SECTIONS } from '../../config/adminSections';
 import { USER_SETTINGS_SECTIONS } from '../../config/userSettingsSections';
 import { PRODUCT_NAME, PRODUCT_TAGLINE } from '@marinoscar/vault-web/brand';
@@ -185,28 +181,5 @@ describe('adapters and host', () => {
       api.setAccessToken(null);
     }
     expect(seen).toEqual(['Bearer token-a', 'Bearer token-a']);
-  });
-});
-
-describe('table layout store (until /user-settings carries dataTables, E4)', () => {
-  afterEach(() => window.localStorage.removeItem(DATA_TABLE_PREFERENCES_STORAGE_KEY));
-
-  it('round-trips a layout per table and forgets it on null', async () => {
-    await dataTablePreferencesPort.save('admin-users', { density: 'compact' } as never);
-    await dataTablePreferencesPort.save('allowlist', { density: 'standard' } as never);
-    expect(await dataTablePreferencesPort.load()).toEqual({
-      'admin-users': { density: 'compact' },
-      allowlist: { density: 'standard' },
-    });
-
-    await dataTablePreferencesPort.save('admin-users', null);
-    expect(await dataTablePreferencesPort.load()).toEqual({ allowlist: { density: 'standard' } });
-  });
-
-  it('reads a corrupt or non-object store as empty', async () => {
-    window.localStorage.setItem(DATA_TABLE_PREFERENCES_STORAGE_KEY, '{not json');
-    expect(await dataTablePreferencesPort.load()).toEqual({});
-    window.localStorage.setItem(DATA_TABLE_PREFERENCES_STORAGE_KEY, '[1,2]');
-    expect(await dataTablePreferencesPort.load()).toEqual({});
   });
 });

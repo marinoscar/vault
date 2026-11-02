@@ -1,5 +1,4 @@
 import { Routes, Route, Navigate, useParams } from 'react-router-dom';
-import { ShellPreferencesProvider } from '@marinoscar/platform-web/shell/headless';
 import { ShellRoot } from '@marinoscar/platform-web/shell/ui';
 // Identity is the platform's (E3.3, #78): the session provider, the route
 // guards and the identity pages come from @marinoscar/platform-web/identity.
@@ -17,7 +16,6 @@ import { AiWebAdaptersProvider } from '@marinoscar/platform-web/ai/headless';
 import { RequireAiEnabled } from '@marinoscar/platform-web/ai/ui/require-ai-enabled';
 import { VaultAiConfigProvider } from './platform/aiConfig';
 import { vaultAiAdapters } from './platform/aiAdapters';
-import { shellPreferencesPort } from './platform/shellPreferences';
 import { appTelemetryAdapters } from './platform/telemetryAdapters';
 import { AppTelemetryConfigProvider } from './platform/TelemetryConfigBinding';
 import { VAULT_THEMES } from './theme';
@@ -329,11 +327,15 @@ function AppRoutes() {
  * The tree, outermost first: `ShellRoot` (the Vault themes, the viewer's
  * light / dark / system choice, CssBaseline), the platform's identity
  * providers (the session over Vault's one HTTP client, the identity pages'
- * adapters, the tables' layout store), the AI config (`GET /api/ai/config`
- * once signed in; the `ai` feature), the telemetry config and adapters, the platform host the packaged pages
- * read (Vault's client, the signed-in viewer, the theme setter), the AI
- * pages' adapters (Vault's spinner), and the shell's preferences port (the rail's collapse). The shell itself is
+ * adapters), the AI config (`GET /api/ai/config` once signed in; the `ai`
+ * feature), the telemetry config and adapters, the platform host the packaged
+ * pages read (Vault's client, the signed-in viewer, the theme setter), and the
+ * AI pages' adapters (Vault's spinner). The shell itself is
  * `components/common/Layout.tsx`, the layout route below.
+ *
+ * No preferences provider is mounted on purpose (#153): the rail's collapse
+ * (`navigation`) and every table's layout (`dataTables`) take the platform
+ * defaults, which keep them in `/api/user-settings` through the host's client.
  */
 export default function App() {
   return (
@@ -346,9 +348,7 @@ export default function App() {
             <TelemetryWebAdaptersProvider adapters={appTelemetryAdapters}>
               <VaultPlatformHostProvider>
                 <AiWebAdaptersProvider adapters={vaultAiAdapters}>
-                  <ShellPreferencesProvider port={shellPreferencesPort}>
-                    <AppRoutes />
-                  </ShellPreferencesProvider>
+                  <AppRoutes />
                 </AiWebAdaptersProvider>
               </VaultPlatformHostProvider>
             </TelemetryWebAdaptersProvider>

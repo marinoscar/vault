@@ -12,26 +12,26 @@
  *     spinner, table and identity client (`identityAdapters.ts`). It sits
  *     inside the auth provider and outside the routes: the login page renders
  *     outside the signed-in shell.
- *   - `DataTablePreferencesProvider` keeps the packaged tables' layouts in
- *     this browser until `/user-settings` carries them (E4,
- *     `platform/dataTablePreferences.ts`).
+ *
+ * No `DataTablePreferencesProvider` here (#153): every `DataTable` takes the
+ * platform's default port, which keeps its layout in the `dataTables`
+ * namespace of `/api/user-settings` through the platform host's client
+ * (`VaultPlatformHostProvider`, mounted inside this in `App.tsx`).
  *
  * Mount it once, inside the router (the provider navigates).
  */
 
 import type { ReactElement, ReactNode } from 'react';
 import { AuthProvider, IdentityWebAdaptersProvider } from '@marinoscar/platform-web/identity/headless';
-import { DataTablePreferencesProvider } from '@marinoscar/platform-web/datatable/headless';
 
 import { api } from '../services/api';
-import { dataTablePreferencesPort } from '../platform/dataTablePreferences';
 import { vaultIdentityAdapters } from './identityAdapters';
 
 export function IdentityProviders({ children }: { children: ReactNode }): ReactElement {
   return (
     <AuthProvider client={api}>
       <IdentityWebAdaptersProvider adapters={vaultIdentityAdapters}>
-        <DataTablePreferencesProvider port={dataTablePreferencesPort}>{children}</DataTablePreferencesProvider>
+        {children}
       </IdentityWebAdaptersProvider>
     </AuthProvider>
   );
