@@ -57,7 +57,9 @@ export function UserProfileCard() {
           <Typography variant="h6" gutterBottom>
             {user.displayName || 'No name set'}
           </Typography>
-          <Typography variant="body2" color="text.secondary" gutterBottom>
+          <Typography variant="body2" gutterBottom sx={{
+            color: "text.secondary"
+          }}>
             {user.email}
           </Typography>
 
@@ -65,10 +67,12 @@ export function UserProfileCard() {
           <Stack
             direction="row"
             spacing={1}
-            flexWrap="wrap"
-            justifyContent="center"
-            sx={{ mt: 1, mb: 2 }}
-          >
+            sx={{
+              flexWrap: "wrap",
+              justifyContent: "center",
+              mt: 1,
+              mb: 2
+            }}>
             {user.roles.map((role) => (
               <Chip
                 key={role.name}
@@ -84,7 +88,9 @@ export function UserProfileCard() {
 
           {/* Account Info */}
           <Box sx={{ width: '100%', textAlign: 'left' }}>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: "text.secondary"
+            }}>
               Member since
             </Typography>
             <Typography variant="body1" gutterBottom>

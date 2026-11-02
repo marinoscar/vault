@@ -28,7 +28,12 @@ export function StatsCards({ totalSecrets, totalFolders, totalTypes, isLoading }
   return (
     <Grid container spacing={3}>
       {stats.map((stat) => (
-        <Grid item xs={12} sm={4} key={stat.label}>
+        <Grid
+          key={stat.label}
+          size={{
+            xs: 12,
+            sm: 4
+          }}>
           <Card sx={cardSx}>
             {/* Each stat tile navigates, so it is genuinely a button and gets real
                 button semantics via CardActionArea. The label names the destination
@@ -53,8 +58,12 @@ export function StatsCards({ totalSecrets, totalFolders, totalTypes, isLoading }
                     </>
                   ) : (
                     <>
-                      <Typography variant="h4" fontWeight={700}>{stat.count}</Typography>
-                      <Typography variant="body2" color="text.secondary">{stat.label}</Typography>
+                      <Typography variant="h4" sx={{
+                        fontWeight: 700
+                      }}>{stat.count}</Typography>
+                      <Typography variant="body2" sx={{
+                        color: "text.secondary"
+                      }}>{stat.label}</Typography>
                     </>
                   )}
                 </Box>

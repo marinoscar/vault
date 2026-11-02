@@ -33,7 +33,9 @@ export function RecentSecrets({ secrets, isLoading }: RecentSecretsProps) {
     <Card sx={{ height: '100%' }}>
       <CardContent>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6" fontWeight={600}>Recent Secrets</Typography>
+          <Typography variant="h6" sx={{
+            fontWeight: 600
+          }}>Recent Secrets</Typography>
           <Box sx={{ display: 'flex', gap: 1 }}>
             <Button size="small" onClick={() => navigate('/secrets')}>View All</Button>
             <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={() => navigate('/secrets/new')}>
@@ -57,7 +59,9 @@ export function RecentSecrets({ secrets, isLoading }: RecentSecretsProps) {
           </List>
         ) : secrets.length === 0 ? (
           <Box sx={{ textAlign: 'center', py: 4 }}>
-            <Typography color="text.secondary" gutterBottom>No secrets yet</Typography>
+            <Typography gutterBottom sx={{
+              color: "text.secondary"
+            }}>No secrets yet</Typography>
             <Button variant="contained" startIcon={<AddIcon />} onClick={() => navigate('/secrets/new')}>
               Create your first secret
             </Button>
@@ -77,13 +81,20 @@ export function RecentSecrets({ secrets, isLoading }: RecentSecretsProps) {
                 <ListItemText
                   primary={secret.name}
                   secondary={secret.description || secret.type?.name}
-                  primaryTypographyProps={{ fontWeight: 500, noWrap: true }}
-                  secondaryTypographyProps={{ noWrap: true }}
-                />
+                  slotProps={{
+                    primary: { noWrap: true, sx: { fontWeight: 500 } },
+                    secondary: { noWrap: true }
+                  }} />
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 1, flexShrink: 0 }}>
                   <Chip label={secret.type?.name} size="small" variant="outlined" sx={{ display: { xs: 'none', sm: 'flex' } }} />
                   <Chip label={`v${secret.currentVersion}`} size="small" color="primary" variant="outlined" />
-                  <Typography variant="caption" color="text.secondary" sx={{ minWidth: 50, textAlign: 'right' }}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: "text.secondary",
+                      minWidth: 50,
+                      textAlign: 'right'
+                    }}>
                     {formatRelativeTime(secret.updatedAt)}
                   </Typography>
                 </Box>

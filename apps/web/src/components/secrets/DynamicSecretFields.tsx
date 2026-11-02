@@ -13,7 +13,7 @@ import {
   VisibilityOff as VisibilityOffIcon,
   ContentCopy as CopyIcon,
   Check as CheckIcon,
-  ErrorOutline as ErrorOutlineIcon,
+  ErrorOutlineOutlined as ErrorOutlineIcon,
 } from '@mui/icons-material';
 import { Tooltip } from '@mui/material';
 import { visuallyHidden } from '@mui/utils';
@@ -162,12 +162,19 @@ export function DynamicSecretFields({
           const value = rawValue !== undefined && rawValue !== null ? String(rawValue) : '';
           return (
             <Box key={field.name}>
-              <Typography variant="caption" color="text.secondary" display="block">
+              <Typography
+                variant="caption"
+                sx={{
+                  color: "text.secondary",
+                  display: "block"
+                }}>
                 {field.label}
                 {field.required && ' *'}
               </Typography>
               {value === '' ? (
-                <Typography variant="body2" color="text.disabled">
+                <Typography variant="body2" sx={{
+                  color: "text.disabled"
+                }}>
                   —
                 </Typography>
               ) : field.sensitive ? (
@@ -207,19 +214,21 @@ export function DynamicSecretFields({
               onChange={(e) => handleChange(field.name, e.target.value)}
               error={hasError}
               helperText={errors[field.name]}
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton
-                      edge="end"
-                      onClick={() => toggleVisibility(field.name)}
-                      size="small"
-                      aria-label={isVisible ? 'Hide field' : 'Show field'}
-                    >
-                      {isVisible ? <VisibilityOffIcon /> : <VisibilityIcon />}
-                    </IconButton>
-                  </InputAdornment>
-                ),
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        edge="end"
+                        onClick={() => toggleVisibility(field.name)}
+                        size="small"
+                        aria-label={isVisible ? 'Hide field' : 'Show field'}
+                      >
+                        {isVisible ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }
               }}
             />
           );
@@ -271,7 +280,9 @@ export function DynamicSecretFields({
               onChange={(e) => handleChange(field.name, e.target.value)}
               error={hasError}
               helperText={errors[field.name]}
-              InputLabelProps={{ shrink: true }}
+              slotProps={{
+                inputLabel: { shrink: true }
+              }}
             />
           );
         }
@@ -297,9 +308,10 @@ export function DynamicSecretFields({
               helperText={
                 errors[field.name] ?? (hasOptions ? undefined : 'No options are configured for this field')
               }
-              InputLabelProps={{ shrink: true }}
-              SelectProps={{ displayEmpty: true }}
-            >
+              slotProps={{
+                select: { displayEmpty: true },
+                inputLabel: { shrink: true }
+              }}>
               {!field.required && (
                 <MenuItem value="">
                   <em>None</em>

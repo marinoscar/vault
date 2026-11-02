@@ -93,7 +93,9 @@ export default function MediaUploadPage() {
         >
           {folderName}
         </Link>
-        <Typography color="text.primary">Upload</Typography>
+        <Typography sx={{
+          color: "text.primary"
+        }}>Upload</Typography>
       </Breadcrumbs>
 
       <Typography variant="h4" gutterBottom>
@@ -115,7 +117,9 @@ export default function MediaUploadPage() {
             }}
           >
             <CloudUploadIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
-            <Typography variant="body1" color="text.secondary" gutterBottom>
+            <Typography variant="body1" gutterBottom sx={{
+              color: "text.secondary"
+            }}>
               Select a video, audio, or image file
             </Typography>
             <Button
@@ -143,10 +147,14 @@ export default function MediaUploadPage() {
                 borderColor: 'divider',
               }}
             >
-              <Typography variant="body2" fontWeight={500} noWrap>
+              <Typography variant="body2" noWrap sx={{
+                fontWeight: 500
+              }}>
                 {selectedFile.name}
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{
+                color: "text.secondary"
+              }}>
                 {selectedFile.type} &bull; {formatFileSize(selectedFile.size)}
               </Typography>
             </Box>
@@ -155,7 +163,9 @@ export default function MediaUploadPage() {
           {isUploading && (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
               <CircularProgress size={20} />
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{
+                color: "text.secondary"
+              }}>
                 Uploading...
               </Typography>
             </Box>

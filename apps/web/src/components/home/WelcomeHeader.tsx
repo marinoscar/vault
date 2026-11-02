@@ -10,10 +10,16 @@ export function WelcomeHeader({ displayName }: WelcomeHeaderProps) {
 
   return (
     <Box sx={{ mb: 3 }}>
-      <Typography variant="h4" component="h1" fontWeight={700}>
+      <Typography variant="h4" component="h1" sx={{
+        fontWeight: 700
+      }}>
         {greeting}{displayName ? `, ${displayName}` : ''}
       </Typography>
-      <Typography color="text.secondary" sx={{ mt: 0.5 }}>
+      <Typography
+        sx={{
+          color: "text.secondary",
+          mt: 0.5
+        }}>
         Here's what's happening in your vault
       </Typography>
     </Box>

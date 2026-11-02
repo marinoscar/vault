@@ -92,7 +92,9 @@ export default function MediaFoldersPage() {
         >
           Home
         </Link>
-        <Typography color="text.primary">Media</Typography>
+        <Typography sx={{
+          color: "text.primary"
+        }}>Media</Typography>
       </Breadcrumbs>
 
       <Typography variant="h4" gutterBottom>

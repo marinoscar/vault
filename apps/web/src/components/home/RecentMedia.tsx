@@ -18,7 +18,9 @@ export function RecentMedia({ folders, isLoading }: RecentMediaProps) {
     <Card sx={{ height: '100%' }}>
       <CardContent>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6" fontWeight={600}>Recent Media</Typography>
+          <Typography variant="h6" sx={{
+            fontWeight: 600
+          }}>Recent Media</Typography>
           <Button size="small" onClick={() => navigate('/media')}>View All</Button>
         </Box>
 
@@ -36,7 +38,9 @@ export function RecentMedia({ folders, isLoading }: RecentMediaProps) {
           </List>
         ) : folders.length === 0 ? (
           <Box sx={{ textAlign: 'center', py: 4 }}>
-            <Typography color="text.secondary">No media folders yet</Typography>
+            <Typography sx={{
+              color: "text.secondary"
+            }}>No media folders yet</Typography>
           </Box>
         ) : (
           <List disablePadding dense>
@@ -53,7 +57,9 @@ export function RecentMedia({ folders, isLoading }: RecentMediaProps) {
                 <ListItemText
                   primary={folder.name}
                   secondary={`${folder.fileCount} file${folder.fileCount !== 1 ? 's' : ''}`}
-                  primaryTypographyProps={{ fontWeight: 500, noWrap: true }}
+                  slotProps={{
+                    primary: { noWrap: true, sx: { fontWeight: 500 } }
+                  }}
                 />
               </ListItemButton>
             ))}

@@ -103,7 +103,9 @@ export function FolderList({
         </Box>
       ) : folders.length === 0 ? (
         <Box sx={{ py: 6, textAlign: 'center' }}>
-          <Typography color="text.secondary">
+          <Typography sx={{
+            color: "text.secondary"
+          }}>
             {search
               ? 'No folders match your search'
               : 'No folders yet. Create one to get started.'}
@@ -132,7 +134,9 @@ export function FolderList({
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <FolderIcon fontSize="small" color="action" />
-                        <Typography variant="body2" fontWeight={500}>
+                        <Typography variant="body2" sx={{
+                          fontWeight: 500
+                        }}>
                           {folder.name}
                         </Typography>
                       </Box>

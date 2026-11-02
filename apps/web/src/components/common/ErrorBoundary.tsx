@@ -35,7 +35,9 @@ export class ErrorBoundary extends Component<Props, State> {
           }}
         >
           <Typography variant="h4">Something went wrong</Typography>
-          <Typography color="text.secondary">
+          <Typography sx={{
+            color: "text.secondary"
+          }}>
             {this.state.error?.message || 'An unexpected error occurred'}
           </Typography>
           <Button

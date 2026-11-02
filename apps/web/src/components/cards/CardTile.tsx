@@ -107,11 +107,19 @@ export function CardTile({ card, onClick, onRenew }: CardTileProps) {
             <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
               <CardThumbnail hasAttachments={card.hasAttachments} />
               <Box sx={{ minWidth: 0, flexGrow: 1 }}>
-                <Typography variant="subtitle1" fontWeight={600} noWrap>
+                <Typography variant="subtitle1" noWrap sx={{
+                  fontWeight: 600
+                }}>
                   {heading}
                 </Typography>
                 {subheading && (
-                  <Typography variant="caption" color="text.secondary" noWrap display="block">
+                  <Typography
+                    variant="caption"
+                    noWrap
+                    sx={{
+                      color: "text.secondary",
+                      display: "block"
+                    }}>
                     {subheading}
                   </Typography>
                 )}
@@ -137,7 +145,12 @@ export function CardTile({ card, onClick, onRenew }: CardTileProps) {
               }}
             >
               <Box sx={{ minWidth: 0 }}>
-                <Typography variant="caption" color="text.secondary" display="block">
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: "text.secondary",
+                    display: "block"
+                  }}>
                   Cardholder
                 </Typography>
                 <Typography variant="body2" noWrap>
@@ -145,7 +158,12 @@ export function CardTile({ card, onClick, onRenew }: CardTileProps) {
                 </Typography>
               </Box>
               <Box sx={{ minWidth: 0 }}>
-                <Typography variant="caption" color="text.secondary" display="block">
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: "text.secondary",
+                    display: "block"
+                  }}>
                   Expires
                 </Typography>
                 <Typography variant="body2">{card.expiryLabel || 'Unknown'}</Typography>

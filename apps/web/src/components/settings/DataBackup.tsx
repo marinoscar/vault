@@ -194,7 +194,12 @@ export function DataBackup() {
         <Typography variant="h6" gutterBottom>
           Back up my data
         </Typography>
-        <Typography variant="body2" color="text.secondary" paragraph>
+        <Typography
+          variant="body2"
+          sx={{
+            color: "text.secondary",
+            marginBottom: "16px"
+          }}>
           Make a password-protected copy of your secrets and, if you choose, your media library.
           Download it to this device or save it to the storage account.
         </Typography>
@@ -309,7 +314,12 @@ export function DataBackup() {
                 </IconButton>
               </Tooltip>
             </Box>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: "text.secondary",
+                mb: 1
+              }}>
               Keeps your {keepCount} most recent saved backups
             </Typography>
 

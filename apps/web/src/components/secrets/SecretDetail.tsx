@@ -60,7 +60,9 @@ export function SecretDetail({ secret, onEdit, onDelete }: SecretDetailProps) {
             <Box>
               <Typography variant="h6">{secret.name}</Typography>
               {secret.description && (
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" sx={{
+                  color: "text.secondary"
+                }}>
                   {secret.description}
                 </Typography>
               )}
@@ -77,21 +79,36 @@ export function SecretDetail({ secret, onEdit, onDelete }: SecretDetailProps) {
 
           <Box sx={{ display: 'flex', gap: 3, mb: 3, flexWrap: 'wrap' }}>
             <Box>
-              <Typography variant="caption" color="text.secondary" display="block">
+              <Typography
+                variant="caption"
+                sx={{
+                  color: "text.secondary",
+                  display: "block"
+                }}>
                 Version
               </Typography>
               <Typography variant="body2">v{secret.currentVersion}</Typography>
             </Box>
             {secret.createdBy && (
               <Box>
-                <Typography variant="caption" color="text.secondary" display="block">
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: "text.secondary",
+                    display: "block"
+                  }}>
                   Created by
                 </Typography>
                 <Typography variant="body2">{secret.createdBy.email}</Typography>
               </Box>
             )}
             <Box>
-              <Typography variant="caption" color="text.secondary" display="block">
+              <Typography
+                variant="caption"
+                sx={{
+                  color: "text.secondary",
+                  display: "block"
+                }}>
                 Created
               </Typography>
               <Typography variant="body2">
@@ -99,7 +116,12 @@ export function SecretDetail({ secret, onEdit, onDelete }: SecretDetailProps) {
               </Typography>
             </Box>
             <Box>
-              <Typography variant="caption" color="text.secondary" display="block">
+              <Typography
+                variant="caption"
+                sx={{
+                  color: "text.secondary",
+                  display: "block"
+                }}>
                 Updated
               </Typography>
               <Typography variant="body2">
@@ -121,7 +143,9 @@ export function SecretDetail({ secret, onEdit, onDelete }: SecretDetailProps) {
               readOnly
             />
           ) : (
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: "text.secondary"
+            }}>
               No fields defined for this secret type.
             </Typography>
           )}

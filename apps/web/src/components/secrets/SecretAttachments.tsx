@@ -174,7 +174,9 @@ export function SecretAttachments({
       )}
 
       {genericAttachments.length === 0 ? (
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{
+          color: "text.secondary"
+        }}>
           No attachments yet.
         </Typography>
       ) : (
@@ -187,9 +189,10 @@ export function SecretAttachments({
               <ListItemText
                 primary={attachment.label ?? attachment.storageObject.name}
                 secondary={formatBytes(attachment.storageObject.size)}
-                primaryTypographyProps={{ variant: 'body2' }}
-                secondaryTypographyProps={{ variant: 'caption' }}
-              />
+                slotProps={{
+                  primary: { variant: 'body2' },
+                  secondary: { variant: 'caption' }
+                }} />
               <ListItemSecondaryAction>
                 <IconButton
                   size="small"

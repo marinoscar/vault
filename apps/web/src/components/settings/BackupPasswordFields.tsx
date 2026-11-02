@@ -85,9 +85,10 @@ export function BackupPasswordFields({
           autoComplete="new-password"
           fullWidth
           disabled={disabled}
-          inputProps={{ maxLength: BACKUP_PASSWORD_MAX_LENGTH }}
-          InputProps={{ endAdornment: visibilityToggle }}
-        />
+          slotProps={{
+            input: { endAdornment: visibilityToggle },
+            htmlInput: { maxLength: BACKUP_PASSWORD_MAX_LENGTH }
+          }} />
         <TextField
           label="Confirm password"
           type={showPassword ? 'text' : 'password'}
@@ -98,7 +99,9 @@ export function BackupPasswordFields({
           autoComplete="new-password"
           fullWidth
           disabled={disabled}
-          inputProps={{ maxLength: BACKUP_PASSWORD_MAX_LENGTH }}
+          slotProps={{
+            htmlInput: { maxLength: BACKUP_PASSWORD_MAX_LENGTH }
+          }}
         />
       </Box>
 
