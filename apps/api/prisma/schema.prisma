@@ -447,6 +447,9 @@ model BackupSchedule {
   keepCount          Int       @default(7) @map("keep_count")
   includeAttachments Boolean   @default(true) @map("include_attachments")
   includeVersions    Boolean   @default(false) @map("include_versions")
+  includeSecrets     Boolean   @default(true) @map("include_secrets")
+  includeMedia       Boolean   @default(false) @map("include_media")
+  includeSystem      Boolean   @default(false) @map("include_system")
   passwordEncrypted  String?   @map("password_encrypted")
   passwordUpdatedAt  DateTime? @map("password_updated_at") @db.Timestamptz
   nextRunAt          DateTime? @map("next_run_at") @db.Timestamptz
@@ -472,7 +475,9 @@ model BackupRun {
   userCount       Int       @default(0) @map("user_count")
   secretCount     Int       @default(0) @map("secret_count")
   attachmentCount Int       @default(0) @map("attachment_count")
+  mediaFileCount  Int       @default(0) @map("media_file_count")
   warningCount    Int       @default(0) @map("warning_count")
+  contents        String[]  @default([])
   error           String?
   startedAt       DateTime  @default(now()) @map("started_at") @db.Timestamptz
   finishedAt      DateTime? @map("finished_at") @db.Timestamptz
