@@ -8,6 +8,11 @@
  * cards show only while an administrator has switched AI on. The `AI` card
  * (where it is switched on) carries no `feature`, so it never hides.
  *
+ * `telemetry` (E9.2, #90): the platform's key. A store is deployed AND collection is on,
+ * read from the one answer of `GET /api/telemetry/config` that `AppTelemetryConfigProvider`
+ * holds. The Explorer and Dashboard cards declare it; the Telemetry card does not (it is where
+ * collection is switched on).
+ *
  * `orgs`: the packaged identity cards are typed with it
  * (`IdentitySettingsCard['feature']` is `'orgs' | undefined`), so spreading
  * `identityAdminSections.access` into `ADMIN_SECTIONS` needs the key declared.
@@ -17,6 +22,7 @@
  */
 
 import { registerSettingsFeature } from '@marinoscar/platform-web/settings/headless';
+import { useTelemetryFeatures } from '@marinoscar/platform-web/telemetry/headless';
 import { useAiFeatures } from '@marinoscar/platform-web/ai/headless';
 
 declare module '@marinoscar/platform-web/settings/headless' {
@@ -27,3 +33,5 @@ declare module '@marinoscar/platform-web/settings/headless' {
 }
 
 registerSettingsFeature('ai', () => useAiFeatures().ai);
+// `telemetry` (E9.2, #90): see the header; the provider is platform/TelemetryConfigBinding.tsx.
+registerSettingsFeature('telemetry', () => useTelemetryFeatures().telemetry);

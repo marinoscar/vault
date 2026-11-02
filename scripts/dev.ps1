@@ -15,7 +15,7 @@
     For prisma action: generate, migrate, studio, reset
 
 .PARAMETER Otel
-    Switch to include OpenTelemetry observability stack
+    Switch to include the telemetry stack (telemetry.compose.yml: OpenTelemetry collector + GreptimeDB)
 
 .EXAMPLE
     .\dev.ps1 start
@@ -81,7 +81,7 @@ $RepoRoot = Split-Path -Parent $PSScriptRoot
 $ComposeDir = Join-Path $RepoRoot "infra\compose"
 $BaseCompose = Join-Path $ComposeDir "base.compose.yml"
 $DevCompose = Join-Path $ComposeDir "dev.compose.yml"
-$OtelCompose = Join-Path $ComposeDir "otel.compose.yml"
+$OtelCompose = Join-Path $ComposeDir "telemetry.compose.yml"
 $TestCompose = Join-Path $ComposeDir "test.compose.yml"
 $ApiDir = Join-Path $RepoRoot "apps\api"
 $WebDir = Join-Path $RepoRoot "apps\web"
@@ -113,7 +113,7 @@ function Show-Help {
     Write-Host "  help      Show this help message"
     Write-Host ""
     Write-Host "Flags:"
-    Write-Host "  -Otel     Include OpenTelemetry observability stack (Uptrace)"
+    Write-Host "  -Otel     Include the telemetry stack (OpenTelemetry collector + GreptimeDB; explorer at /admin/settings/telemetry)"
     Write-Host ""
     Write-Host "Services: api, web, db, nginx"
     Write-Host ""
@@ -153,7 +153,7 @@ function Show-Help {
     Write-Host "  API:            http://localhost:3535/api"
     Write-Host "  Swagger UI:     http://localhost:3535/api/docs"
     Write-Host "  API Health:     http://localhost:3535/api/health/live"
-    Write-Host "  Uptrace:        http://localhost:14318 (with -Otel flag)"
+    Write-Host "  Telemetry:      http://localhost:3535/admin/settings/telemetry (with -Otel flag)"
     Write-Host ""
 }
 
@@ -193,7 +193,7 @@ function Start-Services {
     Write-Info "Application:  http://localhost:3535"
     Write-Info "Swagger UI:   http://localhost:3535/api/docs"
     if ($Otel) {
-        Write-Info "Uptrace:      http://localhost:14318"
+        Write-Info "Telemetry:    http://localhost:3535/admin/settings/telemetry"
     }
 }
 
@@ -235,7 +235,7 @@ function Rebuild-Services {
     Write-Info "Application:  http://localhost:3535"
     Write-Info "Swagger UI:   http://localhost:3535/api/docs"
     if ($Otel) {
-        Write-Info "Uptrace:      http://localhost:14318"
+        Write-Info "Telemetry:    http://localhost:3535/admin/settings/telemetry"
     }
 }
 

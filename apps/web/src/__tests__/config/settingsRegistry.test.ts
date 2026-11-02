@@ -32,6 +32,7 @@ import notificationsPermissionsSource from '../../../../../node_modules/@marinos
 import aiPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/ai/ai.permissions.js?raw';
 import aiAdminControllerSource from '../../../../../node_modules/@marinoscar/platform-api/dist/ai/config/ai-admin.controller.js?raw';
 import aiUsageAdminControllerSource from '../../../../../node_modules/@marinoscar/platform-api/dist/ai/usage/ai-usage-admin.controller.js?raw';
+import telemetryPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/telemetry/telemetry.permissions.js?raw';
 
 const cardsOf = (sections: SettingsSectionDef[]): SettingsCardDef[] => sections.flatMap((s) => s.cards);
 const ADMIN_CARDS = cardsOf(ADMIN_SECTIONS);
@@ -55,6 +56,7 @@ const API_PERMISSIONS = new Set([
   ...declaredIds(allowlistPermissionsSource),
   ...declaredIds(notificationsPermissionsSource),
   ...declaredIds(aiPermissionsSource),
+  ...declaredIds(telemetryPermissionsSource),
 ]);
 
 /**
@@ -76,6 +78,12 @@ const CONTROLLER_MIRROR: Record<string, string | undefined> = {
   '/admin/settings/doctor': 'system_settings:read',
   // platform about controller GET /api/admin/about (default)
   '/admin/settings/about': 'system_settings:read',
+  // telemetry-admin.controller.ts GET /api/admin/telemetry/config (E9.2)
+  '/admin/settings/telemetry': 'telemetry:read',
+  // telemetry-explorer.controller.ts POST /api/admin/telemetry/query and the schema (E9.2)
+  '/admin/settings/telemetry/explorer': 'telemetry:query',
+  // telemetry-dashboard.controller.ts GET /api/admin/telemetry/dashboard/* (E9.2)
+  '/admin/settings/telemetry/dashboard': 'telemetry:query',
   // user-settings.controller.ts GET /api/user-settings
   '/settings/profile': 'user_settings:read',
   '/settings/appearance': 'user_settings:read',
@@ -151,6 +159,10 @@ describe.each([
         const parent = cards.find((c) => c.path !== path && path!.startsWith(`${c.path}/`));
         expect(parent, path).toBeDefined();
         expect(parent!.permission).toBe(cards.find((c) => c.path === path)!.permission);
+      } else if (/^telemetry\/(explorer|dashboard)$/.test(path!.slice(hubPath.length + 1))) {
+        // The packaged telemetry Explorer and Dashboard nest under the Telemetry card, as the platform
+        // declares them (E9.2, #90). Their permission (`telemetry:query`) differs from the parent's.
+        expect(paths).toContain(`${hubPath}/telemetry`);
       } else {
         expect(path!.slice(hubPath.length + 1)).not.toContain('/');
       }
@@ -241,6 +253,9 @@ describe('the registries as a whole', () => {
       'Email',
       'Web Push',
       'Broadcasts',
+      'Telemetry',
+      'Telemetry Explorer',
+      'Telemetry Dashboard',
     ]);
     expect(USER_CARDS.map((card) => card.title)).toEqual([
       'Profile',
@@ -263,7 +278,11 @@ describe('the registries as a whole', () => {
     const perms = [...hubRoute![1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
     expect(perms).toEqual(consoleDest.anyPermission);
     // Every admin card is reachable by some holder of the hub gate.
-    for (const card of ADMIN_CARDS) expect(perms).toContain(card.permission);
+    // The `telemetry:*` cards are held by the admin role only, which also holds the hub gate's
+    // `system_settings:read`: the page gate (not the hub gate) is what checks the telemetry string.
+    for (const card of ADMIN_CARDS.filter((c) => !/^telemetry:/.test(String(c.permission ?? '')))) {
+      expect(perms).toContain(card.permission as string);
+    }
   });
 
   it('leaves the per-user hub ungated (every user owns their settings)', () => {
@@ -313,6 +332,10 @@ describe('the registries as a whole', () => {
     expect(declaredIds(aiPermissionsSource)).toEqual(
       expect.arrayContaining(['ai_config:read', 'ai_config:write', 'ai:use']),
     );
+    expect(declaredIds(telemetryPermissionsSource)).toEqual(
+      expect.arrayContaining(['telemetry:read', 'telemetry:write', 'telemetry:query']),
+    );
+    expect(slices).toContain("'telemetry'");
     // No invented string sneaks in through a loose pattern.
     for (const id of API_PERMISSIONS) expect(id).toMatch(/^[a-z_]+:[a-z_]+$/);
   });

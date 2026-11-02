@@ -20,7 +20,7 @@ Vault is a self-hosted secrets manager. It stores credentials, API keys, credit 
 - **Admin Backups**: administrators schedule hourly, daily, weekly or monthly AES-256 zip backups of every user's data into object storage (Admin Settings > Backups), choosing secrets, media library and system configuration, with run-now, a one-off "Download a backup now", history, signed downloads and keep-last-N retention. Also available as `vault admin backups` and an Admin backups terminal menu.
 - **.env File Sync**: Back up server `.env` files into Vault as versioned secrets via the `vault` CLI.
 - **Audit Logging**: All secret operations are logged to the audit event store.
-- **Observability**: OpenTelemetry instrumentation with traces, metrics, and structured logging via Uptrace.
+- **Observability**: OpenTelemetry instrumentation with traces, metrics, and structured logging, exported to GreptimeDB and explored in the admin telemetry page.
 - **API Documentation**: Scalar API reference (OpenAPI 3.1) at `/api/docs`.
 - **Same-Origin Architecture**: Frontend and API served from the same host via Nginx reverse proxy.
 
@@ -30,7 +30,7 @@ Vault is a self-hosted secrets manager. It stores credentials, API keys, credit 
 - **Framework**: NestJS with Fastify adapter
 - **Database**: PostgreSQL with Prisma ORM
 - **Authentication**: Passport.js (Google OAuth)
-- **Observability**: OpenTelemetry + Uptrace
+- **Observability**: OpenTelemetry + GreptimeDB (the platform telemetry slice)
 - **Testing**: Jest + Supertest
 
 ### Frontend
@@ -131,14 +131,14 @@ Only email addresses in the **allowlist** can log in. `INITIAL_ADMIN_EMAIL` is a
 
 ### Running with Observability Stack
 
-To enable full observability (Uptrace UI for traces, metrics, logs):
+To collect traces, metrics and logs in a local GreptimeDB (the platform telemetry slice):
 
 ```bash
 cd infra/compose
-docker compose -f base.compose.yml -f dev.compose.yml -f otel.compose.yml up
+docker compose -f base.compose.yml -f dev.compose.yml -f telemetry.compose.yml up
 ```
 
-Access Uptrace UI at: http://localhost:14318
+Then sign in as an administrator, open **Admin > Telemetry** (`/admin/settings/telemetry`) and turn telemetry on. The explorer, dashboard and Vault's own metrics are on that page; GreptimeDB's SQL dashboard is at http://localhost:14000/dashboard. More: [docs/runbooks/telemetry.md](docs/runbooks/telemetry.md).
 
 ### Running Tests
 
@@ -252,7 +252,7 @@ vault/
 │   │   ├── base.compose.yml    # Core services
 │   │   ├── dev.compose.yml     # Development overrides
 │   │   ├── prod.compose.yml    # Production overrides
-│   │   └── otel.compose.yml    # Observability stack
+│   │   └── telemetry.compose.yml  # OpenTelemetry collector + GreptimeDB (generated)
 │   ├── nginx/                  # Nginx config
 │   └── otel/                   # OpenTelemetry config
 └── CLAUDE.md                   # AI assistant guidance

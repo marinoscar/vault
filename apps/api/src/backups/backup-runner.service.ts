@@ -27,6 +27,7 @@ import {
   describeError,
 } from './backup-archive.service';
 import { BackupNotifier } from './backup-notifier.service';
+import { VaultMetricsService } from '../common/otel/vault-metrics.service';
 import { decryptBackupPassword } from './backup-password';
 import { pickRunsToDelete } from './backup-retention';
 import { BACKUP_RUN_INCLUDE, BackupRunRow, BackupRunTrigger } from './dto/backup-responses';
@@ -108,6 +109,15 @@ interface SystemJobPayload {
 @Injectable()
 export class BackupRunnerService {
   private readonly logger = new Logger(BackupRunnerService.name);
+
+  /**
+   * Vault's metrics (E9.2, #90). Property-injected and optional so the constructor stays as the
+   * specs build it. Labels are the closed enums only (scope, trigger, outcome); never a run id,
+   * owner or storage key.
+   */
+  @Optional()
+  @Inject(VaultMetricsService)
+  private readonly vaultMetrics?: VaultMetricsService;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -265,6 +275,16 @@ export class BackupRunnerService {
     });
   }
 
+  /** One finished run on `app.vault.backups.runs` and `.duration`, after its row committed. */
+  private recordRunMetrics(run: BackupRunRow, outcome: 'succeeded' | 'failed', finishedAt: Date): void {
+    this.vaultMetrics?.backupFinished({
+      scope: run.scope === 'user' ? 'user' : 'system',
+      trigger: run.trigger === 'manual' ? 'manual' : 'schedule',
+      outcome,
+      durationMs: finishedAt.getTime() - new Date(run.startedAt).getTime(),
+    });
+  }
+
   /** Records a failure that happened before the archive could start (e.g. an unreadable password). */
   async failRun(run: BackupRunRow, auditAction: string, error: string): Promise<BackupRunOutcome> {
     this.logger.error(`Backup run ${run.id} failed: ${error}`);
@@ -274,6 +294,7 @@ export class BackupRunnerService {
     });
     await this.auditCompleted(run, auditAction, 'failed', null, null, null);
     await this.notifier?.runSettled(run, { status: 'failed', finishedAt: new Date(), sizeBytes: null, counts: null, error });
+    this.recordRunMetrics(run, 'failed', new Date());
     return { status: 'failed', error };
   }
 
@@ -327,6 +348,7 @@ export class BackupRunnerService {
       await this.auditCompleted(run, job.auditAction, 'succeeded', sizeBytes, counts, selection);
       // After the run row committed, outside any transaction (E7.2, #86).
       await this.notifier?.runSettled(run, { status: 'succeeded', finishedAt, sizeBytes, counts });
+      this.recordRunMetrics(run, 'succeeded', finishedAt);
 
       await job.retention();
       return { status: 'succeeded' };
@@ -358,6 +380,7 @@ export class BackupRunnerService {
       });
       await this.auditCompleted(run, job.auditAction, 'failed', null, null, selection);
       await this.notifier?.runSettled(run, { status: 'failed', finishedAt: new Date(), sizeBytes: null, counts: null, error: message });
+      this.recordRunMetrics(run, 'failed', new Date());
       return { status: 'failed', error: message };
     }
   }

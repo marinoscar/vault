@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 
 import { AiError, AiService, type AiInputItem } from '@marinoscar/platform-api/ai';
 import { type RequestUser } from '@marinoscar/platform-api/identity';
@@ -19,6 +19,8 @@ import {
   AiException,
 } from './ai.errors';
 import { normalizeExtractions } from './card-normalizer';
+import { VaultMetricsService } from '../common/otel/vault-metrics.service';
+import type { CARD_EXTRACTION_OUTCOMES } from '../common/otel/vault-metrics';
 import {
   CARD_EXTRACT_SCHEMA_NAME,
   CARD_EXTRACT_SYSTEM_PROMPT,
@@ -68,6 +70,15 @@ export interface ExtractCardResult {
 export class CardExtractService {
   private readonly logger = new Logger(CardExtractService.name);
 
+  /**
+   * Vault's metrics (E9.2, #90): one `app.vault.cards.extractions` count per request, labelled by
+   * outcome only. Property-injected and optional so the constructor stays as the specs build it.
+   * Nothing about the card, the images or the user is ever passed.
+   */
+  @Optional()
+  @Inject(VaultMetricsService)
+  private readonly vaultMetrics?: VaultMetricsService;
+
   constructor(
     private readonly ai: AiService,
     private readonly systemSettings: SystemSettingsService,
@@ -76,6 +87,7 @@ export class CardExtractService {
   async extract(body: unknown, user: RequestUser): Promise<ExtractCardResult> {
     const parsed = extractCardSchema.safeParse(body);
     if (!parsed.success) {
+      this.vaultMetrics?.cardExtracted('invalid_image');
       // The issue paths are safe to echo (field names). The values are image bytes.
       throw aiInvalidImage(
         `Invalid image payload: ${parsed.error.issues
@@ -119,6 +131,7 @@ export class CardExtractService {
 
       const raw = toRawExtraction(result.parsed, result.model);
       const normalized = normalizeExtractions([raw]);
+      this.vaultMetrics?.cardExtracted('succeeded');
       return {
         fields: normalized.fields,
         confidence: normalized.confidence,
@@ -132,7 +145,9 @@ export class CardExtractService {
         partial: normalized.partial,
       };
     } catch (error) {
-      throw this.mapError(error);
+      const mapped = this.mapError(error);
+      this.vaultMetrics?.cardExtracted(extractionOutcome(mapped.code));
+      throw mapped;
     }
   }
 
@@ -189,5 +204,25 @@ export class CardExtractService {
 
     this.logger.error(`Unexpected AI failure: ${(error as Error)?.name}`);
     return aiUpstreamUnavailable();
+  }
+}
+
+/** The metric outcome for a mapped failure code (`AI_ERROR_CODES`); anything unlisted is `failed`. */
+function extractionOutcome(code: string): (typeof CARD_EXTRACTION_OUTCOMES)[number] {
+  switch (code) {
+    case 'AI_NOT_CONFIGURED':
+      return 'not_configured';
+    case 'AI_RATE_LIMITED':
+      return 'rate_limited';
+    case 'AI_QUOTA_EXCEEDED':
+      return 'quota_exceeded';
+    case 'AI_UPSTREAM_RATE_LIMITED':
+    case 'AI_UPSTREAM_AUTH':
+    case 'AI_UPSTREAM_UNAVAILABLE':
+      return 'upstream_error';
+    case 'AI_INVALID_IMAGE':
+      return 'invalid_image';
+    default:
+      return 'failed';
   }
 }

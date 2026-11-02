@@ -35,6 +35,8 @@ import { platformHostModule } from './platform/platform-host.module';
 import { settingsModule } from './platform/settings/settings.config';
 import { hostCoreModule } from './platform/host-core.config';
 import { aboutModule } from './platform/about/about.config';
+import { telemetryModule } from './platform/telemetry/telemetry.config';
+import { VaultMetricsModule } from './common/otel/vault-metrics.service';
 import { doctorModule } from './doctor/doctor.config';
 import { DoctorChecksModule } from './doctor/doctor-checks.module';
 
@@ -96,6 +98,12 @@ import configuration from './config/configuration';
     // `{ data }` envelope, request log, exception filter, request ids and
     // /api/health. Placed where the health routes sat in the OpenAPI document.
     hostCoreModule,
+    // Telemetry (E9.2, #90): the `telemetry` settings and runtime export gate, the GreptimeDB
+    // connection, the explorer, the dashboard and the Doctor checks (`telemetry:read|write|query`).
+    // Replaces the Uptrace exporter. Needs `jobsModule` and `settingsModule`.
+    telemetryModule,
+    // Typed emitters for Vault's `app.vault.*` metrics (global).
+    VaultMetricsModule,
     // Doctor (/api/admin/doctor), About (/api/admin/about) and Vault's checks
     doctorModule,
     DoctorChecksModule,

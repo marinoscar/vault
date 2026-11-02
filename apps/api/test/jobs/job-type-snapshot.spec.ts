@@ -48,6 +48,9 @@ const PINNED_JOB_TYPES = [
   'vault.user_backup.run',
   // card expiry reminders (E7.2): the daily scan, server-only
   'vault.cards.expiry_scan',
+  // telemetry slice (`TelemetryModule.forRoot`, E9.2): store retention (TTL) and the stack deploy; both server-only
+  'telemetry.retention.apply',
+  'telemetry.stack.deploy',
 ] as const;
 
 describe('job type snapshot (issue #81)', () => {

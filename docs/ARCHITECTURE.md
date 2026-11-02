@@ -128,10 +128,10 @@ Vault is a production-grade web application template that establishes:
                                      │    OBSERVABILITY STACK         │
                                      │                                │
                                      │  • OTEL Collector              │
-                                     │  • Uptrace (Traces/Metrics)    │
-                                     │  • ClickHouse (Storage)        │
+                                     │  • GreptimeDB (Storage)        │
                                      │                                │
-                                     │        Port 14318 (UI)         │
+                                     │  Explorer: /admin/settings/    │
+                                     │            telemetry           │
                                      └────────────────────────────────┘
 ```
 
@@ -231,7 +231,7 @@ All components served from the same base URL via Nginx reverse proxy:
 | **Containerization** | Docker | Application packaging |
 | **Orchestration** | Docker Compose | Local development environment |
 | **Reverse Proxy** | Nginx | Routing, SSL termination, headers |
-| **Observability** | OpenTelemetry + Uptrace | Traces, metrics, logs |
+| **Observability** | OpenTelemetry + GreptimeDB (platform telemetry slice) | Traces, metrics, logs |
 | **Logging** | Pino | Structured JSON logging |
 
 ### 4.4 Testing
@@ -316,13 +316,13 @@ EnterpriseAppBase/
 │   │   ├── base.compose.yml          # Core services
 │   │   ├── dev.compose.yml           # Development overrides
 │   │   ├── prod.compose.yml          # Production overrides
-│   │   ├── otel.compose.yml          # Observability stack
+│   │   ├── telemetry.compose.yml     # OTEL collector + GreptimeDB (generated)
 │   │   └── .env.example              # Environment template
 │   ├── nginx/
 │   │   └── nginx.conf                # Reverse proxy config
 │   └── otel/
 │       ├── otel-collector-config.yaml
-│       └── uptrace.yml
+│       └── app-collector.yaml
 │
 ├── .claude/                          # AI agent configuration
 │   └── agents/
@@ -931,11 +931,10 @@ services:
   web:          # React frontend (port 5173)
   db:           # PostgreSQL (port 5432)
 
-# Observability (otel.compose.yml)
+# Telemetry (telemetry.compose.yml)
 services:
   otel-collector:  # OpenTelemetry Collector
-  uptrace:         # Trace/metric visualization (port 14318)
-  clickhouse:      # Uptrace storage backend
+  greptimedb:      # Telemetry store (HTTP 14000, PostgreSQL wire 14003)
 ```
 
 ### 10.2 Network Topology
@@ -959,8 +958,8 @@ services:
 │       │              │                                     │
 │       │              ▼                                     │
 │       │         ┌─────────┐    ┌─────────┐                 │
-│       │         │ uptrace │───▶│clickhse │                 │
-│       │         │ :14318  │    │         │                 │
+│       │         │greptime │                                 │
+│       │         │  db     │                                 │
 │       │         └─────────┘    └─────────┘                 │
 └───────┼─────────────────────────────────────────────────────┘
         │
@@ -1012,9 +1011,9 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
 
 | Signal | Collection | Storage | Purpose |
 |--------|------------|---------|---------|
-| **Traces** | OTEL SDK auto-instrumentation | Uptrace/ClickHouse | Request flow tracking |
-| **Metrics** | OTEL SDK | Uptrace/ClickHouse | Performance monitoring |
-| **Logs** | Pino structured logs | Uptrace/ClickHouse | Debugging, audit |
+| **Traces** | OTEL SDK auto-instrumentation | GreptimeDB | Request flow tracking |
+| **Metrics** | OTEL SDK | GreptimeDB | Performance monitoring |
+| **Logs** | Pino structured logs | GreptimeDB | Debugging, audit |
 
 ### 11.2 Trace Propagation
 
@@ -1582,7 +1581,8 @@ cd apps/web && npm run typecheck
 |---------|-----|
 | Application | http://localhost:3535 |
 | Swagger UI | http://localhost:3535/api/docs |
-| Uptrace | http://localhost:14318 |
+| Telemetry explorer | http://localhost:3535/admin/settings/telemetry |
+| GreptimeDB dashboard | http://localhost:14000/dashboard |
 | PostgreSQL | localhost:5432 |
 
 #### Key Commands
@@ -1591,8 +1591,8 @@ cd apps/web && npm run typecheck
 # Start dev environment
 cd infra/compose && docker compose -f base.compose.yml -f dev.compose.yml up
 
-# Start with observability
-cd infra/compose && docker compose -f base.compose.yml -f dev.compose.yml -f otel.compose.yml up
+# Start with telemetry (GreptimeDB)
+cd infra/compose && docker compose -f base.compose.yml -f dev.compose.yml -f telemetry.compose.yml up
 
 # Run migrations
 cd apps/api && npm run prisma:migrate:dev -- --name <name>

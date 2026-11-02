@@ -4,6 +4,11 @@ import { ShellRoot } from '@marinoscar/platform-web/shell/ui';
 // Identity is the platform's (E3.3, #78): the session provider, the route
 // guards and the identity pages come from @marinoscar/platform-web/identity.
 import { RequireAuth, RequirePermission } from '@marinoscar/platform-web/identity/headless';
+// Telemetry (E9.2, #90): the platform's config provider and route guard, and the adapters the pages take.
+import {
+  RequireTelemetryEnabled,
+  TelemetryWebAdaptersProvider,
+} from '@marinoscar/platform-web/telemetry/headless';
 import { IdentityProviders } from './identity/IdentityProviders';
 import { VaultPlatformHostProvider } from './platform/platformHost';
 // The platform AI slice (E8.2, #88): the AI config every `feature: 'ai'` card and
@@ -13,6 +18,8 @@ import { RequireAiEnabled } from '@marinoscar/platform-web/ai/ui/require-ai-enab
 import { VaultAiConfigProvider } from './platform/aiConfig';
 import { vaultAiAdapters } from './platform/aiAdapters';
 import { shellPreferencesPort } from './platform/shellPreferences';
+import { appTelemetryAdapters } from './platform/telemetryAdapters';
+import { AppTelemetryConfigProvider } from './platform/TelemetryConfigBinding';
 import { VAULT_THEMES } from './theme';
 import { Layout } from './components/common/Layout';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
@@ -60,6 +67,10 @@ const AboutPage = lazy(() => import('@marinoscar/platform-web/host/ui').then((m)
 const MaintenancePage = lazy(() =>
   import('@marinoscar/platform-web/host/ui').then((m) => ({ default: m.MaintenancePage })),
 );
+// The packaged telemetry pages (E9.2, #90): one lazy chunk each, through the per-page entries.
+const TelemetrySettingsPage = lazy(() => import('@marinoscar/platform-web/telemetry/ui/settings-page'));
+const TelemetryExplorerPage = lazy(() => import('@marinoscar/platform-web/telemetry/ui/explorer-page'));
+const TelemetryDashboardPage = lazy(() => import('@marinoscar/platform-web/telemetry/ui/dashboard-page'));
 // The platform email and notifications slices' pages (E7.2); the slice is
 // configured once in platform/notifications.ts (imported by main.tsx).
 const EmailSettingsPage = lazy(() =>
@@ -224,6 +235,24 @@ function AppRoutes() {
                 path="/admin/settings/about"
                 element={<RequirePermission permission="system_settings:read" fallback={TO_HOME}><AboutPage /></RequirePermission>}
               />
+              {/* E9.2 (#90). The platform telemetry slice's three pages, each gated on the exact
+                  string its controller enforces: `telemetry:read` for the settings page (saving
+                  needs `telemetry:write`, which the PAGE gates), `telemetry:query` for the Explorer
+                  and the Dashboard. The settings page is NOT behind `RequireTelemetryEnabled`: it
+                  is where telemetry is switched on. The other two are, matching `feature:
+                  'telemetry'` on their cards. */}
+              <Route
+                path="/admin/settings/telemetry"
+                element={<RequirePermission permission="telemetry:read" fallback={TO_HOME}><TelemetrySettingsPage /></RequirePermission>}
+              />
+              <Route
+                path="/admin/settings/telemetry/explorer"
+                element={<RequirePermission permission="telemetry:query" fallback={TO_HOME}><RequireTelemetryEnabled><TelemetryExplorerPage /></RequireTelemetryEnabled></RequirePermission>}
+              />
+              <Route
+                path="/admin/settings/telemetry/dashboard"
+                element={<RequirePermission permission="telemetry:query" fallback={TO_HOME}><RequireTelemetryEnabled><TelemetryDashboardPage /></RequireTelemetryEnabled></RequirePermission>}
+              />
               <Route
                 path="/admin/settings/email"
                 element={<RequirePermission permission="system_settings:read" fallback={TO_HOME}><EmailSettingsPage /></RequirePermission>}
@@ -261,7 +290,7 @@ function AppRoutes() {
  * light / dark / system choice, CssBaseline), the platform's identity
  * providers (the session over Vault's one HTTP client, the identity pages'
  * adapters, the tables' layout store), the AI config (`GET /api/ai/config`
- * once signed in; the `ai` feature), the platform host the packaged pages
+ * once signed in; the `ai` feature), the telemetry config and adapters, the platform host the packaged pages
  * read (Vault's client, the signed-in viewer, the theme setter), the AI
  * pages' adapters (Vault's spinner), and the shell's preferences port (the rail's collapse). The shell itself is
  * `components/common/Layout.tsx`, the layout route below.
@@ -271,13 +300,19 @@ export default function App() {
     <ShellRoot themes={VAULT_THEMES}>
       <IdentityProviders>
         <VaultAiConfigProvider>
-          <VaultPlatformHostProvider>
-            <AiWebAdaptersProvider adapters={vaultAiAdapters}>
-              <ShellPreferencesProvider port={shellPreferencesPort}>
-                <AppRoutes />
-              </ShellPreferencesProvider>
-            </AiWebAdaptersProvider>
-          </VaultPlatformHostProvider>
+          {/* ABOVE the platform host: the `telemetry` settings feature the host reads is this answer
+              (`GET /api/telemetry/config`, fetched once the session is authenticated). */}
+          <AppTelemetryConfigProvider>
+            <TelemetryWebAdaptersProvider adapters={appTelemetryAdapters}>
+              <VaultPlatformHostProvider>
+                <AiWebAdaptersProvider adapters={vaultAiAdapters}>
+                  <ShellPreferencesProvider port={shellPreferencesPort}>
+                    <AppRoutes />
+                  </ShellPreferencesProvider>
+                </AiWebAdaptersProvider>
+              </VaultPlatformHostProvider>
+            </TelemetryWebAdaptersProvider>
+          </AppTelemetryConfigProvider>
         </VaultAiConfigProvider>
       </IdentityProviders>
     </ShellRoot>
