@@ -28,6 +28,26 @@ export const mockPrisma = prismaMock;
  */
 export function resetPrismaMock(): void {
   mockReset(prismaMock);
+  installPlatformAdoptionDefaults(prismaMock);
+}
+
+/**
+ * Defaults for the two PLATFORM-ADOPTION-SHIMs every request-level test passes
+ * through (docs/platform-adoption/local-exceptions.md):
+ *  - the default organization exists (storage objects are written with its id,
+ *    org roles are assigned on its membership);
+ *  - role assignment: `admin` stays in user_roles, org roles go on the
+ *    membership (src/auth/membership-role-shim.ts).
+ * Tests that care override these after calling resetPrismaMock().
+ */
+export function installPlatformAdoptionDefaults(mock: any): void {
+  mock.organization.findFirst.mockResolvedValue({ id: 'org-default' });
+  mock.membership.findFirst.mockResolvedValue(null);
+  mock.membership.upsert.mockResolvedValue({});
+  mock.userRole.createMany.mockResolvedValue({ count: 0 });
+  mock.role.findMany.mockImplementation(async (args: any) =>
+    ((args?.where?.name?.in as string[]) ?? []).map((name) => ({ id: `role-${name}`, name })),
+  );
 }
 
 /**

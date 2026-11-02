@@ -61,6 +61,10 @@ describe('Auth Service - Allowlist Enforcement', () => {
       if (where.name === 'admin') {
         return { ...mockRoles.admin, userRoles: [] } as any;
       }
+      if (where.name === 'org_admin') {
+        // PLATFORM-ADOPTION-SHIM(E3.2): an initial admin is org_admin on the default-org membership.
+        return { id: 'role-org-admin', name: 'org_admin' } as any;
+      }
       return null;
     });
   });
