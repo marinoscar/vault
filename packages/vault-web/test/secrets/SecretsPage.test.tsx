@@ -155,6 +155,48 @@ describe('SecretsPage', () => {
     expect(screen.getByTestId('location')).toHaveTextContent('sort=name');
   });
 
+  it('restores the stored layout from the dataTables user setting (the platform default port)', async () => {
+    const api = listHandlers();
+    server.use(
+      http.get(`${API_BASE}/user-settings`, () =>
+        HttpResponse.json({
+          data: {
+            theme: 'system',
+            profile: {},
+            version: 1,
+            dataTables: { secrets: { sort: { field: 'name', direction: 'asc' } } },
+          },
+        }),
+      ),
+    );
+    renderPage();
+    await waitFor(() => {
+      expect(api.last()?.get('sortBy')).toBe('name');
+    });
+    expect(api.last().get('sortOrder')).toBe('asc');
+    expect(screen.getByTestId('location')).toHaveTextContent('sort=name&dir=asc');
+  });
+
+  it('saves a sort change to the dataTables user setting, not localStorage', async () => {
+    const user = userEvent.setup();
+    listHandlers();
+    const patches: unknown[] = [];
+    server.use(
+      http.patch(`${API_BASE}/user-settings`, async ({ request }) => {
+        patches.push(await request.json());
+        return HttpResponse.json({ data: { theme: 'system', profile: {}, version: 2 } });
+      }),
+    );
+    renderPage();
+    const grid = await screen.findByRole('grid', { name: 'Secrets' });
+    await user.click(within(grid).getByText('Name'));
+    await waitFor(() => expect(patches.length).toBeGreaterThan(0), { timeout: 3000 });
+    expect(patches[patches.length - 1]).toEqual({
+      dataTables: { secrets: expect.objectContaining({ sort: { field: 'name', direction: 'asc' } }) },
+    });
+    expect(window.localStorage.getItem('vault.datatable.preferences')).toBeNull();
+  });
+
   it('offers "New secret" to a writer and navigates to the form', async () => {
     const user = userEvent.setup();
     listHandlers();

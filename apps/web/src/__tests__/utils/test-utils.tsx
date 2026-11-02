@@ -3,12 +3,12 @@ import { render, RenderOptions, RenderResult } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { vi } from 'vitest';
 import { ShellRoot } from '@marinoscar/platform-web/shell/ui';
-import { ShellPreferencesProvider } from '@marinoscar/platform-web/shell/headless';
 
 // The platform's identity context with a fixed session (instead of the
 // packaged `AuthProvider`, which would probe `/auth/refresh`), then the same
-// adapters, platform host and shell preferences App.tsx mounts, under the
-// Vault themes.
+// adapters and platform host App.tsx mounts, under the Vault themes. Like the
+// app, no preferences provider: the rail and the tables keep their state in
+// `/user-settings` through the host (the MSW handlers answer it).
 import {
   AuthContext,
   IdentityWebAdaptersProvider,
@@ -17,11 +17,8 @@ import type {
   AuthContextValue,
   AuthProviderInfo as AuthProviderType,
 } from '@marinoscar/platform-web/identity/headless';
-import { DataTablePreferencesProvider } from '@marinoscar/platform-web/datatable/headless';
 import { vaultIdentityAdapters } from '../../identity/identityAdapters';
-import { dataTablePreferencesPort } from '../../platform/dataTablePreferences';
 import { VaultPlatformHostProvider } from '../../platform/platformHost';
-import { shellPreferencesPort } from '../../platform/shellPreferences';
 import { VAULT_THEMES } from '../../theme';
 
 interface WrapperOptions {
@@ -130,11 +127,7 @@ function MockAuthProvider({
   return (
     <AuthContext.Provider value={contextValue}>
       <IdentityWebAdaptersProvider adapters={vaultIdentityAdapters}>
-        <DataTablePreferencesProvider port={dataTablePreferencesPort}>
-          <VaultPlatformHostProvider>
-            <ShellPreferencesProvider port={shellPreferencesPort}>{children}</ShellPreferencesProvider>
-          </VaultPlatformHostProvider>
-        </DataTablePreferencesProvider>
+        <VaultPlatformHostProvider>{children}</VaultPlatformHostProvider>
       </IdentityWebAdaptersProvider>
     </AuthContext.Provider>
   );

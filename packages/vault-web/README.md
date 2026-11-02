@@ -55,7 +55,7 @@ configureVaultWeb({ http: api, apiBaseUrl: '/api' });
 const SecretsPage = lazy(() => import('@marinoscar/vault-web/secrets/ui').then((m) => ({ default: m.SecretsPage })));
 ```
 
-The pages expect what the host mounts above them: a router, `ShellRoot` with `VAULT_THEMES`, the platform identity `AuthProvider` (for `useAuth` / `usePermissions`), a `PlatformHostProvider` and a `DataTablePreferencesProvider`.
+The pages expect what the host mounts above them: a router, `ShellRoot` with `VAULT_THEMES`, the platform identity `AuthProvider` (for `useAuth` / `usePermissions`), and a `PlatformHostProvider`. A `DataTablePreferencesProvider` is optional: without one the Secrets list uses the platform's default port, the `dataTables` namespace of `/api/user-settings` over the host's client.
 
 ## Configuration
 
@@ -66,7 +66,7 @@ The pages expect what the host mounts above them: a router, `ShellRoot` with `VA
 | Extension point | Where | What a host varies |
 |---|---|---|
 | HTTP port | `configureVaultWeb` (`core/headless`) | the transport, base URL and refresh lock |
-| Table layout store | the host's `DataTablePreferencesProvider` | where the Secrets list keeps its column, sort and page-size layout |
+| Table layout store | the host's `DataTablePreferencesProvider`, else the platform default (`/user-settings`, `dataTables`) | where the Secrets list keeps its column, sort and page-size layout |
 | Platform host | the host's `PlatformHostProvider` | the viewer, permissions and features the packaged platform pieces read |
 | Theme | `VAULT_THEMES` passed to `ShellRoot` | the host may extend or replace the themes |
 
