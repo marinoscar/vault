@@ -38,8 +38,15 @@ export const BACKUP_SCHEDULE_ID = 'default';
 /** Audit action written when a run finishes, successfully or not. */
 export const BACKUPS_RUN_COMPLETED_AUDIT_ACTION = 'backups.run.completed';
 
-/** A `running` row older than this is considered dead and marked failed. */
-export const BACKUP_STALE_RUN_MS = 6 * 60 * 60 * 1000;
+/** How often a live run refreshes its `heartbeat_at`. */
+export const BACKUP_HEARTBEAT_INTERVAL_MS = 30 * 1000;
+
+/**
+ * A `running` row whose `heartbeat_at` (or `started_at`, when it never beat)
+ * is older than this is dead: the instance running it stopped. Six missed
+ * heartbeats, so a slow database write does not fail a live run.
+ */
+export const BACKUP_HEARTBEAT_STALE_MS = 3 * 60 * 1000;
 
 /**
  * Key of the Postgres transaction-scoped advisory lock that serializes "is a
@@ -48,8 +55,7 @@ export const BACKUP_STALE_RUN_MS = 6 * 60 * 60 * 1000;
  */
 export const BACKUP_RUN_LOCK_KEY = 7_311_042_001;
 
-export const STALE_RUN_ERROR = 'Interrupted: the backup did not finish within 6 hours';
-export const RESTART_RUN_ERROR = 'Interrupted by restart';
+export const STALE_RUN_ERROR = 'Interrupted (the server running it stopped)';
 export const RUN_ALREADY_RUNNING_MESSAGE = 'A backup is already running';
 
 /** Static, user-facing failure messages. They never carry data, keys or the password. */
@@ -79,6 +85,38 @@ export interface BackupArchiveCounts {
   warningCount: number;
 }
 
+/** The fields of a run the stale rule looks at. */
+export interface StaleCandidate {
+  status: string;
+  startedAt: Date;
+  heartbeatAt?: Date | null;
+}
+
+/**
+ * True when a `running` row's last sign of life (`heartbeatAt`, else
+ * `startedAt`) is more than {@link BACKUP_HEARTBEAT_STALE_MS} before `now`.
+ * The in-memory twin of {@link staleRunsWhere}; both encode the same rule.
+ */
+export function isRunStale(run: StaleCandidate, now: Date): boolean {
+  if (run.status !== 'running') {
+    return false;
+  }
+  const lastSeen = run.heartbeatAt ?? run.startedAt;
+  return lastSeen.getTime() < now.getTime() - BACKUP_HEARTBEAT_STALE_MS;
+}
+
+/** Prisma `where` selecting the stale `running` rows at `now` (see {@link isRunStale}). */
+export function staleRunsWhere(now: Date) {
+  const cutoff = new Date(now.getTime() - BACKUP_HEARTBEAT_STALE_MS);
+  return {
+    status: 'running',
+    OR: [
+      { heartbeatAt: { lt: cutoff } },
+      { heartbeatAt: null, startedAt: { lt: cutoff } },
+    ],
+  };
+}
+
 /** Generic stream error text: what the storage SDK sees if the archive aborts. */
 const ARCHIVE_ABORTED_MESSAGE = 'The backup archive could not be completed';
 
@@ -93,6 +131,10 @@ const ARCHIVE_ABORTED_MESSAGE = 'The backup archive could not be completed';
  * - "Only one run at a time" is a check-then-insert under a Postgres
  *   transaction-scoped advisory lock, so two instances (or a manual run
  *   racing a scheduled one) cannot both insert a `running` row.
+ * - A live run refreshes `heartbeat_at` every 30 s. Only a row whose
+ *   heartbeat is older than {@link BACKUP_HEARTBEAT_STALE_MS} is swept as
+ *   interrupted, so a restarting instance never fails another instance's
+ *   live run.
  *
  * The backup password is decrypted inside {@link execute} only, kept in a
  * local variable, handed to the zip writer and never logged, stored on
@@ -121,18 +163,13 @@ export class BackupRunnerService implements OnApplicationBootstrap {
   }
 
   /**
-   * A run left `running` by a previous process can never finish: mark it
-   * failed. Never throws (the API must start even if the DB is slow).
+   * A run left `running` by a stopped process can never finish: mark it
+   * failed. Uses the heartbeat rule, so a run another live instance is still
+   * doing is left alone. Never throws (the API must start even if the DB is slow).
    */
   async onApplicationBootstrap(): Promise<void> {
     try {
-      const result = await this.prisma.backupRun.updateMany({
-        where: { status: 'running' },
-        data: { status: 'failed', error: RESTART_RUN_ERROR, finishedAt: new Date() },
-      });
-      if (result?.count) {
-        this.logger.warn(`Marked ${result.count} interrupted backup run(s) as failed after restart`);
-      }
+      await this.failStaleRuns(new Date());
     } catch (error) {
       this.logger.error(`Could not recover interrupted backup runs: ${describeError(error)}`);
     }
@@ -148,10 +185,10 @@ export class BackupRunnerService implements OnApplicationBootstrap {
     }
   }
 
-  /** Mark `running` rows older than {@link BACKUP_STALE_RUN_MS} as failed. */
+  /** Mark stale `running` rows (see {@link isRunStale}) as failed. */
   async failStaleRuns(now: Date): Promise<number> {
     const result = await this.prisma.backupRun.updateMany({
-      where: { status: 'running', startedAt: { lt: new Date(now.getTime() - BACKUP_STALE_RUN_MS) } },
+      where: staleRunsWhere(now),
       data: { status: 'failed', error: STALE_RUN_ERROR, finishedAt: now },
     });
     const count = result?.count ?? 0;
@@ -224,10 +261,7 @@ export class BackupRunnerService implements OnApplicationBootstrap {
       await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(${BACKUP_RUN_LOCK_KEY}::bigint)`;
 
       await tx.backupRun.updateMany({
-        where: {
-          status: 'running',
-          startedAt: { lt: new Date(startedAt.getTime() - BACKUP_STALE_RUN_MS) },
-        },
+        where: staleRunsWhere(startedAt),
         data: { status: 'failed', error: STALE_RUN_ERROR, finishedAt: startedAt },
       });
 
@@ -237,7 +271,14 @@ export class BackupRunnerService implements OnApplicationBootstrap {
       }
 
       return tx.backupRun.create({
-        data: { status: 'running', trigger, triggeredById, storageKey, startedAt },
+        data: {
+          status: 'running',
+          trigger,
+          triggeredById,
+          storageKey,
+          startedAt,
+          heartbeatAt: startedAt,
+        },
         include: BACKUP_RUN_INCLUDE,
       });
     }) as Promise<BackupRunRow>;
@@ -269,6 +310,7 @@ export class BackupRunnerService implements OnApplicationBootstrap {
   async execute(run: BackupRunRow): Promise<void> {
     const storageKey = run.storageKey ?? systemBackupStorageKey(run.startedAt);
     let uploadStarted = false;
+    const heartbeat = this.startHeartbeat(run.id);
 
     try {
       if (!this.isStorageConfigured()) {
@@ -353,7 +395,31 @@ export class BackupRunnerService implements OnApplicationBootstrap {
         data: { status: 'failed', finishedAt: new Date(), error: message },
       });
       await this.auditCompleted(run, 'failed', null, null);
+    } finally {
+      clearInterval(heartbeat);
     }
+  }
+
+  /**
+   * Refresh `heartbeat_at` every {@link BACKUP_HEARTBEAT_INTERVAL_MS} while
+   * the row is still `running` (by id, so a finished row is never touched).
+   * Unref'd so it never keeps the process alive. A failed beat is logged only.
+   */
+  private startHeartbeat(runId: string): NodeJS.Timeout {
+    const timer = setInterval(() => {
+      Promise.resolve()
+        .then(() =>
+          this.prisma.backupRun.updateMany({
+            where: { id: runId, status: 'running' },
+            data: { heartbeatAt: new Date() },
+          }),
+        )
+        .catch((error: unknown) => {
+          this.logger.warn(`Backup run ${runId}: heartbeat failed: ${describeError(error)}`);
+        });
+    }, BACKUP_HEARTBEAT_INTERVAL_MS);
+    timer.unref?.();
+    return timer;
   }
 
   /**
