@@ -51,6 +51,8 @@ COPY package*.json ./
 COPY prisma ./prisma/
 COPY prisma.config.ts ./
 COPY scripts ./scripts/
+# The email brand mark (assets/email/logo.png) is read at runtime from beside dist/.
+COPY assets ./assets/
 # The seed runs through ts-node against prisma/seed.ts, which imports shared
 # constants from src/ (so the seeded secret-type options and the AI request
 # schema cannot drift apart). ts-node resolves that import at runtime, so src
