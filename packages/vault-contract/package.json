@@ -1,0 +1,77 @@
+{
+  "name": "@marinoscar/vault-contract",
+  "version": "0.1.0-next.0",
+  "description": "Zod wire schemas, error codes and the system secret types of the Vault domain, shared by the API, the web app and any other host. Dual CommonJS + ESM.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=24"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marinoscar/vault.git",
+    "directory": "packages/vault-contract"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/cjs/index.d.ts",
+  "exports": {
+    ".": {
+      "import": { "types": "./dist/esm/index.d.ts", "default": "./dist/esm/index.js" },
+      "require": { "types": "./dist/cjs/index.d.ts", "default": "./dist/cjs/index.js" }
+    },
+    "./secrets": {
+      "import": { "types": "./dist/esm/secrets/index.d.ts", "default": "./dist/esm/secrets/index.js" },
+      "require": { "types": "./dist/cjs/secrets/index.d.ts", "default": "./dist/cjs/secrets/index.js" }
+    },
+    "./secret-types": {
+      "import": { "types": "./dist/esm/secret-types/index.d.ts", "default": "./dist/esm/secret-types/index.js" },
+      "require": { "types": "./dist/cjs/secret-types/index.d.ts", "default": "./dist/cjs/secret-types/index.js" }
+    },
+    "./backups": {
+      "import": { "types": "./dist/esm/backups/index.d.ts", "default": "./dist/esm/backups/index.js" },
+      "require": { "types": "./dist/cjs/backups/index.d.ts", "default": "./dist/cjs/backups/index.js" }
+    },
+    "./media": {
+      "import": { "types": "./dist/esm/media/index.d.ts", "default": "./dist/esm/media/index.js" },
+      "require": { "types": "./dist/cjs/media/index.d.ts", "default": "./dist/cjs/media/index.js" }
+    },
+    "./errors": {
+      "import": { "types": "./dist/esm/errors/index.d.ts", "default": "./dist/esm/errors/index.js" },
+      "require": { "types": "./dist/cjs/errors/index.d.ts", "default": "./dist/cjs/errors/index.js" }
+    },
+    "./common": {
+      "import": { "types": "./dist/esm/common/index.d.ts", "default": "./dist/esm/common/index.js" },
+      "require": { "types": "./dist/cjs/common/index.d.ts", "default": "./dist/cjs/common/index.js" }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "prebuild": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "prepack": "node ../../scripts/vault-packages/copy-license.mjs",
+    "build": "tsc -p tsconfig.cjs.json && tsc -p tsconfig.esm.json && node ../../scripts/vault-packages/write-dist-stubs.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest",
+    "test:run": "vitest run"
+  },
+  "peerDependencies": {
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "typescript": "^5.x",
+    "vitest": "^4.1.8",
+    "zod": "^4.4.3"
+  }
+}

@@ -79,21 +79,21 @@
       "reason": "Table media_folder_files (migration 20261102130000_add_media_folder_files), which replaces storage_objects.media_folder_id. It appears in the diff only once that migration is applied, i.e. in a dry run AFTER prisma:migrate."
     },
     {
-      "id": "vault:backup-runs-job-id",
-      "reason": "Column backup_runs.job_id with its index and foreign key to jobs (app migration 20261102140000_backup_runs_job_id, E5.2: backups run as queue jobs). The diff prints backup_runs whole with the column only once that migration is applied, i.e. in a dry run AFTER prisma:migrate; the pre-migration shape stays declared by vault:domain-schema.",
       "expectDiff": [
         "CREATE TABLE \"backup_runs\" ( \"id\" UUID NOT NULL, \"status\" TEXT NOT NULL, \"trigger\" TEXT NOT NULL, \"triggered_by_id\" UUID, \"scope\" TEXT NOT NULL DEFAULT 'system', \"owner_id\" UUID, \"storage_key\" TEXT, \"size_bytes\" BIGINT, \"user_count\" INTEGER NOT NULL DEFAULT 0, \"secret_count\" INTEGER NOT NULL DEFAULT 0, \"attachment_count\" INTEGER NOT NULL DEFAULT 0, \"media_file_count\" INTEGER NOT NULL DEFAULT 0, \"warning_count\" INTEGER NOT NULL DEFAULT 0, \"contents\" TEXT[] DEFAULT ARRAY[]::TEXT[], \"error\" TEXT, \"started_at\" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP, \"finished_at\" TIMESTAMPTZ(6), \"heartbeat_at\" TIMESTAMPTZ(6), \"deleted_at\" TIMESTAMPTZ(6), \"job_id\" UUID, CONSTRAINT \"backup_runs_pkey\" PRIMARY KEY (\"id\") );",
         "CREATE INDEX \"backup_runs_job_id_idx\" ON \"backup_runs\"(\"job_id\" ASC);",
         "ALTER TABLE \"backup_runs\" ADD CONSTRAINT \"backup_runs_job_id_fkey\" FOREIGN KEY (\"job_id\") REFERENCES \"jobs\"(\"id\") ON DELETE SET NULL ON UPDATE CASCADE;"
-      ]
+      ],
+      "id": "vault:backup-runs-job-id",
+      "reason": "Column backup_runs.job_id with its index and foreign key to jobs (app migration 20261102140000_backup_runs_job_id, E5.2: backups run as queue jobs). The diff prints backup_runs whole with the column only once that migration is applied, i.e. in a dry run AFTER prisma:migrate; the pre-migration shape stays declared by vault:domain-schema."
     },
     {
-      "id": "vault:attachments-org-id",
-      "reason": "Column secret_attachments.org_id and the composite foreign key (storage_object_id, org_id) to storage_objects (app migration 20261103090000_attachments_composite_fk_media_rls, E6.2). The diff prints secret_attachments whole with the column, and the new foreign key, only once that migration is applied, i.e. in a dry run AFTER prisma:migrate; the pre-migration shape (no org_id, plain foreign key) stays declared by vault:domain-schema.",
       "expectDiff": [
         "CREATE TABLE \"secret_attachments\" ( \"id\" UUID NOT NULL, \"secret_id\" UUID NOT NULL, \"storage_object_id\" UUID NOT NULL, \"label\" TEXT, \"created_at\" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP, \"secret_version_id\" UUID NOT NULL, \"role\" TEXT, \"org_id\" UUID NOT NULL, CONSTRAINT \"secret_attachments_pkey\" PRIMARY KEY (\"id\") );",
         "ALTER TABLE \"secret_attachments\" ADD CONSTRAINT \"secret_attachments_storage_object_id_org_id_fkey\" FOREIGN KEY (\"storage_object_id\", \"org_id\") REFERENCES \"storage_objects\"(\"id\", \"org_id\") ON DELETE CASCADE ON UPDATE CASCADE;"
-      ]
+      ],
+      "id": "vault:attachments-org-id",
+      "reason": "Column secret_attachments.org_id and the composite foreign key (storage_object_id, org_id) to storage_objects (app migration 20261103090000_attachments_composite_fk_media_rls, E6.2). The diff prints secret_attachments whole with the column, and the new foreign key, only once that migration is applied, i.e. in a dry run AFTER prisma:migrate; the pre-migration shape (no org_id, plain foreign key) stays declared by vault:domain-schema."
     }
   ],
   "lockVersion": 1,

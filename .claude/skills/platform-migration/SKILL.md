@@ -22,7 +22,8 @@ Hard rules that stay:
 ## Day to day
 
 - Edit the owning fragment, run `npm run db:compose`, then `prisma:generate`; CI's `db:compose:check` fails on a stale generated file.
-- App-owned table: `npm run prisma:migrate:dev -- --name <name>`; a back-relation on a platform model is an `extend model` block, never an edit to a platform file.
+- A table that is neither platform nor domain: `npm run prisma:migrate:dev -- --name <name>`; a back-relation on a platform model is an `extend model` block, never an edit to a platform file.
+- A change to a **domain** table (secrets, media, backups) is a fragment edit in `packages/vault-db/schema/vault.<slice>.prisma` and a `vault-db promote`, not a `prisma migrate dev` in the app: follow [docs/runbooks/vault-domain-migration.md](../../../docs/runbooks/vault-domain-migration.md). `npm run db:check` also proves `prisma/vault.lock`.
 - A change to a **platform** table is a seam request on marinoscar/EnterpriseAppBase (`seam_request.yml`), not a local edit; a stop-gap is a side table or a declared deviation.
 - Installed platform migrations are byte copies proven by `prisma/platform.lock`; `npm run db:check` fails on any byte change. New raw-SQL index: also add `{ name, definition }` (exactly `pg_indexes.indexdef`) to `rawSqlIndexes` in `prisma/platform.lock`; the lock's `deviations` are tied to the baseline and never grow afterwards.
 - Every dump and restore keeps `--enable-row-security` **and** `PGOPTIONS=-c app.rls_bypass=on`.

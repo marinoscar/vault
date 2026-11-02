@@ -1,0 +1,64 @@
+{
+  "name": "@marinoscar/vault-db",
+  "version": "0.1.0-next.0",
+  "description": "Prisma schema fragments, SQL migrations and the vault-db command of the Vault domain (CommonJS).",
+  "license": "MIT",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=24"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marinoscar/vault.git",
+    "directory": "packages/vault-db"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "vault-db": "./bin/vault-db.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "schema",
+    "migrations",
+    "raw-sql-indexes.json",
+    "extensions.json",
+    "schema-objects.json",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "prebuild": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "prepack": "node ../../scripts/vault-packages/copy-license.mjs",
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest",
+    "test:run": "vitest run"
+  },
+  "dependencies": {
+    "commander": "^14.0.2"
+  },
+  "peerDependencies": {
+    "prisma": "^7.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "prisma": "^7.8.0",
+    "typescript": "^5.x",
+    "vitest": "^4.1.8"
+  }
+}

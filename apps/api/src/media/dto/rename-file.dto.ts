@@ -1,8 +1,6 @@
-import { z } from 'zod';
 import { createZodDto } from 'nestjs-zod';
+import { renameFileSchema } from '@marinoscar/vault-contract/media';
 
-export const renameFileSchema = z.object({
-  name: z.string().min(1).max(255),
-});
+export { renameFileSchema };
 
 export class RenameFileDto extends createZodDto(renameFileSchema) {}

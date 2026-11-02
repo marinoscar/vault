@@ -1,8 +1,6 @@
-import { z } from 'zod';
 import { createZodDto } from 'nestjs-zod';
+import { updateFolderSchema } from '@marinoscar/vault-contract/media';
 
-export const updateFolderSchema = z.object({
-  name: z.string().min(1).max(255),
-});
+export { updateFolderSchema };
 
 export class UpdateFolderDto extends createZodDto(updateFolderSchema) {}

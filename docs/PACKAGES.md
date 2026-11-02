@@ -1,0 +1,125 @@
+# The `@marinoscar/vault-*` packages
+
+Vault's domain code is written once, in packages, and the apps are hosts ([ADR-0001](decisions/0001-packages-first.md)). This page is the map: which packages exist, how they are laid out, built, tested and versioned. Each package README owns its own details.
+
+## Contents
+
+- [The packages](#the-packages)
+- [Layout](#layout)
+- [Build and test](#build-and-test)
+- [How the apps consume them](#how-the-apps-consume-them)
+- [Database: fragments, migrations and the lock](#database-fragments-migrations-and-the-lock)
+- [Adding to a package](#adding-to-a-package)
+- [CI](#ci)
+- [Versioning plan](#versioning-plan)
+
+## The packages
+
+| Package | Folder | Status | Holds |
+|---|---|---|---|
+| `@marinoscar/vault-contract` | `packages/vault-contract` | in force (E12.1, #102) | Zod schemas, response shapes, error codes, system secret types. Dual CJS + ESM. [README](../packages/vault-contract/README.md) |
+| `@marinoscar/vault-db` | `packages/vault-db` | in force (E12.1, #102) | Domain Prisma fragments, migrations, raw-SQL index list, the `vault-db` command. CommonJS. [README](../packages/vault-db/README.md) |
+| `@marinoscar/vault-api` | `packages/vault-api` | planned, E12.2 (#103) | Domain slices behind ports; `apps/api` binds the ports only |
+| `@marinoscar/vault-web` | `packages/vault-web` | planned, E12.3 (#104) | Domain pages, components, destinations, brand; `apps/web` is the host |
+
+The platform packages (`@marinoscar/platform-*`) are a separate set, owned by EnterpriseAppBase. A Vault package may depend on them as peers; it never copies them. `packages/shared` (`@app/shared`) is the product identity and is not a domain package.
+
+## Layout
+
+```
+packages/vault-contract/
+  src/index.ts            exports only VAULT_CONTRACT_PACKAGE
+  src/<slice>/index.ts    secrets, secret-types, backups, media, errors, common
+  test/*.test.ts          Vitest
+  tsconfig.json           typecheck (src and test)
+  tsconfig.build.json     shared build settings; tsconfig.cjs.json and tsconfig.esm.json extend it
+packages/vault-db/
+  schema/vault.<slice>.prisma     secrets, media, backups
+  migrations/<id>/migration.sql   byte copies, with migrations/manifest.json
+  raw-sql-indexes.json, extensions.json, schema-objects.json
+  src/                    the command (bin, sync, check, promote, lock, manifest, sql)
+  bin/vault-db.js         thin wrapper over dist/bin
+  test/                   Vitest; apply.db.test.ts runs only with DATABASE_URL
+scripts/vault-packages/   copy-license.mjs (prepack), write-dist-stubs.mjs (contract build)
+```
+
+Rules that hold for every package:
+
+- A relative import inside `vault-contract` keeps its `.js` extension (the ESM build needs it).
+- `vault-contract` is built twice (`dist/cjs`, `dist/esm`), each with its own `package.json` stub so a `.d.ts` takes the right module format. `moduleResolution` is `node10` for the CJS tree because TypeScript 5 does not allow `bundler` with `module: commonjs`.
+- `vault-db` is CommonJS and builds with `tsc -p tsconfig.build.json` to `dist/`.
+- `dist/` is git-ignored. The root `package.json` workspaces glob `packages/*` picks a package up.
+
+## Build and test
+
+From the repository root:
+
+```bash
+npm run build:packages       # vault-contract (cjs + esm), then vault-db
+npm run typecheck:packages
+npm run test:packages        # Vitest in each package
+```
+
+Per package: `npm run build|typecheck|test:run -w @marinoscar/vault-contract` (or `vault-db`). The real-Postgres test of `vault-db` (`test/apply.db.test.ts`, which applies the platform history and then the domain history to a fresh database) runs when `DATABASE_URL` names a PostgreSQL 16 server whose role may create databases:
+
+```bash
+DATABASE_URL=postgresql://postgres:<password>@localhost:5432/postgres npm run test:run -w @marinoscar/vault-db
+```
+
+## How the apps consume them
+
+`apps/api` and `apps/web` list the packages as dependencies at the exact workspace version, so npm links them. They import the **built** output, so a fresh clone needs `npm ci` then `npm run build:packages` before the app's typecheck, tests or `prisma:seed` (the seed imports the system secret types from the contract). CI does this in every job that needs it.
+
+What moved in E12.1, with the old import path kept as a thin re-export so the diff in callers is nil:
+
+| Was | Now in | Old file |
+|---|---|---|
+| `dto/*.dto.ts` Zod schemas of secrets, secret types, media and backups | `vault-contract/{secrets,secret-types,media,backups}` | the DTO file keeps `createZodDto(schema)` and re-exports the schema |
+| `secrets/export/backup-contents.ts` | `vault-contract/backups` | re-export |
+| `BACKUP_FREQUENCIES`, `BACKUP_INTERVAL_HOURS`, `isValidTimeOfDay`, `isValidTimeZone` of `backups/backup-schedule.ts` | `vault-contract/backups` | `backup-schedule.ts` re-exports them and keeps the schedule math |
+| `backups/dto/backup-responses.ts` wire interfaces | `vault-contract/backups` | `backup-responses.ts` re-exports them and keeps the row mapper |
+| `AI_ERROR_CODES` and the error-code definitions | `vault-contract/errors` | `ai.constants.ts` re-exports; `app-registrations/error-codes.ts` registers the data |
+| `prisma/system-secret-types.ts`, `CARD_NETWORKS`, `CARD_KINDS` | `vault-contract/secret-types` | re-export |
+| `typeErrors` | `vault-contract/common` | `common/schemas/zod-messages.ts` re-exports |
+| `AI_ERROR_CODES`, `AttachmentRole`, `BackupFrequency`, `BackupRunStatus`, `BackupRunTrigger` in `apps/web/src/types` | `vault-contract` | re-export |
+| `prisma/fragments/vault.prisma`, `media-folder-files.prisma` | `vault-db/schema/vault.{secrets,media,backups}.prisma` | removed; `prisma/fragments/vault.*.prisma` are generated copies |
+| the eight app-owned migrations | `vault-db/migrations/<same name>` | untouched in `prisma/migrations`, now also recorded in `prisma/vault.lock` |
+
+## Database: fragments, migrations and the lock
+
+`npm run db:compose` (in `apps/api`) runs `vault-db sync` and then `platform db compose`. `npm run db:check` runs `platform db check` and `vault-db check`.
+
+`prisma/vault.lock` is the proof for the domain, the way `prisma/platform.lock` is for the platform:
+
+```json
+{
+  "lockVersion": 1,
+  "migrations": [
+    { "installedDir": "20260403120000_add_secrets_and_versions",
+      "originId": "vault:20260403120000_add_secrets_and_versions",
+      "sha256": "..." }
+  ],
+  "vaultDbVersion": "0.1.0-next.0"
+}
+```
+
+`vault-db check` verifies that every installed `migration.sql` hashes to its lock entry (comments count), that every generated fragment `prisma/fragments/vault.<slice>.prisma` equals the package file, that the package's own copies equal `migrations/manifest.json`, and that the raw-SQL index list in the package, in the migrations and in `platform.lock` `rawSqlIndexes` agree. Because every domain migration was already applied in production under its original name, the lock records original names; nothing was renamed and nothing was re-applied. The two platform-owned originals stay in `platform.lock`.
+
+Procedure to change the domain schema: [runbooks/vault-domain-migration.md](runbooks/vault-domain-migration.md).
+
+## Adding to a package
+
+1. Put the code in the slice that owns it, with a test in the package.
+2. A new subpath of `vault-contract` needs an `exports` entry in its `package.json` (both `import` and `require`).
+3. If `apps/` already had the old definition, replace its body with a re-export so callers do not change, then delete the re-export when the last caller moves (E12.2 and E12.3 do this).
+4. Run `npm run build:packages && npm run typecheck:packages && npm run test:packages`, then the app's typecheck and unit tests.
+
+## CI
+
+`.github/workflows/ci.yml` builds the packages after `npm ci` in every job that imports them, and has a `Packages` job that typechecks and tests them, and runs the real-Postgres `vault-db` test against a service container. `db-check` and `baseline-rehearsal` run `db:check` (both locks) and `db:drift` as before.
+
+## Versioning plan
+
+All Vault packages are versioned together at `0.1.0-next.<n>`, starting at `0.1.0-next.0`. The apps pin the exact version, which npm resolves to the workspace while the version matches. Nothing is published yet.
+
+E12.4 (#105) adds changesets, a `vault-packages.yml` workflow (build, test, package docs check), `vault-release.yml` (publish to npm under the `next` dist-tag) and `docs/runbooks/release-vault-packages.md`. Until then: bump the `version` of a package you change (and the exact pins in the apps) only when a published consumer would need it; no one consumes these packages outside this repository.

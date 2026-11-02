@@ -1,8 +1,5 @@
-import { z } from 'zod';
+import { secretTypeQuerySchema, type SecretTypeQuery } from '@marinoscar/vault-contract/secret-types';
 
-export const secretTypeQuerySchema = z.object({
-  search: z.string().optional(),
-  includeSystem: z.coerce.boolean().default(true),
-});
+export { secretTypeQuerySchema };
 
-export type SecretTypeQueryDto = z.infer<typeof secretTypeQuerySchema>;
+export type SecretTypeQueryDto = SecretTypeQuery;

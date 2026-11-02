@@ -1,8 +1,6 @@
-import { z } from 'zod';
 import { createZodDto } from 'nestjs-zod';
+import { linkFileSchema } from '@marinoscar/vault-contract/media';
 
-export const linkFileSchema = z.object({
-  storageObjectId: z.string().uuid(),
-});
+export { linkFileSchema };
 
 export class LinkFileDto extends createZodDto(linkFileSchema) {}

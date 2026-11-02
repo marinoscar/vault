@@ -1,0 +1,46 @@
+{
+  "lockVersion": 1,
+  "migrations": [
+    {
+      "installedDir": "20260403120000_add_secrets_and_versions",
+      "originId": "vault:20260403120000_add_secrets_and_versions",
+      "sha256": "0edf9fa41316740e9fbd9bb7a3f0e8c9390fde9cad347377f1afe7c989c653b6"
+    },
+    {
+      "installedDir": "20260403235813_add_media_folders",
+      "originId": "vault:20260403235813_add_media_folders",
+      "sha256": "d9ddffb954b8f7d8c18baafb96df960edfe6c22126962d4c9acc4ce0d493496f"
+    },
+    {
+      "installedDir": "20260404000000_add_secret_name_user_unique",
+      "originId": "vault:20260404000000_add_secret_name_user_unique",
+      "sha256": "4317431fdb245c06b7beb842d8b38b4f3af2de992a8bdf18c180507acacd44a6"
+    },
+    {
+      "installedDir": "20260727120000_version_scoped_attachments",
+      "originId": "vault:20260727120000_version_scoped_attachments",
+      "sha256": "b97cf5311012b07fc34de98b484b20d5c87ffd123562dbd601f777ef5ad8e8a4"
+    },
+    {
+      "installedDir": "20261102120000_add_backup_schedules",
+      "originId": "vault:20261102120000_add_backup_schedules",
+      "sha256": "f8f8bb3917d06bfe256401fd87ad3fa2b6633c281a9c597cdb5fd458ed9b7aa6"
+    },
+    {
+      "installedDir": "20261102130000_add_media_folder_files",
+      "originId": "vault:20261102130000_add_media_folder_files",
+      "sha256": "af8b107252a82f06506d4b356dfd352f4012cbb008d199e952b03431ee2ce2d4"
+    },
+    {
+      "installedDir": "20261102140000_backup_runs_job_id",
+      "originId": "vault:20261102140000_backup_runs_job_id",
+      "sha256": "3ce4ae81aecd9c478f70f7c11f250fbdf22dcce82c6f8ba1ed9353b85f219687"
+    },
+    {
+      "installedDir": "20261103090000_attachments_composite_fk_media_rls",
+      "originId": "vault:20261103090000_attachments_composite_fk_media_rls",
+      "sha256": "76c26bb270f5eda05254a3a13003bff46d19bbcc687bc0b1dcaeaa8b705a4135"
+    }
+  ],
+  "vaultDbVersion": "0.1.0-next.0"
+}

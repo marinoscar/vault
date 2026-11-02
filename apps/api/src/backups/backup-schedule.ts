@@ -13,11 +13,18 @@
  *   first occurrence.
  */
 
-export const BACKUP_FREQUENCIES = ['hourly', 'daily', 'weekly', 'monthly'] as const;
-export type BackupFrequency = (typeof BACKUP_FREQUENCIES)[number];
+import {
+  BACKUP_FREQUENCIES,
+  BACKUP_INTERVAL_HOURS,
+  isValidTimeOfDay,
+  isValidTimeZone,
+  type BackupFrequency,
+} from '@marinoscar/vault-contract/backups';
 
-/** Allowed `intervalHours` for `hourly`: each divides 24, so slots repeat every day. */
-export const BACKUP_INTERVAL_HOURS = [1, 2, 3, 4, 6, 8, 12] as const;
+// The vocabulary and the two validators live in `@marinoscar/vault-contract/backups` (E12.1), where
+// the schedule request schema uses them; re-exported so the schedule code keeps its import path.
+export { BACKUP_FREQUENCIES, BACKUP_INTERVAL_HOURS, isValidTimeOfDay, isValidTimeZone };
+export type { BackupFrequency };
 
 export interface BackupScheduleTiming {
   frequency: BackupFrequency | string;
@@ -34,24 +41,6 @@ export interface BackupScheduleTiming {
 }
 
 const TIME_OF_DAY_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
-
-/** True when `value` is a valid `HH:mm` (00:00 to 23:59). */
-export function isValidTimeOfDay(value: string): boolean {
-  return TIME_OF_DAY_RE.test(value);
-}
-
-/** True when `Intl` accepts `timeZone` as an IANA zone. */
-export function isValidTimeZone(timeZone: string): boolean {
-  if (!timeZone || typeof timeZone !== 'string') {
-    return false;
-  }
-  try {
-    new Intl.DateTimeFormat('en-US', { timeZone });
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 const formatterCache = new Map<string, Intl.DateTimeFormat>();
 

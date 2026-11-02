@@ -1,80 +1,18 @@
 import { BadRequestException } from '@nestjs/common';
-import { z } from 'zod';
-import { typeErrors } from '../../common/schemas/zod-messages';
-
 import {
+  EXPORT_PASSWORD_CHOICE_MESSAGES,
   EXPORT_PASSWORD_MAX_LENGTH,
   EXPORT_PASSWORD_MIN_LENGTH,
-} from '../../secrets/dto/export-secrets.dto';
+  exportSystemBackupSchema,
+} from '@marinoscar/vault-contract/backups';
+
 import {
   BACKUP_CONTENT_DEFAULTS,
   BackupContentSelection,
-  contentSelectionIssues,
   resolveContentSelection,
 } from '../../secrets/export/backup-contents';
 
-export const EXPORT_PASSWORD_CHOICE_MESSAGES = {
-  missing: 'Enter a password, or use the scheduled backup password',
-  both: 'Use either a password or the scheduled backup password, not both',
-} as const;
-
-const optionalBoolean = (name: string) =>
-  z.boolean({ error: typeErrors({ invalid: `${name} must be a boolean` }) }).optional();
-
-/**
- * Body of `POST /api/admin/backups/export`: download a system backup now.
- *
- * Exactly one password source: `password` (6-256 characters, not trimmed,
- * same rules as the user export) or `useScheduledPassword: true` (the stored
- * schedule password, decrypted only for the stream). Content flags follow the
- * system-level rules of `backup-contents.ts`; a flag left out takes its
- * default. Every message is static and never echoes the password.
- */
-export const exportSystemBackupSchema = z
-  .object(
-    {
-      password: z
-        .string({ error: typeErrors({ invalid: 'Password must be a string' }) })
-        .min(
-          EXPORT_PASSWORD_MIN_LENGTH,
-          `Password must be at least ${EXPORT_PASSWORD_MIN_LENGTH} characters`,
-        )
-        .max(
-          EXPORT_PASSWORD_MAX_LENGTH,
-          `Password must be at most ${EXPORT_PASSWORD_MAX_LENGTH} characters`,
-        )
-        .optional(),
-      useScheduledPassword: optionalBoolean('useScheduledPassword'),
-      includeSecrets: optionalBoolean('includeSecrets'),
-      includeAttachments: optionalBoolean('includeAttachments'),
-      includeVersions: optionalBoolean('includeVersions'),
-      includeMedia: optionalBoolean('includeMedia'),
-      includeSystem: optionalBoolean('includeSystem'),
-    },
-    {
-      error: typeErrors({ required: 'Request body must be a JSON object', invalid: 'Request body must be a JSON object' }),
-    },
-  )
-  .superRefine((value, ctx) => {
-    const scheduled = value.useScheduledPassword === true;
-    if (value.password === undefined && !scheduled) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['password'],
-        message: EXPORT_PASSWORD_CHOICE_MESSAGES.missing,
-      });
-    }
-    if (value.password !== undefined && scheduled) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['useScheduledPassword'],
-        message: EXPORT_PASSWORD_CHOICE_MESSAGES.both,
-      });
-    }
-    for (const issue of contentSelectionIssues(value, 'system')) {
-      ctx.addIssue({ code: 'custom', path: [issue.path], message: issue.message });
-    }
-  });
+export { EXPORT_PASSWORD_CHOICE_MESSAGES, exportSystemBackupSchema };
 
 export interface ExportSystemBackupInput {
   /** The given password, or `null` when the scheduled one is to be used. */

@@ -30,12 +30,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # @marinoscar/vault-contract and vault-db are workspace packages the apps import
+      # as built output (dist/ is git-ignored): build them right after the install.
+      - name: Build the Vault packages
+        run: npm run build:packages
+
       # prisma/schema/ is GENERATED from the platform-db fragments plus
       # prisma/fragments/*.prisma; a stale or hand-edited copy fails here.
       - name: Check the composed Prisma schema is up to date
         run: npm run db:compose:check --workspace=api
 
-      - name: Check installed platform migrations against platform.lock
+      # platform db check (platform.lock) and vault-db check (vault.lock, the domain fragments
+      # and migrations installed from @marinoscar/vault-db).
+      - name: Check installed platform and domain migrations against platform.lock and vault.lock
         run: npm run db:check --workspace=api
 
       - name: Generate Prisma Client
@@ -90,6 +97,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # @marinoscar/vault-contract and vault-db are workspace packages the apps import
+      # as built output (dist/ is git-ignored): build them right after the install.
+      - name: Build the Vault packages
+        run: npm run build:packages
+
       - name: Create the ordinary application role (vault_app)
         env:
           PGHOST: localhost
@@ -105,7 +117,9 @@ jobs:
       - name: Check the composed Prisma schema is up to date
         run: npm run db:compose:check --workspace=api
 
-      - name: Check installed platform migrations against platform.lock
+      # platform db check (platform.lock) and vault-db check (vault.lock, the domain fragments
+      # and migrations installed from @marinoscar/vault-db).
+      - name: Check installed platform and domain migrations against platform.lock and vault.lock
         run: npm run db:check --workspace=api
 
       # A FRESH database: the original 7 migrations, the 38 installed platform
@@ -175,6 +189,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # @marinoscar/vault-contract and vault-db are workspace packages the apps import
+      # as built output (dist/ is git-ignored): build them right after the install.
+      - name: Build the Vault packages
+        run: npm run build:packages
+
       - name: Generate Prisma Client
         run: npm run prisma:generate --workspace=api
 
@@ -235,6 +254,48 @@ jobs:
           test "$(q "SELECT count(*) FROM secret_attachments WHERE org_id IS NULL")" = "0"
           test "$(q "SELECT count(*) FROM pg_policies WHERE tablename = 'media_folder_files'")" = "1"
 
+  packages:
+    name: Packages (vault-contract, vault-db)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: "p@ss/word:ci"
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build the packages
+        run: npm run build:packages
+
+      - name: Type check the packages
+        run: npm run typecheck:packages
+
+      # vault-db's apply.db.test.ts applies the platform history and then the domain history to
+      # a scratch database it creates and drops itself.
+      - name: Test the packages
+        run: npm run test:packages
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://postgres:p%40ss%2Fword%3Aci@localhost:5432/postgres
+
   web-check:
     name: Web Check
     runs-on: ubuntu-latest
@@ -250,6 +311,11 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      # @marinoscar/vault-contract and vault-db are workspace packages the apps import
+      # as built output (dist/ is git-ignored): build them right after the install.
+      - name: Build the Vault packages
+        run: npm run build:packages
 
       - name: Type check Web
         run: npm run typecheck --workspace=web
