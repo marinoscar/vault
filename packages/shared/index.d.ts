@@ -59,3 +59,9 @@ export declare const ANDROID_IDENTITY_SOURCE: {
     readonly apkStem?: string;
   };
 };
+
+/**
+ * The CLI executable's name (`identity.json` `cliName`); seeds the config
+ * directory, the environment-variable prefix and the systemd unit.
+ */
+export declare const CLI_NAME: string;

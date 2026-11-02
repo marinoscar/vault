@@ -65,10 +65,10 @@ Baseline classification of every Vault module against EnterpriseAppBase (EAB) an
 
 | Tool | Category | Target | Epic | Notes |
 |---|---|---|---|---|
-| `tools/app` (`@vault/cli`, generic template CLI: allowlist, auth, config, docker, health, prisma, settings, storage, sync, test, users) | noise | `@marinoscar/platform-cli` `createCli` commands | E11 | Delete; README names EnterpriseAppBase |
-| `tools/vaultcli` core (`auth`, `config`, `health`, TUI plumbing) | noise | platform-cli `login`, `config`, `api` | E11 | Config dir `~/.config/vaultcli` migration to the platform path needs a documented step |
-| `tools/vaultcli` domain (`secrets`, `versions`, `backup`, `admin-backups`, `sync`, `types`, interactive menus) | domain | `extraCommands` of the `vault` CLI | E11 | |
-| `tools/vaultcli/install.sh`, `infra/deploy/*` | vault-divergence | `vault deploy` pipeline | E11 | `infra/deploy/install-vault.sh`, `update.sh`, `vault.conf`, `DEPLOY.md` replaced by `vault deploy` |
+| `tools/app` (`@vault/cli`, generic template CLI: allowlist, auth, config, docker, health, prisma, settings, storage, sync, test, users) | noise | `@marinoscar/platform-cli` `createCli` commands | E11 | Deleted in E11.1 (#99) |
+| `tools/vaultcli` core (`auth`, `config`, `health`, TUI plumbing) | noise | platform-cli `login`, `config`, `api` | E11 | Done in E11.1 (#99): `vault login`/`config`/`auth`; `~/.config/vaultcli` files are still read, [migration table](../../apps/cli/README.md#migrating-from-vaultcli) |
+| `tools/vaultcli` domain (`secrets`, `versions`, `backup`, `admin-backups`, `sync`, `types`, interactive menus) | domain | `extraCommands` of the `vault` CLI | E11 | Done in E11.1 (#99): `apps/cli/src/vault/` |
+| `tools/vaultcli/install.sh` (now `apps/cli/install.sh`), `infra/deploy/*` | vault-divergence | `vault deploy` pipeline | E11 | `infra/deploy/install-vault.sh`, `update.sh`, `vault.conf`, `DEPLOY.md` replaced by `vault deploy` |
 
 ## Prisma models (composed from `@marinoscar/platform-db` plus `apps/api/prisma/fragments/`)
 

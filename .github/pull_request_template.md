@@ -29,7 +29,7 @@
 - [ ] `cd apps/api && npm run typecheck`
 - [ ] `cd apps/web && npm run test:run` (Vitest)
 - [ ] `cd apps/web && npm run typecheck && npm run typecheck:test`
-- [ ] `npm run vaultcli:build` and `npm test -w tools/vaultcli` (CLI changes)
+- [ ] `npm run cli:build`, `npm run typecheck --workspace=cli` and `npm run test:run --workspace=cli` (CLI changes; bump `apps/cli/package.json` once per PR)
 - [ ] E2E (`tests/e2e`, if applicable)
 - [ ] Manual testing completed
 

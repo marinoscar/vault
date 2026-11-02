@@ -39,7 +39,7 @@ cd apps/api && npm run prisma:studio
 ```bash
 cd apps/api && npm run typecheck && npm test
 cd apps/web && npm run typecheck && npm run typecheck:test && npm run test:run
-npm run vaultcli:build && npm test -w tools/vaultcli
+npm run cli:build && npm run typecheck --workspace=cli && npm run test:run --workspace=cli
 ```
 
 ### Read-only status checks
