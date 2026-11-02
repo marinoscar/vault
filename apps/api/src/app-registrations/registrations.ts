@@ -20,6 +20,7 @@ import {
 } from '@marinoscar/platform-api/manifest';
 
 import { PERMISSION_OPTIONS } from '../platform/permissions';
+import './jobs';
 import { VAULT_MODEL_OWNERSHIP } from './model-ownership';
 import { VAULT_USER_OWNED_MODELS } from './user-owned-models';
 

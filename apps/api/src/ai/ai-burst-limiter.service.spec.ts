@@ -2,11 +2,14 @@ import {
   BURST_MAX_IN_WINDOW,
   BURST_WINDOW_MS,
   VERIFY_BURST_MAX_IN_WINDOW,
+  VERIFY_BURST_WINDOW_MS,
 } from './ai.constants';
 import {
   AiBurstLimiterService,
   VERIFY_BURST,
 } from './ai-burst-limiter.service';
+
+const LONGEST_WINDOW_FOR_TEST = Math.max(BURST_WINDOW_MS, VERIFY_BURST_WINDOW_MS);
 
 describe('AiBurstLimiterService', () => {
   let limiter: AiBurstLimiterService;
@@ -82,6 +85,16 @@ describe('AiBurstLimiterService', () => {
         limiter.consume('user-1', now + BURST_WINDOW_MS + 2 + i).allowed,
       ).toBe(true);
     }
+  });
+
+  it('consume prunes aged-out windows lazily, with no timer', () => {
+    limiter.consume('user-old', now);
+    // A minute-plus later another user's attempt triggers the sweep.
+    limiter.consume('user-new', now + 60_001 + LONGEST_WINDOW_FOR_TEST);
+
+    const hits = (limiter as unknown as { hits: Map<string, number[]> }).hits;
+    expect(hits.has('user-old')).toBe(false);
+    expect(hits.has('user-new')).toBe(true);
   });
 
   it('sweep keeps windows that are still live', () => {

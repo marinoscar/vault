@@ -270,6 +270,9 @@ export class BackupRunnerService implements OnApplicationBootstrap {
     }
   }
 
+  // PLATFORM-ADOPTION-SHIM(E5.2, #82): this tick runs the due backup in-process, the one `@Cron`
+  // that works inline besides the storage sweep (E6). Exempt from `cron-enqueue-only` with a written
+  // reason in test/jobs/cron-source-roots.ts; E5.2 makes it enqueue-only (plan: local-exceptions.md).
   @Cron(CronExpression.EVERY_MINUTE)
   async handleTick(): Promise<void> {
     try {
