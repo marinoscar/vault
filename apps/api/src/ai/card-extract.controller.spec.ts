@@ -1,8 +1,7 @@
 import { HttpStatus } from '@nestjs/common';
 import { FastifyReply } from 'fastify';
 
-import { RequestUser } from '../auth/interfaces/authenticated-user.interface';
-import { PERMISSIONS_KEY } from '../auth/decorators/permissions.decorator';
+import { RequestUser, PERMISSIONS_KEY } from '@marinoscar/platform-api/identity';
 import { PERMISSIONS } from '../common/constants/roles.constants';
 
 import { AI_ERROR_CODES } from './ai.constants';

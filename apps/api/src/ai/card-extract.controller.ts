@@ -7,9 +7,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 
-import { Auth } from '../auth/decorators/auth.decorator';
-import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { RequestUser } from '../auth/interfaces/authenticated-user.interface';
+import { Auth, CurrentUser, RequestUser } from '@marinoscar/platform-api/identity';
 import { PERMISSIONS } from '../common/constants/roles.constants';
 
 import { AiException } from './ai.errors';

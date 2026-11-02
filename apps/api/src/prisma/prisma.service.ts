@@ -9,7 +9,7 @@ import {
   type OrgScope,
   type RlsTransactionClient,
   type RlsTransactionOptions,
-} from './org-scope';
+} from '@marinoscar/platform-api/core';
 
 @Injectable()
 export class PrismaService
@@ -50,8 +50,8 @@ export class PrismaService
   }
 
   /**
-   * PLATFORM-ADOPTION-SHIM(E3.1): same signature as the platform's
-   * `PrismaService.forOrg`. A client whose every operation runs in a
+   * The platform's scoping (`orgScopeExtension`), the shape of the
+   * platform `PrismaService.forOrg`. A client whose every operation runs in a
    * transaction that first sets the transaction-local `app.org_id` (and
    * `app.user_id`), so row-level security shows it one organization's rows.
    * Good for single operations; a unit of work uses {@link runInOrg}. Never
@@ -64,7 +64,7 @@ export class PrismaService
   }
 
   /**
-   * PLATFORM-ADOPTION-SHIM(E3.1): same signature as the platform's
+   * The platform's `runInOrg`, the shape of the platform
    * `PrismaService.runInOrg`. One interactive transaction scoped to an
    * organization (`set_config(..., true)` first, never a session-level `SET`);
    * `fn` receives the plain transaction client.
