@@ -1,3 +1,4 @@
+import { defaultOrgMock } from '../../../test/mocks/default-org.mock';
 import { Readable } from 'stream';
 
 import { Logger } from '@nestjs/common';
@@ -50,6 +51,7 @@ const asLinkRows = (folders: ExportMediaFolderRow[]) =>
 
 function makeService(folders: ExportMediaFolderRow[], storage: Partial<Record<string, jest.Mock>> = {}) {
   const prisma = {
+    ...defaultOrgMock(),
     secret: { findMany: jest.fn().mockResolvedValue([]) },
     mediaFolder: { findMany: jest.fn().mockResolvedValue(asLinkRows(folders)) },
     auditEvent: { create: jest.fn().mockResolvedValue({}) },

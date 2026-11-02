@@ -12,6 +12,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { TextReader, ZipWriter } from '@zip.js/zip.js';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { defaultOrgClient } from '../prisma/default-org';
 import { CryptoService } from '../common/services/crypto.service';
 import { STORAGE_PROVIDER, StorageProvider } from '../storage/providers';
 import {
@@ -235,6 +236,15 @@ export class BackupRunnerService implements OnApplicationBootstrap {
     private readonly exportService: SecretsExportService,
     private readonly systemSettings: SystemSettingsService,
   ) {}
+
+  /**
+   * PLATFORM-ADOPTION-SHIM(E6): reads that touch `storage_objects` (a
+   * row-level-security table) run in the default organization's scope; the API
+   * is an ordinary role.
+   */
+  private get orgDb() {
+    return defaultOrgClient(this.prisma);
+  }
 
   /** True when an object-storage bucket is configured. */
   isStorageConfigured(): boolean {
@@ -982,14 +992,14 @@ export class BackupRunnerService implements OnApplicationBootstrap {
   private async needsZip64(selection: BackupContentSelection): Promise<boolean> {
     let total = 0;
     if (selection.includeSecrets && selection.includeAttachments) {
-      const aggregate = await this.prisma.storageObject.aggregate({
+      const aggregate = await this.orgDb.storageObject.aggregate({
         _sum: { size: true },
         where: { status: 'ready', secretAttachments: { some: {} } },
       });
       total += Number(aggregate?._sum?.size ?? 0);
     }
     if (selection.includeMedia) {
-      const aggregate = await this.prisma.storageObject.aggregate({
+      const aggregate = await this.orgDb.storageObject.aggregate({
         _sum: { size: true },
         where: { status: 'ready', mediaFolderFile: { isNot: null } },
       });

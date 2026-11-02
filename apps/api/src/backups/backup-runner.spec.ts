@@ -1,3 +1,4 @@
+import { defaultOrgMock } from '../../test/mocks/default-org.mock';
 import { Readable } from 'stream';
 
 import { ConflictException, Logger } from '@nestjs/common';
@@ -92,6 +93,7 @@ function setup(opts: Options = {}) {
       : opts.schedule;
 
   const prisma = {
+    ...defaultOrgMock(),
     backupSchedule: {
       findUnique: jest.fn(async () => schedule),
       updateMany: jest.fn(async () => ({ count: opts.claimCount ?? 1 })),

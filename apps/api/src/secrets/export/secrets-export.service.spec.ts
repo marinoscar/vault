@@ -1,3 +1,4 @@
+import { defaultOrgMock } from '../../../test/mocks/default-org.mock';
 import { Readable } from 'stream';
 
 import { Logger } from '@nestjs/common';
@@ -101,6 +102,7 @@ const BLOBS: Record<string, Buffer> = {
 
 function makeService(rows: ExportSecretRow[], storage: Partial<Record<string, jest.Mock>> = {}) {
   const prisma = {
+    ...defaultOrgMock(),
     secret: { findMany: jest.fn().mockResolvedValue(rows) },
     auditEvent: { create: jest.fn().mockResolvedValue({}) },
   };
