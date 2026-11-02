@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { SecretsController } from './secrets.controller';
 import { SecretsService } from './secrets.service';
+import { CardSummaryService } from './card-summary.service';
 import { SecretsExportService } from './export/secrets-export.service';
 import { CommonModule } from '../common/common.module';
 import { StorageProvidersModule } from '@marinoscar/platform-api/storage';
@@ -12,7 +13,7 @@ import { StorageProvidersModule } from '@marinoscar/platform-api/storage';
   // delete() applies an uploader-ownership check this path must not inherit.
   imports: [CommonModule, StorageProvidersModule],
   controllers: [SecretsController],
-  providers: [SecretsService, SecretsExportService],
+  providers: [SecretsService, SecretsExportService, CardSummaryService],
   exports: [SecretsService, SecretsExportService],
 })
 export class SecretsModule {}

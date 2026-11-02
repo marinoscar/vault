@@ -28,6 +28,11 @@ import { Auth, CurrentUser, RequestUser } from '@marinoscar/platform-api/identit
 import { PERMISSIONS } from '../common/constants/roles.constants';
 
 import { SecretsService } from './secrets.service';
+import { CardSummaryService } from './card-summary.service';
+import {
+  CardSummaryQueryDto,
+  cardSummaryQuerySchema,
+} from './dto/card-summary-query.dto';
 import { SecretsExportService } from './export/secrets-export.service';
 import {
   EXPORT_SECRETS_BODY_SCHEMA,
@@ -52,6 +57,7 @@ export class SecretsController {
   constructor(
     private readonly secretsService: SecretsService,
     private readonly secretsExportService: SecretsExportService,
+    private readonly cardSummaryService: CardSummaryService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -164,6 +170,22 @@ export class SecretsController {
     @CurrentUser() user: RequestUser,
   ) {
     const result = await this.secretsService.findAll(query, user.id, user.permissions);
+    return { data: result };
+  }
+
+  @Get('cards/summary')
+  @Auth({ permissions: [PERMISSIONS.SECRETS_READ] })
+  @ApiOperation({
+    summary: 'Card summaries (id, name, last4, expiry) decrypted server-side, sorted by expiry',
+  })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'pageSize', required: false, type: Number })
+  @ApiResponse({ status: 200, description: 'Paginated card summaries; never the CVV or full number' })
+  async cardSummary(
+    @Query(new ZodValidationPipe(cardSummaryQuerySchema)) query: CardSummaryQueryDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    const result = await this.cardSummaryService.list(query, user.id, user.permissions);
     return { data: result };
   }
 

@@ -1582,6 +1582,36 @@ Disabled by default: an administrator must set `ai.enabled: true` and store a wo
 
 ---
 
+#### GET /secrets/cards/summary
+
+Card summaries for Home and the Cards gallery, so a client needs one request instead of one `GET /secrets/:id` (one decryption each) per card. Permission `secrets:read`. Ownership follows `GET /secrets`: the caller's own card secrets, or every card for a holder of `secrets:read_any`.
+
+Query: `page` (default 1), `pageSize` (default 20, max 100; 400 above it).
+
+Sorted by expiry, soonest first; cards with an unknown expiry year last; ties by name. Sorting happens after decryption, so pagination is applied to the sorted list.
+
+```json
+{
+  "data": {
+    "items": [
+      {
+        "id": "uuid",
+        "name": "Visa travel",
+        "last4": "1111",
+        "expMonth": 3,
+        "expYear": 2027,
+        "updatedAt": "2026-01-01T00:00:00.000Z"
+      }
+    ],
+    "meta": { "page": 1, "pageSize": 20, "totalItems": 1, "totalPages": 1 }
+  }
+}
+```
+
+`last4` is `string | null`; `expMonth` (1 to 12) and `expYear` (four digits) are `number | null`. A field that is missing or malformed in an old card is `null`; one unreadable card never fails the request (it appears with all three `null`). The full number, the CVV, the secondary security code and every other field are never returned. The route is registered before `GET /secrets/:id`.
+
+---
+
 #### POST /secrets/cards/extract
 
 **Requires Authentication** (`secrets:write`) - Extract candidate card field values from one or two card face images.
