@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { z } from 'zod';
+import { typeErrors } from '../../common/schemas/zod-messages';
 import { createZodDto } from 'nestjs-zod';
 
 import {
@@ -12,7 +13,7 @@ export const EXPORT_PASSWORD_MIN_LENGTH = 6;
 export const EXPORT_PASSWORD_MAX_LENGTH = 256;
 
 const optionalBoolean = (name: string) =>
-  z.boolean({ invalid_type_error: `${name} must be a boolean` }).optional();
+  z.boolean({ error: typeErrors({ invalid: `${name} must be a boolean` }) }).optional();
 
 /**
  * Body of `POST /api/secrets/export`.
@@ -37,8 +38,7 @@ export const exportSecretsSchema = z
     {
       password: z
         .string({
-          required_error: 'Password is required',
-          invalid_type_error: 'Password must be a string',
+          error: typeErrors({ required: 'Password is required', invalid: 'Password must be a string' }),
         })
         .min(
           EXPORT_PASSWORD_MIN_LENGTH,
@@ -57,13 +57,12 @@ export const exportSecretsSchema = z
       includeSystem: z.unknown().optional(),
     },
     {
-      required_error: 'Request body must be a JSON object',
-      invalid_type_error: 'Request body must be a JSON object',
+      error: typeErrors({ required: 'Request body must be a JSON object', invalid: 'Request body must be a JSON object' }),
     },
   )
   .superRefine((value, ctx) => {
     for (const issue of contentSelectionIssues(value, 'user')) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [issue.path], message: issue.message });
+      ctx.addIssue({ code: 'custom', path: [issue.path], message: issue.message });
     }
   })
   .transform((value) => {
