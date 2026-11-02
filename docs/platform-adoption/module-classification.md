@@ -70,7 +70,7 @@ Baseline classification of every Vault module against EnterpriseAppBase (EAB) an
 | `tools/vaultcli` domain (`secrets`, `versions`, `backup`, `admin-backups`, `sync`, `types`, interactive menus) | domain | `extraCommands` of the `vault` CLI | E11 | |
 | `tools/vaultcli/install.sh`, `infra/deploy/*` | vault-divergence | `vault deploy` pipeline | E11 | `infra/deploy/install-vault.sh`, `update.sh`, `vault.conf`, `DEPLOY.md` replaced by `vault deploy` |
 
-## Prisma models (`apps/api/prisma/schema.prisma`)
+## Prisma models (composed from `@marinoscar/platform-db` plus `apps/api/prisma/fragments/`)
 
 | Model(s) | Category | Target | Epic | Notes |
 |---|---|---|---|---|
@@ -88,15 +88,15 @@ Baseline classification of every Vault module against EnterpriseAppBase (EAB) an
 
 | Migration | Category | Treatment |
 |---|---|---|
-| `20260124223146_initial` | noise (platform equivalent) | Baselined: marked applied, never re-run on live data (E2) |
-| `20260329151231_add_personal_access_tokens` | noise | Baselined (E2) |
+| `20260124223146_initial` | noise (platform equivalent) | Baselined (E2.2): byte-identical to platform `0001`; mapped by hash, already in the ledger |
+| `20260329151231_add_personal_access_tokens` | noise | Baselined (E2.2): byte-identical to platform `0002` |
 | `20260403120000_add_secrets_and_versions` | domain | Stays as an installed app migration; its partial index is declared in the raw-SQL list |
 | `20260403235813_add_media_folders` | domain | Stays |
 | `20260404000000_add_secret_name_user_unique` | domain | Stays |
 | `20260727120000_version_scoped_attachments` | domain | Stays |
 | `20261102120000_add_backup_schedules` | domain | Stays |
 
-Installed migrations are never edited or renamed. E2 produces the actual mapping with `platform db baseline` against a restored copy; any difference becomes a declared deviation.
+Installed migrations are never edited or renamed. E2.2 added `20261102120001_add_credentials` to `20261102120038_add_alerts` (platform 0003 to 0040, byte copies) and the app migration `20261102130000_add_media_folder_files`; the differences from the platform history are the declared deviations in `platform.lock`. Procedure and rehearsal: [database-baseline](../runbooks/database-baseline.md); what the platform adds: [schema-delta](schema-delta.md).
 
 ## Infra, CI and repository files
 
