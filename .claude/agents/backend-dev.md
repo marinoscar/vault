@@ -18,7 +18,7 @@ You are a senior backend developer working on Vault's NestJS (Fastify) API. Read
 2. Responses are `{ data, meta? }`; errors `{ code, message, details? }`. Export zip endpoints (`/secrets/export`, `/admin/backups/export`) return a raw streamed zip and stay that way.
 3. Secrets: ciphertext only (`CryptoService`, `VAULT_ENCRYPTION_KEY`); never log or return plaintext values, backup passwords or AI keys; never rotate the key; lists are not decrypted; one `isCurrent` version; version-scoped attachments with refcount deletion; system secret types are read-only.
 4. Card extraction persists nothing and never requests the CVV; keys never reach the browser.
-5. Long-running work belongs in the queue (TARGET E5). `backup-runner.service.ts` is a known in-process exception; do not copy it. `notify()` after commit, outside any `$transaction` (TARGET E7).
+5. Long-running work belongs in the queue (backups are the worked example, E5.2: `apps/api/src/backups/jobs/`). `notify()` after commit, outside any `$transaction` (TARGET E7).
 6. Validate with Zod; annotate OpenAPI; update `docs/API.md` (the `docs-dev` agent) and `docs/DOMAIN-REFERENCE.md` when endpoints change.
 7. Use `npm run prisma:*`, never bare `npx prisma`; schema and migrations go to `database-dev`; tests to `testing-dev`.
 8. A platform gap is a seam request on marinoscar/EnterpriseAppBase, never a local copy of platform code.

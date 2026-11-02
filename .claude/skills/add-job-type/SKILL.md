@@ -5,7 +5,7 @@ description: Add a background job type to the platform job queue - implement a J
 
 # Add a job type
 
-> **Applies from E5** (programme epic #54). Until then Vault has no queue: `apps/api/src/backups/backup-runner.service.ts` runs backups in-process (`@Cron` every minute, detached `launch()`, advisory locks) and is a listed exception in `docs/platform-adoption/local-exceptions.md`. Do not add a second in-process runner; if E5 has not landed, raise it on the E5 issue instead.
+> **In force** (E5.1 mounted the queue; E5.2 moved backups onto it). The worked example in this repo is `apps/api/src/backups/` (`jobs/` handlers, `backup-queue.service.ts`, `backup-schedule.task.ts`). Do not add an in-process runner.
 
 The queue and the worker-node fleet are the platform's: `@marinoscar/platform-api/jobs` and `@marinoscar/platform-api/nodes`. Vault owns only handlers and their host ports (`apps/api/src/platform/jobs/`, created in E5). The contract is the package README (`node_modules/@marinoscar/platform-api/README.md`) and the TSDoc of `JobHandler` in the installed package; the recipe and rules originate in EAB `packages/platform-api/src/jobs/handlers/README.md` and `docs/specs/job-queue.md`.
 
@@ -23,7 +23,7 @@ The queue and the worker-node fleet are the platform's: `@marinoscar/platform-ap
 - **Backup and AI jobs are server-only**: no `nodeResultSchema`, no `persistNodeResult`. They hold the archive password or `VAULT_ENCRYPTION_KEY`-protected data and must never reach a worker node.
 - The backup archive streams into object storage (never buffered); the upload and the dump's exit code are both awaited. The backup password is decrypted in memory only, never logged, never in a job payload or error.
 - A job `type` string is permanent once jobs of that type exist; a rename is a new type.
-- Active-run uniqueness (one running scheduled backup; one per user for My backups) moves from advisory locks to the queue's dedup key; do not keep both.
+- Active-run uniqueness (one running scheduled backup; one per user for My backups) is the queue's dedup key (done in E5.2); never add an advisory lock. A route that needs the 409 and its own row writes both in one `prisma.$transaction` with `JobsService.enqueueWithin` and maps `isActiveDedupConflict` to `ConflictException`.
 - A retry must not double-write: a `backup_runs` row is created once and reused.
 
 ## Verify

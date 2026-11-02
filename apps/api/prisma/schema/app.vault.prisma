@@ -167,13 +167,18 @@ model BackupRun {
   finishedAt      DateTime? @map("finished_at") @db.Timestamptz
   heartbeatAt     DateTime? @map("heartbeat_at") @db.Timestamptz
   deletedAt       DateTime? @map("deleted_at") @db.Timestamptz
+  // The queue job that runs (or ran) this backup (E5.2). NULL for rows written before the
+  // queue ran backups. `heartbeat_at` above is no longer written (expand/contract).
+  jobId           String?   @map("job_id") @db.Uuid
 
   // Relations
+  job         Job?  @relation(fields: [jobId], references: [id], onDelete: SetNull)
   triggeredBy User? @relation("BackupRunTrigger", fields: [triggeredById], references: [id], onDelete: SetNull)
   owner       User? @relation("BackupRunOwner", fields: [ownerId], references: [id], onDelete: Cascade)
 
   @@index([status, startedAt])
   @@index([triggeredById])
   @@index([scope, ownerId, startedAt])
+  @@index([jobId])
   @@map("backup_runs")
 }

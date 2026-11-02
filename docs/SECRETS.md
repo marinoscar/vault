@@ -366,7 +366,7 @@ Media files are handled the same way, with two differences: a media file whose u
 **Settings > Back up my data** asks "Where should the backup go?":
 
 - **Download to this device** (default): the zip is streamed to the browser by `POST /api/secrets/export`. Nothing is kept on the server.
-- **Save to the storage account**: the server builds the same zip in the background and keeps it in object storage. The option is disabled when no object storage is configured (the card reads `GET /api/backups/me/config`). See [Saved user backups](#saved-user-backups).
+- **Save to the storage account**: the server builds the same zip in a background job and keeps it in object storage (the password rides in the job payload only as ciphertext, removed when the run ends). The option is disabled when no object storage is configured (the card reads `GET /api/backups/me/config`). See [Saved user backups](#saved-user-backups).
 
 The button reads "Download backup" or "Save backup" to match. The content choices and password rules are the same for both.
 
@@ -463,7 +463,7 @@ After a **successful** run, the newest `keepCount` (1 to 365, default 7) success
 
 ### Several API instances
 
-Every instance runs an every-minute cron. A due slot is claimed atomically (a conditional update of `next_run_at`), so only one instance starts it, and a Postgres advisory transaction lock allows one run at a time. A running backup refreshes `heartbeat_at` every 30 seconds; a `running` row whose heartbeat is older than 3 minutes is marked failed ("Interrupted (the server running it stopped)").
+Backups run as queue jobs (`vault.backup.run`, `vault.user_backup.run`; server-only, one attempt, up to 30 minutes). Every instance runs an every-minute cron that only decides whether the schedule is due: a due slot is claimed atomically (a conditional update of `next_run_at`), so only one instance claims it, and it queues one job. The queue's active-dedup key allows one active system backup at a time (and one per user for saved backups): a scheduled tick that finds one queued or running does nothing, and a manual request gets `409`. Any instance's worker can run the job. `backup_runs.job_id` links a run to its job; if the job fails without the run recording it (the process died), the run is reported as failed ("Interrupted (the server running it stopped)"). The Jobs page shows the jobs.
 
 ### Password handling and risks
 
@@ -487,7 +487,7 @@ Every instance runs an every-minute cron. A due slot is claimed atomically (a co
 | `backups.user.run` | `{ runId, contents }` |
 | `backups.user.run.completed`, `backups.user.download`, `backups.user.delete` | as the admin events, for a user's saved backup |
 
-Tables: `backup_schedules` (singleton row `default`) and `backup_runs`. `backup_runs.scope` is `system` (the admin schedule and Run backup now) or `user` (a [saved user backup](#saved-user-backups)); `owner_id` is set for `user` runs and removed with the user. Admin list, download, delete, retention and the stale sweep act on `system` runs only; a user's routes act on `scope = user AND owner_id = me`. The stale-heartbeat recovery covers both.
+Tables: `backup_schedules` (singleton row `default`) and `backup_runs`. `backup_runs.scope` is `system` (the admin schedule and Run backup now) or `user` (a [saved user backup](#saved-user-backups)); `owner_id` is set for `user` runs and removed with the user. Admin list, download, delete and retention act on `system` runs only; a user's routes act on `scope = user AND owner_id = me`. The job link (`job_id`) covers both.
 
 ---
 

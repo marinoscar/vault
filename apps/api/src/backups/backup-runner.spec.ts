@@ -1,7 +1,7 @@
 import { defaultOrgMock } from '../../test/mocks/default-org.mock';
 import { Readable } from 'stream';
 
-import { ConflictException, Logger } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { TextReader, Uint8ArrayReader, Uint8ArrayWriter, ZipReader } from '@zip.js/zip.js';
 
 import { CryptoService } from '../common/services/crypto.service';
@@ -11,6 +11,7 @@ import {
   BACKUP_SCHEDULE_ID,
   BackupRunnerService,
 } from './backup-runner.service';
+import { BackupArchiveService } from './backup-archive.service';
 import type { BackupRunRow } from './dto/backup-responses';
 
 const PASSWORD = 'Zip-Pass-0xA1B2C3';
@@ -67,7 +68,6 @@ interface Options {
   schedule?: Record<string, unknown> | null;
   upload?: (key: string, stream: Readable) => Promise<unknown>;
   existingRuns?: Array<Record<string, unknown>>;
-  claimCount?: number;
   storageBucket?: string | null;
 }
 
@@ -96,7 +96,7 @@ function setup(opts: Options = {}) {
     ...defaultOrgMock(),
     backupSchedule: {
       findUnique: jest.fn(async () => schedule),
-      updateMany: jest.fn(async () => ({ count: opts.claimCount ?? 1 })),
+      updateMany: jest.fn(async () => ({ count: 1 })),
     },
     backupRun: {
       update: jest.fn().mockResolvedValue({}),
@@ -159,92 +159,16 @@ function setup(opts: Options = {}) {
     })),
   };
 
-  const runner = new BackupRunnerService(
+  const archive = new BackupArchiveService(
     prisma as never,
-    crypto,
     storage as never,
     exportService as never,
     systemSettings as never,
     aiConfig as never,
   );
+  const runner = new BackupRunnerService(prisma as never, crypto, storage as never, archive, exportService as never);
   return { runner, prisma, storage, exportService, systemSettings, uploads };
 }
-
-describe('BackupRunnerService.runDueSchedule (atomic claim)', () => {
-  it('runs nothing when the compare-and-set updates 0 rows (another instance won)', async () => {
-    const { runner, prisma, storage } = setup({ claimCount: 0 });
-    const startRun = jest.spyOn(runner, 'startRun');
-    const launch = jest.spyOn(runner, 'launch');
-
-    await expect(runner.runDueSchedule(NOW)).resolves.toBeNull();
-
-    expect(prisma.backupSchedule.updateMany).toHaveBeenCalledTimes(1);
-    expect(startRun).not.toHaveBeenCalled();
-    expect(launch).not.toHaveBeenCalled();
-    expect(prisma.backupRun.create).not.toHaveBeenCalled();
-    expect(storage.upload).not.toHaveBeenCalled();
-  });
-
-  it('claims with a compare-and-set on the next_run_at it read, moving it past now', async () => {
-    const { runner, prisma } = setup();
-    jest.spyOn(runner, 'launch').mockImplementation(() => undefined);
-    await runner.runDueSchedule(NOW);
-    expect(prisma.backupSchedule.updateMany).toHaveBeenCalledWith({
-      where: { id: BACKUP_SCHEDULE_ID, enabled: true, nextRunAt: new Date('2026-05-01T03:00:00Z') },
-      data: { nextRunAt: new Date('2026-05-02T03:00:00Z') },
-    });
-  });
-
-  it('lets exactly one of two instances racing the same slot start a run', async () => {
-    const slot = new Date('2026-05-01T03:00:00Z');
-    let shared: Date = slot;
-    const mk = () => {
-      const ctx = setup();
-      ctx.prisma.backupSchedule.updateMany.mockImplementation((async ({ where, data }: any) => {
-        if (shared.getTime() === where.nextRunAt.getTime()) {
-          shared = data.nextRunAt;
-          return { count: 1 };
-        }
-        return { count: 0 };
-      }) as never);
-      jest.spyOn(ctx.runner, 'launch').mockImplementation(() => undefined);
-      return ctx;
-    };
-    const a = mk();
-    const b = mk();
-
-    const [ra, rb] = await Promise.all([a.runner.runDueSchedule(NOW), b.runner.runDueSchedule(NOW)]);
-
-    expect([ra, rb].filter(Boolean)).toHaveLength(1);
-    expect(a.prisma.backupRun.create.mock.calls.length + b.prisma.backupRun.create.mock.calls.length).toBe(1);
-  });
-
-  it.each([
-    ['no schedule row', null],
-    ['a disabled schedule', { enabled: false, nextRunAt: new Date('2026-05-01T03:00:00Z') }],
-    ['a schedule not yet due', { enabled: true, nextRunAt: new Date('2026-05-01T13:00:00Z') }],
-    ['an enabled schedule without nextRunAt', { enabled: true, nextRunAt: null }],
-  ])('does not even try to claim for %s', async (_label, schedule) => {
-    const { runner, prisma } = setup({ schedule });
-    await expect(runner.runDueSchedule(NOW)).resolves.toBeNull();
-    expect(prisma.backupSchedule.updateMany).not.toHaveBeenCalled();
-  });
-
-  it('skips quietly when a run is already in progress after winning the claim', async () => {
-    const { runner } = setup();
-    jest.spyOn(runner, 'startRun').mockRejectedValue(new ConflictException());
-    const launch = jest.spyOn(runner, 'launch');
-    await expect(runner.runDueSchedule(NOW)).resolves.toBeNull();
-    expect(launch).not.toHaveBeenCalled();
-  });
-
-  it('startRun refuses with 409 when a running row exists', async () => {
-    const { runner, prisma } = setup();
-    prisma.backupRun.count.mockResolvedValue(1);
-    await expect(runner.startRun('manual', 'admin-1')).rejects.toBeInstanceOf(ConflictException);
-    expect(prisma.backupRun.create).not.toHaveBeenCalled();
-  });
-});
 
 describe('BackupRunnerService.execute (archive)', () => {
   async function runAndOpen() {

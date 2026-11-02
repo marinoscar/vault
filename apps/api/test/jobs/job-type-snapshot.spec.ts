@@ -11,9 +11,7 @@
 //
 // The strings below are LITERALS on purpose: resolving them from the handlers'
 // own constants would make the test follow a rename instead of catching it.
-// NEVER edit a string in this list. Add new types as their epic lands (E5.2
-// adds `vault.backup.run` and `vault.user_backup.run`; E7.1 added the notification
-// retention and broadcast types).
+// NEVER edit a string in this list. Add new types as their epic lands.
 //
 // The check is a SUPERSET check: the app may register more than is pinned (a new
 // type is added here deliberately, in the PR that adds it), but never fewer.
@@ -41,6 +39,9 @@ const PINNED_JOB_TYPES = [
   // admin broadcasts (`BroadcastsModule`, E7.1): the fan-out of one broadcast, in chunks
   'admin.broadcast.start',
   'admin.broadcast.chunk',
+  // backups (E5.2): the logical secret backups, both server-only
+  'vault.backup.run',
+  'vault.user_backup.run',
 ] as const;
 
 describe('job type snapshot (issue #81)', () => {

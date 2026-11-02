@@ -1,5 +1,5 @@
 // =============================================================================
-// Where the queue rule looks (issue #81 E5.1, #83 E5.3, epic #54)
+// Where the queue rule looks (issue #81 E5.1, #82 E5.2, #83 E5.3, epic #54)
 // =============================================================================
 //
 // The `cron-enqueue-only` suite (a `@Cron` body only enqueues) and the
@@ -25,10 +25,6 @@ export const API_SOURCE_ROOT = join(__dirname, '..', '..', 'src');
  * the code it excuses.
  */
 export const CRON_EXEMPTIONS = [
-  {
-    file: 'backups/backup-runner.service.ts',
-    why: 'PLATFORM-ADOPTION-SHIM(E5.2, #82): the backup runner predates the queue. Its minute tick claims a due schedule and runs the logical backup in-process under Postgres advisory locks. E5.2 turns it into the vault.backup.run and vault.user_backup.run job types (server-only) and the tick into an enqueue-only cron.',
-  },
   {
     file: 'storage/tasks/storage-cleanup.task.ts',
     why: 'PLATFORM-ADOPTION-SHIM(E6): the daily sweep of stale pending/uploading storage objects aborts multipart uploads and deletes rows inline, through the legacy storage provider. The storage slice (E6) brings the platform\'s own stale-upload cleanup job and deletes this task.',
