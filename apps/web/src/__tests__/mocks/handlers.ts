@@ -252,6 +252,22 @@ export const handlers = [
     });
   }),
 
+  // The platform notification centre (E7.2): an empty inbox by default, so every
+  // shell render has a quiet bell. Tests that need items override these.
+  http.get(`${API_BASE}/notifications/unread-count`, () => {
+    return HttpResponse.json({ data: { unreadCount: 0 } });
+  }),
+
+  http.get(`${API_BASE}/notifications`, () => {
+    return HttpResponse.json({
+      data: { items: [], total: 0, page: 1, pageSize: 20, totalPages: 0 },
+    });
+  }),
+
+  http.get(`${API_BASE}/notifications/config`, () => {
+    return HttpResponse.json({ data: { browserEnabled: true, pushEnabled: false, vapidPublicKey: null } });
+  }),
+
   http.post(`${API_BASE}/auth/device/authorize`, async ({ request }) => {
     const body = (await request.json()) as { userCode: string; approve: boolean };
 

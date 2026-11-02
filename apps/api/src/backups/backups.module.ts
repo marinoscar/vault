@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { CommonModule } from '../common/common.module';
-import { StorageProvidersModule } from '../storage/providers';
+import { StorageProvidersModule } from '@marinoscar/platform-api/storage';
 import { SecretsModule } from '../secrets/secrets.module';
 import { AiModule } from '../ai/ai.module';
 import { BackupsController } from './backups.controller';

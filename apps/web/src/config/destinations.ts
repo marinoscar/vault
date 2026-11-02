@@ -15,8 +15,9 @@
  *  4. A gate is the exact permission string the API controller enforces, never
  *     a role: `secrets:read` (`secrets.controller.ts`, and cards are secrets of
  *     the Card type), `media:read` (`media.controller.ts`), and for the Console
- *     `system_settings:read` (`system-settings.controller.ts`) or `users:read`
- *     (`users.controller.ts`).
+ *     `system_settings:read` (`system-settings.controller.ts`), `users:read`
+ *     (`users.controller.ts`), `push:read` (the platform `push-config.controller`)
+ *     or `broadcasts:read` (the platform `broadcasts.controller`).
  *
  * Matching (`owns`, longest prefix wins, segment boundaries) and visibility
  * (`isDestinationVisible`) are the platform's; re-exported here so callers and
@@ -80,7 +81,9 @@ export const DESTINATIONS: readonly Destination[] = [
     compactLabel: 'Console',
     Icon: ConsoleIcon,
     path: '/admin/settings',
-    anyPermission: ['system_settings:read', 'users:read'],
+    // Any-of: every Console card is reachable by a holder of one of these
+    // (push:read and broadcasts:read are the E7.2 Web Push and Broadcasts cards).
+    anyPermission: ['system_settings:read', 'users:read', 'push:read', 'broadcasts:read'],
     pinned: true,
   },
 ];

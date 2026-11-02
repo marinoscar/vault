@@ -1123,7 +1123,12 @@ Backup messages carry the scope, time, size and counts and a deep link (`/settin
 
 ### Storage Objects
 
-The storage system provides file upload and management capabilities with support for large files (GB scale) through resumable multipart uploads.
+The storage system provides file upload and management capabilities with support for large files (GB scale) through resumable multipart uploads. Since E6.1 (#84) these routes, `GET /api/storage/status` and `/api/admin/storage-config` are the **platform storage slice's** (`@marinoscar/platform-api/storage`, mounted in `apps/api/src/platform/storage/`); the generated OpenAPI at `/api/docs` is the per-route reference. What changed for callers:
+
+- Permissions are explicit: `storage:read` (list, get, download, status) and `storage:write` (upload, complete, abort, metadata, delete); `storage:delete_any` (admin) deletes another user's object. Contributors hold read and write, viewers read only.
+- The object store is runtime-configured. `GET/PUT /api/admin/storage-config`, `POST /api/admin/storage-config/test` and `POST /api/admin/storage-config/bucket` need `storage_config:read` / `storage_config:write` (admin). Until a configuration is saved every route that moves bytes answers `503` (`details.reason: "storage_not_configured"`). The migration from the old environment variables: [storage-config-migration](runbooks/storage-config-migration.md).
+- New objects get the key `uploads/<orgId>/<timestamp>/<uuid><ext>`; objects written earlier keep `uploads/<timestamp>/<uuid><ext>` and are served by their stored key.
+- The simple upload (`POST /api/storage/objects`) streams through the API up to the smaller of `MAX_FILE_SIZE` and 10 GiB.
 
 #### Initialize Resumable Upload
 

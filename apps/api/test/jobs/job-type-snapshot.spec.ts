@@ -33,6 +33,10 @@ const PINNED_JOB_TYPES = [
   'nodes.fleet.sweep',
   'nodes.fleet.prune',
   'nodes.node_events_purge',
+  // storage slice (`StorageModule.forRoot`, E6.1): the stale-upload sweep and the post-upload processors,
+  // both server-only (they hold no node result schema)
+  'storage.cleanup.stale-uploads',
+  'storage.object.process',
   // notifications slice (`NotificationsModule.forRoot`, E7.1): retention of the inbox and delivery rows
   'notifications.inbox.purge',
   'notifications.deliveries.purge',

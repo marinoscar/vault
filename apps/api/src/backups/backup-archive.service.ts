@@ -7,7 +7,7 @@ import { SystemSettingsService } from '@marinoscar/platform-api/settings';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { defaultOrgClient } from '../prisma/default-org';
-import { STORAGE_PROVIDER, StorageProvider } from '../storage/providers';
+import { STORAGE_PROVIDER, StorageProvider } from '@marinoscar/platform-api/storage';
 import {
   SecretsExportService,
   userArchiveCounts,
@@ -104,7 +104,7 @@ export class BackupArchiveService {
   ) {}
 
   /**
-   * PLATFORM-ADOPTION-SHIM(E6): reads that touch `storage_objects` (a
+   * PLATFORM-ADOPTION-SHIM(multi-org): reads that touch `storage_objects` (a
    * row-level-security table) run in the default organization's scope; the API
    * is an ordinary role.
    */

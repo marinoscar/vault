@@ -17,6 +17,7 @@
     "api:test": "npm -w apps/api test",
     "web:test": "npm -w apps/web test",
     "vault:migrate-ai-key": "npm -w apps/api run vault:migrate-ai-key --",
+    "vault:migrate-storage-config": "npm -w apps/api run vault:migrate-storage-config --",
     "cli": "node apps/cli/dist/cli.js",
     "cli:build": "npm run build --workspace=cli",
     "vault": "node apps/cli/dist/cli.js",

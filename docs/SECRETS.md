@@ -35,12 +35,11 @@ The secrets feature provides encrypted storage for sensitive data such as creden
 # Generate: openssl rand -hex 32
 VAULT_ENCRYPTION_KEY=<64-character-hex-string>
 
-# For file attachments (optional)
-STORAGE_PROVIDER=s3
-S3_BUCKET=your-bucket
-S3_REGION=us-east-1
-AWS_ACCESS_KEY_ID=...
-AWS_SECRET_ACCESS_KEY=...
+# File attachments need object storage, but it is NOT configured here: the
+# provider, bucket, region, endpoint and access keys are runtime settings at
+# /admin/settings/storage (the secret access key is encrypted with
+# SECRETS_ENCRYPTION_KEY). STORAGE_PROVIDER, S3_* and AWS_* are not read; an
+# upgrade imports them once (docs/runbooks/storage-config-migration.md).
 
 # Card face image size cap in bytes (optional, default 5 MB = 5242880)
 # Applies only to card_front / card_back attachments. A non-numeric or
@@ -226,6 +225,8 @@ Generic (role-less) attachments have no MIME type or size constraint beyond what
 6. Only after commit, best-effort delete the blob from the storage provider. A blob-delete failure is logged, not thrown — the DB is already consistent, and the caller's unlink genuinely succeeded even if a byte is orphaned in storage.
 
 The `FOR UPDATE` lock is what makes step 3 correct under concurrency: without it, two simultaneous unlinks of the last two references could each observe "1 remaining" and neither would delete, leaking the object and its blob forever.
+
+**Where the bytes live (E6.1).** The blob is deleted through the platform's `STORAGE_PROVIDER` (`@marinoscar/platform-api/storage`), by the row's stored `storage_key` (old objects `uploads/<timestamp>/<uuid>`, new ones `uploads/<orgId>/<timestamp>/<uuid>`). The object store is runtime configuration (`/admin/settings/storage`), not environment variables ([migration runbook](runbooks/storage-config-migration.md)). The card-face checks above run when the file is **attached** with a role, not at upload: the Storage Objects API stores a generic object and cannot know the role yet, so they are not a post-upload processor. `test/storage/storage-adoption.db.spec.ts` proves the refcount rules (a blob shared by two versions survives the first unlink and is deleted with the last) against a real database as the application role.
 
 ### General
 

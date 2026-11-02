@@ -14,7 +14,7 @@ import {
 import { SystemSettingsService } from '@marinoscar/platform-api/settings';
 import { PrismaService } from '../prisma/prisma.service';
 import { CryptoService } from '../common/services/crypto.service';
-import { STORAGE_PROVIDER, StorageProvider } from '../storage/providers';
+import { STORAGE_PROVIDER, StorageProvider } from '@marinoscar/platform-api/storage';
 import { encryptBackupPassword } from './backup-password';
 import { BackupFrequency, computeNextRunAt } from './backup-schedule';
 import {
@@ -274,7 +274,8 @@ export class BackupsService {
       // The web uses a hidden <a download>, whose attribute is ignored for a
       // cross-origin URL: the storage response itself must say "attachment".
       responseContentDisposition: `attachment; filename="${fileName}"`,
-      responseContentType: 'application/zip',
+      // No response-content-type override (the platform's SignedUrlOptions has none):
+      // the archive is uploaded with Content-Type application/zip, which the response carries.
     });
 
     await this.audit(actorUserId, BACKUPS_AUDIT_ACTIONS.download, 'backup_run', run.id, {

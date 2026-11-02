@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
-import { STORAGE_PROVIDER, StorageProvider } from '../storage/providers';
+import { STORAGE_PROVIDER, StorageProvider } from '@marinoscar/platform-api/storage';
 import { ExportSecretsOptions } from '../secrets/dto/export-secrets.dto';
 import { selectedContentKeys } from '../secrets/export/backup-contents';
 import { USER_BACKUP_KEEP_COUNT, USER_SCOPE } from './backup-runner.service';
@@ -129,7 +129,8 @@ export class MyBackupsService {
     const url = await this.storageProvider.getSignedDownloadUrl(run.storageKey, {
       expiresIn: BACKUP_DOWNLOAD_URL_TTL_SECONDS,
       responseContentDisposition: `attachment; filename="${fileName}"`,
-      responseContentType: 'application/zip',
+      // No response-content-type override (the platform's SignedUrlOptions has none):
+      // the archive is uploaded with Content-Type application/zip, which the response carries.
     });
 
     await this.audit(userId, MY_BACKUPS_AUDIT_ACTIONS.download, run.id, { runId: run.id });
