@@ -131,7 +131,7 @@ Today AI is the generic config/verify/OpenAI provider plus card extraction in `a
 ## Architecture principles
 
 1. **Separation of concerns**: the UI presents; the API handles all business logic and authorization.
-2. **Same-origin hosting**: UI at `/`, API at `/api`, API reference (Swagger) at `/api/docs`.
+2. **Same-origin hosting**: UI at `/`, API at `/api`, API reference (Scalar) at `/api/docs`.
 3. **Security by default**: every endpoint declares `@Auth(...)` unless deliberately public (`@Public`/no `@Auth` routes are the auth, device-code, health and test-login ones).
 4. **API-first**: all business logic lives in the API layer.
 5. **Packages first (TARGET, E12)**: domain code moves into `@marinoscar/vault-*` packages last; hosts hold ports and shells. Domain stays in `apps/` until then.
@@ -166,7 +166,7 @@ cd apps/api && npm run prisma:migrate                  # apply (production)
 npm run vaultcli:build && npm run vaultcli -- --help   # domain CLI;  npm run app:build for tools/app
 ```
 
-Root shortcuts: `npm run api:test`, `npm run web:test`. App: http://localhost:3535; Swagger: http://localhost:3535/api/docs. CI (`.github/workflows/ci.yml`): API typecheck + tests, web typecheck + test typecheck + tests.
+Root shortcuts: `npm run api:test`, `npm run web:test`. App: http://localhost:3535; API reference: http://localhost:3535/api/docs. CI (`.github/workflows/ci.yml`): API typecheck + tests, web typecheck + test typecheck + tests.
 
 ## Testing requirements
 
