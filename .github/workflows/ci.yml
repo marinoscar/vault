@@ -338,3 +338,101 @@ jobs:
           npm run build --workspace=cli
           node apps/cli/dist/cli.js --help
           node apps/cli/dist/cli.js secrets --help
+
+  # E10.7 (#98). Both suites serve the BUILT web app with `vite preview` and answer
+  # /api at the network layer (tests/support/mock-api.ts): no backend, database or
+  # AI key, and the e2e suite does NOT exercise the real API. They run in the
+  # Playwright image because pixel baselines depend on the browser build and its
+  # system libraries; the tag equals the pinned @playwright/test version.
+  visual:
+    name: Visual regression
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      options: --ipc=host
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install and build the web app
+        run: |
+          npm ci
+          npm run build --workspace=web
+
+      - name: Install the visual suite
+        run: npm ci --ignore-scripts
+        working-directory: tests/visual
+
+      - name: Check that baselines exist
+        id: baselines
+        run: |
+          if ls tests/visual/specs/__screenshots__/*/*.png >/dev/null 2>&1; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::No visual baselines committed yet. Run the 'Visual baselines' workflow (workflow_dispatch) and merge its commit; see docs/TESTING.md#visual-regression."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run visual regression
+        if: steps.baselines.outputs.present == 'true'
+        run: ../../tests/visual/node_modules/.bin/playwright test
+        working-directory: tests/visual
+        env:
+          CI: 'true'
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-report
+          path: |
+            tests/visual/playwright-report
+            tests/visual/test-results
+          if-no-files-found: ignore
+
+  e2e:
+    name: E2E (mocked network)
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      options: --ipc=host
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install and build the web app
+        run: |
+          npm ci
+          npm run build --workspace=web
+
+      - name: Install the e2e suite
+        run: npm ci --ignore-scripts
+        working-directory: tests/e2e
+
+      - name: Run e2e
+        run: ../../tests/e2e/node_modules/.bin/playwright test
+        working-directory: tests/e2e
+        env:
+          CI: 'true'
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          path: |
+            tests/e2e/playwright-report
+            tests/e2e/test-results
+          if-no-files-found: ignore

@@ -159,16 +159,14 @@ npm run test:watch    # Watch mode
 npm run test:coverage # With coverage
 ```
 
-**E2E Tests (Playwright):**
+**E2E and visual tests (Playwright, mocked network):**
 ```bash
-cd tests/e2e
-npm install              # First time setup
-npx playwright install   # Install browsers
-npm test                 # Run E2E tests
-npm run test:ui          # Run with visual UI
+npm run build --workspace=web
+cd tests/e2e && npm ci && npx playwright test      # critical journeys
+cd tests/visual && npm ci && npx playwright test   # screenshots (baselines are generated in CI)
 ```
 
-Note: E2E tests use a test authentication bypass (`/testing/login`) that is only available in development/test environments. See [TESTING.md](docs/TESTING.md#e2e-testing-with-playwright) for details.
+Both suites answer `/api` at the network layer and do not exercise the real API. See [TESTING.md](docs/TESTING.md#e2e-and-visual-regression-playwright).
 
 ### Database Migrations
 

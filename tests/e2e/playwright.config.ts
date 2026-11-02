@@ -1,27 +1,29 @@
-import { defineConfig, devices } from '@playwright/test';
+import { defineConfig } from '@playwright/test';
 
+const PORT = 4174;
+
+// Mocked network: the built web app plus tests/support/mock-api.ts. This suite
+// proves the browser journeys; it does not exercise the real API (see
+// docs/TESTING.md).
 export default defineConfig({
   testDir: './specs',
   fullyParallel: true,
+  retries: 0,
+  workers: process.env.CI ? 2 : undefined,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
-  reporter: 'html',
+  reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
   use: {
-    baseURL: process.env.BASE_URL || 'http://localhost:3535',
-    trace: 'on-first-retry',
+    baseURL: `http://localhost:${PORT}`,
+    locale: 'en-US',
+    timezoneId: 'UTC',
+    trace: 'retain-on-failure',
+    permissions: ['clipboard-read', 'clipboard-write'],
   },
-  projects: [
-    {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
-    },
-  ],
-  // Start local dev server if not running
-  webServer: process.env.CI ? undefined : {
-    command: 'cd ../../infra/compose && docker compose -f base.compose.yml -f dev.compose.yml up',
-    url: 'http://localhost:3535/api/health/live',
-    reuseExistingServer: true,
-    timeout: 120000,
+  webServer: {
+    command: `npm run preview --workspace=web -- --port ${PORT} --strictPort`,
+    cwd: '../..',
+    url: `http://localhost:${PORT}/`,
+    reuseExistingServer: !process.env.CI,
+    timeout: 60_000,
   },
 });
