@@ -823,6 +823,10 @@ Remove email from allowlist.
 
 ### Settings
 
+> **Since E4.1 (#79) these routes are the platform settings slice's** (`/api/system-settings`, `/api/user-settings`, `/api/org-settings`; conventions, `If-Match` and the full schema are in the live OpenAPI at `/api/docs`). Vault registers its namespaces in `apps/api/src/app-registrations/settings.ts`: `ui`, `features`, `ai` (same keys and shapes as before), `vaultCards` (`imageMaxBytes`, default from `CARD_IMAGE_MAX_BYTES`; `expiryWarningDays`), `vaultBackups` (`keepCount` and the content flags the admin backup schedule starts from), plus the platform's `maintenance`. `/api/user-settings` also carries the optional `dataTables` and `navigation` namespaces. Request bodies are closed (unknown keys are dropped); stored keys the code does not model are kept.
+>
+> **User profile** is the platform's: `profile.imageSource` (`none` or `provider`; `upload` is refused until the storage slice) and `profile.imageObjectId` replace `profile.useProviderImage`. A row from before E4.1 reads as `useProviderImage: false` = `none`, otherwise `provider` (`npm run vault:migrate-settings` rewrites the rows once; [runbook](runbooks/settings-migration.md)). `profile.customImageUrl` is kept as a Vault profile field (`null` on PATCH deletes it).
+
 #### GET /user-settings
 **Requires Authentication** - Get current user's settings.
 
@@ -958,7 +962,10 @@ Get system-wide settings.
 |-------|------|-------------|
 | `ui.allowUserThemeOverride` | boolean | Allow users to override system theme |
 | `features` | object | Feature flags (extensible) |
-| `ai` | object \| null | Card-extraction settings; write-only for the credential. See [System Settings `ai` block](#system-settings-ai-block). `null` on rows written before the block existed |
+| `ai` | object | Card-extraction settings; write-only for the credential. See [System Settings `ai` block](#system-settings-ai-block). Reads as its defaults when the row has no block |
+| `vaultCards` | object | `imageMaxBytes` (card face image cap, 1 to 1 GiB; default `CARD_IMAGE_MAX_BYTES` or 5 MB), `expiryWarningDays` (0 to 365, default 30; no consumer yet) |
+| `vaultBackups` | object | Defaults of the admin backup schedule until one is saved: `keepCount` (1 to 365) and `includeAttachments`, `includeVersions`, `includeSecrets`, `includeMedia`, `includeSystem` |
+| `maintenance` | object | The host's maintenance window (see `/api/admin/maintenance`) |
 | `updatedAt` | string | ISO 8601 timestamp of last update |
 | `updatedBy` | object | User who last updated settings |
 | `version` | number | Version number for optimistic concurrency control |
@@ -987,9 +994,7 @@ Replace all system settings.
 }
 ```
 
-`PUT` cannot touch the `ai` block — its DTO has no `ai` field, and the stored
-block is carried over untouched so a replace used to flip an unrelated flag
-cannot wipe the stored credential.
+`ui` and `features` are required; every other namespace may be omitted and is then kept as stored. A `PUT` that carries `ai` replaces the non-secret `ai` fields whole (`enabled`, `provider`, `model`, `maxCallsPerUserPerDay`); an `apiKey` in a `PUT` is ignored. The credential is never touched by a `PUT`.
 
 **Response:**
 ```json
@@ -1790,9 +1795,9 @@ Candidates come from the keys of our own request body, not from scraping the err
 | `maxCallsPerUserPerDay` | integer, 0-10000 | Sets the daily budget | Keeps current value |
 | `apiKey` | string (20-300 chars) \| `null` | A string encrypts and replaces the stored key; `null` clears it | Keeps the currently stored key untouched |
 
-The three states of `apiKey` (absent / `null` / string) are distinguished with `'apiKey' in patch`, not `!== undefined` — this is why "don't touch the key" and "clear the key" are both expressible. `PUT /system-settings` cannot touch `ai` at all (its DTO has no `ai` field); the existing stored `ai` block is read from the raw row and carried over untouched so a `PUT` used to flip an unrelated flag can never silently wipe the credential.
+The three states of `apiKey` (absent / `null` / string) are distinguished with `'apiKey' in patch`, not `!== undefined` — this is why "don't touch the key" and "clear the key" are both expressible. `PUT /system-settings` never touches the credential (an `apiKey` there is dropped). Since E4.1 `ai.apiKey` is handled by `AiKeyProjectionInterceptor` (`apps/api/src/platform/settings/`), because the platform settings registry refuses a secret-named field: the interceptor removes `apiKey` from the request before validation, applies the change to the credential store after the settings write succeeded (a stale `If-Match` or a validation error changes nothing), and adds `apiKeyConfigured`, `apiKeyLast4`, `apiKeyUpdatedAt` to the `ai` object of the response. The audit row is `system_settings:ai_key` (`change`, mask only).
 
-**Storage:** the key is encrypted with AES-256-GCM via the same `CryptoService` used for secret values, keyed by `VAULT_ENCRYPTION_KEY`. Only the last 4 characters (`apiKeyLast4`) and an update timestamp are ever exposed. **Rotating `VAULT_ENCRYPTION_KEY` makes the stored key permanently undecryptable** — `GET /ai/status` then reports `enabled: false` and card extraction returns `503 AI_KEY_UNREADABLE` until an administrator re-enters the key.
+**Storage:** since E4.2 the key is encrypted by the platform credential store (purpose `ai`, name `openai`) under `SECRETS_ENCRYPTION_KEY`; before that it was encrypted with `CryptoService` under `VAULT_ENCRYPTION_KEY` (see the [AI key runbook](runbooks/ai-key-migration.md)). Only the last 4 characters (`apiKeyLast4`) and an update timestamp are ever exposed. **Rotating `VAULT_ENCRYPTION_KEY` makes the stored key permanently undecryptable** — `GET /ai/status` then reports `enabled: false` and card extraction returns `503 AI_KEY_UNREADABLE` until an administrator re-enters the key.
 
 **Neither `model` nor `apiKey` is validated on write, on purpose.** `model` is any 1–100 character string and is never checked against a list of known model names — a hardcoded allowlist would reject every model released after it was written. Whether the stored pair actually works is established empirically with [`POST /system-settings/ai/verify`](#post-system-settingsaiverify), which is also the only way to find out whether the chosen model can read images at all. That endpoint takes an optional `model` in its body, so a candidate name can be probed **before** it is written here rather than after.
 
