@@ -247,10 +247,10 @@ describeWithDb('the platform storage slice over pre-adoption data (real Postgres
         data: { secretId: secret.id, version: 2, encryptedData: 'x', iv: 'y', authTag: 'z', isCurrent: true },
       });
       const first = await prisma.secretAttachment.create({
-        data: { secretId: secret.id, secretVersionId: v1.id, storageObjectId: shared.id, label: 'doc' },
+        data: { secretId: secret.id, secretVersionId: v1.id, storageObjectId: shared.id, orgId: defaultOrg, label: 'doc' },
       });
       const second = await prisma.secretAttachment.create({
-        data: { secretId: secret.id, secretVersionId: v2.id, storageObjectId: shared.id, label: 'doc' },
+        data: { secretId: secret.id, secretVersionId: v2.id, storageObjectId: shared.id, orgId: defaultOrg, label: 'doc' },
       });
 
       const keep = await http().delete(`/api/secrets/${secret.id}/attachments/${first.id}`).set(as('a'));

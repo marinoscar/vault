@@ -190,11 +190,18 @@ jobs:
       # runs BEFORE prisma:migrate, so it uses --through 2 --allow-rls (see the
       # runbook: --allow-rls is the explicit opt-in to the row-level-security
       # migrations above --through; the role here is already the ordinary one).
+      #
+      # platform.lock `rlsPolicies` lists media_folder_files_org_isolation (E6.2), which
+      # the app migration creates AFTER this gate; the baseline asserts every listed
+      # policy exists, so the plain command would refuse (POLICY_MISSING) here.
+      # `db:baseline:pre-migrate` runs the same command against a temporary copy of the
+      # lock without `rlsPolicies` (scripts/baseline-pre-migrate.mjs); the real lock is
+      # never touched. db:drift below still checks the policy on the migrated database.
       - name: Baseline dry run (through 2)
         working-directory: apps/api
         run: |
           set -o pipefail
-          npm run db:baseline -- --through 2 --allow-rls | tee /tmp/baseline-dry-run.txt
+          npm run db:baseline:pre-migrate | tee /tmp/baseline-dry-run.txt
           grep -q "nothing to do" /tmp/baseline-dry-run.txt
 
       - name: Apply the installed platform migrations (0003-0040) and the media_folder_files migration
@@ -224,6 +231,9 @@ jobs:
           test "$(q "SELECT count(*) FROM media_folder_files")" = "2"
           test "$(q "SELECT count(*) FROM secret_versions WHERE is_current")" = "1"
           test "$(q "SELECT count(*) FROM secret_attachments")" = "1"
+          test "$(q "SELECT count(*) FROM secret_attachments sa JOIN storage_objects so ON so.id = sa.storage_object_id AND so.org_id = sa.org_id")" = "1"
+          test "$(q "SELECT count(*) FROM secret_attachments WHERE org_id IS NULL")" = "0"
+          test "$(q "SELECT count(*) FROM pg_policies WHERE tablename = 'media_folder_files'")" = "1"
 
   web-check:
     name: Web Check

@@ -50,8 +50,8 @@ if (!admin) {
 
 const describeWithDb = admin ? describe : describe.skip;
 
-/** The tables the platform forces row-level security on (migration 0025) that Vault creates. */
-const FORCED_TABLES = ['storage_objects', 'storage_object_chunks', 'ai_runs', 'ai_usage_events'];
+/** The tables that FORCE row-level security: the platform's (migration 0025) and Vault's media_folder_files (E6.2). */
+const FORCED_TABLES = ['storage_objects', 'storage_object_chunks', 'ai_runs', 'ai_usage_events', 'media_folder_files'];
 
 describeWithDb('tenant isolation as the application role (real Postgres)', () => {
   let deployment: AppRoleDatabase;
@@ -237,6 +237,94 @@ describeWithDb('tenant isolation as the application role (real Postgres)', () =>
     });
   });
 
+  describe('media_folder_files (E6.2: forced org_id policy)', () => {
+    let folderId: string;
+    const userId = randomUUID();
+
+    beforeAll(async () => {
+      // users and media_folders are not org tables: written without a scope.
+      await app.query(`INSERT INTO users (id, email, updated_at) VALUES ($1, $2, now())`, [userId, `mf-${userId}@example.test`]);
+      folderId = randomUUID();
+      await app.query(`INSERT INTO media_folders (id, name, user_id, updated_at) VALUES ($1, 'Folder', $2, now())`, [folderId, userId]);
+      await asOrg(defaultOrg, (c) =>
+        c.query(`INSERT INTO media_folder_files (object_id, org_id, media_folder_id) VALUES ($1, $2, $3)`, [defaultObjects[1], defaultOrg, folderId]),
+      );
+      await asOrg(otherOrg, (c) =>
+        c.query(`INSERT INTO media_folder_files (object_id, org_id, media_folder_id) VALUES ($1, $2, $3)`, [otherObjects[1], otherOrg, folderId]),
+      );
+    });
+
+    it('shows no rows without an organization scope', async () => {
+      expect((await app.query(`SELECT count(*)::int AS n FROM media_folder_files`)).rows[0].n).toBe(0);
+    });
+
+    it("hides another organization's rows", async () => {
+      const mine = await asOrg(defaultOrg, async (c) => (await c.query(`SELECT object_id FROM media_folder_files`)).rows);
+      expect(mine.map((r) => r.object_id)).toEqual([defaultObjects[1]]);
+      const theirs = await asOrg(otherOrg, async (c) => (await c.query(`SELECT object_id FROM media_folder_files`)).rows);
+      expect(theirs.map((r) => r.object_id)).toEqual([otherObjects[1]]);
+    });
+
+    it('refuses an insert for another organization (policy WITH CHECK)', async () => {
+      await expect(
+        asOrg(defaultOrg, (c) =>
+          c.query(`INSERT INTO media_folder_files (object_id, org_id, media_folder_id) VALUES ($1, $2, $3)`, [otherObjects[0], otherOrg, folderId]),
+        ),
+      ).rejects.toThrow(/row-level security/);
+    });
+
+    it('refuses an insert without an organization scope', async () => {
+      await expect(
+        app.query(`INSERT INTO media_folder_files (object_id, org_id, media_folder_id) VALUES ($1, $2, $3)`, [defaultObjects[2], defaultOrg, folderId]),
+      ).rejects.toThrow(/row-level security/);
+    });
+
+    it("refuses a link to another organization's object even in its own scope (composite foreign key)", async () => {
+      await expect(
+        asOrg(defaultOrg, (c) =>
+          c.query(`INSERT INTO media_folder_files (object_id, org_id, media_folder_id) VALUES ($1, $2, $3)`, [otherObjects[0], defaultOrg, folderId]),
+        ),
+      ).rejects.toThrow(/foreign key/);
+    });
+  });
+
+  describe('secret_attachments composite foreign key (E6.2)', () => {
+    async function seedVersion() {
+      const user = await prisma.user.create({ data: { email: `fk-${randomUUID()}@example.test` } });
+      const type = await prisma.secretType.create({ data: { name: `fk-type-${randomUUID()}`, fields: [], allowAttachments: true } });
+      const secret = await prisma.secret.create({ data: { name: 'fk secret', typeId: type.id, createdById: user.id } });
+      const version = await prisma.secretVersion.create({
+        data: { secretId: secret.id, version: 1, encryptedData: 'x', iv: 'y', authTag: 'z', isCurrent: true },
+      });
+      return { secretId: secret.id, secretVersionId: version.id };
+    }
+
+    it("refuses an attachment of one organization pointing at another organization's object", async () => {
+      const base = await seedVersion();
+      // The object exists, but in the other organization: (storage_object_id, org_id) matches no row.
+      await expect(
+        prisma.secretAttachment.create({ data: { ...base, storageObjectId: otherObjects[0], orgId: defaultOrg } }),
+      ).rejects.toMatchObject({ code: 'P2003' });
+      // And the object's own id with the wrong org label.
+      await expect(
+        prisma.secretAttachment.create({ data: { ...base, storageObjectId: defaultObjects[2], orgId: otherOrg } }),
+      ).rejects.toMatchObject({ code: 'P2003' });
+    });
+
+    it("accepts an attachment carrying the object's own organization", async () => {
+      const base = await seedVersion();
+      const row = await prisma.secretAttachment.create({ data: { ...base, storageObjectId: otherObjects[0], orgId: otherOrg } });
+      expect(row.orgId).toBe(otherOrg);
+    });
+
+    it('has org_id NOT NULL', async () => {
+      const { rows } = await app.query(
+        `SELECT is_nullable FROM information_schema.columns WHERE table_name = 'secret_attachments' AND column_name = 'org_id'`,
+      );
+      expect(rows[0].is_nullable).toBe('NO');
+    });
+  });
+
   describe("Vault's default-organization scope", () => {
     it('resolves the default organization (the unscoped organizations table is readable)', async () => {
       expect(await getDefaultOrgId(prisma)).toBe(defaultOrg);
@@ -268,7 +356,7 @@ describeWithDb('tenant isolation as the application role (real Postgres)', () =>
         });
         objectId = defaultObjects[0];
         const attachment = await prisma.secretAttachment.create({
-          data: { secretId: secret.id, secretVersionId: version.id, storageObjectId: objectId, label: 'doc' },
+          data: { secretId: secret.id, secretVersionId: version.id, storageObjectId: objectId, orgId: defaultOrg, label: 'doc' },
         });
         secretId = secret.id;
         versionId = version.id;
