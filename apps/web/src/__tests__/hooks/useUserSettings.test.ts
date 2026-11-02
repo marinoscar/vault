@@ -23,16 +23,18 @@ vi.mock('../../services/api', () => ({
   },
 }));
 
-// Helper to mock useThemeContext
+// Mock the shell theme the hook syncs the stored `theme` into (a stable object,
+// as the real provider's `setMode` is stable).
 const mockSetMode = vi.fn();
-vi.mock('../../contexts/ThemeContext', () => ({
-  useThemeContext: vi.fn(() => ({
-    mode: 'system',
-    theme: {},
-    isDarkMode: false,
-    setMode: mockSetMode,
-    toggleMode: vi.fn(),
-  })),
+const mockShellTheme = {
+  mode: 'system',
+  theme: {},
+  isDarkMode: false,
+  setMode: (mode: string) => mockSetMode(mode),
+  toggleMode: vi.fn(),
+};
+vi.mock('@marinoscar/platform-web/shell/headless', () => ({
+  useOptionalShellTheme: vi.fn(() => mockShellTheme),
 }));
 
 // Mock data

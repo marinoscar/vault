@@ -1,6 +1,6 @@
 # The UX Refresh (E10)
 
-> **Status:** specification for E10 of the platform migration (program epic [#54](https://github.com/marinoscar/vault/issues/54)); written in E0 ([#55](https://github.com/marinoscar/vault/issues/55)). Nothing here is implemented yet: every `apps/web/src/config/*` file named below is **created in E10**. It adopts the platform shell, settings hub and datatable (`@marinoscar/platform-web`, adopted in E3/E4) and keeps Vault's domain screens. Web rules: [apps/web/AGENTS.md](../../apps/web/AGENTS.md); classification: [module-classification](../platform-adoption/module-classification.md).
+> **Status:** specification for E10 of the platform migration (program epic [#54](https://github.com/marinoscar/vault/issues/54)); written in E0 ([#55](https://github.com/marinoscar/vault/issues/55)). **E10.1 ([#92](https://github.com/marinoscar/vault/issues/92)) and E10.2 ([#93](https://github.com/marinoscar/vault/issues/93)) are implemented**: the platform shell (`@marinoscar/platform-web@0.1.0-next.21`), the Vault brand theme and the destinations table (sections 2 to 5). E10.3 to E10.7 are not: the settings hub, the datatable secrets list, the cards gallery, the home dashboard and the accessibility pass are still to come, and the domain pages are unchanged inside the new shell. Web rules: [apps/web/AGENTS.md](../../apps/web/AGENTS.md); classification: [module-classification](../platform-adoption/module-classification.md); stop-gaps: [local-exceptions](../platform-adoption/local-exceptions.md).
 
 ## 1. Problems with today's UI
 
@@ -33,11 +33,15 @@ Rules (the platform's, restated because they bind Vault's table):
 - Secret types, backups, allowlist and the rest are **settings cards**, not destinations (section 5).
 - Existing routes keep working: `/secrets/*`, `/cards/*`, `/media/*`, `/secret-types/*` (moved under the Secret types card, with a redirect), `/settings`, `/admin/users` (redirect to the Users card), `/admin/settings`.
 
+**As built (E10.2).** `apps/web/src/config/destinations.ts` holds `DESTINATIONS`, `DESTINATION_ROUTES` and `UNOWNED_ROUTES`; `config/shell.ts` binds them into `VAULT_NAVIGATION` (with the Console registry and the compact AppBar's drill-down on `/admin/settings`) and derives `BOTTOM_BAR_NAVIGATION` (the non-pinned destinations). Ownership: `settings` owns `/settings` **and** `/secret-types` (until E10.3 moves the routes under the card); `console` owns all of `/admin`. `/login`, `/auth/callback`, `/activate` and `/testing/login` are owned by none. `config/adminSections.tsx` is seeded with the two admin pages that exist (System settings `system_settings:read`, Users & allowlist `users:read`) so Console mode has rows; E10.3 appends the rest. Secret types are reached from a "Secret types" card on `/settings` (`secret_types:read`). `__tests__/config/destinations.test.ts` asserts every `App.tsx` route is owned by exactly one destination or listed as unowned, at most four non-pinned, both pinned, and controller permission strings only.
+
 ## 3. Shell
 
 - Use the platform `ShellLayout` (rail at `sm` and up, `ShellBottomNav` below), `ShellAppBar` (title resolved from the destination/card registry), `ShellUserMenu` and `createShellTheme` inside `ShellProviders`. `components/common/Layout.tsx` becomes a thin binding; `components/navigation/*` are deleted.
 - Light, dark and system modes; the choice is the user's `Appearance` setting.
 - The rail has a Console mode (admin cards) reachable from the pinned `console` item.
+
+**As built (E10.2).** `components/common/Layout.tsx` binds `ShellLayout` with `ShellAppBar` (brand `BrandLockup`, theme toggle, `ShellUserMenu` with "Sign out"), the default `ShellNavigationRail` and `ShellBottomNav` over `BOTTOM_BAR_NAVIGATION`; pages render inside a `Suspense` and an `ErrorBoundary` keyed by path, so a lazy load or a page error keeps the chrome. `App.tsx` mounts `ShellRoot` (themes, the light / dark / system choice in `localStorage` `theme_mode`, synced from the `theme` user setting by `useUserSettings`), then Vault's `AuthProvider`, then `platform/PlatformAuthBridge.tsx` (re-publishes Vault's session as the platform identity context the shell reads; removed by E3.3) and a `ShellPreferencesProvider` keeping the rail's collapse in `localStorage` (Vault's `/api/user-settings` has no `navigation` namespace yet; removed by E4). `components/navigation/*`, `contexts/ThemeContext.tsx` and the old `theme/{light,dark,components}.ts` are deleted.
 
 ## 4. Breakpoint gates
 
@@ -49,11 +53,11 @@ The five coupled gates move together or not at all, boundary `sm` (600px), never
 4. `SettingsHub` `isCompactWindow` (`down('sm')`)
 5. `ShellAppBar` `isCompactWindow` (`down('sm')`)
 
-After E10 all five are the platform's. The app reads no breakpoint for them; a web test (`apps/web/src/__tests__/config/breakpointGates.test.ts`, created in E10) fails on any `useMediaQuery(` or `breakpoints.up|down(` in the app not listed with a reason. Domain pages may adapt to `sm` for their own content (e.g. the secrets list collapsing to cards) but are not gates.
+Since E10.2 all five are the platform's. The app reads no breakpoint for them; a web test (`apps/web/src/__tests__/config/breakpointGates.test.ts`) fails on any `useMediaQuery(` or `breakpoints.up|down(` in the app not listed with a reason. Domain pages may adapt to `sm` for their own content (e.g. the secrets list collapsing to cards) but are not gates.
 
 ## 5. Brand tokens
 
-Keeps the logo in `media/app_logo.png`; replaces the default blue/purple with deep teal, slate neutrals and an amber accent. Tokens are defined once (e.g. `apps/web/src/theme/tokens.ts`, created in E10) and fed to `createShellTheme`; no component hard-codes a colour.
+Keeps the logo in `media/app_logo.png`; replaces the default blue/purple with deep teal, slate neutrals and an amber accent. Tokens are defined once in `apps/web/src/theme/tokens.ts` (`BRAND_TOKENS`) and fed to `createShellTheme` by `theme/index.ts` (`vaultLightTheme`, `vaultDarkTheme`, `VAULT_THEMES`), with token-driven overrides for the AppBar border, cards, selected navigation rows, the bottom bar and the initials avatar; no component hard-codes a colour. Hairline `divider` tokens: `#E2E8F0` light, `#2A373B` dark (decorative, not a contrast pair).
 
 ### Palette
 
@@ -92,11 +96,13 @@ Keeps the logo in `media/app_logo.png`; replaces the default blue/purple with de
 | Dark: `accent #F2A900` on `background` | 9.05:1 | 4.5 | pass |
 | Dark: `error #FF8A80` on `background` | 7.96:1 | 4.5 | pass |
 
-These are proposals computed from the hex values; E10.1 re-measures them with the validator in the implementation and records the final numbers here. Status colours (valid / expiring soon / expired) must never rely on colour alone: each carries an icon and a text label.
+**Re-measured in E10.1 (2026-11-02)** with `apps/web/src/theme/contrast.ts` over `tokens.ts`: every ratio above holds unchanged to two decimals, and `src/__tests__/theme/tokens.test.ts` fails if a token change breaks one. Status colours (valid / expiring soon / expired) must never rely on colour alone: each carries an icon and a text label.
 
 ### Mark and icons
 
 Generate favicon, PWA and app-bar marks from `media/app_logo.png` and `media/favicon.ico`; tint the mark with `primary` in light and dark. No new logo is designed in E10.
+
+**As built (E10.1).** The safe body is cropped out of the vignette, masked to its rounded square and its blues shifted to the teal primary; one tinted mark serves both modes (it reads on `#FFFFFF` and on `#0E1719`). Outputs: `apps/web/src/assets/brand/vault-mark.png` (128px, drawn at 32px by `components/brand/BrandLockup.tsx`), `public/favicon.ico` (16/32/48), `public/icons/icon-{192,512,1024}.png` and `public/apple-touch-icon.png` (the mark on `#F5F7F8` with a maskable safe margin). `index.html` `theme-color` and `manifest.json` use `#0F5F66` / `#F5F7F8`. `media/` keeps the untinted source.
 
 ## 6. Settings hub
 
@@ -185,12 +191,12 @@ All fixtures use invented data (`Person A`, `@example.test`, published test card
 
 | Issue | Scope | Depends on |
 |---|---|---|
-| E10.1 | Brand tokens and theme: `tokens.ts`, `createShellTheme`, light/dark/system, icons from `media/`, contrast test | E1 |
-| E10.2 | Shell and destinations: `destinations.ts`, `ShellLayout` binding, delete `components/navigation/*` and `Layout` breakpoints, gate test | E3, E10.1 |
+| E10.1 (#92, done) | Brand tokens and theme: `tokens.ts`, `createShellTheme`, light/dark/system, icons from `media/`, contrast test | E1 |
+| E10.2 (#93, done) | Shell and destinations: `destinations.ts`, `ShellLayout` binding, delete `components/navigation/*` and `Layout` breakpoints, gate test | E3, E10.1 |
 | E10.3 | Settings hub: `adminSections.tsx`, `userSettingsSections.tsx`, move existing settings content into cards, redirect old routes, registry tests | E4, E10.2 |
 | E10.4 | Secrets list on datatable with card mode, URL state, version history drawer | E10.2 |
 | E10.5 | Cards gallery and expiry statuses | E10.2 |
 | E10.6 | Home dashboard (expiring cards, recent secrets, last backup status) | E10.2, E5 for job-based backup status |
 | E10.7 | Accessibility pass, Playwright e2e and visual baselines, docs update | E10.1 to E10.6 |
 
-Issue numbers on GitHub are assigned when E10 starts; E10.x are labels used by this program.
+E10.1 is #92 and E10.2 is #93; the other numbers are assigned as each starts.

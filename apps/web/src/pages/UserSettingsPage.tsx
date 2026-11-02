@@ -10,6 +10,7 @@ import { ThemeSettings } from '../components/settings/ThemeSettings';
 import { ProfileSettings } from '../components/settings/ProfileSettings';
 import { PersonalAccessTokens } from '../components/settings/PersonalAccessTokens';
 import { DataBackup } from '../components/settings/DataBackup';
+import { SecretTypesLink } from '../components/settings/SecretTypesLink';
 import { RequirePermission } from '../components/common/RequirePermission';
 import { useUserSettings } from '../hooks/useUserSettings';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
@@ -93,6 +94,11 @@ export default function UserSettingsPage() {
             {/* Data Backup (owned secrets, encrypted zip) */}
             <RequirePermission permission="secrets:read">
               <DataBackup />
+            </RequirePermission>
+
+            {/* Secret types (a settings card, not a destination; E10.3 moves it into the hub) */}
+            <RequirePermission permission="secret_types:read">
+              <SecretTypesLink />
             </RequirePermission>
           </Box>
         )}
