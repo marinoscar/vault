@@ -1,6 +1,6 @@
 {
   "name": "@marinoscar/vault-web",
-  "version": "0.1.0-next.0",
+  "version": "0.1.0-next.1",
   "description": "The React side of the Vault domain: pages, components, hooks, navigation destinations and the brand, one subpath per slice (ESM). apps/web is the host.",
   "license": "MIT",
   "type": "module",
@@ -114,7 +114,7 @@
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@marinoscar/platform-web": "0.1.0-next.21",
-    "@marinoscar/vault-contract": "0.1.0-next.0",
+    "@marinoscar/vault-contract": "0.1.0-next.1",
     "@mui/icons-material": "^9.1.0",
     "@mui/material": "^9.1.0",
     "@mui/utils": "^9.0.0",
