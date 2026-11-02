@@ -1,0 +1,84 @@
+// =============================================================================
+// Vault domain: backups
+// =============================================================================
+// Owned by @marinoscar/vault-db. `vault-db sync` copies this file into the app's
+// prisma/fragments/ (never edit the copy); `platform db compose` then composes it
+// with the platform fragments into prisma/schema/.
+// The backup schedule singleton and the backup run history.
+
+// Singleton row (id = 'default'), created lazily by the service via upsert.
+model BackupSchedule {
+  id                 String    @id @default("default")
+  enabled            Boolean   @default(false)
+  frequency          String    @default("daily") // hourly | daily | weekly | monthly
+  intervalHours      Int?      @map("interval_hours")
+  timeOfDay          String    @default("03:00") @map("time_of_day") // HH:mm
+  dayOfWeek          Int?      @map("day_of_week") // 0-6, 0 = Sunday
+  dayOfMonth         Int?      @map("day_of_month") // 1-28
+  timezone           String    @default("UTC")
+  keepCount          Int       @default(7) @map("keep_count")
+  includeAttachments Boolean   @default(true) @map("include_attachments")
+  includeVersions    Boolean   @default(false) @map("include_versions")
+  includeSecrets     Boolean   @default(true) @map("include_secrets")
+  includeMedia       Boolean   @default(false) @map("include_media")
+  includeSystem      Boolean   @default(false) @map("include_system")
+  passwordEncrypted  String?   @map("password_encrypted")
+  passwordUpdatedAt  DateTime? @map("password_updated_at") @db.Timestamptz
+  nextRunAt          DateTime? @map("next_run_at") @db.Timestamptz
+  lastRunAt          DateTime? @map("last_run_at") @db.Timestamptz
+  updatedById        String?   @map("updated_by_id") @db.Uuid
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  updatedBy User? @relation("BackupScheduleUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([updatedById])
+  @@map("backup_schedules")
+}
+
+model BackupRun {
+  id              String    @id @default(uuid()) @db.Uuid
+  status          String // running | succeeded | failed
+  trigger         String // schedule | manual
+  triggeredById   String?   @map("triggered_by_id") @db.Uuid
+  scope           String    @default("system") // system | user
+  ownerId         String?   @map("owner_id") @db.Uuid // set when scope is user
+  storageKey      String?   @map("storage_key")
+  sizeBytes       BigInt?   @map("size_bytes")
+  userCount       Int       @default(0) @map("user_count")
+  secretCount     Int       @default(0) @map("secret_count")
+  attachmentCount Int       @default(0) @map("attachment_count")
+  mediaFileCount  Int       @default(0) @map("media_file_count")
+  warningCount    Int       @default(0) @map("warning_count")
+  contents        String[]  @default([])
+  error           String?
+  startedAt       DateTime  @default(now()) @map("started_at") @db.Timestamptz
+  finishedAt      DateTime? @map("finished_at") @db.Timestamptz
+  heartbeatAt     DateTime? @map("heartbeat_at") @db.Timestamptz
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz
+  // The queue job that runs (or ran) this backup (E5.2). NULL for rows written before the
+  // queue ran backups. `heartbeat_at` above is no longer written (expand/contract).
+  jobId           String?   @map("job_id") @db.Uuid
+
+  // Relations
+  job         Job?  @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  triggeredBy User? @relation("BackupRunTrigger", fields: [triggeredById], references: [id], onDelete: SetNull)
+  owner       User? @relation("BackupRunOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([status, startedAt])
+  @@index([triggeredById])
+  @@index([scope, ownerId, startedAt])
+  @@index([jobId])
+  @@map("backup_runs")
+}
+
+extend model User {
+  backupSchedulesUpdated BackupSchedule[] @relation("BackupScheduleUpdater")
+  backupRunsTriggered    BackupRun[]      @relation("BackupRunTrigger")
+  backupRunsOwned        BackupRun[]      @relation("BackupRunOwner")
+}
+
+extend model Job {
+  vaultBackupRuns BackupRun[]
+}

@@ -30,6 +30,7 @@ jobs:
       - name: Install and build the web app
         run: |
           npm ci
+          npm run build:packages
           npm run build --workspace=web
 
       - name: Install the visual suite

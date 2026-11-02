@@ -34,6 +34,8 @@ COPY apps/web/package.json ./apps/web/
 # inherit them through `COPY --from=deps /app ./`. Vite inlines what it
 # imports, so nginx's production stage needs nothing further.
 COPY packages ./packages/
+# Root build helpers the package build scripts call (scripts/vault-packages/*.mjs).
+COPY scripts ./scripts/
 # Install this app plus EVERY packages/* workspace (their devDependencies are
 # needed by the builds below), from the root lockfile. The list is derived.
 RUN set -e; \

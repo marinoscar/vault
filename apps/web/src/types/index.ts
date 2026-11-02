@@ -1,3 +1,10 @@
+import type { AttachmentRole } from '@marinoscar/vault-contract/secrets';
+import type {
+  BackupFrequency,
+  BackupRunStatus,
+  BackupRunTrigger,
+} from '@marinoscar/vault-contract/backups';
+
 export interface Role {
   name: string;
 }
@@ -59,8 +66,8 @@ export interface AiStatus {
 }
 
 /**
- * Error codes `POST /api/secrets/cards/extract` answers with, mirroring
- * `AI_ERROR_CODES` in `apps/api/src/ai/ai.constants.ts`. Client code branches on
+ * Error codes `POST /api/secrets/cards/extract` answers with, defined once in
+ * `@marinoscar/vault-contract/errors` (`AI_ERROR_CODES`). Client code branches on
  * `code` first and falls back to `status` (see `describeCardExtractionError` in
  * `hooks/useCardImport.ts`).
  *
@@ -69,18 +76,7 @@ export interface AiStatus {
  * (`AiEnabledGuard`) refuses with `403`, top-level code `FORBIDDEN` and
  * `details.reason` {@link AI_DISABLED_REASON}.
  */
-export const AI_ERROR_CODES = {
-  NOT_CONFIGURED: 'AI_NOT_CONFIGURED',
-  INVALID_IMAGE: 'AI_INVALID_IMAGE',
-  RATE_LIMITED: 'AI_RATE_LIMITED',
-  QUOTA_EXCEEDED: 'AI_QUOTA_EXCEEDED',
-  UPSTREAM_AUTH: 'AI_UPSTREAM_AUTH',
-  UPSTREAM_RATE_LIMITED: 'AI_UPSTREAM_RATE_LIMITED',
-  UPSTREAM_UNAVAILABLE: 'AI_UPSTREAM_UNAVAILABLE',
-  EXTRACTION_FAILED: 'AI_EXTRACTION_FAILED',
-} as const;
-
-export type AiErrorCode = (typeof AI_ERROR_CODES)[keyof typeof AI_ERROR_CODES];
+export { AI_ERROR_CODES, type AiErrorCode } from '@marinoscar/vault-contract/errors';
 
 /** `details.reason` of the platform kill switch's `403` (AI switched off). */
 export const AI_DISABLED_REASON = 'AI_DISABLED';
@@ -227,7 +223,7 @@ export interface SecretListItem {
  * `attachmentRoleSchema` in the API. `null` is a generic attachment, of which a
  * version may have many; a role-bearing attachment is unique per version.
  */
-export type AttachmentRole = 'card_front' | 'card_back';
+export type { AttachmentRole } from '@marinoscar/vault-contract/secrets';
 
 export interface SecretAttachment {
   id: string;
@@ -386,11 +382,11 @@ export interface MediaFilesResponse {
 // Scheduled Backups (admin)
 // =============================================================================
 
-export type BackupFrequency = 'hourly' | 'daily' | 'weekly' | 'monthly';
-
-export type BackupRunStatus = 'running' | 'succeeded' | 'failed';
-
-export type BackupRunTrigger = 'schedule' | 'manual';
+export type {
+  BackupFrequency,
+  BackupRunStatus,
+  BackupRunTrigger,
+} from '@marinoscar/vault-contract/backups';
 
 /** Editable fields of the backup schedule (PUT /admin/backups/schedule). */
 export interface BackupScheduleFields {

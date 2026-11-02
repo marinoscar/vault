@@ -1,0 +1,127 @@
+# @marinoscar/vault-db
+
+The database side of the Vault domain: the Prisma schema fragments, the SQL migrations, the inventory of what Prisma cannot express, and the `vault-db` command that installs them into an app and proves the installed copies unchanged. CommonJS.
+
+## Purpose and scope
+
+The domain Prisma fragments (`schema/vault.<slice>.prisma` for `secrets`, `media` and `backups`), the eight domain migrations byte for byte (`migrations/<original-directory-name>/migration.sql` plus `migrations/manifest.json`), the inventories (`raw-sql-indexes.json`, `extensions.json`, `schema-objects.json`) and the `vault-db` command: `sync` copies fragments and migrations into a host app and writes `prisma/vault.lock`, `check` proves every copy byte-identical (`check --database` also checks a live database), `promote` moves a migration authored in the app into the package. It does not own the platform tables (`users`, `organizations`, `storage_objects`, `jobs`, ...), which are `@marinoscar/platform-db`'s, and it changes no table: this is a move (E12.1, issue 102).
+
+Why a command and not a plain import: `platform db compose` reads exactly one app fragment folder and `platform db sync` installs migrations only from the platform package, so a second fragment and migration source needs a bridge. `vault-db sync` copies the fragments into the app's `prisma/fragments` and the migrations into `prisma/migrations`; the platform then sees them as app fragments and app migrations, which is what they were before.
+
+Status: complete for the eight app-owned migrations that existed when E12.1 landed (the four that were authored before the platform baseline, `20260403120000_add_secrets_and_versions`, `20260403235813_add_media_folders`, `20260404000000_add_secret_name_user_unique` and `20260727120000_version_scoped_attachments`, plus `20261102120000_add_backup_schedules` and the three platform-adoption ones, `20261102130000_add_media_folder_files`, `20261102140000_backup_runs_job_id` and `20261103090000_attachments_composite_fk_media_rls`) and the three fragments that were `apps/api/prisma/fragments/vault.prisma` and `media-folder-files.prisma`. The two platform-owned originals (`20260124223146_initial`, `20260329151231_add_personal_access_tokens`) are not here: they are `platform:0001` and `platform:0002` in `platform.lock`. Some of the eight touch platform tables (`add_media_folders` drops id defaults on them, adds then `add_media_folder_files` drops `storage_objects.media_folder_id`); they are history, shipped unchanged, and they are why a new host runs the platform's history first. A **new** domain migration may only reference a host table from a foreign key; `promote` enforces it.
+
+- `@marinoscar/vault-db`: the package root, which re-exports every slice (the `vault-db` bin runs the `bin` slice). Slice READMEs: [bin](src/bin/README.md), [sync](src/sync/README.md), [check](src/check/README.md), [promote](src/promote/README.md), [lock](src/lock/README.md), [manifest](src/manifest/README.md), [sql](src/sql/README.md).
+
+## Install and peer dependencies
+
+```bash
+npm install --save-dev @marinoscar/vault-db@next
+```
+
+| Package | Range | Needed by |
+|---|---|---|
+| `prisma` | `^7.8.0` | `bin` (required) |
+
+`commander` is a dependency (the command line). `check --database` also needs `pg`, resolved at run time from the app (any app that talks to PostgreSQL through Prisma's `pg` adapter has it); it is not declared as a peer because the offline commands never use it. The per-slice data is `packages/vault-slice-peers.json`.
+
+## Quick start
+
+In a host that already composes the platform schema (`platform db sync`, `platform db compose`):
+
+```bash
+npx vault-db sync                      # fragments, migrations, prisma/vault.lock, platform.lock
+npx platform db compose               # the app's db:compose script runs both, in this order
+npx vault-db check                     # every copy is byte-identical to the package
+DATABASE_URL=postgres://... npx vault-db check --database
+```
+
+## Configuration
+
+| Command | Options |
+|---|---|
+| `vault-db sync` | `--root <dir>` the app folder that holds `prisma/` (default: the current directory); `--fragments <dir>` and `--migrations <dir>` the package folders to install from (default: the package's `schema/` and `migrations/`); `--names original\|stable\|after-host` (`after-host` is deprecated); `--dry-run` |
+| `vault-db check` | `--root <dir>`; `--database` also checks the database named by `DATABASE_URL` |
+| `vault-db promote <localDir>` | `--id <slug>` (required), `--slice <slice>` (required), `--root <dir>` |
+
+Exit codes: 0 ok, 1 a failed check or a refusal (a host model is missing, an installed migration differs from the package, a lock entry disagrees), 2 a usage error or a missing `DATABASE_URL`.
+
+What `sync` does:
+
+- Copies each `schema/vault.<slice>.prisma` to `<root>/prisma/fragments/vault.<slice>.prisma` under the header `// GENERATED by vault-db sync — do not edit` and `// source: @marinoscar/vault-db:schema/<file>` (the header carries no version, so a version bump never makes a copy stale). Removes `vault.*.prisma` files the package no longer has.
+- Installs every manifest migration missing from `prisma/vault.lock` into `prisma/migrations/`, adopting a directory that already exists under the original name when its bytes are identical (and refusing it when they are not).
+- Writes `prisma/vault.lock` (`{ lockVersion: 1, vaultDbVersion, migrations: [{ originId: "vault:<id>", installedDir, sha256 }] }`).
+- Merges `raw-sql-indexes.json` into `prisma/platform.lock` `rawSqlIndexes` (adds missing names; refuses with exit 1 when a name is listed with another definition) and appends the installed directories to `appMigrations` so the platform's ordering check accepts them.
+- Refuses when the host schema lacks `User`, `StorageObject` or `Job`.
+
+## Extension-point catalog
+
+None. The package has no host-implemented interface; a host consumes its files.
+
+## Data
+
+Tables the fragments declare (the migrations create them; the host provides `users`, `storage_objects` and `jobs`, which the foreign keys reference; `storage_objects` must be org-owned with a unique `(id, org_id)`, because `secret_attachments` and `media_folder_files` point at it with a composite key):
+
+| Slice | Tables |
+|---|---|
+| `secrets` | `secret_types`, `secrets`, `secret_versions`, `secret_attachments` |
+| `media` | `media_folders`, `media_folder_files` |
+| `backups` | `backup_schedules`, `backup_runs` |
+
+Extensions: none (`extensions.json` is `[]`). Vault needs nothing the platform does not already require.
+
+Raw-SQL objects (`raw-sql-indexes.json`: one index with the `pg_indexes.indexdef` text `platform db drift` asserts; `schema-objects.json` is empty): `secret_versions_current_unique`, `UNIQUE (secret_id) WHERE is_current = true`, which is what guarantees exactly one current version per secret. It exists only in `migration.sql`, is intentional schema drift, and is never declared in a fragment (no `@@unique`, `@@index` or `@unique` under its name or on its columns). Row-level security on `media_folder_files` and `secret_attachments` (policy `media_folder_files_org_isolation`) is created by `20261102130000_add_media_folder_files` and `20261103090000_attachments_composite_fk_media_rls` and is asserted by `platform.lock` `rlsPolicies`, which the host owns.
+
+## Permissions and settings
+
+None. The package declares no permission string and no settings key.
+
+## UI
+
+None.
+
+## Infra
+
+None. The package creates no database role and no extension; the application role must own the tables the migrations create.
+
+## Observability
+
+None. The command prints one line per action and one `CODE  message` line per problem on standard error.
+
+## Security notes
+
+`sync` and `check` read and write files only; `check --database` runs `SELECT`s against catalogs (`pg_extension`, `pg_indexes`, `pg_trigger`, `pg_proc`, `pg_constraint`, `information_schema.columns`) and never creates, drops or renames anything. A missing extension is reported, never created. An installed migration is never edited, renamed or overwritten: `sync` refuses a directory whose bytes differ from the package, and comments count toward the hash, so exclude `**/migration.sql` from any formatter or comment clean-up. No fragment or migration holds a secret. Do not run `prisma format` on the generated `vault.*.prisma` copies: they must stay byte-identical to the package.
+
+## Conformance suite
+
+`vault-db check` is the executable proof that the installed copies match the package; `vault-db check --database` proves the database holds the raw-SQL objects. The package tests (`npm run test:run -w @marinoscar/vault-db`) cover the manifest hashes, the raw-SQL index tripwire, `sync` into a fixture host with both naming policies, `check` failing on a one-byte change, and `promote`; `test/apply.db.test.ts` runs only when `DATABASE_URL` names a PostgreSQL 16 server and applies the platform history and then the domain history to a fresh database (the test creates and drops its own).
+
+## Upgrade notes
+
+Naming policy, chosen per host by `--names` or by the rule below:
+
+- `original` keeps the package directory name (`20260403120000_add_secrets_and_versions`). It is for a host whose databases already ran the migrations under those names, such as Vault's own app: production databases have the original names in `_prisma_migrations`, so an installed migration is never renamed. Default when `prisma/vault.lock` records original names, or when the app's `prisma/migrations` already holds a manifest migration under its original name.
+- `stable` names a migration `<the id's 14-digit timestamp>_vault_<slug>` (`20260403120000_add_secrets_and_versions` becomes `20260403120000_vault_add_secrets_and_versions`), a pure function of the package migration id, never of build time or other packages' migration counts. Default on a host with no vault history (a second host). The domain ids are dated 2026, so such a host pins `platform db sync --timestamp 2024-01-01T00:00:00Z` to put the platform tables first and make the platform names deterministic.
+- `after-host` (deprecated) names a migration `<ts>_vault_<slug>`, where `<ts>` is one second after the newest directory in `prisma/migrations`. Its names shift when a platform upgrade adds a migration to a host that builds `prisma/` from scratch, which breaks databases that recorded the old names in `_prisma_migrations`. A host with a lock keeps the policy the lock records.
+
+Rule: an installed migration's folder name is a pure function of the migration; upgrades only append names, never rename one. Upstream gap: `platform db sync` still derives names from the clock or `--timestamp` and the newest directory, so see [marinoscar/EnterpriseAppBase#992](https://github.com/marinoscar/EnterpriseAppBase/issues/992). Details: [the runbook](../../docs/runbooks/vault-domain-migration.md#migration-folder-names).
+
+Adopting an existing app: run `vault-db sync`. Every directory already exists under its original name, so no migration is written; the command creates `prisma/vault.lock`, the generated fragments and the `platform.lock` entries. A new package release adds migrations to `migrations/`; `sync` installs only the ones the lock does not record. A migration already in the lock is never changed: a fix is a new migration (see [the runbook](../../docs/runbooks/vault-domain-migration.md)).
+
+Fragment copies carry no version in their header, so a package version bump changes nothing in the app until the package's own files change.
+
+## Troubleshooting
+
+- `Cannot find module '../dist/bin/index.js'`: the package was not built; run `npm run build -w @marinoscar/vault-db`.
+- `FRAGMENT_MODIFIED`: someone edited or formatted a generated copy; run `vault-db sync` to restore it and edit the package's `schema/` file instead.
+- `INSTALLED_MODIFIED`: an installed `migration.sql` differs from `vault.lock`, comments included. Restore it from version control; never edit an installed migration.
+- `NOT_INSTALLED` or `LOCK_MISSING`: run `vault-db sync`.
+- `EXTENSION_MISSING`: not expected today (`extensions.json` is empty); if a future migration needs one, ask a database superuser to run the statement the message prints.
+- `the host schema does not declare model User`: run `platform db sync` and `platform db compose` first; the domain references `users`, `organizations`, `storage_objects` and `jobs`.
+- `platform.lock rawSqlIndexes already lists <name> with a different definition`: the app listed an index of that name itself; reconcile the lock with the package's `raw-sql-indexes.json`.
+
+## Links
+
+- [The Vault packages](../../docs/PACKAGES.md): layout, build, tests and the versioning plan
+- [Authoring a domain migration](../../docs/runbooks/vault-domain-migration.md): edit a fragment, create the migration, `vault-db promote`
+- [Package documentation and versioning plan](../../docs/PACKAGES.md): how the packages are built, tested and (from E12.4, issue 105) published
+- [DEVELOPMENT.md](../../docs/DEVELOPMENT.md): build, test and lint commands

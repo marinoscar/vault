@@ -3,23 +3,11 @@
 // =============================================================================
 
 /**
- * Error codes of the card-scan routes (registered in
- * `app-registrations/error-codes.ts`). The platform's own `AI_*` codes are the
- * AI slice's; `CardExtractService` maps them onto these so the web's handling of
- * the scan flow does not change.
+ * Error codes of the card-scan routes (defined in `@marinoscar/vault-contract/errors`, registered in
+ * `app-registrations/error-codes.ts`). The platform's own `AI_*` codes are the AI slice's;
+ * `CardExtractService` maps them onto these so the web's handling of the scan flow does not change.
  */
-export const AI_ERROR_CODES = {
-  NOT_CONFIGURED: 'AI_NOT_CONFIGURED',
-  INVALID_IMAGE: 'AI_INVALID_IMAGE',
-  RATE_LIMITED: 'AI_RATE_LIMITED',
-  QUOTA_EXCEEDED: 'AI_QUOTA_EXCEEDED',
-  UPSTREAM_AUTH: 'AI_UPSTREAM_AUTH',
-  UPSTREAM_RATE_LIMITED: 'AI_UPSTREAM_RATE_LIMITED',
-  UPSTREAM_UNAVAILABLE: 'AI_UPSTREAM_UNAVAILABLE',
-  EXTRACTION_FAILED: 'AI_EXTRACTION_FAILED',
-} as const;
-
-export type AiErrorCode = (typeof AI_ERROR_CODES)[keyof typeof AI_ERROR_CODES];
+export { AI_ERROR_CODES, type AiErrorCode } from '@marinoscar/vault-contract/errors';
 
 /** The registered AI feature id (`app-registrations/ai.ts`); permanent, usage rows carry it. */
 export const CARD_EXTRACT_FEATURE = 'card_extract';

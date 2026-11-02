@@ -18,22 +18,10 @@
 // =============================================================================
 
 import { registerErrorCode, type ErrorCodeDef } from '@marinoscar/platform-api/core';
+import { VAULT_ERROR_CODES as VAULT_ERROR_CODE_DEFS } from '@marinoscar/vault-contract/errors';
 
-export const VAULT_ERROR_CODES: readonly ErrorCodeDef[] = Object.freeze([
-  // Seed and encryption preconditions.
-  { code: 'DATABASE_SEED_REQUIRED', status: 500, description: 'Migrations ran but the seed data (roles, permissions) is missing.' },
-  { code: 'ENCRYPTION_UNAVAILABLE', status: 503, description: 'VAULT_ENCRYPTION_KEY is not configured, so a secret value could not be stored.' },
-
-  // Card scanning (`src/ai/ai.constants.ts`, `AI_ERROR_CODES`). The platform's own `AI_*` codes
-  // (kill switch, key, model, limits) are registered by the AI slice.
-  { code: 'AI_NOT_CONFIGURED', status: 503, description: 'AI card scanning is not set up (provider, model or deployment key missing).' },
-  { code: 'AI_INVALID_IMAGE', status: 400, description: 'The images are not acceptable base64 data URLs within the size limit.' },
-  { code: 'AI_RATE_LIMITED', status: 429, description: 'The per-user per-minute AI limit was reached.' },
-  { code: 'AI_QUOTA_EXCEEDED', status: 429, description: 'A daily AI limit (per user or per organization) was reached.' },
-  { code: 'AI_UPSTREAM_RATE_LIMITED', status: 429, description: 'The AI provider is rate limiting requests.' },
-  { code: 'AI_UPSTREAM_AUTH', status: 502, description: 'The AI provider rejected the configured API key.' },
-  { code: 'AI_UPSTREAM_UNAVAILABLE', status: 502, description: 'The AI provider failed, timed out or was unreachable.' },
-  { code: 'AI_EXTRACTION_FAILED', status: 422, description: 'The model refused, or its output did not validate.' },
-]);
+// The definitions are data in `@marinoscar/vault-contract/errors` (the wire contract); this file only
+// registers them with the platform. A new code goes in the package, with its status.
+export const VAULT_ERROR_CODES: readonly ErrorCodeDef[] = VAULT_ERROR_CODE_DEFS;
 
 for (const def of VAULT_ERROR_CODES) registerErrorCode(def);

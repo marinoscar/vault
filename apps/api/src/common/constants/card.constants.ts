@@ -2,25 +2,12 @@
 // Card Constants
 // =============================================================================
 // Single source of truth for card option values, shared by the secret-type
-// seed data and the OpenAI JSON schema used for card extraction.
+// seed data and the OpenAI JSON schema used for card extraction. They live in
+// `@marinoscar/vault-contract/secret-types`; this file keeps the old import path.
 
-export const CARD_NETWORKS = [
-  'Visa',
-  'Mastercard',
-  'American Express',
-  'Discover',
-  'Diners Club',
-  'JCB',
-  'UnionPay',
-  'Maestro',
-  'RuPay',
-  'Elo',
-  'Hipercard',
-  'Other',
-] as const;
-
-export type CardNetwork = (typeof CARD_NETWORKS)[number];
-
-export const CARD_KINDS = ['Credit', 'Debit', 'Prepaid', 'Other'] as const;
-
-export type CardKind = (typeof CARD_KINDS)[number];
+export {
+  CARD_NETWORKS,
+  CARD_KINDS,
+  type CardNetwork,
+  type CardKind,
+} from '@marinoscar/vault-contract/secret-types';

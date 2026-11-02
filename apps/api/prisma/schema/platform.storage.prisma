@@ -43,10 +43,10 @@ model StorageObject {
   // reference between two org-owned tables is composite, because a foreign-key
   // check bypasses row-level security (ADR 0002 D5).
 
-  // composed from app:media-folder-files.prisma
+  // composed from app:vault.media.prisma
   mediaFolderFile MediaFolderFile?
 
-  // composed from app:vault.prisma
+  // composed from app:vault.secrets.prisma
   secretAttachments SecretAttachment[]
 
   @@unique([id, orgId])

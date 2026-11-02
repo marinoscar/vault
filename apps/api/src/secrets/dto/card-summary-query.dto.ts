@@ -1,8 +1,5 @@
-import { z } from 'zod';
+import { cardSummaryQuerySchema, type CardSummaryQuery } from '@marinoscar/vault-contract/secrets';
 
-export const cardSummaryQuerySchema = z.object({
-  page: z.coerce.number().int().positive().default(1),
-  pageSize: z.coerce.number().int().positive().max(100).default(20),
-});
+export { cardSummaryQuerySchema };
 
-export type CardSummaryQueryDto = z.infer<typeof cardSummaryQuerySchema>;
+export type CardSummaryQueryDto = CardSummaryQuery;

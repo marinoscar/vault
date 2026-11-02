@@ -22,7 +22,10 @@
     "cli": "node apps/cli/dist/cli.js",
     "cli:build": "npm run build --workspace=cli",
     "vault": "node apps/cli/dist/cli.js",
-    "platform:infra:sync": "platform-infra sync"
+    "platform:infra:sync": "platform-infra sync",
+    "build:packages": "npm run build -w @marinoscar/vault-contract -w @marinoscar/vault-db",
+    "typecheck:packages": "npm run typecheck -w @marinoscar/vault-contract -w @marinoscar/vault-db",
+    "test:packages": "npm run test:run -w @marinoscar/vault-contract -w @marinoscar/vault-db"
   },
   "overrides": {
     "@nestjs/common": "^11.1.12",

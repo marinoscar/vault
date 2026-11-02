@@ -1,8 +1,8 @@
 # App schema fragments
 
-This folder holds Vault's own Prisma models. `vault.prisma` owns the secrets, media-folder and backup models plus the back-relations (`extend model User`, `extend model StorageObject`); `media-folder-files.prisma` owns the link between a media folder and a storage object. The platform's models come from `@marinoscar/platform-db` (`node_modules/@marinoscar/platform-db/schema/`).
+This folder holds the fragments `platform db compose` composes with the platform's. The Vault domain's models (`vault.secrets.prisma`, `vault.media.prisma`, `vault.backups.prisma`) are **generated copies** of `packages/vault-db/schema/` written by `vault-db sync`; never edit them, edit the package file ([runbook](../../../../docs/runbooks/vault-domain-migration.md)). A table that is not part of the domain is a `*.prisma` file of its own here and is edited in place. The platform's models come from `@marinoscar/platform-db` (`node_modules/@marinoscar/platform-db/schema/`).
 
-`prisma/schema/` is **generated** from the platform fragments plus the `*.prisma` files in this folder by `npm run db:compose`, and committed. Never edit a file there: `npm run db:compose:check` (CI) fails when it differs from a fresh compose.
+`prisma/schema/` is **generated** from the platform fragments plus the `*.prisma` files in this folder by `npm run db:compose` (which runs `vault-db sync` first), and committed. Never edit a file there: `npm run db:compose:check` (CI) fails when it differs from a fresh compose.
 
 ## Adding a model that points at a platform model
 

@@ -114,14 +114,18 @@ model User {
   // composed from package:webhooks.prisma
   webhookEndpoints WebhookEndpoint[] @relation("WebhookEndpointOwner")
 
-  // composed from app:vault.prisma
-  secretTypes            SecretType[]     @relation("UserSecretTypes")
-  secrets                Secret[]         @relation("UserSecrets")
-  secretVersions         SecretVersion[]  @relation("UserSecretVersions")
-  mediaFolders           MediaFolder[]    @relation("UserMediaFolders")
+  // composed from app:vault.backups.prisma
   backupSchedulesUpdated BackupSchedule[] @relation("BackupScheduleUpdater")
   backupRunsTriggered    BackupRun[]      @relation("BackupRunTrigger")
   backupRunsOwned        BackupRun[]      @relation("BackupRunOwner")
+
+  // composed from app:vault.media.prisma
+  mediaFolders MediaFolder[] @relation("UserMediaFolders")
+
+  // composed from app:vault.secrets.prisma
+  secretTypes    SecretType[]    @relation("UserSecretTypes")
+  secrets        Secret[]        @relation("UserSecrets")
+  secretVersions SecretVersion[] @relation("UserSecretVersions")
 
   @@map("users")
 }

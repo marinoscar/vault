@@ -1,0 +1,7 @@
+[
+  {
+    "definition": "CREATE UNIQUE INDEX secret_versions_current_unique ON public.secret_versions USING btree (secret_id) WHERE (is_current = true)",
+    "name": "secret_versions_current_unique",
+    "table": "secret_versions"
+  }
+]

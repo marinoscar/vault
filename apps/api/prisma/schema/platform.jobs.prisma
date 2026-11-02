@@ -334,7 +334,7 @@ model Job {
   // just the required other half of that one-to-one relation.
   backupRun DatabaseBackupRun?
 
-  // composed from app:vault.prisma
+  // composed from app:vault.backups.prisma
   vaultBackupRuns BackupRun[]
 
   @@index([status, priority, createdAt])
