@@ -1,0 +1,18 @@
+# =============================================================================
+# App overlay (scope vps) - this app does not run the stack agent
+# =============================================================================
+# vps.compose.yml adds `stack-agent`, the one container that holds the Docker
+# socket, so the admin UI can redeploy the telemetry containers. Vault has no
+# apps/stack-agent in this repository, so the service cannot be built here, and
+# the deploy CLI manages the telemetry containers instead. A service in the
+# `disabled` profile is never started by `docker compose up` and is left out of
+# `docker compose config`.
+#
+# The API still refuses to start without STACK_AGENT_TOKEN
+# (`${STACK_AGENT_TOKEN:?...}` in vps.compose.yml); `vault deploy` generates it
+# on install and on update, so the value is set but nothing listens for it.
+# =============================================================================
+
+services:
+  stack-agent:
+    profiles: ["disabled"]
