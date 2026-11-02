@@ -5,12 +5,14 @@
 // is not adopted yet is listed below with the written reason and the epic
 // child that removes the skip (platform-adoption epic #54: E3.1 = #76 host,
 // E3.2 = #77 identity, E4.1 = #79 settings, E5.1 = #81 jobs and nodes,
-// E5.3 = #83 queue rule, E6.1 = #84 storage).
+// E5.3 = #83 queue rule, E6.1 = #84 storage, E7.1 = #85 email and notifications).
 import '../src/app-registrations/registrations';
 import '../src/platform/storage/storage-key-prefix.manifest';
+import '@marinoscar/platform-api/email/testing';
 import '@marinoscar/platform-api/host/testing';
 import '@marinoscar/platform-api/identity/testing';
 import '@marinoscar/platform-api/jobs/testing';
+import '@marinoscar/platform-api/notifications/testing';
 import '@marinoscar/platform-api/settings/testing';
 import '@marinoscar/platform-api/storage/testing';
 
@@ -59,10 +61,10 @@ runPlatformConformance({
     // is a credential, E4.2), every default valid against its stored schema, and
     // every org layer gated by a registered org-scope permission (E4.1, #79).
     // `maintenance`, `jobs`, `retention`, `nodes` (E5.1) plus Vault's `ui`, `features`, `ai`,
-    // `vaultCards`, `vaultBackups`, and `storage` (E6.1).
+    // `vaultCards`, `vaultBackups`, plus `storage` (E6.1) and `notifications` (E7.1).
     settings: {
       permissions: permissionRegistry.list(),
-      minSystemNamespaces: 10,
+      minSystemNamespaces: 11,
     },
 
     // Every foreign key to `User` in the composed schema is registered with a purge
@@ -84,6 +86,17 @@ runPlatformConformance({
         },
       ],
     },
+
+    // The email slice (E7.1, #85): the platform templates are registered, every sampled template
+    // renders a complete document and escapes markup in its data, and no email settings shape carries
+    // a secret. Vault registers no template of its own until E7.2 (#86), so there are no extra samples.
+    email: {},
+
+    // The notifications slice (E7.1, #85): the platform channels and events are registered, every
+    // event that declares `email` has a template, no `notify*` call sits inside a `$transaction`
+    // callback, and the Web Push shapes carry no secret. The after-commit allowlist is EMPTY on
+    // purpose: Vault has no argued exception.
+    notifications: { afterCommitAllowlist: [] },
 
     // The `@Cron` half of queue rule 1 (E5.1/E5.3, #81/#83): every `@Cron` body in Vault's own
     // sources only enqueues a job. The platform's crons (the three permanent exemptions, the

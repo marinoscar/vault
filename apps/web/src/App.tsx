@@ -50,6 +50,20 @@ const AboutPage = lazy(() => import('@marinoscar/platform-web/host/ui').then((m)
 const MaintenancePage = lazy(() =>
   import('@marinoscar/platform-web/host/ui').then((m) => ({ default: m.MaintenancePage })),
 );
+// The platform email and notifications slices' pages (E7.2); the slice is
+// configured once in platform/notifications.ts (imported by main.tsx).
+const EmailSettingsPage = lazy(() =>
+  import('@marinoscar/platform-web/email/ui').then((m) => ({ default: m.EmailSettingsPage })),
+);
+const UserNotificationsPage = lazy(() =>
+  import('@marinoscar/platform-web/notifications/ui').then((m) => ({ default: m.UserNotificationsPage })),
+);
+const PushConfigPage = lazy(() =>
+  import('@marinoscar/platform-web/notifications/ui').then((m) => ({ default: m.PushConfigPage })),
+);
+const BroadcastsPage = lazy(() =>
+  import('@marinoscar/platform-web/notifications/ui').then((m) => ({ default: m.BroadcastsPage })),
+);
 const SecretsPage = lazy(() => import('./pages/SecretsPage'));
 const CardsPage = lazy(() => import('./pages/CardsPage'));
 const ImportCardPage = lazy(() => import('./pages/ImportCardPage'));
@@ -147,6 +161,10 @@ function AppRoutes() {
                 path="/settings/secret-types/:id/edit"
                 element={<RequirePermission permission="secret_types:read" fallback={TO_SETTINGS}><EditSecretTypePage /></RequirePermission>}
               />
+              <Route
+                path="/settings/notifications"
+                element={<RequirePermission permission="user_settings:read" fallback={TO_SETTINGS}><UserNotificationsPage /></RequirePermission>}
+              />
               {/* Pre-E10.3 bookmarks: real redirects, the target route gates. */}
               <Route path="/secret-types" element={<Navigate to="/settings/secret-types" replace />} />
               <Route path="/secret-types/new" element={<Navigate to="/settings/secret-types/new" replace />} />
@@ -156,7 +174,7 @@ function AppRoutes() {
                   `anyPermission` in config/destinations.ts. */}
               <Route
                 path="/admin/settings"
-                element={<RequirePermission permissions={['system_settings:read', 'users:read']} fallback={TO_HOME}><AdminSettingsHubPage /></RequirePermission>}
+                element={<RequirePermission permissions={['system_settings:read', 'users:read', 'push:read', 'broadcasts:read']} fallback={TO_HOME}><AdminSettingsHubPage /></RequirePermission>}
               />
               <Route
                 path="/admin/settings/general"
@@ -185,6 +203,18 @@ function AppRoutes() {
               <Route
                 path="/admin/settings/about"
                 element={<RequirePermission permission="system_settings:read" fallback={TO_HOME}><AboutPage /></RequirePermission>}
+              />
+              <Route
+                path="/admin/settings/email"
+                element={<RequirePermission permission="system_settings:read" fallback={TO_HOME}><EmailSettingsPage /></RequirePermission>}
+              />
+              <Route
+                path="/admin/settings/push"
+                element={<RequirePermission permission="push:read" fallback={TO_HOME}><PushConfigPage /></RequirePermission>}
+              />
+              <Route
+                path="/admin/settings/broadcasts"
+                element={<RequirePermission permission="broadcasts:read" fallback={TO_HOME}><BroadcastsPage /></RequirePermission>}
               />
               <Route path="/admin" element={<Navigate to="/admin/settings" replace />} />
               <Route path="/admin/users" element={<Navigate to="/admin/settings/users" replace />} />

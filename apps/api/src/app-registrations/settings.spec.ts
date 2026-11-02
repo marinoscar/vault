@@ -18,10 +18,11 @@ import { SettingsProfileImagesAdapter } from '../platform/settings/settings-prof
 import { VaultProfileImages } from '../platform/identity/identity-user.adapters';
 
 describe('Vault settings namespaces', () => {
-  it('registers maintenance, storage, then ui, features, ai, vaultCards, vaultBackups (stored key order)', () => {
+  it('registers maintenance, storage, notifications, then ui, features, ai, vaultCards, vaultBackups (stored key order)', () => {
     expect(systemSettingsNamespaceRegistry.list().map((n) => n.key)).toEqual([
       'maintenance',
       'storage',
+      'notifications',
       'ui',
       'features',
       'ai',
@@ -30,8 +31,8 @@ describe('Vault settings namespaces', () => {
     ]);
   });
 
-  it('registers the platform dataTables and navigation user namespaces for the web preference shims', () => {
-    expect(userSettingsNamespaceRegistry.list().map((n) => n.key)).toEqual(['dataTables', 'navigation']);
+  it('registers the platform dataTables, navigation and notifications user namespaces', () => {
+    expect(userSettingsNamespaceRegistry.list().map((n) => n.key)).toEqual(['dataTables', 'navigation', 'notifications']);
   });
 
   it('keeps the legacy wire keys of the global row: ui, features, ai', () => {

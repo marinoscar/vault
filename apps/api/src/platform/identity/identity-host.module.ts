@@ -7,7 +7,7 @@
 // module whose controllers use `@Auth()`, so the ports it injects have to
 // resolve there.
 //
-//   IDENTITY_NOTIFIER         -> logging adapter           (E7 binds the notifications slice)
+//   IDENTITY_NOTIFIER         -> NotificationsService      (the platform's, E7.1)
 //   IDENTITY_JOBS             -> JobsService + registry    (the platform's, E5.1)
 //   USER_DEFAULTS             -> DEFAULT_USER_SETTINGS     (moves with the settings slice, E4.1)
 //   IDENTITY_PROFILE_IMAGES   -> Vault's profile settings  (stays: Vault has no avatar upload, so the storage slice's ProfileImageModule is not mounted, E6.1)
@@ -36,18 +36,20 @@ import {
 import { NodeCredentialModule, NodeCredentialService } from '@marinoscar/platform-api/nodes';
 
 import { IdentityJobsAdapter } from './identity-jobs.adapter';
-import { LoggingIdentityNotifier } from './identity-notifier.adapter';
+import { IdentityNotifierAdapter } from './identity-notifier.adapter';
 import { VaultProfileImages, VaultUserDefaults } from './identity-user.adapters';
 
 @Global()
 @Module({
+  // `NotificationsService` (E7.1) is provided by the @Global notifications slice, so the
+  // adapter resolves here without an import.
   // `NodeCredentialModule` is @Global and exports `NodeCredentialService`; it also
   // serves `/api/node-credentials` (admin, `nodes:read|write`). Mounted here
   // because the guard resolves `nod_` tokens through it. `NodesModule.forRoot`
   // (`platform/jobs/jobs.config.ts`, E5.1) mounts the rest of the nodes slice.
   imports: [NodeCredentialModule],
   providers: [
-    { provide: IDENTITY_NOTIFIER, useClass: LoggingIdentityNotifier },
+    { provide: IDENTITY_NOTIFIER, useClass: IdentityNotifierAdapter },
     { provide: IDENTITY_JOBS, useClass: IdentityJobsAdapter },
     { provide: USER_DEFAULTS, useClass: VaultUserDefaults },
     { provide: IDENTITY_PROFILE_IMAGES, useClass: VaultProfileImages },

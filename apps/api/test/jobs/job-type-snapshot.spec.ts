@@ -37,6 +37,12 @@ const PINNED_JOB_TYPES = [
   // both server-only (they hold no node result schema)
   'storage.cleanup.stale-uploads',
   'storage.object.process',
+  // notifications slice (`NotificationsModule.forRoot`, E7.1): retention of the inbox and delivery rows
+  'notifications.inbox.purge',
+  'notifications.deliveries.purge',
+  // admin broadcasts (`BroadcastsModule`, E7.1): the fan-out of one broadcast, in chunks
+  'admin.broadcast.start',
+  'admin.broadcast.chunk',
   // backups (E5.2): the logical secret backups, both server-only
   'vault.backup.run',
   'vault.user_backup.run',
