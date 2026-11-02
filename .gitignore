@@ -58,3 +58,6 @@ playwright-report/
 
 # Copied into each package by its prepack script (scripts/vault-packages/copy-license.mjs)
 packages/*/LICENSE
+
+# Dumped by `npm run openapi:dump` (CI lints it with Spectral)
+/openapi.json

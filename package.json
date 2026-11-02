@@ -22,6 +22,8 @@
     "cli": "node apps/cli/dist/cli.js",
     "cli:build": "npm run build --workspace=cli",
     "vault": "node apps/cli/dist/cli.js",
+    "openapi:dump": "npm run openapi:dump --workspace=api -- ../../openapi.json",
+    "openapi:lint": "spectral lint openapi.json --ruleset .spectral.yaml --fail-severity=error",
     "platform:infra:sync": "platform-infra sync",
     "build:packages": "npm run build -w @marinoscar/vault-contract -w @marinoscar/vault-db && npm run prisma:generate --workspace=api && npm run build -w @marinoscar/vault-api -w @marinoscar/vault-web",
     "typecheck:packages": "npm run typecheck -w @marinoscar/vault-contract -w @marinoscar/vault-db -w @marinoscar/vault-api -w @marinoscar/vault-web",
@@ -40,6 +42,8 @@
   "devDependencies": {
     "@marinoscar/platform-contract": "0.1.0-next.21",
     "@marinoscar/platform-infra": "0.1.0-next.21",
-    "@changesets/cli": "^2.31.1"
+    "@changesets/cli": "^2.31.1",
+    "@stoplight/spectral-cli": "^6.16.3",
+    "ajv": "^8.18.0"
   }
 }

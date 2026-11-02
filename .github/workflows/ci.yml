@@ -334,6 +334,37 @@ jobs:
         env:
           NODE_ENV: test
 
+  # The OpenAPI document must stay lintable (issue #101, E11.3): every operation has an id and a
+  # declared, described tag. The dump boots the app in Nest preview mode (decorator metadata only),
+  # so it needs no database, object storage or credentials.
+  openapi:
+    name: OpenAPI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build the Vault packages
+        run: npm run build:packages
+
+      - name: Type check the dump script
+        run: npm run openapi:typecheck --workspace=api
+
+      - name: Dump the OpenAPI document
+        run: npm run openapi:dump
+
+      - name: Lint the OpenAPI document (Spectral)
+        run: npm run openapi:lint
+
   infra-check:
     name: Infra Check
     runs-on: ubuntu-latest
