@@ -246,6 +246,11 @@ import type {
   CardExtractionResult,
   ExtractCardRequest,
   SystemSettings,
+  BackupSchedule,
+  UpdateBackupScheduleRequest,
+  BackupRun,
+  BackupRunsResponse,
+  BackupDownloadLink,
 } from '../types';
 
 import { AI_VERIFY_FAILURE_REASONS } from '../types';
@@ -952,4 +957,50 @@ export async function downloadSecretsBackup(
     secretCount: parseCountHeader(response.headers.get('X-Vault-Export-Secrets')),
     attachmentCount: parseCountHeader(response.headers.get('X-Vault-Export-Attachments')),
   };
+}
+
+// =============================================================================
+// Scheduled backups API (admin)
+// =============================================================================
+
+/** Current backup schedule (server defaults when none was saved). Never the password. */
+export async function getBackupSchedule(): Promise<BackupSchedule> {
+  return api.get<BackupSchedule>('/admin/backups/schedule');
+}
+
+/**
+ * Replace the backup schedule. `password` is write-only: leave it out to keep
+ * the stored one. The password travels only in this request body.
+ */
+export async function updateBackupSchedule(
+  data: UpdateBackupScheduleRequest,
+): Promise<BackupSchedule> {
+  return api.put<BackupSchedule>('/admin/backups/schedule', data);
+}
+
+/** Start a manual backup run (202). Rejects with a 409 ApiError while one is running. */
+export async function runBackupNow(): Promise<BackupRun> {
+  return api.post<BackupRun>('/admin/backups/run');
+}
+
+/** Backup run history, newest first. */
+export async function getBackupRuns(params?: {
+  page?: number;
+  pageSize?: number;
+}): Promise<BackupRunsResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.page) searchParams.set('page', String(params.page));
+  if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
+  const query = searchParams.toString();
+  return api.get<BackupRunsResponse>(`/admin/backups${query ? `?${query}` : ''}`);
+}
+
+/** Short-lived signed download URL for a succeeded, not deleted backup. */
+export async function getBackupDownloadUrl(id: string): Promise<BackupDownloadLink> {
+  return api.get<BackupDownloadLink>(`/admin/backups/${encodeURIComponent(id)}/download`);
+}
+
+/** Delete a backup's archive from storage (the run row stays, marked deleted). */
+export async function deleteBackupRun(id: string): Promise<void> {
+  await api.delete<void>(`/admin/backups/${encodeURIComponent(id)}`);
 }
