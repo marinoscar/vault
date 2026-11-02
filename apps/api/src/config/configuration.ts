@@ -94,6 +94,14 @@ export default () => {
 
   logLevel: process.env.LOG_LEVEL || 'info',
 
+  // Database backup (E9.1). Whether THIS process runs the ten-minute scheduler tick of the platform
+  // db-backup slice. It only DECIDES and enqueues (`db.backup.run`, `db.backup.sweep`). Fail-open:
+  // only the literal 'false' turns it off, because a deployment whose backups silently stopped looks
+  // exactly like one that is being backed up. See infra/compose/.env.example.
+  dbBackup: {
+    scheduleEnabled: process.env.DB_BACKUP_SCHEDULE_ENABLED !== 'false',
+  },
+
   // Vault Encryption
   vault: {
     encryptionKey: process.env.VAULT_ENCRYPTION_KEY || '',

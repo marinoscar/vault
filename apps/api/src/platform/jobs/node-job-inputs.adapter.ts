@@ -6,9 +6,10 @@ import type { Job } from '@marinoscar/platform-api/jobs';
 /**
  * The node data plane's `NODE_JOB_INPUTS`: which stored object a held job reads.
  *
- * Vault registers no node-eligible job type (E5.1; every handler is server-only,
- * see AGENTS.md), so a worker node is never handed a job and this is never
- * reached in practice. If a node ever holds a job anyway, the answer is the
+ * Vault registers no node-eligible job type of its own (every Vault handler is
+ * server-only, see AGENTS.md). The one node-eligible type in the graph is the platform's
+ * `db.backup.run` (E9.1), which dumps the database and reads NO stored object, so it never
+ * asks this adapter for an input. If a node ever holds any other job, the answer is the
  * platform's permanent "no input" failure (HTTP 422), never a guess.
  */
 @Injectable()

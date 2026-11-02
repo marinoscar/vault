@@ -31,6 +31,8 @@ const CONTROLLER_PERMISSIONS = new Set([
   'broadcasts:read',
   // The platform AI slice's admin controllers (E8.2: AI, AI models, AI usage cards).
   'ai_config:read',
+  // The platform db-backup slice's controller (E9.1: the Database Backup card).
+  'db_backup:read',
   // The platform storage slice's storage-config controller (E6.1 web follow-up: Storage card).
   'storage_config:read',
 ]);
@@ -72,6 +74,7 @@ describe('destinations table', () => {
     expect(isDestinationVisible(consoleDest, holds(['push:read']))).toBe(true);
     expect(isDestinationVisible(consoleDest, holds(['broadcasts:read']))).toBe(true);
     expect(isDestinationVisible(consoleDest, holds(['ai_config:read']))).toBe(true);
+    expect(isDestinationVisible(consoleDest, holds(['db_backup:read']))).toBe(true);
     expect(isDestinationVisible(consoleDest, holds(['storage_config:read']))).toBe(true);
     expect(isDestinationVisible(consoleDest, holds(['secrets:read']))).toBe(false);
   });

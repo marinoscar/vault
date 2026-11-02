@@ -19,6 +19,11 @@ describe('storage key prefixes', () => {
     }
   });
 
+  it('registers the db-backup slice\'s database-backups/ prefix once, with deployment scope (E9.1)', () => {
+    expect(allKeyPrefixes().filter((prefix) => prefix === 'database-backups/')).toHaveLength(1);
+    expect(isRegisteredStorageKey('database-backups/vault/2027/01/vault-20270102T030000Z-9d8c7b6a.dump')).toBe(true);
+  });
+
   it('keeps the system backup key layout', () => {
     expect(systemBackupStorageKey(WHEN, RUN)).toBe(buildObjectKey('system-backups', {}, 'vault-backup-2026-06-10_123456-9d8c7b6a.zip'));
   });

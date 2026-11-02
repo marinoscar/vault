@@ -124,6 +124,8 @@ describe('settings routes', () => {
     ['/admin/settings/email', '/api/email-settings', ['system_settings:read']],
     ['/admin/settings/push', '/api/admin/push-config', ['push:read']],
     ['/admin/settings/broadcasts', '/api/admin/broadcasts', ['broadcasts:read']],
+    // E9.1: the packaged Database Backup page (whole-database backup and restore).
+    ['/admin/settings/db-backup', '/api/admin/db-backup/config', ['db_backup:read']],
     ['/settings/notifications', '/api/notifications/events', ['user_settings:read']],
     // E8.2: the packaged AI page (the AI card; reachable while AI is off).
     ['/admin/settings/ai', '/api/admin/ai/config', ['ai_config:read']],
@@ -149,6 +151,7 @@ describe('settings routes', () => {
     ['/admin/settings/email', '/'],
     ['/admin/settings/push', '/'],
     ['/admin/settings/broadcasts', '/'],
+    ['/admin/settings/db-backup', '/'],
     ['/admin/settings/ai', '/'],
     ['/admin/settings/ai/models', '/'],
     ['/admin/settings/ai/usage', '/'],

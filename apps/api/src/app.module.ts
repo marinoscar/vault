@@ -35,6 +35,7 @@ import { platformHostModule } from './platform/platform-host.module';
 import { settingsModule } from './platform/settings/settings.config';
 import { hostCoreModule } from './platform/host-core.config';
 import { aboutModule } from './platform/about/about.config';
+import { dbBackupModule } from './platform/db-backup/db-backup.config';
 import { telemetryModule } from './platform/telemetry/telemetry.config';
 import { VaultMetricsModule } from './common/otel/vault-metrics.service';
 import { doctorModule } from './doctor/doctor.config';
@@ -113,6 +114,15 @@ import configuration from './config/configuration';
     storageModule,
     StorageConfigModule,
     StorageEnvImportModule,
+    // Database backup and restore (issue #89, E9.1, epic #64): WHOLE-DATABASE disaster recovery
+    // from the platform slice: `/api/admin/db-backup/*` (`db_backup:read|write|restore`, admin
+    // only), the streaming `pg_dump` into object storage, the schedule and retention, the in-app
+    // restore, the job types `db.backup.run`, `db.backup.sweep`, `db.restore.run` and
+    // `db.restore.old-db-drop`, and the `backup.*` Doctor checks. Distinct from `BackupsModule`
+    // below (selective, password-protected zips of secrets). Every dump and restore carries
+    // `--enable-row-security` AND `PGOPTIONS=-c app.rls_bypass=on`.
+    // `DB_BACKUP_SCHEDULE_ENABLED=false` turns the scheduler off in this process.
+    dbBackupModule,
     SecretTypesModule,
     SecretsModule,
     MediaModule,
