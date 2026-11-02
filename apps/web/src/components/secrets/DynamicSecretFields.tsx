@@ -19,12 +19,7 @@ import { Tooltip } from '@mui/material';
 import { visuallyHidden } from '@mui/utils';
 import type { FieldDefinition } from '../../types';
 import { useCopyToClipboard } from '../../hooks/useCopyToClipboard';
-import {
-  formatCardNumberForCopy,
-  formatSecurityCodeForCopy,
-  formatExpiryMonthForCopy,
-  formatExpiryYearShortForCopy,
-} from '../../utils/cardFormat';
+import { formatSecretValueForCopy } from '../../utils/secretFields';
 
 interface DynamicSecretFieldsProps {
   fields: FieldDefinition[];
@@ -48,36 +43,13 @@ interface CopyButtonProps {
   fieldName?: string;
 }
 
-/**
- * Card fields whose stored value is reformatted before it reaches the
- * clipboard. Everything else copies verbatim.
- */
-const CARD_COPY_FORMATTERS: Record<string, (value: unknown) => string> = {
-  number: formatCardNumberForCopy,
-  cvv: formatSecurityCodeForCopy,
-  security_code_2: formatSecurityCodeForCopy,
-  exp_month: formatExpiryMonthForCopy,
-  exp_year: formatExpiryYearShortForCopy,
-};
-
-function formatForCopy(value: string, fieldName?: string): string {
-  const formatter = fieldName ? CARD_COPY_FORMATTERS[fieldName] : undefined;
-  if (!formatter) {
-    return value;
-  }
-  const formatted = formatter(value);
-  // Formatters return '' for values they cannot parse. Copying the stored value
-  // is more useful than copying nothing, so fall back rather than no-op.
-  return formatted === '' ? value : formatted;
-}
-
 function CopyButton({ value, fieldName }: CopyButtonProps) {
   const { copy, copied, failed } = useCopyToClipboard();
 
   const handleCopy = () => {
     // Deliberately reads `value` rather than any revealed/displayed text, so a
     // sensitive field can be copied without ever being shown on screen.
-    void copy(formatForCopy(value, fieldName));
+    void copy(formatSecretValueForCopy(value, fieldName));
   };
 
   const title = copied ? 'Copied' : failed ? 'Copy failed' : 'Copy';
