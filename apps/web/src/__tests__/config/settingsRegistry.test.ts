@@ -19,14 +19,36 @@ import { USER_HUB_PATH, USER_SETTINGS_SECTIONS } from '../../config/userSettings
 import { DESTINATIONS } from '../../config/destinations';
 import { VAULT_NAVIGATION } from '../../config/shell';
 import appSource from '../../App.tsx?raw';
+// The API's permission catalog (E3.2): roles.constants.ts DERIVES `PERMISSIONS` from
+// the platform slices Vault seeds (apps/api/src/platform/permissions.ts) plus
+// Vault's own (app-registrations/permissions.ts). Read the declarations themselves.
+import vaultPermissionsSource from '../../../../api/src/app-registrations/permissions.ts?raw';
+import permissionOptionsSource from '../../../../api/src/platform/permissions.ts?raw';
 import rolesSource from '../../../../api/src/common/constants/roles.constants.ts?raw';
+import settingsPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/settings/settings.permissions.js?raw';
+import usersPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/identity/users/users.permissions.js?raw';
+import allowlistPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/identity/allowlist/allowlist.permissions.js?raw';
 
 const cardsOf = (sections: SettingsSectionDef[]): SettingsCardDef[] => sections.flatMap((s) => s.cards);
 const ADMIN_CARDS = cardsOf(ADMIN_SECTIONS);
 const USER_CARDS = cardsOf(USER_SETTINGS_SECTIONS);
 
-/** Every permission string the API declares (`PERMISSIONS` in roles.constants.ts). */
-const API_PERMISSIONS = new Set([...rolesSource.matchAll(/:\s*'([a-z_]+:[a-z_]+)'/g)].map((m) => m[1]));
+/** The `id: '<resource>:<action>'` strings a permission declaration file declares. */
+const declaredIds = (source: string): string[] =>
+  [...source.matchAll(/\bid:\s*'([a-z_]+:[a-z_]+)'/g)].map((m) => m[1]);
+
+/**
+ * Every permission string the API declares and seeds: Vault's own
+ * (`VAULT_PERMISSIONS`) plus the platform `identity` (users, allowlist) and
+ * `settings` slices, which `PERMISSION_OPTIONS` lists (asserted below, so a
+ * slice Vault stops seeding drops its strings from this set).
+ */
+const API_PERMISSIONS = new Set([
+  ...declaredIds(vaultPermissionsSource),
+  ...declaredIds(settingsPermissionsSource),
+  ...declaredIds(usersPermissionsSource),
+  ...declaredIds(allowlistPermissionsSource),
+]);
 
 /**
  * The controller mirror: card route -> the permission its page's READ route
@@ -192,8 +214,22 @@ describe('the registries as a whole', () => {
     expect(appSource).toContain('<Route path="/secret-types/:id/edit" element={<SecretTypeEditRedirect />} />');
   });
 
-  it('reads the API permission list (sanity)', () => {
-    expect(API_PERMISSIONS.has('system_settings:read')).toBe(true);
-    expect(API_PERMISSIONS.size).toBeGreaterThan(20);
+  it('reads the API permission catalog from its declarations (sanity)', () => {
+    // The sources are the ones the API composes PERMISSIONS from.
+    expect(rolesSource).toContain('permissionIds(PLATFORM_PERMISSIONS)');
+    expect(rolesSource).toContain('permissionIds(VAULT_PERMISSIONS)');
+    // Vault seeds the platform slices whose declarations are read above.
+    const slices = /slices:\s*\[([^\]]*)\]/.exec(permissionOptionsSource)?.[1] ?? '';
+    expect(slices).toContain("'identity'");
+    expect(slices).toContain("'settings'");
+    // Each file contributed (a moved dist file must fail here, not pass silently).
+    expect(declaredIds(vaultPermissionsSource)).toEqual(expect.arrayContaining(['secrets:read', 'secret_types:read']));
+    expect(declaredIds(settingsPermissionsSource)).toEqual(
+      expect.arrayContaining(['system_settings:read', 'user_settings:read']),
+    );
+    expect(declaredIds(usersPermissionsSource)).toContain('users:read');
+    expect(declaredIds(allowlistPermissionsSource)).toContain('allowlist:read');
+    // No invented string sneaks in through a loose pattern.
+    for (const id of API_PERMISSIONS) expect(id).toMatch(/^[a-z_]+:[a-z_]+$/);
   });
 });

@@ -241,14 +241,14 @@ describe('ImportCardPage — availability gating', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('points an administrator at System Settings', async () => {
+  it('points an administrator at the AI settings card', async () => {
     server.use(aiStatus(false));
     render(<ImportCardPage />, { wrapperOptions: { user: mockAdminUser } });
 
-    const button = await screen.findByRole('button', { name: /open system settings/i });
+    const button = await screen.findByRole('button', { name: /open ai settings/i });
     fireEvent.click(button);
 
-    expect(mockNavigate).toHaveBeenCalledWith('/admin/settings');
+    expect(mockNavigate).toHaveBeenCalledWith('/admin/settings/ai');
   });
 
   it('never offers a non-admin an API key form', async () => {
