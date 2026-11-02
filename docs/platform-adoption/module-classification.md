@@ -1,0 +1,114 @@
+# Module classification
+
+Baseline classification of every Vault module against EnterpriseAppBase (EAB) and its `@marinoscar/platform-*` packages. Input: the generated [drift-baseline.md](drift-baseline.md). Part of the platform migration program, epic [#54](https://github.com/marinoscar/vault/issues/54); written by E0 ([#55](https://github.com/marinoscar/vault/issues/55)).
+
+| Field | Value |
+|---|---|
+| EAB commit | `59e377cbebb60e711fe4d7b0d818715f23af8a59` |
+| Vault commit | `1b2074d` |
+| Date | 2026-11-02 |
+
+**Categories** (details in [README.md](README.md#categories)): **noise** (package replaces it; delete), **backport** (Vault has something the platform lacks; re-express on top of the package), **domain** (stays in `apps/` until E12, then `@marinoscar/vault-*`), **vault-divergence** (kept on purpose; see [local-exceptions.md](local-exceptions.md)).
+
+**Reading the baseline.** Vault forked a very old EAB, so the apps-view drift is near total (api 0% identical, web 4%, prisma 6%; 246 app-only API files). The pairings below were made by reading the code, not from the percentages. Target slice names are EAB slices; epics are E0 to E12 from the [README](README.md#epic-order-program-54). Verify each row against the code when its epic starts; this is a plan, not a guarantee.
+
+## API modules (`apps/api/src`)
+
+| Module | Files | Category | Target slice or package | Epic | Notes and workaround |
+|---|---|---|---|---|---|
+| `auth` (Google OAuth, JWT, refresh, guards, strategies, `token-cleanup.task`) | 28 | noise | platform `identity` | E3 | Platform sign-in, sessions, refresh rotation. Re-bind the Google provider through `registerAuthProvider`; keep cookie and token lifetimes (15 min / 14 days) |
+| `users` | 11 | noise | `identity` users | E3 | |
+| `allowlist` | 8 | noise | `identity` allowlist | E3 | `INITIAL_ADMIN_EMAIL` bypass and claimed-entry rule must survive |
+| `pat` (personal access tokens) | 8 | noise | `identity` PATs | E3 | Existing token hashes must stay valid: verify hash format in the E2/E3 rehearsal |
+| `device-auth` (RFC 8628) | 16 | noise | `identity` device flow | E3 | `vaultcli` login depends on it; test against the new CLI in E11 |
+| `test-auth` (`/api/auth/test/login`) | 7 | vault-divergence | app test-login binding | E3 | Mock OAuth for CI; keep or replace with the platform's test helpers |
+| `health` | 5 | noise | `host` health controller | E3 | `/api/health/live` and `/ready` kept |
+| `settings` (`system-settings`, `user-settings`) | 13 | backport | `settings` registries | E4 | Vault stores an `ai` block (enabled, model, daily budget, encrypted key) in `system_settings` and UI/feature-flag JSON; become namespace registrations. The encrypted key moves to the credentials store at E4/E8 (data migration) |
+| `common/services/crypto.service.ts` | 1 | vault-divergence | app-owned; platform `credentials` for runtime keys | E4 | **Permanent** for secret ciphertext: `VAULT_ENCRYPTION_KEY`, AES-256-GCM. See local-exceptions |
+| `common` (filters, interceptors, logger, middleware, decorators, constants, schemas, types, `admin-bootstrap.service`) | 25 | noise | `host`, `core`, `otel-core` | E3 | `common/constants/card.constants.ts` and card-related pieces are domain and stay. `TransformInterceptor` envelope is replaced by the host `{data}` envelope; raw-zip exports must bypass it |
+| `config` | 1 | noise | host/app config | E3 | Env schema re-expressed; `VAULT_ENCRYPTION_KEY` stays required |
+| `prisma` (service) | 2 | noise | `platform-db` + `PrismaService` | E2 | Plus `forOrg`/`runInOrg` for RLS |
+| `storage` (objects, S3 provider, processing, cleanup task) | 25 | noise | `storage` | E6 | Becomes org-aware (RLS); `storage_objects` rows backfilled to the default org in E2. Admin storage config moves to runtime admin UI (already the rule) |
+| `secrets` (+ `export/`) | 26 | domain | `@marinoscar/vault-api` (E12) | stays; touched E2 (RLS/org), E5, E9 | Versions, attachments, renew, rollback, export zip, HTML/README renderers. Raw-zip export response is permanent |
+| `secret-types` | 9 | domain | vault-api | E12 | System types seeded read-only (`prisma/system-secret-types.ts`) |
+| `backups` (admin + my-backups, `backup-runner.service`, retention, schedule, archive, password) | 28 | domain | vault-api; jobs `vault.backup.run`, `vault.user_backup.run` | E5 | In-process `@Cron` + detached launch + advisory locks is the exception E5 removes. Not the same as platform `db-backup` (pg_dump): these are logical encrypted zips of secrets. A platform `db-backup` is added in E9 beside them |
+| `media` (folders and files) | 9 | domain | vault-api | E12 | Files via the `storage` slice from E6 |
+| `ai` generic (config, verify, burst limiter, OpenAI chat client/probe, `ai.controller` status) | ~12 | noise | `ai` slice (`AiModule.forRoot`) | E8 | Provider keys move to the credentials tiers (user/org/deployment); `/api/ai/status` replaced by the slice's config route |
+| `ai` card extraction (`card-extract.*`, `card-normalizer`, `openai-card-schema`, `openai-vision.provider`) | ~12 | domain | vault-api, calling `AiService.forUser(userId, { orgId, feature: 'card-extract' })` | E8 | Keep: CVV never requested, nothing persisted, daily budget from `audit_events`. Confirm the platform AI vision call supports image input; else file a seam request |
+| `app.module.ts`, `main.ts`, `instrumentation.ts` | 3 | noise | `platform/` bindings, `host` | E3 | `instrumentation.ts` (OTEL to Uptrace) becomes `otel-core`; telemetry store change is E9 |
+
+## Web areas (`apps/web/src`)
+
+| Area | Category | Target | Epic | Notes |
+|---|---|---|---|---|
+| `contexts/AuthContext`, `components/auth`, `LoginPage`, `AuthCallbackPage`, `ProtectedRoute`, `RequirePermission`, `hooks/usePermissions` | noise | `@marinoscar/platform-web/identity` | E3 | Brand mark goes in the `Logo` slot |
+| `components/device-activation`, `ActivateDevicePage` | noise | identity UI | E3 | |
+| `UserManagementPage`, `components/admin` (`UserList`, `AllowlistTable`, `AddEmailDialog`) | noise | identity `UsersPage` (Users + Allowlist tabs) | E3 | |
+| `SystemSettingsPage` (tabs), `UserSettingsPage`, `components/admin/{SystemSettingsEditor,UISettings,FeatureFlagsList}` | vault-divergence | registry-driven `SettingsHub` | E10 | Tabs are the divergence; "Advanced (JSON)" tab needs a decision (likely dropped) |
+| `components/settings/{ProfileSettings,ThemeSettings,ImageUpload}` | noise | platform Profile / Appearance pages | E4 / E10 | |
+| `components/settings/{PersonalAccessTokens,CreatePatDialog,PatTokenRevealDialog}` | noise | identity PAT UI | E3 / E10 | |
+| `components/settings/{AiSettings}` | noise | platform AI pages | E8 / E10 | |
+| `components/settings/{DataBackup,BackupContentsGroup,BackupPasswordFields,BackupRunsTable}`, `components/admin/{ScheduledBackups,AdminBackupDownloadDialog}`, `utils/{backupContents,backupPassword,backupSchedule}` | domain | vault-web; become settings cards "My backups" and "Backups" | E10 / E12 | |
+| `components/navigation` (`Sidebar`, `AppBar`, `UserMenu`), `components/common/Layout.tsx` | vault-divergence | platform `ShellLayout` + `ShellNavigation` | E10 | Flat sidebar replaced by destinations |
+| `theme/` (`light`, `dark`, `components`) | backport | `createShellTheme` with Vault brand tokens | E10 | Tokens in [ux-refresh](../specs/ux-refresh.md#5-brand-tokens) |
+| `pages/{SecretsPage,SecretDetailPage,CreateSecretPage,EditSecretPage}`, `components/secrets`, `hooks/{useSecrets,useSecretDetail}` | domain | vault-web; list on `platform-web/datatable` | E10 / E12 | |
+| `pages/{SecretTypesPage,CreateSecretTypePage,EditSecretTypePage}`, `components/secret-types`, `hooks/useSecretTypes` | domain | vault-web | E12 | Candidate settings card "Secret types" |
+| `pages/{CardsPage,ImportCardPage,RenewCardPage}`, `components/cards`, `hooks/{useCards,useCardImport,useCardRenewal,useAiStatus}`, `utils/{cardExpiry,cardFormat,cardImage}` | domain | vault-web | E8 / E10 / E12 | |
+| `pages/Media*`, `pages/{CreateFolderPage,EditFolderPage,RenameMediaFilePage}`, `components/media`, `hooks/{useMediaFiles,useMediaFolders}` | domain | vault-web | E12 | |
+| `pages/HomePage`, `components/home/*` | vault-divergence | Home dashboard on shell | E10 | |
+| `hooks/{useSystemSettings,useUserSettings,useAllowlist,useUsers,usePersonalAccessTokens}` | noise | platform hooks | E3 / E4 | |
+| `services/api.ts` | backport | `createPlatformApiClient` + domain endpoint functions | E3 | Raw-zip downloads use `saveBlob`; keep outside the envelope parser |
+| `utils/{clipboard,saveBlob}`, `hooks/useCopyToClipboard` | domain | vault-web | stays | |
+| `__tests__/` | domain | stay; platform conformance added | E11 | Vitest already |
+
+## CLIs (`tools/`)
+
+| Tool | Category | Target | Epic | Notes |
+|---|---|---|---|---|
+| `tools/app` (`@vault/cli`, generic template CLI: allowlist, auth, config, docker, health, prisma, settings, storage, sync, test, users) | noise | `@marinoscar/platform-cli` `createCli` commands | E11 | Delete; README names EnterpriseAppBase |
+| `tools/vaultcli` core (`auth`, `config`, `health`, TUI plumbing) | noise | platform-cli `login`, `config`, `api` | E11 | Config dir `~/.config/vaultcli` migration to the platform path needs a documented step |
+| `tools/vaultcli` domain (`secrets`, `versions`, `backup`, `admin-backups`, `sync`, `types`, interactive menus) | domain | `extraCommands` of the `vault` CLI | E11 | |
+| `tools/vaultcli/install.sh`, `infra/deploy/*` | vault-divergence | `vault deploy` pipeline | E11 | `infra/deploy/install-vault.sh`, `update.sh`, `vault.conf`, `DEPLOY.md` replaced by `vault deploy` |
+
+## Prisma models (`apps/api/prisma/schema.prisma`)
+
+| Model(s) | Category | Target | Epic | Notes |
+|---|---|---|---|---|
+| `User`, `UserIdentity`, `Role`, `Permission`, `RolePermission`, `UserRole` | noise (with divergence) | identity fragment | E2 / E3 | Vault roles `admin`, `contributor`, `viewer` and permission strings map onto system role + org roles; Vault's domain permissions (`secrets:*`, `secret_types:*`, `media:*`, `storage:*`) are registered by the app. `*_any` permissions stay Admin only |
+| `RefreshToken`, `PersonalAccessToken`, `AllowedEmail`, `DeviceCode` | noise | identity fragment | E2 / E3 | |
+| `SystemSettings`, `UserSettings` | noise | settings fragment | E2 / E4 | JSONB shapes reconciled; `ai` block migrates |
+| `AuditEvent` | noise (verify) | platform audit/host model | E3 | Also backs the AI daily budget (`ai.card.extract`) and `secrets.export`/`backups.export`; keep action names |
+| `StorageObject`, `StorageObjectChunk` | noise | storage fragment (org-owned, RLS) | E2 / E6 | `org_id` backfilled |
+| `MediaFolder` | domain | app fragment | E2 / E12 | |
+| `SecretType`, `Secret`, `SecretVersion`, `SecretAttachment` | domain | app fragment | E2 / E12 | `secret_versions_current_unique` partial index goes in the raw-SQL index list; composite FKs with `org_id` if made org-owned |
+| `BackupSchedule`, `BackupRun` | domain | app fragment | E2 / E5 | Active-run uniqueness moves to the job dedup index |
+| Enums `PatDurationUnit`, `DeviceCodeStatus`, `StorageObjectStatus` | noise | identity / storage fragments | E2 | |
+
+## Migrations (`apps/api/prisma/migrations`)
+
+| Migration | Category | Treatment |
+|---|---|---|
+| `20260124223146_initial` | noise (platform equivalent) | Baselined: marked applied, never re-run on live data (E2) |
+| `20260329151231_add_personal_access_tokens` | noise | Baselined (E2) |
+| `20260403120000_add_secrets_and_versions` | domain | Stays as an installed app migration; its partial index is declared in the raw-SQL list |
+| `20260403235813_add_media_folders` | domain | Stays |
+| `20260404000000_add_secret_name_user_unique` | domain | Stays |
+| `20260727120000_version_scoped_attachments` | domain | Stays |
+| `20261102120000_add_backup_schedules` | domain | Stays |
+
+Installed migrations are never edited or renamed. E2 produces the actual mapping with `platform db baseline` against a restored copy; any difference becomes a declared deviation.
+
+## Infra, CI and repository files
+
+| Path | Category | Target | Epic |
+|---|---|---|---|
+| `infra/compose/{base,dev,prod,test}.compose.yml`, `.env.example` | noise | generated by `platform:infra:sync`; app overlays in `app.*.compose.yml`, `app.env.example` | E11 |
+| `infra/compose/otel.compose.yml`, `infra/otel/{otel-collector-config.yaml,uptrace.yml}` | vault-divergence | GreptimeDB `telemetry.compose.yml` | E9 / E11 |
+| `infra/nginx/{nginx.conf,nginx.prod.conf}` | noise | generated; app-owned `nginx/app.d/` | E11 |
+| `infra/deploy/*` | vault-divergence | `vault deploy` | E11 |
+| `.github/workflows/{ci,deploy}.yml` | noise | platform CI shape plus conformance jobs | E11 (CI edits are out of E0) |
+| `.github/ISSUE_TEMPLATE/*`, `pull_request_template.md` | noise | aligned in E0 | E0 |
+| `scripts/{dev,worktree}.ps1` | domain | stay | |
+| `tests/e2e` (Playwright) | domain | stay; add visual/e2e plan from ux-refresh | E10 |
+| `media/{app_logo.png,favicon.ico}` | domain | brand source for E10 icons | E10 |
+| `docs/specs/01..24`, `System_Specification_Document.md` | domain | historical; superseded section by section | ongoing |

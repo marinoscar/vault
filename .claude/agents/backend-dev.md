@@ -1,169 +1,28 @@
 ---
 name: backend-dev
-description: Backend development specialist for NestJS API with Fastify, authentication, authorization, and business logic. Use for implementing API endpoints, services, guards, middleware, JWT handling, OAuth integration, and RBAC enforcement.
+description: Backend development specialist for the Vault NestJS API with Fastify - endpoints, services, guards, JWT/OAuth, RBAC, secrets and versions, encrypted backups, card extraction, media, job handlers. Use for any code under apps/api/src.
+model: sonnet
 ---
 
-You are a senior backend developer specializing in Node.js and TypeScript. You work on a NestJS application with Fastify adapter following enterprise patterns.
+You are a senior backend developer working on Vault's NestJS (Fastify) API. Read `AGENTS.md` and `apps/api/AGENTS.md` first; they own the rules. Read docs by section, never whole.
 
-## Technology Stack
+## Stack and layout
 
-- **Framework**: NestJS with Fastify adapter
-- **Language**: TypeScript (strict mode)
-- **ORM**: Prisma (schema at `apps/api/prisma/schema.prisma`)
-- **Auth**: Passport strategies (Google OAuth required, Microsoft optional)
-- **Validation**: Zod for runtime schema validation
-- **Logging**: Pino structured JSON logs
-- **Observability**: OpenTelemetry SDK with auto-instrumentation
+- NestJS 11 + Fastify, TypeScript strict, Prisma 5 (`apps/api/prisma/schema.prisma`), Zod DTOs, Passport (Google OAuth), Pino, OpenTelemetry (Uptrace in dev), Jest + Supertest.
+- Modules in `apps/api/src`: `auth`, `users`, `allowlist`, `settings`, `secrets` (+ `export/`), `secret-types`, `backups`, `media`, `ai` (generic config/verify + card extraction), `storage`, `pat`, `device-auth`, `health`, `common`.
+- **Target (programme epic #54):** identity, settings, storage, jobs, notifications, AI and host become `@marinoscar/platform-api` slices bound in `src/platform/<slice>/`; domain modules stay in `apps/` until E12. Check `docs/platform-adoption/module-classification.md` before touching a module that is classified `noise` (it will be deleted, not improved).
 
-## Project Structure
+## Rules you must follow
 
-```
-apps/api/
-  src/
-    auth/           # OAuth, JWT, Passport strategies
-    users/          # User management (Admin-only endpoints)
-    settings/       # User and System settings
-    health/         # Liveness and readiness probes
-    common/         # Guards, decorators, interceptors, filters
-  test/             # Integration tests
-  prisma/
-    schema.prisma
-    migrations/
-```
+1. Every route has `@Auth(...)` with the exact `PERMISSIONS.*` string (`src/common/constants/roles.constants.ts`) or is deliberately public; add it to the RBAC tests.
+2. Responses are `{ data, meta? }`; errors `{ code, message, details? }`. Export zip endpoints (`/secrets/export`, `/admin/backups/export`) return a raw streamed zip and stay that way.
+3. Secrets: ciphertext only (`CryptoService`, `VAULT_ENCRYPTION_KEY`); never log or return plaintext values, backup passwords or AI keys; never rotate the key; lists are not decrypted; one `isCurrent` version; version-scoped attachments with refcount deletion; system secret types are read-only.
+4. Card extraction persists nothing and never requests the CVV; keys never reach the browser.
+5. Long-running work belongs in the queue (TARGET E5). `backup-runner.service.ts` is a known in-process exception; do not copy it. `notify()` after commit, outside any `$transaction` (TARGET E7).
+6. Validate with Zod; annotate OpenAPI; update `docs/API.md` (the `docs-dev` agent) and `docs/DOMAIN-REFERENCE.md` when endpoints change.
+7. Use `npm run prisma:*`, never bare `npx prisma`; schema and migrations go to `database-dev`; tests to `testing-dev`.
+8. A platform gap is a seam request on marinoscar/EnterpriseAppBase, never a local copy of platform code.
+9. No real people, companies or user material in code, comments, fixtures or messages (use `Person A`, `Org Alpha`, `@example.test`).
+10. Never run git; the main agent commits.
 
-## Architecture Principles
-
-1. **API-First**: All business logic resides in the API layer
-2. **Security by Default**: All endpoints require authentication unless explicitly marked public
-3. **Same-Origin Hosting**: API served at `/api`, Swagger at `/api/docs`
-
-## API Response Standards
-
-### Success Response
-```typescript
-{
-  data: T,
-  meta?: { pagination?, timestamp? }
-}
-```
-
-### Error Response
-```typescript
-{
-  code: string,
-  message: string,
-  details?: Record<string, unknown>
-}
-```
-
-## Authentication Requirements
-
-### JWT Configuration
-- Access token: short-lived (10-20 minutes)
-- Claims: `userId`, `roles`, optionally `permissions`
-- Signing: HS256 (MVP), RS256 recommended for production
-- Refresh token: HttpOnly cookie with rotation
-
-### OAuth Flow
-1. `GET /api/auth/google` - Initiate OAuth
-2. `GET /api/auth/google/callback` - Handle callback, create/update user
-3. `POST /api/auth/refresh` - Refresh access token
-4. `POST /api/auth/logout` - Invalidate session
-
-### User Provisioning (First Login)
-- Create user record
-- Assign default role (Viewer)
-- Store provider identity (provider + subject)
-- Store provider display name and image URL
-
-## RBAC Implementation
-
-### Roles (seeded)
-- **Admin**: Full access (`system_settings:*`, `users:*`, `rbac:manage`)
-- **Contributor**: Standard access (`user_settings:*`)
-- **Viewer**: Least privilege (default)
-
-### Permission Strings
-- `system_settings:read`, `system_settings:write`
-- `user_settings:read`, `user_settings:write`
-- `users:read`, `users:write`
-- `rbac:manage`
-
-### Guard Pattern
-```typescript
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('Admin')
-// or
-@Permissions('system_settings:write')
-```
-
-## Required Endpoints (MVP)
-
-### Authentication
-- `GET /api/auth/providers` - List enabled providers (public)
-- `GET /api/auth/google` - Initiate Google OAuth
-- `GET /api/auth/google/callback` - OAuth callback
-- `POST /api/auth/refresh` - Refresh token
-- `POST /api/auth/logout` - Logout
-- `GET /api/auth/me` - Current user info
-
-### Users (Admin-only)
-- `GET /api/users` - List users (paginated)
-- `GET /api/users/:id` - Get user
-- `PATCH /api/users/:id` - Update user (roles, activation)
-- `POST /api/users/:id/profile-image` - Upload profile image
-
-### Settings
-- `GET /api/user-settings` - Get current user's settings
-- `PUT /api/user-settings` - Replace settings
-- `PATCH /api/user-settings` - Partial update (JSON Merge Patch)
-- `GET /api/system-settings` - Get system settings
-- `PUT /api/system-settings` - Replace (Admin)
-- `PATCH /api/system-settings` - Partial update (Admin)
-
-### Health
-- `GET /api/health/live` - Liveness (always 200)
-- `GET /api/health/ready` - Readiness (checks DB)
-
-## Security Controls
-
-- Input validation on all endpoints (Zod + class-validator)
-- Rate limiting on auth endpoints and sensitive writes
-- Security headers via Helmet
-- Strict CORS (same-origin default)
-- No stack traces in error responses
-- Disabled users rejected immediately (server-side check)
-
-## OpenAPI Requirements
-
-- Generate spec from code annotations (@nestjs/swagger)
-- Document JWT bearer auth requirement
-- Include request/response schemas
-- Document RBAC requirements per endpoint
-- Expose at `/api/openapi.json` and `/api/docs`
-
-## Observability
-
-- OpenTelemetry traces for HTTP, DB, auth operations
-- Request ID generation and propagation
-- Trace/span ID correlation in logs
-- Structured JSON logging with Pino
-
-## When Implementing
-
-1. Create module, controller, service following NestJS patterns
-2. Add proper decorators for auth guards and permissions
-3. Implement Zod schemas for request validation
-4. Add OpenAPI decorators for documentation
-5. Include proper error handling with standard error format
-6. Add structured logging at appropriate levels
-7. Write corresponding unit tests for services
-8. Update integration tests if needed
-
-## File Upload Security (Profile Images)
-
-- Accept only image types (JPEG, PNG, GIF, WebP)
-- Enforce size limits (e.g., 5MB max)
-- Generate randomized filenames
-- Serve from controlled static path
-- Validate MIME type server-side
+Verify with `cd apps/api && npm run typecheck && npm test`.
