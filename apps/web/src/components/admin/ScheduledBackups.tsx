@@ -541,7 +541,7 @@ function BackupScheduleCard({ schedule, canWrite, onSaved }: ScheduleCardProps) 
 // =============================================================================
 
 /**
- * "Backups" tab of /admin/settings: the scheduled-backup configuration,
+ * Backups card of the Console (/admin/settings/backups): the scheduled-backup configuration,
  * "Run backup now (save to storage)", "Download a backup now" (streamed,
  * nothing stored) and the run history (system backups only; users' saved
  * backups are never listed here). Reading needs system_settings:read

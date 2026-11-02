@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { breakableEmail } from '../../utils/breakableEmail';
 import {
   Paper,
   Table,
@@ -22,6 +23,13 @@ import { Delete as DeleteIcon, Add as AddIcon } from '@mui/icons-material';
 import { useAllowlist } from '../../hooks/useAllowlist';
 import { AddEmailDialog } from './AddEmailDialog';
 import type { AllowedEmailEntry } from '../../types';
+
+/**
+ * Columns dropped below 900px so the table fits a phone without a sideways
+ * scroll (email, status and the remove action stay). Content adaptation
+ * through `sx`, not a breakpoint gate.
+ */
+const WIDE_ONLY = { display: { xs: 'none', md: 'table-cell' } } as const;
 
 export function AllowlistTable() {
   const {
@@ -135,22 +143,22 @@ export function AllowlistTable() {
                 <TableRow>
                   <TableCell>Email</TableCell>
                   <TableCell>Status</TableCell>
-                  <TableCell>Added By</TableCell>
-                  <TableCell>Added Date</TableCell>
-                  <TableCell>Notes</TableCell>
+                  <TableCell sx={WIDE_ONLY}>Added By</TableCell>
+                  <TableCell sx={WIDE_ONLY}>Added Date</TableCell>
+                  <TableCell sx={WIDE_ONLY}>Notes</TableCell>
                   <TableCell align="right">Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {entries.map((entry) => (
                   <TableRow key={entry.id} hover>
-                    <TableCell>{entry.email}</TableCell>
+                    <TableCell sx={{ overflowWrap: 'break-word' }}>{breakableEmail(entry.email)}</TableCell>
                     <TableCell>{getStatusChip(entry)}</TableCell>
-                    <TableCell>
+                    <TableCell sx={WIDE_ONLY}>
                       {entry.addedBy ? entry.addedBy.email : 'System'}
                     </TableCell>
-                    <TableCell>{formatDate(entry.addedAt)}</TableCell>
-                    <TableCell>
+                    <TableCell sx={WIDE_ONLY}>{formatDate(entry.addedAt)}</TableCell>
+                    <TableCell sx={WIDE_ONLY}>
                       {entry.notes ? (
                         <Typography variant="body2" sx={{ maxWidth: 200 }}>
                           {entry.notes}

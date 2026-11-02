@@ -108,6 +108,15 @@ class ApiService {
     });
   }
 
+  /**
+   * GET and return the raw response (body unread) for binary downloads, with
+   * the same auth + refresh-and-retry-once behaviour as `get`. Used by the
+   * platform adapter's `getBlob` (the Doctor's support bundle).
+   */
+  getForResponse(endpoint: string, options?: RequestOptions) {
+    return this.fetchWithAuth(endpoint, { ...options, method: 'GET' });
+  }
+
   async refreshToken(): Promise<boolean> {
     // If a refresh is already in progress, wait for it
     if (this.refreshPromise) {

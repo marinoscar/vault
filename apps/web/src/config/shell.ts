@@ -6,16 +6,20 @@
 
 import type { ShellNavigation } from '@marinoscar/platform-web/shell/headless';
 
-import { ADMIN_SECTIONS } from './adminSections';
+import { ADMIN_HUB_PATH, ADMIN_HUB_TITLE, ADMIN_SECTIONS } from './adminSections';
 import { DESTINATIONS, DESTINATION_ROUTES } from './destinations';
 import type { DestinationKey } from './destinations';
+import { USER_HUB_PATH, USER_HUB_TITLE, USER_SETTINGS_SECTIONS } from './userSettingsSections';
 
 export const VAULT_NAVIGATION: ShellNavigation<DestinationKey> = {
   destinations: DESTINATIONS,
   destinationRoutes: DESTINATION_ROUTES,
-  // The compact AppBar's drill-down on the Console pages (back arrow + page
-  // title below 600px). `/settings` joins as a surface in E10.3, with its registry.
-  settingsSurfaces: [{ sections: ADMIN_SECTIONS, hubPath: '/admin/settings', hubTitle: 'Console' }],
+  // The compact AppBar's drill-down (back arrow + page title below 600px) on
+  // every card page of both hubs (E10.3): the title comes from the card.
+  settingsSurfaces: [
+    { sections: ADMIN_SECTIONS, hubPath: ADMIN_HUB_PATH, hubTitle: ADMIN_HUB_TITLE },
+    { sections: USER_SETTINGS_SECTIONS, hubPath: USER_HUB_PATH, hubTitle: USER_HUB_TITLE },
+  ],
   // Console MODE: on any `/admin` route the expanded rail lists the admin registry.
   console: { prefix: '/admin', sections: ADMIN_SECTIONS, back: { label: 'Back to Vault', path: '/' } },
 };

@@ -34,16 +34,16 @@ export default function SecretTypesPage() {
   return (
     <Container maxWidth="lg" sx={{ py: 3 }}>
       <Breadcrumbs sx={{ mb: 2 }}>
-        <Link color="inherit" href="/" onClick={(e) => { e.preventDefault(); navigate('/'); }}>
-          Home
+        <Link color="inherit" href="/settings" onClick={(e) => { e.preventDefault(); navigate('/settings'); }}>
+          Settings
         </Link>
         <Typography sx={{
           color: "text.primary"
-        }}>Secret Types</Typography>
+        }}>Secret types</Typography>
       </Breadcrumbs>
 
-      <Typography variant="h4" gutterBottom>
-        Secret Types
+      <Typography variant="h4" component="h1" gutterBottom>
+        Secret types
       </Typography>
 
       {error && (
@@ -55,8 +55,8 @@ export default function SecretTypesPage() {
       <SecretTypesList
         types={types}
         isLoading={isLoading}
-        onCreateClick={() => navigate('/secret-types/new')}
-        onEditClick={(type) => navigate(`/secret-types/${type.id}/edit`)}
+        onCreateClick={() => navigate('/settings/secret-types/new')}
+        onEditClick={(type) => navigate(`/settings/secret-types/${type.id}/edit`)}
         onDeleteClick={(type) => setDeleteTarget(type)}
       />
 
