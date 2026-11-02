@@ -476,6 +476,7 @@ model BackupRun {
   error           String?
   startedAt       DateTime  @default(now()) @map("started_at") @db.Timestamptz
   finishedAt      DateTime? @map("finished_at") @db.Timestamptz
+  heartbeatAt     DateTime? @map("heartbeat_at") @db.Timestamptz
   deletedAt       DateTime? @map("deleted_at") @db.Timestamptz
 
   // Relations

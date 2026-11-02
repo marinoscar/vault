@@ -37,6 +37,7 @@ CREATE TABLE "backup_runs" (
     "error" TEXT,
     "started_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "finished_at" TIMESTAMPTZ,
+    "heartbeat_at" TIMESTAMPTZ,
     "deleted_at" TIMESTAMPTZ,
 
     CONSTRAINT "backup_runs_pkey" PRIMARY KEY ("id")
