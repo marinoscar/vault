@@ -29,7 +29,7 @@ import { randomUUID } from 'node:crypto';
 import type { Client } from 'pg';
 import type { PrismaClient } from '@prisma/client';
 
-import { defaultOrgClient, getDefaultOrgId, runInDefaultOrg } from '../../src/prisma/default-org';
+import { defaultOrgClient, getDefaultOrgId, runInDefaultOrg } from '@marinoscar/vault-api/core';
 import { runInOrg } from '@marinoscar/platform-api/core';
 import {
   findAdminCredentials,

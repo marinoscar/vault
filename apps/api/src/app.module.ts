@@ -14,12 +14,6 @@ import { ZodValidationPipe } from 'nestjs-zod';
 
 import { PrismaModule } from './prisma/prisma.module';
 import { CommonModule } from './common/common.module';
-import { SecretTypesModule } from './secret-types/secret-types.module';
-import { SecretsModule } from './secrets/secrets.module';
-import { MediaModule } from './media/media.module';
-import { AiModule } from './ai/ai.module';
-import { BackupsModule } from './backups/backups.module';
-import { CardExpiryModule } from './card-expiry/card-expiry.module';
 import { LoggerModule } from './common/logger/logger.module';
 
 // MUST precede `settings.config`: the jobs and nodes slices ensure the `jobs`,
@@ -39,6 +33,7 @@ import { exportsModule } from './platform/exports/exports.config';
 import { userDataModule } from './platform/user-data/user-data.config';
 import { onboardingModule } from './platform/onboarding/onboarding.config';
 import { dbBackupModule } from './platform/db-backup/db-backup.config';
+import { vaultApiModule } from './platform/vault-api/vault-api.config';
 import { telemetryModule } from './platform/telemetry/telemetry.config';
 import { VaultMetricsModule } from './common/otel/vault-metrics.service';
 import { doctorModule } from './doctor/doctor.config';
@@ -126,12 +121,11 @@ import configuration from './config/configuration';
     // `--enable-row-security` AND `PGOPTIONS=-c app.rls_bypass=on`.
     // `DB_BACKUP_SCHEDULE_ENABLED=false` turns the scheduler off in this process.
     dbBackupModule,
-    SecretTypesModule,
-    SecretsModule,
-    MediaModule,
-    AiModule,
-    BackupsModule,
-    CardExpiryModule,
+    // The Vault domain (issue #103, E12.2): secrets, secret types, attachments, the export zip,
+    // media, card extraction, the card-expiry reminders and the selective password-protected backups
+    // (`vault.backup.run`, `vault.user_backup.run`), from `@marinoscar/vault-api` behind its ports.
+    // Distinct from `dbBackupModule` above (whole-database disaster recovery).
+    vaultApiModule,
     // Exports (issue #91, E9.3): `GET /api/exports/sources`, `POST|GET /api/exports`, the server-only
     // `export.run` / `export.purge` jobs and the expiry cron. Sources: the platform's `user-data` and
     // Vault's `vault-secrets` (secret METADATA only; values stay in the password-protected zip).

@@ -9,7 +9,7 @@ import {
 import { SystemSettingsService } from '@marinoscar/platform-api/settings';
 
 import { VAULT_AI_POLICY } from '../../app-registrations/settings';
-import { AI_PROVIDER_ID, CARD_EXTRACT_FEATURE } from '../../ai/ai.constants';
+import { AI_PROVIDER_ID, CARD_EXTRACT_FEATURE } from '@marinoscar/vault-api/ai';
 
 /**
  * Routes the `card_extract` feature to the OpenAI model an administrator chose

@@ -12,7 +12,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
-import { API_SOURCE_ROOT } from './cron-source-roots';
+import { VAULT_SOURCE_ROOTS } from './cron-source-roots';
 
 /** Files allowed a timer, with the reason; each must still contain one. */
 const TIMER_EXEMPTIONS: Record<string, string> = {};
@@ -28,8 +28,8 @@ function sourceFiles(dir: string): string[] {
 const code = (source: string) => source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 const TIMER = /@Interval\(|@Timeout\(|\bsetInterval\(/;
 
-const withTimers = sourceFiles(API_SOURCE_ROOT)
-  .map((path) => ({ rel: relative(API_SOURCE_ROOT, path).split('\\').join('/'), source: code(readFileSync(path, 'utf8')) }))
+const withTimers = VAULT_SOURCE_ROOTS.flatMap((root) => sourceFiles(root).map((path) => ({ root, path })))
+  .map(({ root, path }) => ({ rel: relative(root, path).split('\\').join('/'), source: code(readFileSync(path, 'utf8')) }))
   .filter((file) => TIMER.test(file.source))
   .map((file) => file.rel);
 

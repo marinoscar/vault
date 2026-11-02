@@ -71,11 +71,13 @@ RUN set -e; \
 RUN cd apps/api && \
     DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy" npx prisma generate
 # Compile the workspace packages (those with a `build` script) into their
-# dist/, which their `exports` maps point at. Alphabetical order, the same as
-# `npm run build --workspaces`: a package that depends on a sibling must sort
-# after it, or the loop must be ordered here.
-RUN set -e; \
-    for d in packages/*/; do \
+# dist/, which their `exports` maps point at. vault-contract and vault-db build
+# first because the others depend on them (vault-api also types against the
+# Prisma client generated above); the rest follow alphabetically, each once.
+RUN set -e; built=""; \
+    for d in packages/vault-contract/ packages/vault-db/ packages/*/; do \
+      case " $built " in *" $d "*) continue ;; esac; built="$built $d"; \
+      [ -d "$d" ] || continue; \
       npm run build --if-present --workspace="${d%/}"; \
     done
 

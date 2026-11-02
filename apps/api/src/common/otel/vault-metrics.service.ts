@@ -16,14 +16,18 @@
 import { Global, Injectable, Module } from '@nestjs/common';
 import { AppMetricsService } from '@marinoscar/platform-api/host';
 
-import type { SecretTypeKind, SecretVersionSource } from './vault-metrics';
+import type {
+  BackupOutcome,
+  BackupScope,
+  BackupTrigger,
+  SecretTypeKind,
+  SecretVersionSource,
+} from '@marinoscar/vault-api/core';
+import type { VaultMetricsPort } from '@marinoscar/vault-api/ports';
 
-export type BackupScope = 'system' | 'user';
-export type BackupTrigger = 'schedule' | 'manual';
-export type BackupOutcome = 'succeeded' | 'failed';
-
+/** The host's `app.vault.*` emitters, bound to the package's `VAULT_METRICS` port. */
 @Injectable()
-export class VaultMetricsService {
+export class VaultMetricsService implements VaultMetricsPort {
   constructor(private readonly metrics: AppMetricsService) {}
 
   secretCreated(typeKind: SecretTypeKind): void {

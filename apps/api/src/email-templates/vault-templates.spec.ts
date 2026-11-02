@@ -12,7 +12,7 @@ import {
 import type {
   VaultBackupNotificationData,
   VaultCardExpiringNotificationData,
-} from '../notifications-registry/vault-notification-data';
+} from '@marinoscar/vault-api/core';
 
 const backup = (over: Partial<VaultBackupNotificationData> = {}): VaultBackupNotificationData => ({
   runId: 'run-1',

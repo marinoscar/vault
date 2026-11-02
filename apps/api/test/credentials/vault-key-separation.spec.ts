@@ -11,6 +11,8 @@ import { CryptoService } from '../../src/common/services/crypto.service';
 // cipher: that would need a rehearsed re-encryption, not a refactor.
 
 const SRC = join(__dirname, '..', '..', 'src');
+// The domain slices live in the package since E12.2 (#103); the rule follows them.
+const VAULT_API_SRC = join(__dirname, '..', '..', '..', '..', 'packages', 'vault-api', 'src');
 
 function sourceFiles(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
@@ -38,22 +40,27 @@ describe('secret values stay under VAULT_ENCRYPTION_KEY', () => {
     ).toThrow();
   });
 
-  it.each(['secrets', 'backups', 'media', 'secret-types'])(
-    'src/%s never touches the platform cipher or credential store',
+  it.each(['secrets', 'backups', 'media', 'secret-types', 'card-expiry'])(
+    'packages/vault-api/src/%s never touches the platform cipher or credential store',
     (folder) => {
-      const offenders = sourceFiles(join(SRC, folder)).filter((file) =>
+      const offenders = sourceFiles(join(VAULT_API_SRC, folder)).filter((file) =>
         /platform-api\/credentials|encryptSecret|decryptSecret|SECRETS_ENCRYPTION_KEY|CredentialsService/.test(
           readFileSync(file, 'utf8'),
         ),
       );
-      expect(offenders.map((f) => relative(SRC, f))).toEqual([]);
+      expect(offenders.map((f) => relative(VAULT_API_SRC, f))).toEqual([]);
     },
   );
 
-  it('the secret-version writers encrypt through CryptoService', () => {
-    const service = readFileSync(join(SRC, 'secrets', 'secrets.service.ts'), 'utf8');
-    expect(service).toMatch(/CryptoService/);
+  it('the secret-version writers encrypt through the VAULT_CRYPTO port (CryptoService)', () => {
+    const service = readFileSync(join(VAULT_API_SRC, 'secrets', 'secrets.service.ts'), 'utf8');
+    expect(service).toMatch(/VAULT_CRYPTO/);
     expect(service).toMatch(/crypto\.encrypt\(/);
+  });
+
+  it('the VAULT_CRYPTO port is bound to CryptoService, never to the platform cipher', () => {
+    const config = readFileSync(join(SRC, 'platform', 'vault-api', 'vault-api.config.ts'), 'utf8');
+    expect(config).toMatch(/crypto: \{ useExisting: CryptoService \}/);
   });
 
   // E9.2 (#90): the telemetry slice keeps its two GreptimeDB passwords in the credential store

@@ -20,7 +20,7 @@
 // declares `system:factory_reset` and `orgs:offboard` (system, admin only).
 import type { PlatformPermissionOptions } from '@marinoscar/platform-api/manifest';
 
-import { VAULT_PERMISSIONS } from '../app-registrations/permissions';
+import { VAULT_PERMISSIONS } from '@marinoscar/vault-api/core';
 
 export const PERMISSION_OPTIONS = {
   slices: ['identity', 'settings', 'storage', 'jobs', 'nodes', 'ai', 'notifications', 'telemetry', 'db-backup', 'user-data'],

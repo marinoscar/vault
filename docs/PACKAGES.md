@@ -19,7 +19,7 @@ Vault's domain code is written once, in packages, and the apps are hosts ([ADR-0
 |---|---|---|---|
 | `@marinoscar/vault-contract` | `packages/vault-contract` | in force (E12.1, #102) | Zod schemas, response shapes, error codes, system secret types. Dual CJS + ESM. [README](../packages/vault-contract/README.md) |
 | `@marinoscar/vault-db` | `packages/vault-db` | in force (E12.1, #102) | Domain Prisma fragments, migrations, raw-SQL index list, the `vault-db` command. CommonJS. [README](../packages/vault-db/README.md) |
-| `@marinoscar/vault-api` | `packages/vault-api` | planned, E12.2 (#103) | Domain slices behind ports; `apps/api` binds the ports only |
+| `@marinoscar/vault-api` | `packages/vault-api` | in force (E12.2, #103) | Secrets, secret types, attachments, the export zip, backups, media, card extraction and card-expiry reminders behind twelve ports; `apps/api` binds the ports only. CommonJS. [README](../packages/vault-api/README.md) |
 | `@marinoscar/vault-web` | `packages/vault-web` | in force (E12.3, #104) | Domain pages, components and hooks, the navigation destinations and the brand, one subpath per slice (`<slice>/headless`, `<slice>/ui`, `brand`, `navigation`). ESM. `apps/web` is the host; `apps/web/src/__tests__/config/packagesFirst.test.ts` guards it. [README](../packages/vault-web/README.md) |
 
 The platform packages (`@marinoscar/platform-*`) are a separate set, owned by EnterpriseAppBase. A Vault package may depend on them as peers; it never copies them. `packages/shared` (`@app/shared`) is the product identity and is not a domain package.
@@ -40,6 +40,13 @@ packages/vault-db/
   src/                    the command (bin, sync, check, promote, lock, manifest, sql)
   bin/vault-db.js         thin wrapper over dist/bin
   test/                   Vitest; apply.db.test.ts runs only with DATABASE_URL
+packages/vault-api/
+  src/ports/              the twelve port tokens and interfaces
+  src/core/               permissions, role constants, default-org scope, metric labels, notification payloads, image signatures
+  src/<slice>/            secrets, secret-types, media, backups, ai (card extraction), card-expiry: controllers, services, handlers, DTOs, specs
+  src/vault-api.module.ts VaultApiModule.forRoot({ bindings, imports })
+  src/testing/            in-memory fakes of the ports (published as ./testing)
+  test/conformance.spec.ts, test/mocks/   the conformance run over fake ports; jest mocks for the specs
 scripts/vault-packages/   copy-license.mjs (prepack), write-dist-stubs.mjs (contract build)
 ```
 
@@ -48,6 +55,7 @@ Rules that hold for every package:
 - A relative import inside `vault-contract` keeps its `.js` extension (the ESM build needs it).
 - `vault-contract` is built twice (`dist/cjs`, `dist/esm`), each with its own `package.json` stub so a `.d.ts` takes the right module format. `moduleResolution` is `node10` for the CJS tree because TypeScript 5 does not allow `bundler` with `module: commonjs`.
 - `vault-db` is CommonJS and builds with `tsc -p tsconfig.build.json` to `dist/`.
+- `vault-api` is CommonJS and builds with `tsc -p tsconfig.build.json` to `dist/`. Relative imports stay extensionless (NodeNext in a `"type": "commonjs"` package, like `apps/api`). It types against the Prisma client the host generates, so `@prisma/client` must be generated before it builds; Jest (v29, ts-jest) runs its specs.
 - `dist/` is git-ignored. The root `package.json` workspaces glob `packages/*` picks a package up.
 
 ## Build and test
@@ -55,12 +63,12 @@ Rules that hold for every package:
 From the repository root:
 
 ```bash
-npm run build:packages       # vault-contract (cjs + esm), then vault-db, then vault-web
+npm run build:packages       # vault-contract (cjs + esm), vault-db, then prisma generate, then vault-api and vault-web
 npm run typecheck:packages
 npm run test:packages        # Vitest in each package
 ```
 
-Per package: `npm run build|typecheck|test:run -w @marinoscar/vault-contract` (or `vault-db`). The real-Postgres test of `vault-db` (`test/apply.db.test.ts`, which applies the platform history and then the domain history to a fresh database) runs when `DATABASE_URL` names a PostgreSQL 16 server whose role may create databases:
+Per package: `npm run build|typecheck|test:run -w @marinoscar/vault-contract` (or `vault-db`, `vault-api`). `vault-api` needs the generated Prisma client (`npm run prisma:generate --workspace=api`) before `build` or `typecheck`; the root `build:packages` does it. The real-Postgres test of `vault-db` (`test/apply.db.test.ts`, which applies the platform history and then the domain history to a fresh database) runs when `DATABASE_URL` names a PostgreSQL 16 server whose role may create databases:
 
 ```bash
 DATABASE_URL=postgresql://postgres:<password>@localhost:5432/postgres npm run test:run -w @marinoscar/vault-db
@@ -84,6 +92,45 @@ What moved in E12.1, with the old import path kept as a thin re-export so the di
 | `AI_ERROR_CODES`, `AttachmentRole`, `BackupFrequency`, `BackupRunStatus`, `BackupRunTrigger` in `apps/web/src/types` | `vault-contract` | re-export |
 | `prisma/fragments/vault.prisma`, `media-folder-files.prisma` | `vault-db/schema/vault.{secrets,media,backups}.prisma` | removed; `prisma/fragments/vault.*.prisma` are generated copies |
 | the eight app-owned migrations | `vault-db/migrations/<same name>` | untouched in `prisma/migrations`, now also recorded in `prisma/vault.lock` |
+
+What moved in E12.2 (no re-exports are left behind in `apps/api`; the callers import the package):
+
+| Was in `apps/api/src` | Now in `packages/vault-api/src` |
+|---|---|
+| `secrets/` (service, controller, card summary, `export/`), `secret-types/`, `media/` | the same folder names, with `VaultApiModule` replacing the three Nest modules |
+| `backups/` (archive, queue, runner, handlers, schedule task, notifier, controllers) | `backups/` |
+| `ai/` card extraction (`card-extract.*`, normalizer, schema, `GET /api/ai/status`) | `ai/`; `ai-key-migration` and `ai-platform-migration` (one-off commands) stay |
+| `card-expiry/` | `card-expiry/` |
+| `prisma/default-org.ts`, `common/utils/image-signature.util.ts`, `common/constants/roles.constants.ts`, `app-registrations/permissions.ts` | `core/` |
+| `notifications-registry/vault-notification-data.ts` (payloads and keys) | `core/notification-data.ts`; the registrations and templates stay |
+| label lists and `secretTypeKind` of `common/otel/vault-metrics.ts` | `core/metric-labels.ts`; the instrument declarations stay |
+| `common/constants/card.constants.ts` | deleted; callers import `@marinoscar/vault-contract/secret-types` |
+| `test/mocks/card-extraction.mock.ts` | `packages/vault-api/test/mocks/` |
+
+## `vault-api`: the ports
+
+`apps/api` mounts the domain once, in `apps/api/src/platform/vault-api/vault-api.config.ts`: `VaultApiModule.forRoot({ bindings, imports })`. A token is `Symbol.for('@marinoscar/vault/<NAME>')`; the description string is permanent.
+
+| Token | Port | Bound in apps/api to | Used by |
+|---|---|---|---|
+| `VAULT_PRISMA` | `VaultPrismaClient` (the host's generated `PrismaClient`) | `PrismaService` | every slice |
+| `VAULT_CRYPTO` | `VaultCryptoPort` (`encrypt`, `decrypt`) | `CryptoService` (AES-256-GCM, `VAULT_ENCRYPTION_KEY`) | secrets, export, backups, card expiry |
+| `VAULT_OBJECT_STORE` | `VaultObjectStorePort` (the raw provider) | `STORAGE_PROVIDER` | secrets, export, backups |
+| `VAULT_OBJECTS` | `VaultObjectsPort` (`delete`, `getDownloadUrl`) | the platform `ObjectsService` | media |
+| `VAULT_JOBS` | `VaultJobsPort` (`enqueue`, `enqueueWithin`, `registerHandler`) | `VaultJobsAdapter` over `JobsService` + `JobHandlerRegistry` | backups, card expiry |
+| `VAULT_NOTIFY` | `VaultNotifyPort` (`notify`, `notifyNow`, `notifyPermissionHolders`) | the platform `NotificationsService` | backups, card expiry |
+| `VAULT_AI` | `VaultAiPort` (`forUser`) | the platform `AiService` | card extraction |
+| `VAULT_AI_CONFIG` | `VaultAiConfigPort` (`describePublic`) | the platform `AiConfigService` | `GET /api/ai/status` |
+| `VAULT_AI_KEY_PRESENCE` | `VaultAiKeyPresencePort` (`isConfigured`) | `AiKeyPresence` | backup archive `system/settings.json` |
+| `VAULT_AUDIT` | `VaultAuditPort` (`record`) | `VaultAuditAdapter` over `audit_events` | secrets, secret types, export, backups, card expiry |
+| `VAULT_SETTINGS` | `VaultSettingsPort` (`getNamespace`, `getSettings`) | `VaultSettingsAdapter` over `SystemSettingsService` | secrets, backups, card extraction |
+| `VAULT_METRICS` (optional) | `VaultMetricsPort` | `VaultMetricsService` | secrets, backups, card extraction |
+
+The package still imports the platform's decorators and pure helpers (`@Auth`, `CurrentUser`, `JobHandler` and `Job` types, `isActiveDedupConflict`, `enqueueHousekeepingJob`, `AiError`, `AiEnabledGuard`, `runInOrg`): those are types and request-path decorators, not services, so they are peers (`@marinoscar/platform-api`, `@marinoscar/platform-contract`) rather than ports. Every service the slices call goes through a port, which is what lets `src/testing` run the whole module over fakes.
+
+Rules: a service takes a port, never a platform class or an app class; the host binds, it does not subclass. A port method is added with its fake in `src/testing/fake-ports.ts` and a line in `test/conformance.spec.ts`. `apps/api/src/platform/vault-api/vault-api.config.ts` carries a compile-time check that each platform class still satisfies the port it is bound to, so a platform release that changes a method fails the build of the host, not a request.
+
+What stays in `apps/api` on purpose (host glue, listed in `apps/api/test/architecture/no-domain-logic.spec.ts` and [local-exceptions](platform-adoption/local-exceptions.md)): the Doctor checks, the `vault-secrets` export source, the onboarding facts, the user-data purge and factory-reset steps (each is a platform extension point that reads or purges domain rows), the notification registrations and email templates, the one-off AI migration commands, `CryptoService`, `PrismaService`, the metric declarations and the registrations.
 
 ## Database: fragments, migrations and the lock
 
@@ -111,15 +158,15 @@ Procedure to change the domain schema: [runbooks/vault-domain-migration.md](runb
 
 1. Put the code in the slice that owns it, with a test in the package.
 2. A new subpath of `vault-contract` needs an `exports` entry in its `package.json` (both `import` and `require`).
-3. If `apps/` already had the old definition, replace its body with a re-export so callers do not change, then delete the re-export when the last caller moves (E12.2 and E12.3 do this).
+3. If `apps/` already had the old definition, replace its body with a re-export so callers do not change, then delete the re-export when the last caller moves (E12.2 deleted the API ones; E12.3 does the web ones).
 4. Run `npm run build:packages && npm run typecheck:packages && npm run test:packages`, then the app's typecheck and unit tests.
 
 ## CI
 
-`.github/workflows/ci.yml` builds the packages after `npm ci` in every job that imports them, and has a `Packages` job that typechecks and tests them, and runs the real-Postgres `vault-db` test against a service container. `db-check` and `baseline-rehearsal` run `db:check` (both locks) and `db:drift` as before.
+`.github/workflows/vault-packages.yml` (on every package, script or changeset change) builds the packages, runs `check:package-pack` (what npm would publish against each manifest), smoke-imports the entry points, runs `check:package-docs` (the README standard: required sections, `Status:` line, every entry point named, links resolve) and fails a package change without a changeset. `.github/workflows/ci.yml` builds the packages after `npm ci` in every job that imports them (order: contract, db, `prisma generate`, api; `npm run build:packages` does all four), and has a `Packages` job that generates the Prisma client, typechecks and tests the three packages, and runs the real-Postgres `vault-db` test against a service container. `db-check` and `baseline-rehearsal` run `db:check` (both locks) and `db:drift` as before.
 
 ## Versioning plan
 
 All Vault packages are versioned together at `0.1.0-next.<n>`, starting at `0.1.0-next.0`. The apps pin the exact version, which npm resolves to the workspace while the version matches. Nothing is published yet.
 
-E12.4 (#105) adds changesets, a `vault-packages.yml` workflow (build, test, package docs check), `vault-release.yml` (publish to npm under the `next` dist-tag) and `docs/runbooks/release-vault-packages.md`. Until then: bump the `version` of a package you change (and the exact pins in the apps) only when a published consumer would need it; no one consumes these packages outside this repository.
+Releases are Changesets in pre mode (`.changeset/`, the `fixed` glob `@marinoscar/vault-*`): `vault-release.yml` opens the `vault-release/version` pull request from pending changesets, and merging it runs a gate, then either publishes to npm under the `next` dist-tag (OIDC trusted publishing, provenance, no token; only when `NPM_PUBLISH_ENABLED` is `true`) or does a dry run that uploads the tarballs. The scripts under `scripts/vault-packages/` iterate over the packages present, so `vault-api` and `vault-web` join when their folders exist. Add a changeset (`npx changeset`) with every package change. Procedure, owner setup and rollback: [runbooks/release-vault-packages.md](runbooks/release-vault-packages.md).

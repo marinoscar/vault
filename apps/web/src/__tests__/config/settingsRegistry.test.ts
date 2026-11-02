@@ -21,10 +21,10 @@ import { VAULT_NAVIGATION } from '../../config/shell';
 import appSource from '../../App.tsx?raw';
 // The API's permission catalog (E3.2): roles.constants.ts DERIVES `PERMISSIONS` from
 // the platform slices Vault seeds (apps/api/src/platform/permissions.ts) plus
-// Vault's own (app-registrations/permissions.ts). Read the declarations themselves.
-import vaultPermissionsSource from '../../../../api/src/app-registrations/permissions.ts?raw';
+// Vault's own (`VAULT_PERMISSIONS`, in @marinoscar/vault-api since E12.2). Read the declarations themselves.
+import vaultPermissionsSource from '../../../../../packages/vault-api/src/core/permissions.ts?raw';
 import permissionOptionsSource from '../../../../api/src/platform/permissions.ts?raw';
-import rolesSource from '../../../../api/src/common/constants/roles.constants.ts?raw';
+import rolesSource from '../../../../../packages/vault-api/src/core/roles.constants.ts?raw';
 import settingsPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/settings/settings.permissions.js?raw';
 import usersPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/identity/users/users.permissions.js?raw';
 import allowlistPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/identity/allowlist/allowlist.permissions.js?raw';
