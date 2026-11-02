@@ -88,7 +88,7 @@ async function runE2ETests(): Promise<number> {
     ...process.env,
     POSTGRES_HOST: 'localhost',
     POSTGRES_PORT: '5433',
-    POSTGRES_USER: 'postgres',
+    POSTGRES_USER: 'vault_app',
     POSTGRES_PASSWORD: 'postgres',
     POSTGRES_DB: 'vault_test',
     POSTGRES_SSL: 'false',

@@ -41,7 +41,12 @@ export function resetPrismaMock(): void {
  * Tests that care override these after calling resetPrismaMock().
  */
 export function installPlatformAdoptionDefaults(mock: any): void {
-  mock.organization.findFirst.mockResolvedValue({ id: 'org-default' });
+  // Storage access runs in `runInDefaultOrg` (an interactive $transaction whose
+  // first statement is set_config); a unit test runs the callback on the mock.
+  mock.$transaction.mockImplementation(async (arg: any) =>
+    typeof arg === 'function' ? arg(mock) : Array.isArray(arg) ? Promise.all(arg) : arg,
+  );
+  mock.organization.findFirst.mockResolvedValue({ id: '00000000-0000-4000-8000-0000000000d0' });
   mock.membership.findFirst.mockResolvedValue(null);
   mock.membership.upsert.mockResolvedValue({});
   mock.userRole.createMany.mockResolvedValue({ count: 0 });
@@ -70,5 +75,7 @@ export function mockPrismaTransaction(): void {
  * Creates a fresh mock PrismaService for unit tests
  */
 export function createMockPrismaService(): MockPrismaService {
-  return mockDeep<PrismaClient>();
+  const mock = mockDeep<PrismaClient>();
+  installPlatformAdoptionDefaults(mock);
+  return mock;
 }

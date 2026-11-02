@@ -1,3 +1,4 @@
+import { defaultOrgMock } from '../../test/mocks/default-org.mock';
 import { Readable } from 'stream';
 import { inspect } from 'util';
 
@@ -40,6 +41,7 @@ function setup(opts: { runs?: Array<Record<string, unknown>>; running?: number }
   const uploads: Record<string, Buffer> = {};
   const enc = crypto.encrypt(JSON.stringify({ user: 'alpha-login' }));
   const prisma = {
+    ...defaultOrgMock(),
     backupSchedule: { findUnique: jest.fn(), updateMany: jest.fn() },
     backupRun: {
       update: jest.fn().mockResolvedValue({}),

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
+import { defaultOrgClient } from '../../prisma/default-org';
 import { STORAGE_PROVIDER, StorageProvider } from '../providers';
 import { Inject } from '@nestjs/common';
 
@@ -26,7 +27,7 @@ export class StorageCleanupTask {
       cleanupBefore.setHours(cleanupBefore.getHours() - this.CLEANUP_AGE_HOURS);
 
       // Find incomplete uploads older than threshold
-      const staleUploads = await this.prisma.storageObject.findMany({
+      const staleUploads = await this.orgDb.storageObject.findMany({
         where: {
           status: { in: ['pending', 'uploading'] },
           createdAt: { lt: cleanupBefore },
@@ -59,7 +60,7 @@ export class StorageCleanupTask {
           }
 
           // Delete from database (chunks cascade delete)
-          await this.prisma.storageObject.delete({
+          await this.orgDb.storageObject.delete({
             where: { id: upload.id },
           });
 
@@ -81,5 +82,14 @@ export class StorageCleanupTask {
         `Storage cleanup task failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
       );
     }
+  }
+
+  /**
+   * PLATFORM-ADOPTION-SHIM(E6): `storage_objects` / `storage_object_chunks` are
+   * row-level-security tables and the API is an ordinary role, so every access
+   * runs in the default organization's transaction-local scope.
+   */
+  private get orgDb() {
+    return defaultOrgClient(this.prisma);
   }
 }
