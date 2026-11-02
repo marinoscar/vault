@@ -1,16 +1,16 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 
-import { PrismaService } from '../prisma/prisma.service';
-import { RequestUser } from '@marinoscar/platform-api/identity';
+import { AiError, AiService, type AiInputItem } from '@marinoscar/platform-api/ai';
+import { type RequestUser } from '@marinoscar/platform-api/identity';
 
-import {
-  AI_CARD_EXTRACT_ACTION,
-  DAILY_BUDGET_WINDOW_MS,
-  OPENAI_REQUEST_TIMEOUT_MS,
-} from './ai.constants';
+import { VAULT_AI_POLICY } from '../app-registrations/settings';
+import { SystemSettingsService } from '@marinoscar/platform-api/settings';
+
+import { CARD_EXTRACT_FEATURE, OPENAI_REQUEST_TIMEOUT_MS } from './ai.constants';
 import {
   aiExtractionFailed,
   aiInvalidImage,
+  aiNotConfigured,
   aiQuotaExceeded,
   aiRateLimited,
   aiUpstreamAuth,
@@ -18,20 +18,19 @@ import {
   aiUpstreamUnavailable,
   AiException,
 } from './ai.errors';
-import { AiBurstLimiterService } from './ai-burst-limiter.service';
-import { AiConfigService, ResolvedAiConfig } from './ai-config.service';
 import { normalizeExtractions } from './card-normalizer';
-import { extractCardSchema } from './dto/extract-card.dto';
 import {
-  AI_VISION_PROVIDER,
-  AiProviderError,
-  AiVisionProvider,
+  CARD_EXTRACT_SCHEMA_NAME,
+  CARD_EXTRACT_SYSTEM_PROMPT,
+  cardExtractionModelSchema,
+  toRawExtraction,
+} from './card-extraction.schema';
+import type {
   CardCropBox,
   RawCardConfidence,
   RawCardFields,
-  RawExtraction,
-  VisionImage,
-} from './providers/vision-provider.interface';
+} from './card-extraction.types';
+import { extractCardSchema } from './dto/extract-card.dto';
 
 export interface ExtractCardResult {
   fields: RawCardFields;
@@ -42,56 +41,42 @@ export interface ExtractCardResult {
    * AI-located card bounding box per supplied image, in fractions (0-1) of
    * that image exactly as sent, plus the clockwise quarter-turns that make
    * the crop read upright. Null when the image was absent or no card was
-   * visible in it. The client uses these to produce the cropped attachment
-   * the user stores.
+   * visible in it.
    */
   crops: { front: CardCropBox | null; back: CardCropBox | null };
   /** True when the call succeeded but nothing legible came back. */
   partial: boolean;
 }
 
-type ExtractOutcome =
-  | 'started'
-  | 'success'
-  | 'partial'
-  | 'upstream_error'
-  | 'extraction_failed';
-
 /**
- * Card extraction orchestration.
+ * Card extraction over the platform AI slice (issue #87, E8.1).
  *
- * PERSISTS NOTHING about the card. The only row this writes is an
- * `audit_events` record carrying counts and timings - never an image, never a
- * field value. The extracted data exists only in the HTTP response, and it is
- * the user who decides on the review screen whether any of it becomes a secret.
+ * `AiService.forUser(userId, { orgId, feature: 'card_extract' })` runs the whole
+ * gate pipeline: kill switch, provider and model enablement, capability match
+ * (the `card_extract` feature needs `responses` + image input), the per-user
+ * caps of `ai.limits`, key resolution (the deployment key `('ai','openai')`)
+ * and one `ai_usage_events` row. This service owns only the card rules: the
+ * prompt, the image payload shape, the normalizer, and the error taxonomy the
+ * web already speaks.
+ *
+ * PERSISTS NOTHING about the card. The images and the extracted values exist
+ * only in the request and the response; the platform records token counts, never
+ * the input (and `ai.logPromptContent` logs text only, truncated). The security
+ * code is never requested and is stripped by the normalizer.
  */
 @Injectable()
 export class CardExtractService {
   private readonly logger = new Logger(CardExtractService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly aiConfig: AiConfigService,
-    private readonly burstLimiter: AiBurstLimiterService,
-    @Inject(AI_VISION_PROVIDER)
-    private readonly vision: AiVisionProvider,
+    private readonly ai: AiService,
+    private readonly systemSettings: SystemSettingsService,
   ) {}
 
-  /**
-   * Gate order is deliberate:
-   *   1. configuration  - if the feature is off, nothing else is worth checking
-   *   2. input shape    - cheap, deterministic, no I/O
-   *   3. burst window   - in-memory, protects the provider from a stuck client
-   *   4. daily budget   - one DB count, protects the bill
-   *   5. provider call  - the only step that costs money
-   */
   async extract(body: unknown, user: RequestUser): Promise<ExtractCardResult> {
-    const config = await this.aiConfig.resolveForExtraction();
-
     const parsed = extractCardSchema.safeParse(body);
     if (!parsed.success) {
-      // The issue paths are safe to echo (they are field names). The issue
-      // values are image bytes and must not be.
+      // The issue paths are safe to echo (field names). The values are image bytes.
       throw aiInvalidImage(
         `Invalid image payload: ${parsed.error.issues
           .map((issue) => issue.path.join('.') || 'body')
@@ -99,255 +84,110 @@ export class CardExtractService {
       );
     }
 
-    const burst = this.burstLimiter.consume(user.id);
-    if (!burst.allowed) {
-      throw aiRateLimited(burst.retryAfterSeconds);
-    }
-
-    await this.assertWithinDailyBudget(user.id, config.maxCallsPerUserPerDay);
-
-    const images: VisionImage[] = [{ side: 'front', dataUrl: parsed.data.front }];
-    if (parsed.data.back) {
-      images.push({ side: 'back', dataUrl: parsed.data.back });
-    }
-
-    return this.runExtraction(images, config, user.id);
-  }
-
-  // ---------------------------------------------------------------------------
-  // Budget
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Durable per-user daily budget.
-   *
-   * Counts `audit_events` rows rather than keeping a counter, which means it
-   * survives restarts and is correct across replicas without introducing a
-   * table, a migration, or a Redis dependency. The audit row is written BEFORE
-   * the provider call precisely so that budget is reserved even if the process
-   * dies mid-request - a counter incremented on success would let a crash loop
-   * spend without ever being counted.
-   */
-  private async assertWithinDailyBudget(
-    userId: string,
-    limit: number,
-  ): Promise<void> {
-    if (!Number.isFinite(limit) || limit <= 0) {
-      throw aiQuotaExceeded(limit);
-    }
-
-    const since = new Date(Date.now() - DAILY_BUDGET_WINDOW_MS);
-    const used = await this.prisma.auditEvent.count({
-      where: {
-        actorUserId: userId,
-        action: AI_CARD_EXTRACT_ACTION,
-        createdAt: { gte: since },
+    const orgId = user.activeOrgId ?? undefined;
+    const sides = [parsed.data.front, ...(parsed.data.back ? [parsed.data.back] : [])];
+    const input: AiInputItem[] = [
+      {
+        type: 'message',
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text:
+              sides.length > 1
+                ? 'Image 1 is the FRONT of the card, image 2 is the BACK.'
+                : 'Image 1 is the FRONT of the card; no back image was provided.',
+          },
+          ...sides.map((url) => ({ type: 'image' as const, url, detail: 'high' as const })),
+        ],
       },
-    });
-
-    if (used >= limit) {
-      this.logger.warn(
-        `User ${userId} hit the daily AI card extraction budget (${used}/${limit})`,
-      );
-      throw aiQuotaExceeded(limit);
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Provider orchestration
-  // ---------------------------------------------------------------------------
-
-  private async runExtraction(
-    images: VisionImage[],
-    config: ResolvedAiConfig,
-    userId: string,
-  ): Promise<ExtractCardResult> {
-    const auditId = await this.beginAudit(userId, images.length, config.model);
-    const startedAt = Date.now();
+    ];
 
     try {
-      const sources = await this.callProvider(images, config);
-      const normalized = normalizeExtractions(sources);
+      const result = await this.ai
+        .forUser(user.id, { orgId, feature: CARD_EXTRACT_FEATURE })
+        .respondStructured(
+          {
+            schema: cardExtractionModelSchema,
+            schemaName: CARD_EXTRACT_SCHEMA_NAME,
+            instructions: CARD_EXTRACT_SYSTEM_PROMPT,
+            input,
+            temperature: 0,
+          },
+          { signal: AbortSignal.timeout(OPENAI_REQUEST_TIMEOUT_MS) },
+        );
 
-      const result: ExtractCardResult = {
+      const raw = toRawExtraction(result.parsed, result.model);
+      const normalized = normalizeExtractions([raw]);
+      return {
         fields: normalized.fields,
         confidence: normalized.confidence,
         warnings: normalized.warnings,
-        model: sources[0]?.model ?? config.model,
+        model: raw.model,
         crops: {
           front: normalized.crops.front,
-          // A back box for an image that was never sent is a hallucination by
-          // definition - the client would have nothing to crop with it.
-          back: images.length > 1 ? normalized.crops.back : null,
+          // A back box for an image that was never sent is a hallucination.
+          back: sides.length > 1 ? normalized.crops.back : null,
         },
         partial: normalized.partial,
       };
-
-      await this.finishAudit(
-        auditId,
-        normalized.partial ? 'partial' : 'success',
-        Date.now() - startedAt,
-      );
-
-      return result;
     } catch (error) {
-      const mapped = this.mapProviderError(error);
-      await this.finishAudit(
-        auditId,
-        mapped.getStatus() === 422 ? 'extraction_failed' : 'upstream_error',
-        Date.now() - startedAt,
-        mapped.code,
-      );
-      throw mapped;
+      throw this.mapError(error);
     }
   }
 
   /**
-   * ONE provider call carrying every side of the card.
-   *
-   * The sides are deliberately NOT sent as separate calls. A model that sees
-   * only one side cannot cross-reference: modern cards - metal and premium
-   * cards especially (e.g. the American Express Platinum) - print the PAN,
-   * the expiry, and sometimes even the cardholder name flat on the BACK, so a
-   * per-side call looking at a branding-only front would dutifully return
-   * nulls while the other call had no front to disambiguate against. Sending
-   * both sides in one request lets the model combine whatever is legible on
-   * either image into a single answer, and it also halves the provider cost
-   * per scan.
+   * The model the `card_extract` feature runs on, for the status route and tests.
    */
-  private async callProvider(
-    images: VisionImage[],
-    config: ResolvedAiConfig,
-  ): Promise<RawExtraction[]> {
-    const options = {
-      apiKey: config.apiKey,
-      model: config.model,
-      timeoutMs: OPENAI_REQUEST_TIMEOUT_MS,
-    };
-
-    const result = await this.vision.extractCard(images, options);
-    return [result];
+  async configuredModel(): Promise<string> {
+    const ai = await this.systemSettings.getNamespace(VAULT_AI_POLICY);
+    return ai.cardExtractModel;
   }
 
   /**
-   * Translate a provider failure into this feature's HTTP taxonomy.
-   *
-   * Note what is NOT here: 401 and 403. An upstream credential rejection
-   * becomes 502 AI_UPSTREAM_AUTH, because `apps/web/src/services/api.ts` reads
-   * a 401 as an expired session - it would refresh the token, retry, and can
-   * sign the user out over a stale OpenAI key.
-   *
-   * The upstream error body is never echoed. OpenAI reflects fragments of the
-   * request back in its errors, and our request is two base64 card images.
+   * Platform failure to this feature's HTTP taxonomy (the codes the web already
+   * handles). Never a 401/403 (the web reads a 401 as an expired session), and
+   * never an upstream body: it can echo fragments of two card images.
    */
-  private mapProviderError(error: unknown): AiException {
-    if (error instanceof AiException) {
-      return error;
-    }
+  private mapError(error: unknown): AiException {
+    if (error instanceof AiException) return error;
 
-    if (error instanceof AiProviderError) {
-      switch (error.kind) {
-        case 'auth':
-          this.logger.error(
-            'AI provider rejected the configured API key (upstream 401/403)',
-          );
+    if (AiError.isAiError(error)) {
+      switch (error.code) {
+        case 'AI_DISABLED':
+        case 'AI_PROVIDER_DISABLED':
+        case 'AI_KEY_REQUIRED':
+        case 'AI_MODEL_NOT_ENABLED':
+        case 'AI_MODEL_NOT_REACHABLE':
+        case 'AI_CAPABILITY_UNSUPPORTED':
+          this.logger.warn(`Card extraction unavailable: ${error.code}`);
+          return aiNotConfigured();
+        case 'AI_RATE_LIMITED': {
+          const retryAfterSeconds = error.retryAfterMs
+            ? Math.max(1, Math.ceil(error.retryAfterMs / 1000))
+            : undefined;
+          const limit = String(error.getResponse().details.limit ?? '');
+          // A provider-side throttle names no platform limit.
+          if (!limit) return aiUpstreamRateLimited(retryAfterSeconds);
+          return /perminute/i.test(limit)
+            ? aiRateLimited(retryAfterSeconds ?? 60)
+            : aiQuotaExceeded(retryAfterSeconds);
+        }
+        case 'AI_KEY_INVALID':
+          this.logger.error('AI provider rejected the configured API key');
           return aiUpstreamAuth();
-        case 'rate_limited':
-          return aiUpstreamRateLimited(error.retryAfterSeconds);
-        case 'invalid_output':
-          this.logger.warn(`AI extraction failed: ${error.message}`);
+        case 'AI_STRUCTURED_OUTPUT_INVALID':
+        case 'AI_CONTENT_FILTERED':
+        case 'AI_INVALID_REQUEST':
+          this.logger.warn(`AI extraction failed: ${error.code}`);
           return aiExtractionFailed();
-        case 'unavailable':
         default:
-          this.logger.warn(`AI provider unavailable: ${error.message}`);
+          this.logger.warn(`AI provider unavailable: ${error.code}`);
           return aiUpstreamUnavailable();
       }
     }
 
-    // Anything unclassified is treated as an upstream problem rather than a 500:
-    // the message is unknown, so it must not reach the client.
-    this.logger.error(
-      `Unexpected AI provider failure: ${(error as Error)?.message}`,
-    );
+    this.logger.error(`Unexpected AI failure: ${(error as Error)?.name}`);
     return aiUpstreamUnavailable();
-  }
-
-  // ---------------------------------------------------------------------------
-  // Audit
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Write the attempt row before the provider is called.
-   *
-   * `meta` carries counts, the model name and (later) a duration and outcome.
-   * It must never carry an image, a field value, a confidence score or any part
-   * of the API key: audit rows are permanent and are read by anyone with
-   * database access.
-   */
-  private async beginAudit(
-    userId: string,
-    imageCount: number,
-    model: string,
-  ): Promise<string | null> {
-    try {
-      const event = await this.prisma.auditEvent.create({
-        data: {
-          actorUserId: userId,
-          action: AI_CARD_EXTRACT_ACTION,
-          targetType: 'ai_card_extract',
-          // Non-nullable in the schema. The subject of the event is the user
-          // whose quota it consumes, which also makes the
-          // (targetType, targetId) index useful for per-user spend queries.
-          targetId: userId,
-          meta: {
-            imageCount,
-            model,
-            durationMs: null,
-            outcome: 'started' as ExtractOutcome,
-          } as any,
-        },
-        select: { id: true },
-      });
-      return event.id;
-    } catch (error) {
-      // Auditing must not break the feature, but a failure here also means the
-      // daily budget under-counts this call, so it is logged loudly.
-      this.logger.error(
-        `Failed to record AI extraction audit event: ${(error as Error)?.message}`,
-      );
-      return null;
-    }
-  }
-
-  private async finishAudit(
-    auditId: string | null,
-    outcome: ExtractOutcome,
-    durationMs: number,
-    errorCode?: string,
-  ): Promise<void> {
-    if (!auditId) return;
-
-    try {
-      const existing = await this.prisma.auditEvent.findUnique({
-        where: { id: auditId },
-        select: { meta: true },
-      });
-
-      await this.prisma.auditEvent.update({
-        where: { id: auditId },
-        data: {
-          meta: {
-            ...((existing?.meta as Record<string, unknown>) ?? {}),
-            durationMs,
-            outcome,
-            ...(errorCode ? { errorCode } : {}),
-          } as any,
-        },
-      });
-    } catch (error) {
-      this.logger.warn(
-        `Failed to finalise AI extraction audit event: ${(error as Error)?.message}`,
-      );
-    }
   }
 }

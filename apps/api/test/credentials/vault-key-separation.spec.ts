@@ -56,7 +56,7 @@ describe('secret values stay under VAULT_ENCRYPTION_KEY', () => {
     expect(service).toMatch(/crypto\.encrypt\(/);
   });
 
-  it('only the AI key path reads the credential store in application code', () => {
+  it('only the AI key status reader and the legacy key migration read the credential store in application code', () => {
     const readers = sourceFiles(SRC)
       .filter((file) => /import(?:\s+type)?\s*\{[^}]*\bCredentialsService\b[^}]*\}\s*from/.test(readFileSync(file, 'utf8')))
       .map((f) => relative(SRC, f))
@@ -64,7 +64,6 @@ describe('secret values stay under VAULT_ENCRYPTION_KEY', () => {
     expect(readers).toEqual([
       'ai/ai-config.service.ts',
       'ai/ai-key-migration.ts',
-      'platform/settings/ai-key-projection.interceptor.ts',
     ]);
   });
 });

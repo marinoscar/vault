@@ -22,8 +22,9 @@ import { MAX_IMAGE_DATA_URL_LENGTH } from '../ai.constants';
  */
 export const cardImageDataUrlSchema = z
   .string()
-  .regex(/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/)
-  .max(MAX_IMAGE_DATA_URL_LENGTH);
+  // The length bound first: the pattern scan of a multi-megabyte string is the slow part.
+  .max(MAX_IMAGE_DATA_URL_LENGTH, { abort: true })
+  .regex(/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/);
 
 export const extractCardSchema = z.object({
   front: cardImageDataUrlSchema,

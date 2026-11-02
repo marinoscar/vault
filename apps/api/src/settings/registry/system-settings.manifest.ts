@@ -19,7 +19,10 @@ import {
   type SystemSettingsNamespace,
 } from '@marinoscar/platform-api/settings';
 
-import { APP_SYSTEM_SETTINGS_NAMESPACES } from '../../app-registrations/settings';
+import {
+  APP_SYSTEM_SETTINGS_EXTENSIONS,
+  APP_SYSTEM_SETTINGS_NAMESPACES,
+} from '../../app-registrations/settings';
 
 export const PLATFORM_SYSTEM_SETTINGS_NAMESPACES: readonly SystemSettingsNamespace[] = [
   MAINTENANCE_SYSTEM_SETTINGS as SystemSettingsNamespace,
@@ -29,6 +32,7 @@ export function assembleVaultSystemSettingsNamespaces(): SystemSettingsNamespace
   return assembleSystemSettingsNamespaces({
     platform: PLATFORM_SYSTEM_SETTINGS_NAMESPACES,
     app: APP_SYSTEM_SETTINGS_NAMESPACES,
+    appExtensions: APP_SYSTEM_SETTINGS_EXTENSIONS,
   });
 }
 

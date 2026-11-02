@@ -11,8 +11,8 @@
 // `platform-host.module.ts`. Purposes are registered at import time, before the
 // registries freeze at bootstrap.
 //
-// The fixed address of Vault's OpenAI key lives here so the settings service,
-// the AI config service and the migration command cannot drift apart.
+// The fixed address of Vault's OpenAI key lives here so the status reader
+// and the migration commands cannot drift apart.
 // =============================================================================
 
 import { AI_CREDENTIAL_PURPOSE } from './credential-purposes.manifest';

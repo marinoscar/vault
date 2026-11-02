@@ -6,7 +6,8 @@ import {
   APP_SYSTEM_SETTINGS_NAMESPACES,
   CARD_IMAGE_MAX_BYTES_LIMIT,
   DEFAULT_CARD_IMAGE_MAX_BYTES,
-  VAULT_AI_SYSTEM_SETTINGS,
+  VAULT_AI_POLICY,
+  DEFAULT_CARD_EXTRACT_MODEL,
   VAULT_BACKUPS_SYSTEM_SETTINGS,
   VAULT_CARDS_SYSTEM_SETTINGS,
   VAULT_FEATURES_SYSTEM_SETTINGS,
@@ -40,18 +41,18 @@ describe('Vault settings namespaces', () => {
     expect(DEFAULT_SYSTEM_SETTINGS).toMatchObject({
       ui: { allowUserThemeOverride: true },
       features: {},
-      ai: { enabled: false, provider: 'openai', model: 'gpt-4o-mini', maxCallsPerUserPerDay: 50 },
+      ai: { enabled: false, keyPolicy: 'byok', cardExtractModel: 'gpt-4o-mini' },
     });
   });
 
-  it('the ai namespace carries no key: not in its stored, patch, put or default shapes', () => {
-    const ns = VAULT_AI_SYSTEM_SETTINGS;
-    for (const schema of [ns.storedSchema, ns.patchSchema, ns.putSchema, ns.wirePatchSchema]) {
-      expect(Object.keys((schema as unknown as { shape: object }).shape)).not.toContain('apiKey');
-    }
-    expect(Object.keys(ns.defaults)).not.toContain('apiKey');
-    // A PATCH naming apiKey is stripped by the closed body (the interceptor takes it first).
-    expect(ns.wirePatchSchema.parse({ model: 'm', apiKey: 'x'.repeat(30) })).toEqual({ model: 'm' });
+  it('the ai namespace is the platform AI slice\'s, extended with cardExtractModel, and carries no key', () => {
+    const ns = systemSettingsNamespaceRegistry.list().find((n) => n.key === 'ai')!;
+    const shape = Object.keys((ns.storedSchema as unknown as { shape: object }).shape);
+    expect(shape).toEqual(expect.arrayContaining(['enabled', 'keyPolicy', 'providers', 'limits', 'cardExtractModel']));
+    expect(shape).not.toContain('apiKey');
+    expect(shape).not.toContain('model');
+    expect(Object.keys(VAULT_AI_POLICY.storedSchema.shape)).toContain('cardExtractModel');
+    expect((ns.defaults as { cardExtractModel: string }).cardExtractModel).toBe(DEFAULT_CARD_EXTRACT_MODEL);
   });
 
   it('every default satisfies its stored schema', () => {
@@ -85,12 +86,15 @@ describe('Vault settings namespaces', () => {
       expect(read([true])).toEqual({});
     });
 
-    it('ai keeps the provider openai whatever is patched', () => {
-      const merged = VAULT_AI_SYSTEM_SETTINGS.merge(
-        { enabled: false, provider: 'openai', model: 'a', maxCallsPerUserPerDay: 1 },
-        { enabled: true },
-      );
-      expect(merged).toEqual({ enabled: true, provider: 'openai', model: 'a', maxCallsPerUserPerDay: 1 });
+    it('ai replaces cardExtractModel only when the patch carries it, and keeps the platform merge', () => {
+      const ns = systemSettingsNamespaceRegistry.list().find((n) => n.key === 'ai')!;
+      const current = ns.storedSchema.parse(ns.defaults) as Record<string, unknown>;
+      const merged = ns.merge(current, { cardExtractModel: 'gpt-x' } as never) as Record<string, unknown>;
+      expect(merged.cardExtractModel).toBe('gpt-x');
+      expect(merged.keyPolicy).toBe('byok');
+      const kept = ns.merge(merged, { enabled: true } as never) as Record<string, unknown>;
+      expect(kept.cardExtractModel).toBe('gpt-x');
+      expect(kept.enabled).toBe(true);
     });
 
     it('vaultBackups merges partial content flags', () => {

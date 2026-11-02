@@ -105,12 +105,17 @@ Design: EAB `docs/specs/job-queue.md`; recipe: [`add-job-type` skill](.claude/sk
 
 ## MANDATORY: AI Rules
 
-Today AI is the generic config/verify/OpenAI provider plus card extraction in `apps/api/src/ai/`. From E8 it is `AiService.forUser(userId, { orgId, feature: 'card-extract' })` of the platform.
+Since E8.1 (#87) AI is the platform slice: `AiModule.forRoot` in `apps/api/src/platform/ai/ai.config.ts`, the feature `card_extract` in `apps/api/src/app-registrations/ai.ts`, calls through `AiService.forUser(userId, { orgId, feature: 'card_extract' })` (`CardExtractService`). Vault has no provider, key reader or limiter of its own. Runbook: [docs/runbooks/ai-platform-migration.md](docs/runbooks/ai-platform-migration.md).
 
-1. **Keys never leave the server and the browser never calls a provider.** Every provider call is server-side. No route, log line, span, error or audit row carries key material; the admin AI key is stored AES-256-GCM-encrypted and write-only.
-2. **Card CVV is never sent to AI and never persisted by extraction.** `POST /api/secrets/cards/extract` persists nothing, never requests or returns the CVV, and runs behind the admin toggle and the daily budget (counted from `audit_events` rows `ai.card.extract`).
-3. **Card photos are user material**: egress is disclosed in the UI (`AiEgressNotice`), and fixtures use generated or placeholder images only.
-4. **AI settings cards declare `feature: 'ai'`**, except the card that switches AI on. A new provider SDK import stays inside its provider folder (`apps/api/src/ai/providers/<provider>/`).
+1. **Keys never leave the server and the browser never calls a provider.** Every provider call is server-side under a key `AiKeyResolver` resolves for that call (Vault: the deployment key, credential `('ai','openai')`, AES-256-GCM under `SECRETS_ENCRYPTION_KEY`, write-only through `/api/admin/ai/*`). No route, log line, span, error or audit/usage row carries key material.
+2. **Never import a provider SDK** in `apps/api`, `apps/web` or `apps/cli` (conformance suite `ai-no-sdk-leak`); a new provider is the platform's.
+3. **Card CVV is never sent to AI as a request and never persisted by extraction.** The prompt forbids reading it, the model schema has no field for it, `normalizeExtractions` forces `cvv` and `security_code_2` to `null` and drops `notes` lines naming a code. `POST /api/secrets/cards/extract` persists nothing and sits behind `AiEnabledGuard` + `ai:use` + `secrets:write`; no image byte or card value may reach `ai_usage_events`, `ai_runs`, `audit_events` or a log (`test/ai/card-extract.db.spec.ts`).
+4. **Card photos are user material**: egress is disclosed in the UI (`AiEgressNotice`), and fixtures use generated or placeholder images only.
+5. **AI jobs are server-only, permanently** (suite `ai-jobs-server-only`). The budget is the platform cap `ai.limits` on the `ai` settings namespace, never a hand-rolled counter.
+6. **Route guards.** Consumer routes under `/api/ai/*` sit behind `AiEnabledGuard` plus `ai:use` (except `GET /api/ai/config`); admin routes under `/api/admin/ai/*` require `ai_config:*` (`org_ai_config:*` for the `org-*` ones) and are deliberately not behind the kill switch. `GET /api/ai/status` is a compatibility alias of `GET /api/ai/config` until E11.
+7. **AI settings cards follow the Settings UI Pattern and declare `feature: 'ai'`** (E10), except the card that switches AI on.
+
+Guardrails: `test/ai-conformance.spec.ts` (`ai-kill-switch`, `ai-rbac-matrix`, `ai-secret-egress`, `ai-key-policy`, `ai-jobs-server-only`) and `test/conformance.spec.ts` (`ai-no-sdk-leak`, `ai-orchestration-boundary`).
 
 ## MANDATORY: Invariants that are easy to break
 

@@ -24,13 +24,12 @@ export const VAULT_ERROR_CODES: readonly ErrorCodeDef[] = Object.freeze([
   { code: 'DATABASE_SEED_REQUIRED', status: 500, description: 'Migrations ran but the seed data (roles, permissions) is missing.' },
   { code: 'ENCRYPTION_UNAVAILABLE', status: 503, description: 'VAULT_ENCRYPTION_KEY is not configured, so a secret value could not be stored.' },
 
-  // Card scanning (`src/ai/ai.constants.ts`, `AI_ERROR_CODES`).
-  { code: 'AI_NOT_CONFIGURED', status: 503, description: 'AI is disabled or no API key is stored.' },
-  { code: 'AI_KEY_UNREADABLE', status: 503, description: 'The stored AI key cannot be decrypted (encryption key missing or rotated).' },
-  { code: 'AI_API_KEY_UNREADABLE', status: 503, description: 'The stored OpenAI API key cannot be decrypted (encryption key missing or rotated).' },
+  // Card scanning (`src/ai/ai.constants.ts`, `AI_ERROR_CODES`). The platform's own `AI_*` codes
+  // (kill switch, key, model, limits) are registered by the AI slice.
+  { code: 'AI_NOT_CONFIGURED', status: 503, description: 'AI card scanning is not set up (provider, model or deployment key missing).' },
   { code: 'AI_INVALID_IMAGE', status: 400, description: 'The images are not acceptable base64 data URLs within the size limit.' },
-  { code: 'AI_RATE_LIMITED', status: 429, description: 'The per-user burst limit for card scans was reached.' },
-  { code: 'AI_QUOTA_EXCEEDED', status: 429, description: 'The per-user daily card-scan budget was reached.' },
+  { code: 'AI_RATE_LIMITED', status: 429, description: 'The per-user per-minute AI limit was reached.' },
+  { code: 'AI_QUOTA_EXCEEDED', status: 429, description: 'A daily AI limit (per user or per organization) was reached.' },
   { code: 'AI_UPSTREAM_RATE_LIMITED', status: 429, description: 'The AI provider is rate limiting requests.' },
   { code: 'AI_UPSTREAM_AUTH', status: 502, description: 'The AI provider rejected the configured API key.' },
   { code: 'AI_UPSTREAM_UNAVAILABLE', status: 502, description: 'The AI provider failed, timed out or was unreachable.' },

@@ -24,6 +24,8 @@ export interface TestAppOptions {
    * Set to false only for true E2E tests that need a real database
    */
   useMockDatabase?: boolean;
+  /** Providers to replace in the app (the AI conformance harness swaps `AiService` and friends). */
+  overrideProviders?: Array<{ provide: unknown; useValue: unknown }>;
 }
 
 /**
@@ -40,12 +42,15 @@ export async function createTestApp(
 
   if (shouldUseMock) {
     // Create test module with mocked PrismaService
-    moduleFixture = await Test.createTestingModule({
+    let builder = Test.createTestingModule({
       imports: [AppModule],
     })
       .overrideProvider(PrismaService)
-      .useValue(prismaMock)
-      .compile();
+      .useValue(prismaMock);
+    for (const { provide, useValue } of options.overrideProviders ?? []) {
+      builder = builder.overrideProvider(provide as never).useValue(useValue);
+    }
+    moduleFixture = await builder.compile();
   } else {
     // Create test module with real database (for true E2E tests)
     moduleFixture = await Test.createTestingModule({

@@ -17,6 +17,6 @@ import type { PlatformPermissionOptions } from '@marinoscar/platform-api/manifes
 import { VAULT_PERMISSIONS } from '../app-registrations/permissions';
 
 export const PERMISSION_OPTIONS = {
-  slices: ['identity', 'settings', 'storage', 'jobs', 'nodes'],
+  slices: ['identity', 'settings', 'storage', 'jobs', 'nodes', 'ai'],
   app: { permissions: [VAULT_PERMISSIONS] },
 } satisfies PlatformPermissionOptions;

@@ -6,7 +6,7 @@ import { PERMISSIONS } from '../common/constants/roles.constants';
 
 import { AI_ERROR_CODES } from './ai.constants';
 import { AiException } from './ai.errors';
-import { AiController } from './ai.controller';
+import { AiStatusController } from './ai-status.controller';
 import { CardExtractController } from './card-extract.controller';
 import { CardExtractService } from './card-extract.service';
 
@@ -37,7 +37,7 @@ describe('CardExtractController', () => {
   });
 
   describe('authorization metadata', () => {
-    it('declares secrets:write on the extract route', () => {
+    it('declares secrets:write and ai:use on the extract route', () => {
       // Without a declared permission the PermissionsGuard never runs, and
       // @CurrentUser() would hand back the raw Prisma user - which has no
       // `.permissions` array - to a secrets-adjacent route.
@@ -46,14 +46,19 @@ describe('CardExtractController', () => {
         CardExtractController.prototype.extract,
       );
 
-      expect(permissions).toEqual([PERMISSIONS.SECRETS_WRITE]);
+      expect(permissions).toEqual([PERMISSIONS.SECRETS_WRITE, 'ai:use']);
+    });
+
+    it('puts the platform kill switch in front of the class', () => {
+      const guards = Reflect.getMetadata('__guards__', CardExtractController.prototype.extract) ?? [];
+      expect(guards.map((g: { name: string }) => g.name)).toContain('AiEnabledGuard');
     });
 
     it('declares no permission on the AI status route', () => {
       // Any signed-in user must be able to discover whether the feature exists.
       const permissions = Reflect.getMetadata(
         PERMISSIONS_KEY,
-        AiController.prototype.status,
+        AiStatusController.prototype.status,
       );
 
       expect(permissions).toBeUndefined();
@@ -81,7 +86,7 @@ describe('CardExtractController', () => {
       expect(reply.header).not.toHaveBeenCalled();
     });
 
-    it('sets Retry-After when the burst limiter denies the request', async () => {
+    it('sets Retry-After when the per-minute limit denies the request', async () => {
       service.extract.mockRejectedValue(
         new AiException(429, AI_ERROR_CODES.RATE_LIMITED, 'slow down', 90),
       );
