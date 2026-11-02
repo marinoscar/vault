@@ -237,3 +237,11 @@ exports.ANDROID_IDENTITY_SOURCE = Object.freeze({
   repoSlug: identity.repoSlug,
   ...(identity.android ? { android: Object.freeze({ ...identity.android }) } : {}),
 });
+
+/**
+ * The CLI executable's name (`identity.json` `cliName`): `vault`. It seeds the
+ * platform CLI's config directory (`~/.<name>`), its environment prefix
+ * (`<NAME>_`) and the systemd unit. `apps/cli/package.json` repeats it as the
+ * `bin` key (npm reads that before any code runs); a test guards the two.
+ */
+exports.CLI_NAME = identity.cliName;

@@ -3,8 +3,7 @@
   "private": true,
   "workspaces": [
     "apps/*",
-    "packages/*",
-    "tools/*"
+    "packages/*"
   ],
   "engines": {
     "node": ">=24"
@@ -17,11 +16,10 @@
     "web:dev": "npm -w apps/web run dev",
     "api:test": "npm -w apps/api test",
     "web:test": "npm -w apps/web test",
-    "app": "node tools/app/bin/app.js",
-    "app:build": "npm -w tools/app run build",
     "vault:migrate-ai-key": "npm -w apps/api run vault:migrate-ai-key --",
-    "vaultcli": "node tools/vaultcli/bin/vaultcli.js",
-    "vaultcli:build": "npm -w tools/vaultcli run build",
+    "cli": "node apps/cli/dist/cli.js",
+    "cli:build": "npm run build --workspace=cli",
+    "vault": "node apps/cli/dist/cli.js",
     "platform:infra:sync": "platform-infra sync"
   },
   "overrides": {
