@@ -12,13 +12,13 @@
 //   1. the platform channels (`email`, `browser`, `push`);
 //   2. the email rendering context (layout theme and brand mark);
 //   3. the platform email templates (`user-welcome`, `broadcast`, `role-changed`, ...);
-//   4. this app's email templates (none until E7.2, #86);
+//   4. this app's email templates (`email-templates/`, E7.2, #86);
 //   5. the notifications. A binding may only name a template registered in 3 or 4,
 //      and the array order is the order of the preferences matrix.
 //
 // KEYS, CHANNEL IDS AND TEMPLATE NAMES ARE PERSISTED (preferences, delivery
-// rows): never rename one. Vault's own events (secret expiry, backup results,
-// shares) are E7.2; this file carries only what identity and the platform need.
+// rows): never rename one. Vault's own events (backup results, card expiry) are
+// `vault.notifications.ts` (E7.2, #86).
 // =============================================================================
 
 import {
@@ -33,7 +33,9 @@ import { configureEmailRendering, registerPlatformEmailTemplates } from '@marino
 // The SMTP, SES and VAPID credential purposes must be registered before the
 // credential store is used; importing the manifest is idempotent.
 import '../credentials/credential-purposes.manifest';
+import { registerVaultEmailTemplates } from '../../email-templates';
 import { IDENTITY_NOTIFICATIONS } from '../../notifications-registry/identity.notifications';
+import { VAULT_NOTIFICATIONS } from '../../notifications-registry/vault.notifications';
 import { EMAIL_MODULE_OPTIONS } from '../email/email.options';
 
 let registered = false;
@@ -44,9 +46,11 @@ if (!registered) {
   registerPlatformNotificationChannels();
   configureEmailRendering(EMAIL_MODULE_OPTIONS);
   registerPlatformEmailTemplates();
+  registerVaultEmailTemplates();
 
   registerNotifications([
     ...IDENTITY_NOTIFICATIONS,
+    ...VAULT_NOTIFICATIONS,
     ...BROADCASTS_NOTIFICATIONS,
     ...OPS_NOTIFICATIONS,
     ...NODES_NOTIFICATIONS,

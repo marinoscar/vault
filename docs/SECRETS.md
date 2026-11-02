@@ -237,6 +237,15 @@ The `FOR UPDATE` lock is what makes step 3 correct under concurrency: without it
 
 ---
 
+## Card expiry notifications
+
+A daily tick (`CardExpiryTask`, 05:37 UTC, enqueue-only) queues the server-only job `vault.cards.expiry_scan`. The job reads the current version of every Card secret, decrypts it with `VAULT_ENCRYPTION_KEY` **in memory**, keeps only `exp_month` and `exp_year` (a two-digit year is read as 20YY) and tells the owner through the `vault.card_expiring` event:
+
+- **When:** 30 days before, 7 days before and on the last day of the expiry month (a card is valid through that day, UTC). After an outage only the most urgent threshold reached is sent, once. An expired card is not notified.
+- **Once:** each (card, expiry, threshold) is recorded as an `audit_events` row `vault.card.expiry_notified` (target = the secret, meta `{ threshold, expiry }`), and later scans skip it. Renewing the card changes the expiry and re-arms the reminders. Audit retention is off by default; enabling it with fewer than 31 days would re-send a reminder.
+- **What the message says:** the secret's name, the expiry as `MM/YYYY`, and a link to `/secrets/:id`. Never the number, last four, CVV, holder, notes or any other field value; the payload type has no field for them, and a test renders a card whose fields carry distinctive markers and asserts none appears in the payload, the email, the bell text, the inbox rows or the audit trail.
+- **Failure modes:** a version that cannot be decrypted is skipped and logged by secret id; if every card is unreadable the job fails (a rotated key must fail loudly). Users can mute the event per channel in their notification preferences.
+
 ## Backup and export
 
 Any user with `secrets:read` can download a password-protected copy of their own data, from **Settings > Back up my data** in the web app or with [`vault backup`](../apps/cli/README.md#backup--password-protected-backup). Both call `POST /api/secrets/export` ([API.md](API.md#post-secretsexport)), so the web app and the CLI produce the identical format. In the web app you can also [save the backup to the storage account](#saved-user-backups) instead of downloading it. The CLI adds local conveniences around that one call: saved settings, retention of old backup files, and a guided terminal menu; see the [vault backup guide](../apps/cli/README.md#backup--password-protected-backup). Retention only deletes local files that match the CLI's output template and never changes what the server exports.

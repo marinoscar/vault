@@ -89,8 +89,42 @@ runPlatformConformance({
 
     // The email slice (E7.1, #85): the platform templates are registered, every sampled template
     // renders a complete document and escapes markup in its data, and no email settings shape carries
-    // a secret. Vault registers no template of its own until E7.2 (#86), so there are no extra samples.
-    email: {},
+    // a secret. Vault's three templates (E7.2, #86) are sampled with markup in every text field.
+    email: {
+      samples: {
+        'vault-backup-succeeded': {
+          runId: 'run-1',
+          scope: 'system',
+          trigger: 'schedule',
+          startedAt: '2027-01-02T03:00:00.000Z',
+          finishedAt: '2027-01-02T03:04:00.000Z',
+          sizeBytes: 2048,
+          secretCount: 3,
+          attachmentCount: 0,
+          mediaFileCount: 0,
+          warningCount: 0,
+        },
+        'vault-backup-failed': {
+          runId: 'run-1',
+          scope: 'user',
+          trigger: 'manual',
+          startedAt: '2027-01-02T03:00:00.000Z',
+          finishedAt: '2027-01-02T03:04:00.000Z',
+          sizeBytes: null,
+          secretCount: 0,
+          attachmentCount: 0,
+          mediaFileCount: 0,
+          warningCount: 0,
+          error: '<script>alert(1)</script>',
+        },
+        'vault-card-expiring': {
+          secretId: '8d1c1f0e-1111-4222-8333-444455556666',
+          secretName: '<script>alert(1)</script>',
+          expiry: '07/2027',
+          threshold: 7,
+        },
+      },
+    },
 
     // The notifications slice (E7.1, #85): the platform channels and events are registered, every
     // event that declares `email` has a template, no `notify*` call sits inside a `$transaction`
