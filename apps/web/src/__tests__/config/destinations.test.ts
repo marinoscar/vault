@@ -18,8 +18,18 @@ function appRoutes(): string[] {
   return paths.filter((p) => p !== '*').map((p) => p.replace(/:[A-Za-z]+/g, 'sample-id'));
 }
 
-/** The exact permission strings the API controllers enforce (apps/api roles.constants.ts). */
-const CONTROLLER_PERMISSIONS = new Set(['secrets:read', 'media:read', 'system_settings:read', 'users:read']);
+/**
+ * The exact permission strings the API controllers enforce (apps/api roles.constants.ts;
+ * `push:read` and `broadcasts:read` are the platform notifications slice's, E7).
+ */
+const CONTROLLER_PERMISSIONS = new Set([
+  'secrets:read',
+  'media:read',
+  'system_settings:read',
+  'users:read',
+  'push:read',
+  'broadcasts:read',
+]);
 
 describe('destinations table', () => {
   it('declares Home, Secrets, Cards, Media, Settings, Console in that order', () => {
@@ -50,11 +60,13 @@ describe('destinations table', () => {
     }
   });
 
-  it('shows Console to either system_settings:read or users:read, and to nobody else', () => {
+  it('shows Console to a holder of any Console card permission, and to nobody else', () => {
     const consoleDest = DESTINATIONS.find((d) => d.key === 'console')!;
     const holds = (perms: string[]) => (p: string) => perms.includes(p);
     expect(isDestinationVisible(consoleDest, holds(['system_settings:read']))).toBe(true);
     expect(isDestinationVisible(consoleDest, holds(['users:read']))).toBe(true);
+    expect(isDestinationVisible(consoleDest, holds(['push:read']))).toBe(true);
+    expect(isDestinationVisible(consoleDest, holds(['broadcasts:read']))).toBe(true);
     expect(isDestinationVisible(consoleDest, holds(['secrets:read']))).toBe(false);
   });
 

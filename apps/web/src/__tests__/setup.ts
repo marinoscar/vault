@@ -1,7 +1,14 @@
 import '@testing-library/jest-dom';
 import { cleanup } from '@testing-library/react';
 import { afterEach, beforeAll, afterAll, vi } from 'vitest';
+import { configureNotificationsWeb } from '@marinoscar/platform-web/notifications/headless';
 import { server } from './mocks/server';
+import { api } from '../services/api';
+
+// The notifications slice, configured as main.tsx does through
+// platform/notifications.ts, minus the SSE connector (no live stream in jsdom):
+// the shell's NotificationProvider loads the inbox through the MSW handlers.
+configureNotificationsWeb({ api, apiBaseUrl: '/api' });
 
 // Set base URL for fetch
 const BASE_URL = 'http://localhost:3000';

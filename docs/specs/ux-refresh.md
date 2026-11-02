@@ -119,6 +119,7 @@ Generate favicon, PWA and app-bar marks from `media/app_logo.png` and `media/fav
 | Storage | storage config | platform storage controller permission (E6) | |
 | General | UI Settings, Feature Flags tabs | `system_settings:read` / `:write` (`system-settings.controller.ts`) | "Advanced (JSON)" is dropped unless E10.2 records a need |
 | Doctor, Jobs, Telemetry | new | the platform controllers' permissions | Appear as their slices land (E5, E9) |
+| Email, Web Push, Broadcasts | new | `system_settings:read`, `push:read`, `broadcasts:read` (the platform email and notifications controllers) | E7.2; see the as-built table below |
 
 ### User cards (`USER_SETTINGS_SECTIONS`)
 
@@ -130,6 +131,7 @@ Generate favicon, PWA and app-bar marks from `media/app_logo.png` and `media/fav
 | My backups | `DataBackup` | `secrets:read` (`my-backups.controller.ts`) | Save to storage, list (newest 10 kept), download, delete; password in memory only |
 | Secret types | `/secret-types` pages | `secret_types:read` (`secret-types.controller.ts`); create/edit `secret_types:write`; delete `secret_types:delete` | System types read-only |
 | AI keys | none today | `ai:use` after E8 | `feature: 'ai'` |
+| Notifications | none today | `user_settings:read` | E7.2: the packaged preference matrix |
 
 Tabs appear only inside one destination for parallel content (Users and Allowlist). Nothing else is a tab.
 
@@ -150,7 +152,20 @@ Tabs appear only inside one destination for parallel content (Users and Allowlis
 | `USER_SETTINGS_SECTIONS`, Data | My backups | `/settings/backups` | `secrets:read` | `pages/settings/MyBackupsPage.tsx`: `DataBackup` with `BackupRunsTable` |
 | | Secret types | `/settings/secret-types` (`/new`, `/:id/edit`) | `secret_types:read` | the existing secret types pages, breadcrumbs rooted at Settings |
 
-- **Routes.** Every card route in `App.tsx` is wrapped in `RequirePermission` with exactly the card's permission (admin cards fall back to `/`, user cards to `/settings`); the Console hub is gated on `system_settings:read` or `users:read`, the same `anyPermission` as the `console` destination; `/settings` itself is ungated. Redirects keep old URLs: `/admin` and `/admin/users` to their Console routes, `/secret-types`, `/secret-types/new` and `/secret-types/:id/edit` to their pages under the Secret types card.
+**As built (E7.2, follow-up to [#85](https://github.com/marinoscar/vault/issues/85)).** The platform email and notifications slices' web side. The cards are APPENDED as new sections (never inserted), each a packaged page, writes gated inside it:
+
+| Registry | Card | Route | `permission` | Page |
+|---|---|---|---|---|
+| `ADMIN_SECTIONS`, Messaging | Email | `/admin/settings/email` | `system_settings:read` (platform `email-settings.controller` `GET /api/email-settings`); save and test-send `system_settings:write` | packaged `EmailSettingsPage` (`@marinoscar/platform-web/email/ui`) |
+| | Web Push | `/admin/settings/push` | `push:read` (platform `push-config.controller` `GET /api/admin/push-config`); generate, rotate, enable, remove `push:write` | packaged `PushConfigPage` (`/notifications/ui`) |
+| | Broadcasts | `/admin/settings/broadcasts` | `broadcasts:read` (platform `broadcasts.controller`, which admits `broadcasts:read` or `org_broadcasts:read`; Vault is single-organization and only `admin` holds either, so the card names the system string); compose, cancel, test-send `broadcasts:write` | packaged `BroadcastsPage` |
+| `USER_SETTINGS_SECTIONS`, Notifications | Notifications | `/settings/notifications` | `user_settings:read` (the page reads the caller's preferences from `GET /api/user-settings`; saving needs `user_settings:write`; the event and channel registries are bare `@Auth()`) | packaged `UserNotificationsPage` (per-event, per-channel matrix) |
+
+- **Console gate.** The `console` destination's `anyPermission` and the `/admin/settings` route gate are `system_settings:read`, `users:read`, `push:read`, `broadcasts:read`, so every Console card is reachable by a holder of its own permission.
+- **Notification centre.** `platform/notifications.ts` calls `configureNotificationsWeb({ api, apiBaseUrl, connectSse })` once (imported by `main.tsx`); `components/common/Layout.tsx` wraps the shell in `NotificationProvider` and puts `NotificationBell` in `ShellAppBar`'s `actions` slot, at every width. The bell's popover is the inbox (unread badge and count in its accessible name, mark one or all read, live over SSE). There is no separate inbox page.
+- **Not yet.** The admin `Notifications` policy page (`NotificationSettingsPage`, the deployment kill switch) is not wired; Web Push delivery needs the slice's service-worker handlers in a built worker, and Vault's `public/sw.js` is a plain file, so the shell does not run `usePushSubscriptionSync` or show `NotificationPermissionBanner` yet ([local-exceptions](../platform-adoption/local-exceptions.md)).
+
+- **Routes.** Every card route in `App.tsx` is wrapped in `RequirePermission` with exactly the card's permission (admin cards fall back to `/`, user cards to `/settings`); the Console hub is gated on `system_settings:read` or `users:read` (plus `push:read` and `broadcasts:read` since E7.2), the same `anyPermission` as the `console` destination; `/settings` itself is ungated. Redirects keep old URLs: `/admin` and `/admin/users` to their Console routes, `/secret-types`, `/secret-types/new` and `/secret-types/:id/edit` to their pages under the Secret types card.
 - **Shell.** `config/shell.ts` lists both hubs as `settingsSurfaces`, so the compact AppBar shows the card title and a back arrow on every card page of either hub; Console mode lists the seven admin cards. The packaged pages read the platform host from `platform/PlatformHostBridge.tsx` (Vault's `api` as a `PlatformApiClient`, Vault's session as the viewer), a stop-gap until E3.3 ([local-exceptions](../platform-adoption/local-exceptions.md)).
 - **Dropped.** "Advanced (JSON)" and `SystemSettingsEditor` are gone; `PUT /api/system-settings` stays in the API. `SecretTypesLink` is replaced by the Secret types card.
 - **Phone.** The users table drops Display Name and Created below 900px (the name folds under the email) and Roles and the avatar below 600px (roles stay in the row menu); the allowlist drops Added By, Added Date and Notes below 900px. Emails break after the `@`. No page scrolls sideways at 390px.
