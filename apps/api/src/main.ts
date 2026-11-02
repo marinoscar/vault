@@ -1,5 +1,9 @@
 // IMPORTANT: Load instrumentation before anything else
 import './instrumentation';
+// Fills core's role, permission, user-owned-model and model-ownership registries
+// (issue #77). Before anything that reads them; they freeze when the application
+// bootstraps.
+import './app-registrations/registrations';
 
 import { NestFactory } from '@nestjs/core';
 import {
