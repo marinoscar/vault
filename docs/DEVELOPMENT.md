@@ -38,7 +38,7 @@ This application uses **Fastify** as the HTTP adapter, not Express. This has imp
 ## Development Setup
 
 ### Prerequisites
-- Node.js 18+
+- Node.js 24+
 - Docker Desktop
 - PostgreSQL (via Docker)
 - Google OAuth credentials (from Google Cloud Console)

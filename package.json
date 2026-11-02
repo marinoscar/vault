@@ -1,7 +1,13 @@
 {
   "name": "vault",
   "private": true,
-  "workspaces": ["apps/*", "tools/*"],
+  "workspaces": [
+    "apps/*",
+    "tools/*"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "api": "npm -w apps/api",
     "web": "npm -w apps/web",

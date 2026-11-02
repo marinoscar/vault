@@ -47,7 +47,7 @@ Vault is a self-hosted secrets manager. It stores credentials, API keys, credit 
 
 ## Prerequisites
 
-- Node.js 18+
+- Node.js 24+
 - Docker Desktop
 - Google OAuth credentials (from [Google Cloud Console](https://console.cloud.google.com))
 
