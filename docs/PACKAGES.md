@@ -20,7 +20,7 @@ Vault's domain code is written once, in packages, and the apps are hosts ([ADR-0
 | `@marinoscar/vault-contract` | `packages/vault-contract` | in force (E12.1, #102) | Zod schemas, response shapes, error codes, system secret types. Dual CJS + ESM. [README](../packages/vault-contract/README.md) |
 | `@marinoscar/vault-db` | `packages/vault-db` | in force (E12.1, #102) | Domain Prisma fragments, migrations, raw-SQL index list, the `vault-db` command. CommonJS. [README](../packages/vault-db/README.md) |
 | `@marinoscar/vault-api` | `packages/vault-api` | planned, E12.2 (#103) | Domain slices behind ports; `apps/api` binds the ports only |
-| `@marinoscar/vault-web` | `packages/vault-web` | planned, E12.3 (#104) | Domain pages, components, destinations, brand; `apps/web` is the host |
+| `@marinoscar/vault-web` | `packages/vault-web` | in force (E12.3, #104) | Domain pages, components and hooks, the navigation destinations and the brand, one subpath per slice (`<slice>/headless`, `<slice>/ui`, `brand`, `navigation`). ESM. `apps/web` is the host; `apps/web/src/__tests__/config/packagesFirst.test.ts` guards it. [README](../packages/vault-web/README.md) |
 
 The platform packages (`@marinoscar/platform-*`) are a separate set, owned by EnterpriseAppBase. A Vault package may depend on them as peers; it never copies them. `packages/shared` (`@app/shared`) is the product identity and is not a domain package.
 
@@ -55,7 +55,7 @@ Rules that hold for every package:
 From the repository root:
 
 ```bash
-npm run build:packages       # vault-contract (cjs + esm), then vault-db
+npm run build:packages       # vault-contract (cjs + esm), then vault-db, then vault-web
 npm run typecheck:packages
 npm run test:packages        # Vitest in each package
 ```
