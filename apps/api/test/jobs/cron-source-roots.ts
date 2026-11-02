@@ -9,9 +9,8 @@
 // package's own tests, so they are not scanned here.
 //
 // Both suites are SHARED DATA, so the known exceptions live in this one file with
-// their written reasons. Each is a `PLATFORM-ADOPTION-SHIM` row in
-// docs/platform-adoption/local-exceptions.md, and each names the epic that deletes
-// it (and with it, its entry here).
+// their written reasons. Each would be a `PLATFORM-ADOPTION-SHIM` row in
+// docs/platform-adoption/local-exceptions.md. Both lists are empty since E6.1.
 // =============================================================================
 
 import { join } from 'node:path';
@@ -20,26 +19,17 @@ import { join } from 'node:path';
 export const API_SOURCE_ROOT = join(__dirname, '..', '..', 'src');
 
 /**
- * `@Cron` files allowed to work inline. The suite requires each to hold a
- * `@Cron` and a reason of more than 40 characters, so an exemption cannot outlive
- * the code it excuses.
+ * `@Cron` files allowed to work inline. EMPTY since E6.1: the storage cleanup
+ * sweep that was the last one is now the platform's enqueue-only
+ * `storage.cleanup.stale-uploads` cron. The three permanent exemptions are the
+ * platform's own (lease reaper, temp-file janitor, node-secret sweep) and ship in
+ * the package. An entry needs a reason of more than 40 characters.
  */
-export const CRON_EXEMPTIONS = [
-  {
-    file: 'storage/tasks/storage-cleanup.task.ts',
-    why: 'PLATFORM-ADOPTION-SHIM(E6): the daily sweep of stale pending/uploading storage objects aborts multipart uploads and deletes rows inline, through the legacy storage provider. The storage slice (E6) brings the platform\'s own stale-upload cleanup job and deletes this task.',
-  },
-] as const;
+export const CRON_EXEMPTIONS: ReadonlyArray<{ readonly file: string; readonly why: string }> = [];
 
 /**
- * `@OnEvent` files whose listener may move bytes. The platform's `on-event-no-io`
- * suite has no per-file exemption (and would be vacuous here: this is the only
- * listener file Vault has left), so `on-event-no-io.spec.ts` applies the same
- * markers itself and honours this list.
+ * `@OnEvent` files whose listener may move bytes. EMPTY since E6.1: the upload
+ * listener that downloaded the object inline is now the platform's
+ * `storage.object.process` job, and Vault has no `@OnEvent` I/O left.
  */
-export const LISTENER_EXEMPTIONS = [
-  {
-    file: 'storage/processing/object-processing.service.ts',
-    why: 'PLATFORM-ADOPTION-SHIM(E6): handleObjectUploaded downloads the uploaded object to run the processors, detached from the upload request. The storage slice (E6) replaces it with the platform\'s post-upload processor job and this file is deleted.',
-  },
-] as const;
+export const LISTENER_EXEMPTIONS: ReadonlyArray<{ readonly file: string; readonly why: string }> = [];

@@ -116,7 +116,7 @@ Generate favicon, PWA and app-bar marks from `media/app_logo.png` and `media/fav
 | Backups | `ScheduledBackups`, `BackupRunsTable` admin side | `system_settings:read` (`backups.controller.ts` `GET admin/backups/schedule`, list); run, export, delete, save schedule need `system_settings:write` | Schedule, contents, retention, run now, download. Password write-only |
 | AI | Settings tab "AI" | `system_settings:read` today (`ai-verify.controller.ts` verify needs `system_settings:write`); after E8 the platform AI page's own permission (read it from the installed controller) | The card that switches AI on; carries no `feature` |
 | Card scanning | part of the AI tab | `system_settings:read` | `feature: 'ai'`; model, daily budget. Sections slot of the AI page after E8 |
-| Storage | storage config | platform storage controller permission (E6) | |
+| Storage | storage config | `storage_config:read` (E6.1; the page is `StorageConfigPage` of `@marinoscar/platform-web/storage/ui`) | |
 | General | UI Settings, Feature Flags tabs | `system_settings:read` / `:write` (`system-settings.controller.ts`) | "Advanced (JSON)" is dropped unless E10.2 records a need |
 | Doctor, Jobs, Telemetry | new | the platform controllers' permissions | Appear as their slices land (E5, E9) |
 

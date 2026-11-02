@@ -5,8 +5,8 @@ import type { NormalizedProfileSettings, SettingsProfileImages } from '@marinosc
 /**
  * The settings slice's `SETTINGS_PROFILE_IMAGES` port.
  *
- * Vault has no avatar upload (until the storage slice lands, E6), so no object is
- * ever "a usable uploaded avatar" and `imageSource: 'upload'` is refused. A stored
+ * Vault has no avatar upload (the storage slice's ProfileImageModule is not mounted,
+ * E6.1: there is no avatar UI), so no object is ever "a usable uploaded avatar" and `imageSource: 'upload'` is refused. A stored
  * profile is normalised on read: a row written before E4.1 carries
  * `useProviderImage` (false becomes `none`, anything else `provider`).
  */

@@ -33,6 +33,10 @@ const PINNED_JOB_TYPES = [
   'nodes.fleet.sweep',
   'nodes.fleet.prune',
   'nodes.node_events_purge',
+  // storage slice (`StorageModule.forRoot`, E6.1): the stale-upload sweep and the post-upload processors,
+  // both server-only (they hold no node result schema)
+  'storage.cleanup.stale-uploads',
+  'storage.object.process',
   // backups (E5.2): the logical secret backups, both server-only
   'vault.backup.run',
   'vault.user_backup.run',

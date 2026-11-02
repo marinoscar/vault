@@ -13,6 +13,7 @@
 // =============================================================================
 
 import { MAINTENANCE_SYSTEM_SETTINGS } from '@marinoscar/platform-api/host';
+import { STORAGE_SYSTEM_SETTINGS } from '@marinoscar/platform-api/storage';
 import {
   assembleSystemSettingsNamespaces,
   registerSystemSettingsNamespaces,
@@ -23,6 +24,8 @@ import { APP_SYSTEM_SETTINGS_NAMESPACES } from '../../app-registrations/settings
 
 export const PLATFORM_SYSTEM_SETTINGS_NAMESPACES: readonly SystemSettingsNamespace[] = [
   MAINTENANCE_SYSTEM_SETTINGS as SystemSettingsNamespace,
+  // E6.1: the object store's runtime configuration (the secret access key is a credential).
+  STORAGE_SYSTEM_SETTINGS as SystemSettingsNamespace,
 ];
 
 export function assembleVaultSystemSettingsNamespaces(): SystemSettingsNamespace[] {

@@ -18,9 +18,10 @@ import { SettingsProfileImagesAdapter } from '../platform/settings/settings-prof
 import { VaultProfileImages } from '../platform/identity/identity-user.adapters';
 
 describe('Vault settings namespaces', () => {
-  it('registers maintenance, then ui, features, ai, vaultCards, vaultBackups (stored key order)', () => {
+  it('registers maintenance, storage, then ui, features, ai, vaultCards, vaultBackups (stored key order)', () => {
     expect(systemSettingsNamespaceRegistry.list().map((n) => n.key)).toEqual([
       'maintenance',
+      'storage',
       'ui',
       'features',
       'ai',

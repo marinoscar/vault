@@ -113,12 +113,9 @@ INITIAL_ADMIN_EMAIL=admin@example.com
 DEVICE_CODE_EXPIRY_MINUTES=15
 DEVICE_CODE_POLL_INTERVAL=5
 
-# Storage - AWS S3
-STORAGE_PROVIDER=s3
-S3_BUCKET=your-s3-bucket-name
-S3_REGION=us-east-1
-AWS_ACCESS_KEY_ID=your-aws-access-key-id
-AWS_SECRET_ACCESS_KEY=your-aws-secret-access-key
+# Storage: the bucket and its keys are configured at /admin/settings/storage
+# (runtime settings, not environment variables; see
+# docs/runbooks/storage-config-migration.md). Only the limits live here.
 
 # Storage limits
 MAX_FILE_SIZE=10737418240
