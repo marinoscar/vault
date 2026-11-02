@@ -178,7 +178,7 @@ describe('Layout', () => {
         expect.objectContaining({
           onMenuClick: expect.any(Function),
         }),
-        expect.anything()
+        undefined
       );
     });
 
@@ -190,7 +190,7 @@ describe('Layout', () => {
           open: false,
           onClose: expect.any(Function),
         }),
-        expect.anything()
+        undefined
       );
     });
 
@@ -202,7 +202,7 @@ describe('Layout', () => {
       // Initially closed
       expect(vi.mocked(Sidebar)).toHaveBeenCalledWith(
         expect.objectContaining({ open: false }),
-        expect.anything()
+        undefined
       );
 
       const menuButton = screen.getByTestId('menu-toggle-button');
@@ -212,7 +212,7 @@ describe('Layout', () => {
       await waitFor(() => {
         expect(vi.mocked(Sidebar)).toHaveBeenCalledWith(
           expect.objectContaining({ open: true }),
-          expect.anything()
+          undefined
         );
       });
     });
@@ -364,7 +364,7 @@ describe('Layout', () => {
     it('should render Outlet without props', () => {
       render(<Layout />);
 
-      expect(vi.mocked(Outlet)).toHaveBeenCalledWith({}, expect.anything());
+      expect(vi.mocked(Outlet)).toHaveBeenCalledWith({}, undefined);
     });
   });
 

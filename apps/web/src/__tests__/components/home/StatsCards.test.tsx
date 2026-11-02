@@ -144,7 +144,7 @@ describe('StatsCards', () => {
     it('should render one Grid item per stat tile', () => {
       const { container } = renderStats();
 
-      expect(container.querySelectorAll('.MuiGrid-item')).toHaveLength(STATS.length);
+      expect(container.querySelectorAll('.MuiGrid-root:not(.MuiGrid-container)')).toHaveLength(STATS.length);
     });
   });
 });

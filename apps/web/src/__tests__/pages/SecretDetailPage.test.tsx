@@ -403,7 +403,7 @@ describe('SecretDetailPage', () => {
       );
 
       const message = await screen.findByText('Storage backend unavailable');
-      expect(message.closest('.MuiAlert-root')).toHaveClass('MuiAlert-standardError');
+      expect(message.closest('.MuiAlert-root')).toHaveClass('MuiAlert-standard', 'MuiAlert-colorError');
 
       // The failure must not be dressed up as a success, and the file the user
       // still owns must still be listed.
