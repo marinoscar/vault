@@ -139,3 +139,24 @@ afterEach(() => {
 afterAll(() => {
   server.close();
 });
+
+// jsdom ships its own Blob, File and FormData, but fetch/Request/Response stay
+// Node's (undici). Node 24's undici brand-checks bodies against the *global*
+// Blob/File, so a jsdom File inside a FormData is sent as "[object File]",
+// request.formData() asserts, and response.blob() returns a jsdom Blob without
+// arrayBuffer(). Real browsers have one implementation, so use Node's for all
+// three; the tests then exercise the same Blob that fetch produces and consumes.
+// Built-in module name is assembled so web's tsconfig (no Node types) need not resolve it.
+const nodeBuffer: { Blob: typeof Blob; File: typeof File } = await import(
+  /* @vite-ignore */ 'node:' + 'buffer'
+);
+const nativeFormData = (
+  await new Response('', {
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+  }).formData()
+).constructor as typeof FormData;
+Object.assign(globalThis, {
+  Blob: nodeBuffer.Blob,
+  File: nodeBuffer.File,
+  FormData: nativeFormData,
+});

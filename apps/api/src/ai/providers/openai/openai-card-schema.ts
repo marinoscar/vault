@@ -277,7 +277,7 @@ const clamp01 = (v: number): number =>
  * degenerate sliver cannot produce an unusable crop; quarter_turns is rounded
  * and wrapped into 0-3 (negatives included, so -1 becomes 3).
  */
-const cropBoxSchema: z.ZodType<CardCropBox | null, z.ZodTypeDef, unknown> = z
+const cropBoxSchema: z.ZodType<CardCropBox | null, unknown> = z
   .object({
     x: z.number(),
     y: z.number(),

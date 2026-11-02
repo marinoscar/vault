@@ -23,7 +23,7 @@ export const fieldDefinitionSchema = fieldDefinitionBaseSchema.superRefine(
     if (field.type === 'select') {
       if (!field.options || field.options.length === 0) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: 'custom',
           path: ['options'],
           message: 'options is required for select fields',
         });
@@ -32,7 +32,7 @@ export const fieldDefinitionSchema = fieldDefinitionBaseSchema.superRefine(
 
       if (new Set(field.options).size !== field.options.length) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: 'custom',
           path: ['options'],
           message: 'options must not contain duplicate values',
         });
@@ -42,7 +42,7 @@ export const fieldDefinitionSchema = fieldDefinitionBaseSchema.superRefine(
 
     if (field.options !== undefined) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         path: ['options'],
         message: 'options is only allowed for select fields',
       });
