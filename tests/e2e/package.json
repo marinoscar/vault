@@ -1,15 +1,14 @@
 {
   "name": "e2e-tests",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
+  "type": "module",
+  "description": "Critical-journey e2e for Vault (E10.7). Serves the built web app with `vite preview` and answers /api at the network layer: it does NOT exercise the real API, database or AI provider.",
   "scripts": {
     "test": "playwright test",
-    "test:ui": "playwright test --ui",
-    "test:headed": "playwright test --headed",
-    "test:debug": "playwright test --debug",
     "test:report": "playwright show-report"
   },
   "devDependencies": {
-    "@playwright/test": "^1.40.0"
+    "@playwright/test": "1.63.0"
   }
 }

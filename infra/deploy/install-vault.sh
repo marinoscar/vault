@@ -164,8 +164,9 @@ services:
   api:
     container_name: vault-api
     build:
-      context: ./repo/apps/api
-      dockerfile: Dockerfile
+      # Repository root: the workspace packages and package-lock.json must be in the context (#144).
+      context: ./repo
+      dockerfile: apps/api/Dockerfile
       target: production
     env_file:
       - .env
@@ -186,8 +187,9 @@ services:
   web:
     container_name: vault-web
     build:
-      context: ./repo/apps/web
-      dockerfile: Dockerfile
+      # Repository root: the workspace packages and package-lock.json must be in the context (#144).
+      context: ./repo
+      dockerfile: apps/web/Dockerfile
       target: production
     restart: unless-stopped
     deploy:
