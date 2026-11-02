@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { PersonalAccessToken, PatCreatedResponse, PatDurationUnit } from '../types';
 import {
   getPersonalAccessTokens as fetchTokensApi,
@@ -23,19 +23,29 @@ export function usePersonalAccessTokens(): UsePersonalAccessTokensResult {
   const [tokens, setTokens] = useState<PersonalAccessToken[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const fetchTokens = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
       const result = await fetchTokensApi();
+      if (!mountedRef.current) return;
       setTokens(result);
     } catch (err) {
+      if (!mountedRef.current) return;
       const message = err instanceof Error ? err.message : 'Failed to fetch tokens';
       setError(message);
       setTokens([]);
     } finally {
-      setIsLoading(false);
+      if (mountedRef.current) setIsLoading(false);
     }
   }, []);
 

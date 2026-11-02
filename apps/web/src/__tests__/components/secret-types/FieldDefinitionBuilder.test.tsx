@@ -369,7 +369,7 @@ describe('FieldDefinitionBuilder', () => {
         />,
       );
 
-      const requiredSwitch = screen.getByRole('checkbox', { name: /required/i });
+      const requiredSwitch = screen.getByRole('switch', { name: /required/i });
       await user.click(requiredSwitch);
 
       await waitFor(() => {
@@ -390,7 +390,7 @@ describe('FieldDefinitionBuilder', () => {
         />,
       );
 
-      const sensitiveSwitch = screen.getByRole('checkbox', { name: /sensitive/i });
+      const sensitiveSwitch = screen.getByRole('switch', { name: /sensitive/i });
       await user.click(sensitiveSwitch);
 
       await waitFor(() => {

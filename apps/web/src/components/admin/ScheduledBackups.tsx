@@ -227,7 +227,12 @@ function BackupScheduleCard({ schedule, canWrite, onSaved }: ScheduleCardProps) 
         <Typography variant="h6" gutterBottom>
           Backup schedule
         </Typography>
-        <Typography variant="body2" color="text.secondary" paragraph>
+        <Typography
+          variant="body2"
+          sx={{
+            color: "text.secondary",
+            marginBottom: "16px"
+          }}>
           Back up every user&apos;s vault data into object storage as one password-protected
           (AES-256) zip per run. Open a backup with 7-Zip on Windows or Keka on Mac.
         </Typography>
@@ -251,10 +256,14 @@ function BackupScheduleCard({ schedule, canWrite, onSaved }: ScheduleCardProps) 
                 }
                 label="Scheduled backups enabled"
               />
-              <Typography variant="body2" color="text.secondary" data-testid="backup-summary">
+              <Typography variant="body2" data-testid="backup-summary" sx={{
+                color: "text.secondary"
+              }}>
                 {describeBackupSchedule(normalizeScheduleFields(draft))}
               </Typography>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{
+                color: "text.secondary"
+              }}>
                 {schedule.enabled && nextRun ? `Next run: ${nextRun}` : 'Next run: not scheduled'}
                 {lastRun ? ` · Last run: ${lastRun}` : ''}
               </Typography>
@@ -308,9 +317,10 @@ function BackupScheduleCard({ schedule, canWrite, onSaved }: ScheduleCardProps) 
                   onChange={(e) => update('timeOfDay', e.target.value)}
                   disabled={readOnly}
                   fullWidth
-                  InputLabelProps={{ shrink: true }}
-                  inputProps={{ step: 60 }}
-                />
+                  slotProps={{
+                    htmlInput: { step: 60 },
+                    inputLabel: { shrink: true }
+                  }} />
               )}
 
               {draft.frequency === 'weekly' && (
@@ -365,8 +375,10 @@ function BackupScheduleCard({ schedule, canWrite, onSaved }: ScheduleCardProps) 
                 onChange={(e) => update('keepCount', Number.parseInt(e.target.value, 10))}
                 disabled={readOnly}
                 fullWidth
-                inputProps={{ min: BACKUP_KEEP_MIN, max: BACKUP_KEEP_MAX, step: 1 }}
                 helperText={`Older backups are deleted after a successful run (${BACKUP_KEEP_MIN}-${BACKUP_KEEP_MAX})`}
+                slotProps={{
+                  htmlInput: { min: BACKUP_KEEP_MIN, max: BACKUP_KEEP_MAX, step: 1 }
+                }}
               />
             </Box>
 
@@ -388,11 +400,15 @@ function BackupScheduleCard({ schedule, canWrite, onSaved }: ScheduleCardProps) 
                 Backup password
               </Typography>
               {schedule.passwordConfigured ? (
-                <Typography variant="body2" color="text.secondary" gutterBottom>
+                <Typography variant="body2" gutterBottom sx={{
+                  color: "text.secondary"
+                }}>
                   {passwordSetOn ? `Password set on ${passwordSetOn}` : 'Password set'}
                 </Typography>
               ) : (
-                <Typography variant="body2" color="text.secondary" gutterBottom>
+                <Typography variant="body2" gutterBottom sx={{
+                  color: "text.secondary"
+                }}>
                   No password set yet. Backups cannot run without one.
                 </Typography>
               )}
@@ -436,9 +452,10 @@ function BackupScheduleCard({ schedule, canWrite, onSaved }: ScheduleCardProps) 
                       autoComplete="new-password"
                       fullWidth
                       disabled={readOnly}
-                      inputProps={{ maxLength: BACKUP_PASSWORD_MAX_LENGTH }}
-                      InputProps={{ endAdornment: visibilityToggle }}
-                    />
+                      slotProps={{
+                        input: { endAdornment: visibilityToggle },
+                        htmlInput: { maxLength: BACKUP_PASSWORD_MAX_LENGTH }
+                      }} />
                     <TextField
                       label="Confirm password"
                       type={showPassword ? 'text' : 'password'}
@@ -449,10 +466,14 @@ function BackupScheduleCard({ schedule, canWrite, onSaved }: ScheduleCardProps) 
                       autoComplete="new-password"
                       fullWidth
                       disabled={readOnly}
-                      inputProps={{ maxLength: BACKUP_PASSWORD_MAX_LENGTH }}
+                      slotProps={{
+                        htmlInput: { maxLength: BACKUP_PASSWORD_MAX_LENGTH }
+                      }}
                     />
                   </Box>
-                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                  <Stack direction="row" spacing={1} useFlexGap sx={{
+                    flexWrap: "wrap"
+                  }}>
                     <Button
                       variant="text"
                       size="small"
@@ -677,10 +698,11 @@ export function ScheduledBackups() {
             <Stack
               direction="row"
               spacing={1}
-              justifyContent="flex-end"
-              flexWrap="wrap"
               useFlexGap
-            >
+              sx={{
+                justifyContent: "flex-end",
+                flexWrap: "wrap"
+              }}>
               <Tooltip title="Refresh">
                 <IconButton aria-label="Refresh history" onClick={() => void loadRuns()}>
                   <RefreshIcon />
@@ -719,7 +741,12 @@ export function ScheduledBackups() {
           </Box>
 
           {canWrite && runDisabledReason && (
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: "text.secondary",
+                mb: 2
+              }}>
               {runDisabledReason}
             </Typography>
           )}

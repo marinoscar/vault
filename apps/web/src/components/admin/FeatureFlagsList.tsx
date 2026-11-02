@@ -83,7 +83,9 @@ export function FeatureFlagsList({ flags, onSave, disabled }: FeatureFlagsListPr
       </Box>
 
       {flagEntries.length === 0 ? (
-        <Typography color="text.secondary">
+        <Typography sx={{
+          color: "text.secondary"
+        }}>
           No feature flags configured
         </Typography>
       ) : (

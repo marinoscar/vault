@@ -83,7 +83,12 @@ export function ProfileSettings({
         <Typography variant="h6" gutterBottom>
           Profile
         </Typography>
-        <Typography variant="body2" color="text.secondary" paragraph>
+        <Typography
+          variant="body2"
+          sx={{
+            color: "text.secondary",
+            marginBottom: "16px"
+          }}>
           Customize how you appear to others
         </Typography>
 
@@ -93,7 +98,9 @@ export function ProfileSettings({
             <Typography variant="subtitle2" gutterBottom>
               Profile Image
             </Typography>
-            <Stack direction="row" spacing={3} alignItems="center">
+            <Stack direction="row" spacing={3} sx={{
+              alignItems: "center"
+            }}>
               <Avatar
                 src={currentImageUrl || undefined}
                 alt={user?.displayName || user?.email}

@@ -126,7 +126,9 @@ export default function EditSecretPage() {
         <Link color="inherit" href={`/secrets/${id}`} onClick={(e) => { e.preventDefault(); navigate(`/secrets/${id}`); }}>
           {secret.name}
         </Link>
-        <Typography color="text.primary">Edit</Typography>
+        <Typography sx={{
+          color: "text.primary"
+        }}>Edit</Typography>
       </Breadcrumbs>
 
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>

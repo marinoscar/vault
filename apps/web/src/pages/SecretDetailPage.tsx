@@ -173,7 +173,9 @@ export default function SecretDetailPage() {
         <Link color="inherit" href="/secrets" onClick={(e) => { e.preventDefault(); navigate('/secrets'); }}>
           Secrets
         </Link>
-        <Typography color="text.primary">{secret.name}</Typography>
+        <Typography sx={{
+          color: "text.primary"
+        }}>{secret.name}</Typography>
       </Breadcrumbs>
 
       <Typography variant="h4" gutterBottom>
@@ -242,7 +244,12 @@ export default function SecretDetailPage() {
         <DialogContent>
           {selectedVersion && secret && (
             <Box sx={{ pt: 1 }}>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              <Typography
+                variant="body2"
+                sx={{
+                  color: "text.secondary",
+                  mb: 2
+                }}>
                 Created: {new Date(selectedVersion.createdAt).toLocaleString()}
                 {selectedVersion.createdBy && ` by ${selectedVersion.createdBy.email}`}
               </Typography>

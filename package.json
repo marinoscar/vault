@@ -3,12 +3,14 @@
   "private": true,
   "workspaces": [
     "apps/*",
+    "packages/*",
     "tools/*"
   ],
   "engines": {
     "node": ">=24"
   },
   "scripts": {
+    "setup": "node -e \"const f=require('fs');const d='infra/compose/';if(!f.existsSync(d+'.env')){f.copyFileSync(d+'.env.example',d+'.env');console.log('created infra/compose/.env')}else console.log('infra/compose/.env exists')\"",
     "api": "npm -w apps/api",
     "web": "npm -w apps/web",
     "api:dev": "npm -w apps/api run start:dev",

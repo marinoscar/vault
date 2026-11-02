@@ -97,7 +97,9 @@ export default function CardsPage() {
         >
           Home
         </Link>
-        <Typography color="text.primary">Cards</Typography>
+        <Typography sx={{
+          color: "text.primary"
+        }}>Cards</Typography>
       </Breadcrumbs>
 
       <Box
@@ -133,7 +135,12 @@ export default function CardsPage() {
       </Box>
 
       {summaryLine && (
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: "text.secondary",
+            mb: 2
+          }}>
           {summaryLine}
         </Typography>
       )}
@@ -175,10 +182,14 @@ export default function CardsPage() {
         </Box>
       ) : cards.length === 0 ? (
         <Box sx={{ py: 6, textAlign: 'center' }}>
-          <Typography color="text.secondary" gutterBottom>
+          <Typography gutterBottom sx={{
+            color: "text.secondary"
+          }}>
             No cards yet.
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: "text.secondary"
+          }}>
             Add a card from the Secrets page to see its expiry status here.
           </Typography>
           <Box sx={{ mt: 2, display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
@@ -198,12 +209,20 @@ export default function CardsPage() {
         </Box>
       ) : visibleCards.length === 0 ? (
         <Box sx={{ py: 6, textAlign: 'center' }}>
-          <Typography color="text.secondary">No cards match your filters.</Typography>
+          <Typography sx={{
+            color: "text.secondary"
+          }}>No cards match your filters.</Typography>
         </Box>
       ) : (
         <Grid container spacing={2}>
           {visibleCards.map((card) => (
-            <Grid item xs={12} sm={6} md={4} key={card.id}>
+            <Grid
+              key={card.id}
+              size={{
+                xs: 12,
+                sm: 6,
+                md: 4
+              }}>
               {/* Renewal is offered on every card and is NOT gated on
                   `isImportAvailable`. Unlike the import wizard, the renewal
                   flow is fully usable with AI switched off — it falls back to a

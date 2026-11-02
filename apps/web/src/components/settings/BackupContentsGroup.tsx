@@ -88,7 +88,9 @@ export function BackupContentsGroup({
       {error ? (
         <FormHelperText>{error}</FormHelperText>
       ) : (
-        <Typography variant="body2" color="text.secondary" data-testid={summaryTestId}>
+        <Typography variant="body2" data-testid={summaryTestId} sx={{
+          color: "text.secondary"
+        }}>
           {describeBackupContents(value)}
         </Typography>
       )}

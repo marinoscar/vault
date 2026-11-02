@@ -398,6 +398,11 @@ describe('ImportCardPage — crop routing', () => {
   it('uploads the cropped file on save, never the raw capture', async () => {
     const user = userEvent.setup();
     let uploadedSize = -1;
+    const appendSpy = vi.spyOn(FormData.prototype, 'append');
+    const appendedFileSize = () => {
+      const call = appendSpy.mock.calls.find(([name]) => name === 'file');
+      return call ? (call[1] as File).size : -1;
+    };
     server.use(
       http.post(`${API_BASE}/secrets/cards/extract`, () =>
         HttpResponse.json({ data: { ...EXTRACTION, crops: { front: null, back: null } } }),
@@ -405,10 +410,11 @@ describe('ImportCardPage — crop routing', () => {
       http.post(`${API_BASE}/secrets`, () =>
         HttpResponse.json({ data: { id: 'secret-9' } }),
       ),
-      http.post(`${API_BASE}/storage/objects`, async ({ request }) => {
-        const formData = await request.formData();
-        const file = formData.get('file') as File;
-        uploadedSize = file.size;
+      http.post(`${API_BASE}/storage/objects`, async () => {
+        // Not `request.formData()`: undici cannot read a jsdom `File`, so the
+        // part arrives empty (and the parse asserts on Node 24). The file the
+        // page handed to the upload is read from the `FormData.append` spy.
+        uploadedSize = appendedFileSize();
         return HttpResponse.json({ data: { id: 'object-1' } });
       }),
       http.post(`${API_BASE}/secrets/:id/attachments`, () =>
@@ -426,6 +432,7 @@ describe('ImportCardPage — crop routing', () => {
     // raw 5-byte `front.png` capture the user actually picked.
     expect(uploadedSize).toBe('autofit-cropped'.length);
     expect(uploadedSize).not.toBe('bytes'.length);
+    appendSpy.mockRestore();
   });
 });
 

@@ -51,7 +51,9 @@ export function SecretTypesList({
         </Box>
       ) : types.length === 0 ? (
         <Box sx={{ py: 6, textAlign: 'center' }}>
-          <Typography color="text.secondary">No secret types defined yet.</Typography>
+          <Typography sx={{
+            color: "text.secondary"
+          }}>No secret types defined yet.</Typography>
         </Box>
       ) : (
         <Box sx={{ overflowX: 'auto' }}>
@@ -74,12 +76,16 @@ export function SecretTypesList({
                     <SecretTypeIcon icon={type.icon} fontSize="small" color="action" />
                   </TableCell>
                   <TableCell>
-                    <Typography variant="body2" fontWeight={500}>
+                    <Typography variant="body2" sx={{
+                      fontWeight: 500
+                    }}>
                       {type.name}
                     </Typography>
                   </TableCell>
                   <TableCell>
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" sx={{
+                      color: "text.secondary"
+                    }}>
                       {type.description ?? '—'}
                     </Typography>
                   </TableCell>

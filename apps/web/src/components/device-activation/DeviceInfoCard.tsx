@@ -99,10 +99,14 @@ export function DeviceInfoCard({
               <Box sx={{ display: 'flex', alignItems: 'flex-start' }}>
                 <DevicesIcon sx={{ mr: 1.5, mt: 0.5, color: 'text.secondary' }} />
                 <Box>
-                  <Typography variant="caption" color="text.secondary">
+                  <Typography variant="caption" sx={{
+                    color: "text.secondary"
+                  }}>
                     Device Name
                   </Typography>
-                  <Typography variant="body1" fontWeight="medium">
+                  <Typography variant="body1" sx={{
+                    fontWeight: "medium"
+                  }}>
                     {deviceInfo.clientInfo.deviceName}
                   </Typography>
                 </Box>
@@ -114,7 +118,9 @@ export function DeviceInfoCard({
               <Box sx={{ display: 'flex', alignItems: 'flex-start' }}>
                 <ComputerIcon sx={{ mr: 1.5, mt: 0.5, color: 'text.secondary' }} />
                 <Box>
-                  <Typography variant="caption" color="text.secondary">
+                  <Typography variant="caption" sx={{
+                    color: "text.secondary"
+                  }}>
                     Browser / Device
                   </Typography>
                   <Typography variant="body2" sx={{ wordBreak: 'break-word' }}>
@@ -129,7 +135,9 @@ export function DeviceInfoCard({
               <Box sx={{ display: 'flex', alignItems: 'flex-start' }}>
                 <LocationIcon sx={{ mr: 1.5, mt: 0.5, color: 'text.secondary' }} />
                 <Box>
-                  <Typography variant="caption" color="text.secondary">
+                  <Typography variant="caption" sx={{
+                    color: "text.secondary"
+                  }}>
                     IP Address
                   </Typography>
                   <Typography variant="body2">
@@ -145,7 +153,9 @@ export function DeviceInfoCard({
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
                 <AccessTimeIcon sx={{ mr: 1.5, color: 'text.secondary' }} />
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" sx={{
+                  color: "text.secondary"
+                }}>
                   Time remaining
                 </Typography>
               </Box>

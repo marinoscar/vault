@@ -351,7 +351,9 @@ export default function ImportCardPage() {
           >
             Cards
           </Link>
-          <Typography color="text.primary">Import</Typography>
+          <Typography sx={{
+            color: "text.primary"
+          }}>Import</Typography>
         </Breadcrumbs>
 
         <Alert severity="info">
@@ -394,7 +396,9 @@ export default function ImportCardPage() {
         >
           Cards
         </Link>
-        <Typography color="text.primary">Import a card</Typography>
+        <Typography sx={{
+          color: "text.primary"
+        }}>Import a card</Typography>
       </Breadcrumbs>
 
       <Typography variant="h4" gutterBottom>
@@ -469,7 +473,9 @@ export default function ImportCardPage() {
           <Typography variant="h6" gutterBottom>
             Reading the card…
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: "text.secondary"
+          }}>
             {isExtracting
               ? 'Your photos have been sent to OpenAI, which locates the card and reads the printed details. This usually takes a few seconds.'
               : 'Cropping the photos to the card…'}

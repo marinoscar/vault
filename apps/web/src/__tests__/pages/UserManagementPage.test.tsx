@@ -420,7 +420,7 @@ describe('UserManagementPage', () => {
         wrapperOptions: { user: mockAdminUser },
       });
 
-      expect(mockUserList).toHaveBeenCalledWith({}, {});
+      expect(mockUserList).toHaveBeenCalledWith({}, undefined);
     });
 
     it('should not pass any props to AllowlistTable', async () => {
@@ -435,7 +435,7 @@ describe('UserManagementPage', () => {
       await user.click(allowlistTab);
 
       await waitFor(() => {
-        expect(mockAllowlistTable).toHaveBeenCalledWith({}, {});
+        expect(mockAllowlistTable).toHaveBeenCalledWith({}, undefined);
       });
     });
   });

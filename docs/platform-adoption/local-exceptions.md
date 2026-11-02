@@ -30,7 +30,6 @@ Every place where Vault deviates from `@marinoscar/platform-*` on purpose, and t
 | Soft peer-dependency on **zod 4**: `@marinoscar/platform-db` peers `zod ^4.4.3` | `apps/api/package.json` | E1's zod bump is a separate change; `npm install` here needs it (or `--legacy-peer-deps`) | **E1** (zod) lands first |
 | AI provider key stored in `system_settings.ai` (encrypted with `VAULT_ENCRYPTION_KEY`) and generic AI config/verify code | `apps/api/src/ai/`, `settings` | Predates the credentials and AI slices | **E4** (credentials) and **E8** (AI) |
 | Hand-written `infra/` (compose, nginx, `deploy/`) and `.env.example` | `infra/` | Predates `platform-infra` generation | **E11** |
-| React 18, MUI 5 | package manifests | Predate the platform's required toolchain | **E1** |
 | Domain code lives in `apps/api/src` and `apps/web/src`, not packages | secrets, secret-types, backups, media, card extraction | Packages-first applies once the platform slices are adopted | **E12** |
 
 ## Permanent divergences

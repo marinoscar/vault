@@ -38,7 +38,12 @@ export function ThemeSettings({
         <Typography variant="h6" gutterBottom>
           Appearance
         </Typography>
-        <Typography variant="body2" color="text.secondary" paragraph>
+        <Typography
+          variant="body2"
+          sx={{
+            color: "text.secondary",
+            marginBottom: "16px"
+          }}>
           Choose how the application looks to you
         </Typography>
 

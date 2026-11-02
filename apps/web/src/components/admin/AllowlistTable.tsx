@@ -121,7 +121,9 @@ export function AllowlistTable() {
         </Box>
       ) : entries.length === 0 ? (
         <Box sx={{ p: 4, textAlign: 'center' }}>
-          <Typography color="text.secondary">
+          <Typography sx={{
+            color: "text.secondary"
+          }}>
             {search ? 'No emails found matching your search' : 'No emails in allowlist'}
           </Typography>
         </Box>
@@ -154,7 +156,9 @@ export function AllowlistTable() {
                           {entry.notes}
                         </Typography>
                       ) : (
-                        <Typography variant="body2" color="text.secondary">
+                        <Typography variant="body2" sx={{
+                          color: "text.secondary"
+                        }}>
                           -
                         </Typography>
                       )}

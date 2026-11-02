@@ -34,7 +34,7 @@ Vault is a self-hosted secrets manager. It stores credentials, API keys, credit 
 - **Testing**: Jest + Supertest
 
 ### Frontend
-- **Framework**: React 18 with TypeScript
+- **Framework**: React 19 with TypeScript
 - **UI Library**: Material-UI (MUI)
 - **State Management**: React Context API
 - **Testing**: Vitest + React Testing Library

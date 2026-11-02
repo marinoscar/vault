@@ -52,7 +52,13 @@ export function UISettings({ settings, onSave, disabled }: UISettingsProps) {
         }
         label="Allow users to override system theme"
       />
-      <Typography variant="body2" color="text.secondary" sx={{ ml: 4, mb: 2 }}>
+      <Typography
+        variant="body2"
+        sx={{
+          color: "text.secondary",
+          ml: 4,
+          mb: 2
+        }}>
         When disabled, all users will use the system-defined theme
       </Typography>
 

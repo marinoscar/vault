@@ -37,7 +37,14 @@ const STATUS_CHIP: Record<BackupRunStatus, { label: string; color: 'info' | 'suc
 export function RunStatusChip({ run }: { run: BackupRun }) {
   const { label, color } = STATUS_CHIP[run.status] ?? STATUS_CHIP.failed;
   return (
-    <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap" useFlexGap>
+    <Stack
+      direction="row"
+      spacing={0.5}
+      useFlexGap
+      sx={{
+        alignItems: "center",
+        flexWrap: "wrap"
+      }}>
       <Chip
         size="small"
         label={label}
@@ -62,19 +69,22 @@ export function RunContentChips({ run }: { run: BackupRun }) {
   const labels = backupRunContentChips(run.contents);
   if (labels.length === 0) {
     return (
-      <Typography variant="body2" color="text.secondary">
-        —
-      </Typography>
+      <Typography variant="body2" sx={{
+        color: "text.secondary"
+      }}>—
+              </Typography>
     );
   }
   return (
     <Stack
       direction="row"
       spacing={0.5}
-      flexWrap="wrap"
       useFlexGap
       aria-label="Backup contents"
       data-testid={`backup-contents-${run.id}`}
+      sx={{
+        flexWrap: "wrap"
+      }}
     >
       {labels.map((label) => (
         <Chip key={label} size="small" variant="outlined" label={label} />
@@ -137,7 +147,11 @@ export function BackupRunsTable({
   }
   if (runs.length === 0) {
     return (
-      <Typography color="text.secondary" sx={{ p: 2 }}>
+      <Typography
+        sx={{
+          color: "text.secondary",
+          p: 2
+        }}>
         {emptyText}
       </Typography>
     );
@@ -172,7 +186,12 @@ export function BackupRunsTable({
                   <TableCell sx={wideOnly}>
                     {run.trigger === 'manual' ? 'Manual' : 'Scheduled'}
                     {run.trigger === 'manual' && run.triggeredBy && (
-                      <Typography variant="caption" color="text.secondary" display="block">
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: "text.secondary",
+                          display: "block"
+                        }}>
                         {run.triggeredBy.displayName || run.triggeredBy.email}
                       </Typography>
                     )}
@@ -184,9 +203,12 @@ export function BackupRunsTable({
                     <Typography
                       variant="caption"
                       color="error"
-                      display="block"
-                      sx={{ mt: 0.5, maxWidth: 280, wordBreak: 'break-word' }}
-                    >
+                      sx={{
+                        display: "block",
+                        mt: 0.5,
+                        maxWidth: 280,
+                        wordBreak: 'break-word'
+                      }}>
                       {run.error}
                     </Typography>
                   )}

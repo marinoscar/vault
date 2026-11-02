@@ -1,6 +1,6 @@
 import { Card, CardActionArea, CardContent, Typography, Grid, Avatar } from '@mui/material';
 import {
-  AddCircleOutline as CreateIcon,
+  AddCircleOutlineOutlined as CreateIcon,
   CloudUpload as UploadIcon,
   Category as TypesIcon,
   Settings as SettingsIcon,
@@ -29,10 +29,17 @@ export function QuickActions() {
   return (
     <Card sx={{ height: '100%' }}>
       <CardContent>
-        <Typography variant="h6" fontWeight={600} gutterBottom>Quick Actions</Typography>
+        <Typography variant="h6" gutterBottom sx={{
+          fontWeight: 600
+        }}>Quick Actions</Typography>
         <Grid container spacing={2}>
           {actions.map((action) => (
-            <Grid item xs={6} sm={3} key={action.path}>
+            <Grid
+              key={action.path}
+              size={{
+                xs: 6,
+                sm: 3
+              }}>
               <Card variant="outlined" sx={cardSx}>
                 {/* CardActionArea renders a real <button>: tab-reachable, activated by
                     Enter/Space, with a visible focus ring. A Card with a bare onClick
@@ -51,8 +58,12 @@ export function QuickActions() {
                     >
                       <action.icon />
                     </Avatar>
-                    <Typography variant="subtitle2" fontWeight={600}>{action.title}</Typography>
-                    <Typography variant="caption" color="text.secondary">{action.description}</Typography>
+                    <Typography variant="subtitle2" sx={{
+                      fontWeight: 600
+                    }}>{action.title}</Typography>
+                    <Typography variant="caption" sx={{
+                      color: "text.secondary"
+                    }}>{action.description}</Typography>
                   </CardContent>
                 </CardActionArea>
               </Card>

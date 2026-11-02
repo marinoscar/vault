@@ -107,7 +107,9 @@ export default function CreateSecretPage() {
         <Link color="inherit" href="/secrets" onClick={(e) => { e.preventDefault(); navigate('/secrets'); }}>
           Secrets
         </Link>
-        <Typography color="text.primary">New Secret</Typography>
+        <Typography sx={{
+          color: "text.primary"
+        }}>New Secret</Typography>
       </Breadcrumbs>
 
       <Typography variant="h4" gutterBottom>
