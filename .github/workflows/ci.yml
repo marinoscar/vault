@@ -154,6 +154,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Generate Prisma Client
+        run: npm run prisma:generate --workspace=api
+
       - name: Build the pre-baseline database (7 original migrations + fixture rows)
         working-directory: apps/api
         run: |
