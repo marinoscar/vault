@@ -2,10 +2,16 @@ import {
   Injectable,
   Logger,
   ConflictException,
+  HttpException,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { CredentialsService } from '@marinoscar/platform-api/credentials';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CryptoService } from '../../common/services/crypto.service';
+import {
+  VAULT_AI_CREDENTIAL_LABEL,
+  VAULT_AI_CREDENTIAL_NAME,
+  VAULT_AI_CREDENTIAL_PURPOSE,
+} from '../../platform/credentials/credentials.config';
 import { UpdateSystemSettingsDto } from '../dto/update-system-settings.dto';
 import { PatchSystemSettingsDto } from '../dto/update-system-settings.dto';
 import {
@@ -13,7 +19,6 @@ import {
   DEFAULT_SYSTEM_SETTINGS,
   AiSettings,
   AiSettingsProjection,
-  EncryptedSecretValue,
   SystemSettingsValue,
 } from '../../common/types/settings.types';
 import { systemSettingsSchema } from '../../common/schemas/settings.schema';
@@ -35,13 +40,28 @@ interface RedactedAiAudit {
   apiKeyLast4: string | null;
 }
 
+/** What a PATCH asks of the credential store for the AI key. */
+type ApiKeyChange =
+  | { kind: 'keep' }
+  | { kind: 'clear' }
+  | { kind: 'set'; plaintext: string };
+
+const HINT_MASK = '\u2022\u2022\u2022\u2022';
+
+/** The revealed tail of a credential hint (`••••1234` -> `1234`), or null. */
+function lastFourOfHint(hint: string | null | undefined): string | null {
+  if (!hint) return null;
+  const tail = hint.startsWith(HINT_MASK) ? hint.slice(HINT_MASK.length) : hint;
+  return tail.length > 0 ? tail : null;
+}
+
 @Injectable()
 export class SystemSettingsService {
   private readonly logger = new Logger(SystemSettingsService.name);
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly crypto: CryptoService,
+    private readonly credentials: CredentialsService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -51,9 +71,11 @@ export class SystemSettingsService {
   /**
    * Read the settings row, creating it from defaults if it is missing.
    *
-   * INTERNAL ONLY. The returned `value` is the raw stored JSON and therefore
-   * still contains the encrypted `ai.apiKey` block. Never return this to a
-   * caller outside this service - use `toResponse()`.
+   * INTERNAL ONLY. The returned `value` is the raw stored JSON. Since E4.2 the
+   * AI key lives in the credential store, but a row not yet migrated
+   * (`npm run vault:migrate-ai-key`) can still hold the legacy encrypted
+   * `ai.apiKey` block. Never return this to a caller outside this service - use
+   * `toResponse()`.
    */
   private async getRawRow() {
     let settings = await this.prisma.systemSettings.findUnique({
@@ -83,7 +105,8 @@ export class SystemSettingsService {
    * This exists because merging the masked projection back into storage would
    * overwrite `ai.apiKey` (an encrypted object) with `apiKeyConfigured` (a
    * boolean) and permanently destroy the credential. Every write path must
-   * merge from here, never from `getSettings()`.
+   * merge from here, never from `getSettings()` (the projection has no
+   * `apiKey`, and merging it back would strip a not-yet-migrated legacy block).
    */
   private async getRawValue(): Promise<SystemSettingsValue> {
     const settings = await this.getRawRow();
@@ -93,13 +116,15 @@ export class SystemSettingsService {
   /**
    * Build the masked, client-safe response from a settings row.
    */
-  private toResponse(settings: Awaited<ReturnType<typeof this.getRawRow>>) {
+  private async toResponse(
+    settings: Awaited<ReturnType<typeof this.getRawRow>>,
+  ) {
     const value = settings.value as unknown as SystemSettingsValue;
 
     return {
       ui: value.ui,
       features: value.features,
-      ai: this.projectAiSettings(value.ai),
+      ai: await this.projectAiSettings(value.ai),
       updatedAt: settings.updatedAt,
       updatedBy: settings.updatedByUser,
       version: settings.version,
@@ -109,13 +134,22 @@ export class SystemSettingsService {
   /**
    * Reduce stored AI settings to the only shape that may leave the API.
    * Returns null for rows written before the AI block existed.
+   *
+   * The key's presence and its mask come from the credential store (purpose
+   * `ai`, name `openai`): `describe()` returns the non-secret hint, never the
+   * ciphertext.
    */
-  private projectAiSettings(
+  private async projectAiSettings(
     ai: AiSettings | undefined,
-  ): AiSettingsProjection | null {
+  ): Promise<AiSettingsProjection | null> {
     if (!ai) {
       return null;
     }
+
+    const info = await this.credentials.describe(
+      VAULT_AI_CREDENTIAL_PURPOSE,
+      VAULT_AI_CREDENTIAL_NAME,
+    );
 
     return {
       enabled: ai.enabled ?? DEFAULT_AI_SETTINGS.enabled,
@@ -123,9 +157,9 @@ export class SystemSettingsService {
       model: ai.model ?? DEFAULT_AI_SETTINGS.model,
       maxCallsPerUserPerDay:
         ai.maxCallsPerUserPerDay ?? DEFAULT_AI_SETTINGS.maxCallsPerUserPerDay,
-      apiKeyConfigured: Boolean(ai.apiKey),
-      apiKeyLast4: ai.apiKey?.last4 ?? null,
-      apiKeyUpdatedAt: ai.apiKey?.updatedAt ?? null,
+      apiKeyConfigured: info !== null,
+      apiKeyLast4: lastFourOfHint(info?.hint),
+      apiKeyUpdatedAt: info ? info.updatedAt.toISOString() : null,
     };
   }
 
@@ -139,7 +173,7 @@ export class SystemSettingsService {
    */
   async getSettings() {
     const settings = await this.getRawRow();
-    return this.toResponse(settings);
+    return await this.toResponse(settings);
   }
 
   // ---------------------------------------------------------------------------
@@ -194,12 +228,12 @@ export class SystemSettingsService {
     // Create audit event (redacted - audit rows outlive settings rewrites, so
     // ciphertext stored here would survive a key rotation forever)
     await this.createAuditEvent(userId, 'system_settings:replace', settings.id, {
-      newValue: this.redactSettingsForAudit(validated, false),
+      newValue: this.redactSettingsForAudit(validated, false, null),
     });
 
     this.logger.log(`System settings replaced by user: ${userId}`);
 
-    return this.toResponse(settings);
+    return await this.toResponse(settings);
   }
 
   /**
@@ -223,10 +257,7 @@ export class SystemSettingsService {
       );
     }
 
-    const { ai: nextAi, apiKeyChanged } = this.mergeAiSettings(
-      current.ai,
-      dto.ai,
-    );
+    const { ai: nextAi, apiKey } = this.mergeAiSettings(current.ai, dto.ai);
 
     // Deep merge with existing settings
     const merged: SystemSettingsValue = {
@@ -253,6 +284,12 @@ export class SystemSettingsService {
     // Validate merged result
     const validated = systemSettingsSchema.parse(merged);
 
+    // The key goes to the credential store BEFORE the row is written, so a
+    // store failure (no SECRETS_ENCRYPTION_KEY, say) leaves the settings as they
+    // were and the admin can retry the whole save.
+    const apiKeyLast4 = await this.applyApiKeyChange(apiKey, userId);
+    const apiKeyChanged = apiKey.kind !== 'keep';
+
     const settings = await this.prisma.systemSettings.update({
       where: { key: SETTINGS_KEY },
       data: {
@@ -263,11 +300,16 @@ export class SystemSettingsService {
       include: SETTINGS_INCLUDE,
     });
 
-    // Create audit event. BOTH sides are redacted: `dto` holds the plaintext
-    // key the admin just typed, `validated` holds its ciphertext.
+    // Create audit event. The DTO holds the plaintext key the admin just typed
+    // and a not-yet-migrated row holds its legacy ciphertext: the redaction
+    // drops both and keeps only the mask.
     await this.createAuditEvent(userId, 'system_settings:patch', settings.id, {
-      changes: this.redactSettingsForAudit(dto, apiKeyChanged),
-      resultingValue: this.redactSettingsForAudit(validated, apiKeyChanged),
+      changes: this.redactSettingsForAudit(dto, apiKeyChanged, apiKeyLast4),
+      resultingValue: this.redactSettingsForAudit(
+        validated,
+        apiKeyChanged,
+        apiKeyLast4,
+      ),
     });
 
     this.logger.log(
@@ -276,7 +318,7 @@ export class SystemSettingsService {
       }`,
     );
 
-    return this.toResponse(settings);
+    return await this.toResponse(settings);
   }
 
   /**
@@ -286,31 +328,33 @@ export class SystemSettingsService {
    * `patch.apiKey !== undefined`: the two states must be distinguished.
    *   - key absent  -> keep the stored credential untouched
    *   - explicit null -> clear the credential
-   *   - string      -> encrypt and replace
+   *   - string      -> replace it
+   *
+   * The key itself is NOT part of the merged settings: it is returned as an
+   * instruction for the credential store (`applyApiKeyChange`). The stored
+   * `ai.apiKey` field only ever holds the legacy ciphertext of a row that
+   * `vault:migrate-ai-key` has not blanked yet; any explicit change of the key
+   * (set or clear) blanks it, because the credential store is now authoritative.
    */
   private mergeAiSettings(
     current: AiSettings | undefined,
     patch: PatchSystemSettingsDto['ai'],
-  ): { ai: AiSettings | undefined; apiKeyChanged: boolean } {
+  ): { ai: AiSettings | undefined; apiKey: ApiKeyChange } {
     // Untouched by this PATCH: leave storage exactly as it was, including
     // leaving `ai` absent on rows that never had it.
     if (!patch) {
-      return { ai: current, apiKeyChanged: false };
+      return { ai: current, apiKey: { kind: 'keep' } };
     }
 
     const base: AiSettings = current ?? { ...DEFAULT_AI_SETTINGS };
 
-    let apiKey: EncryptedSecretValue | null = base.apiKey ?? null;
-    let apiKeyChanged = false;
-
+    let apiKey: ApiKeyChange = { kind: 'keep' };
     if ('apiKey' in patch) {
       const provided = patch.apiKey;
       if (provided === null) {
-        apiKey = null;
-        apiKeyChanged = true;
+        apiKey = { kind: 'clear' };
       } else if (typeof provided === 'string') {
-        apiKey = this.encryptApiKey(provided);
-        apiKeyChanged = true;
+        apiKey = { kind: 'set', plaintext: provided };
       }
       // `undefined` (key present but explicitly undefined) keeps the existing
       // credential, same as an absent key.
@@ -323,52 +367,79 @@ export class SystemSettingsService {
         model: patch.model ?? base.model,
         maxCallsPerUserPerDay:
           patch.maxCallsPerUserPerDay ?? base.maxCallsPerUserPerDay,
-        apiKey,
+        apiKey: apiKey.kind === 'keep' ? (base.apiKey ?? null) : null,
       },
-      apiKeyChanged,
+      apiKey,
     };
   }
 
   /**
-   * Encrypt a plaintext credential for storage.
+   * Apply a key change to the credential store (purpose `ai`, name `openai`).
+   * Returns the new mask (last four characters, when the key is long enough to
+   * show any) for the audit row, or null.
    *
-   * `CryptoService.onModuleInit` only WARNS when VAULT_ENCRYPTION_KEY is
-   * missing, so `encrypt()` throws at call time. Surface that as a 503 the
-   * admin can act on rather than an unhandled 500.
+   * The store throws when SECRETS_ENCRYPTION_KEY is missing or malformed.
+   * Surface that as a 503 the admin can act on rather than an unhandled 500;
+   * a store-level HTTP error (a blank first write is a 400) passes through.
    */
-  private encryptApiKey(plaintext: string): EncryptedSecretValue {
+  private async applyApiKeyChange(
+    change: ApiKeyChange,
+    userId: string,
+  ): Promise<string | null> {
+    if (change.kind === 'keep') {
+      return null;
+    }
+
+    if (change.kind === 'clear') {
+      await this.credentials.deleteSecret(
+        VAULT_AI_CREDENTIAL_PURPOSE,
+        VAULT_AI_CREDENTIAL_NAME,
+      );
+      return null;
+    }
+
     try {
-      const encrypted = this.crypto.encrypt(plaintext);
-      return {
-        ...encrypted,
-        last4: plaintext.slice(-4),
-        updatedAt: new Date().toISOString(),
-      };
+      await this.credentials.setSecret(
+        VAULT_AI_CREDENTIAL_PURPOSE,
+        VAULT_AI_CREDENTIAL_NAME,
+        change.plaintext,
+        { label: VAULT_AI_CREDENTIAL_LABEL, updatedByUserId: userId },
+      );
     } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       this.logger.error(
-        `Failed to encrypt AI API key: ${(error as Error)?.message}`,
+        `Failed to store AI API key: ${(error as Error)?.message}`,
       );
       throw new ServiceUnavailableException({
         code: 'ENCRYPTION_UNAVAILABLE',
         message:
-          'Encryption is not available, so the API key could not be stored. Check that VAULT_ENCRYPTION_KEY is configured, then re-enter the key.',
+          'Encryption is not available, so the API key could not be stored. Check that SECRETS_ENCRYPTION_KEY is configured, then re-enter the key.',
       });
     }
+
+    const info = await this.credentials.describe(
+      VAULT_AI_CREDENTIAL_PURPOSE,
+      VAULT_AI_CREDENTIAL_NAME,
+    );
+    return lastFourOfHint(info?.hint);
   }
 
   /**
    * Strip every secret-bearing field out of a settings object before it is
    * written to `audit_events.meta`.
    *
-   * Handles both the PATCH DTO shape (`ai.apiKey` is plaintext or null) and the
-   * stored shape (`ai.apiKey` is an encrypted object). Audit rows are permanent
-   * and are not rewritten when settings change, so neither plaintext nor
-   * ciphertext may ever be recorded here - a ciphertext copy in the audit log
-   * would survive a key rotation and defeat it.
+   * Handles the PATCH DTO shape (`ai.apiKey` is plaintext or null) and the
+   * stored shape (`ai.apiKey` is legacy ciphertext or null). Audit rows are
+   * permanent and are not rewritten when settings change, so neither plaintext
+   * nor ciphertext may ever be recorded here: whatever `ai.apiKey` holds is
+   * dropped, and only the mask the credential store derived is kept.
    */
   private redactSettingsForAudit(
     input: unknown,
     apiKeyChanged: boolean,
+    apiKeyLast4: string | null,
   ): Record<string, unknown> {
     if (!input || typeof input !== 'object') {
       return {};
@@ -383,20 +454,6 @@ export class SystemSettingsService {
       return { ...rest, ai: null };
     }
 
-    const apiKey: unknown = ai.apiKey;
-    let apiKeyLast4: string | null = null;
-    if (typeof apiKey === 'string') {
-      // PATCH DTO shape: plaintext. Only the mask is retained.
-      apiKeyLast4 = apiKey.slice(-4);
-    } else if (
-      apiKey &&
-      typeof apiKey === 'object' &&
-      typeof (apiKey as EncryptedSecretValue).last4 === 'string'
-    ) {
-      // Stored shape: ciphertext/iv/authTag are dropped, only the mask kept.
-      apiKeyLast4 = (apiKey as EncryptedSecretValue).last4;
-    }
-
     const redacted: RedactedAiAudit = {
       enabled: ai.enabled,
       model: ai.model,
@@ -409,49 +466,6 @@ export class SystemSettingsService {
   }
 
   // ---------------------------------------------------------------------------
-  // Credential access
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Resolve the system-wide OpenAI API key in PLAINTEXT.
-   *
-   * This is the ONLY place the plaintext credential ever exists in memory.
-   * `getSettings()` and `getSettingValue()` both return the masked projection
-   * and cannot be used for this. Do not log, return, or otherwise propagate the
-   * value returned here - hand it straight to the provider client.
-   *
-   * Returns null when no key is configured.
-   * Throws 503 when the vault key is missing or has been rotated (the stored
-   * ciphertext can no longer be authenticated), so the admin is told to
-   * re-enter the key instead of receiving an opaque 500.
-   */
-  async getOpenAiApiKeyPlaintext(): Promise<string | null> {
-    const value = await this.getRawValue();
-    const apiKey = value.ai?.apiKey;
-
-    if (!apiKey) {
-      return null;
-    }
-
-    try {
-      return this.crypto.decrypt(
-        apiKey.ciphertext,
-        apiKey.iv,
-        apiKey.authTag,
-      );
-    } catch (error) {
-      this.logger.error(
-        `Failed to decrypt AI API key: ${(error as Error)?.message}`,
-      );
-      throw new ServiceUnavailableException({
-        code: 'AI_API_KEY_UNREADABLE',
-        message:
-          'The stored OpenAI API key could not be decrypted. The encryption key is missing or has been rotated - an administrator must re-enter the API key in System Settings.',
-      });
-    }
-  }
-
-  // ---------------------------------------------------------------------------
   // Convenience readers
   // ---------------------------------------------------------------------------
 
@@ -460,7 +474,7 @@ export class SystemSettingsService {
    *
    * NOTE: this reads the MASKED projection, so `ai.apiKey` is not reachable
    * from here by design - `ai` exposes only `apiKeyConfigured` /
-   * `apiKeyLast4` / `apiKeyUpdatedAt`. Use `getOpenAiApiKeyPlaintext()` to
+   * `apiKeyLast4` / `apiKeyUpdatedAt`. Use `AiConfigService` (the credential store) to
    * obtain the credential.
    */
   async getSettingValue<T>(path: string): Promise<T | undefined> {

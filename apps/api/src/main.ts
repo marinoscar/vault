@@ -14,6 +14,8 @@ import { Logger } from '@nestjs/common';
 import fastifyCookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
 import { buildCorsOptions, registerPlatformDocs } from '@marinoscar/platform-api/host';
+import { verifyEncryptionKeyAtStartup } from '@marinoscar/platform-api/core';
+import { PrismaService } from './prisma/prisma.service';
 import { AppModule } from './app.module';
 import { APP_OPENAPI } from './openapi/document';
 
@@ -39,6 +41,15 @@ async function bootstrap() {
       // schema.
       bodyLimit: 16 * 1024 * 1024,
     }),
+  );
+
+  // SECRETS_ENCRYPTION_KEY (the platform credential store's key, not
+  // VAULT_ENCRYPTION_KEY): validated before the port is bound. A malformed key
+  // always fails; a missing one fails when credentials are already stored and
+  // warns otherwise. The Doctor check `secrets.encryption-key` reports the same.
+  await verifyEncryptionKeyAtStartup(
+    () => app.get(PrismaService).credential.count(),
+    logger,
   );
 
   // Register cookie plugin

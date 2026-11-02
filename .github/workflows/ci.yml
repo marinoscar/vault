@@ -75,6 +75,8 @@ jobs:
       POSTGRES_PASSWORD: "p@ss/word:ci"
       POSTGRES_DB: vault_ci
       INITIAL_ADMIN_EMAIL: admin@example.test
+      # Test-only credential store key (base64, 32 bytes); never a real key.
+      SECRETS_ENCRYPTION_KEY: dmF1bHQtdGVzdC1zZWNyZXRzLWVuY3J5cHRpb24tazE=
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -159,6 +161,7 @@ jobs:
       POSTGRES_DB: vault_rehearsal
       PGPASSWORD: "p@ss/word:ci"
       INITIAL_ADMIN_EMAIL: admin@example.test
+      SECRETS_ENCRYPTION_KEY: dmF1bHQtdGVzdC1zZWNyZXRzLWVuY3J5cHRpb24tazE=
     steps:
       - name: Checkout
         uses: actions/checkout@v4

@@ -34,6 +34,7 @@
     "db:baseline": "node scripts/platform-env.js db baseline",
     "db:policies": "platform db policies",
     "db:test": "node scripts/test-db-connection.js",
+    "vault:migrate-ai-key": "ts-node --project prisma/tsconfig.json --transpile-only scripts/migrate-ai-key.ts",
     "test:db": "jest --config ./test/jest.config.js --testRegex '\\.db\\.spec\\.ts$' --runInBand",
     "prisma:typecheck": "tsc -p prisma/tsconfig.json --noEmit"
   },

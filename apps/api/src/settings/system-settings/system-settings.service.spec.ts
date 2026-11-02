@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException } from '@nestjs/common';
 import { SystemSettingsService } from './system-settings.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CryptoService } from '../../common/services/crypto.service';
+import { CredentialsService } from '@marinoscar/platform-api/credentials';
 import {
   createMockPrismaService,
   MockPrismaService,
@@ -15,7 +15,9 @@ import {
 describe('SystemSettingsService', () => {
   let service: SystemSettingsService;
   let mockPrisma: MockPrismaService;
-  let mockCrypto: jest.Mocked<Pick<CryptoService, 'encrypt' | 'decrypt'>>;
+  let mockCredentials: jest.Mocked<
+    Pick<CredentialsService, 'describe' | 'setSecret' | 'deleteSecret' | 'getSecret'>
+  >;
 
   const mockUserId = 'user-123';
   const mockUser = {
@@ -35,20 +37,18 @@ describe('SystemSettingsService', () => {
 
   beforeEach(async () => {
     mockPrisma = createMockPrismaService();
-    mockCrypto = {
-      encrypt: jest.fn().mockReturnValue({
-        ciphertext: 'mock-ciphertext',
-        iv: 'mock-iv',
-        authTag: 'mock-auth-tag',
-      }),
-      decrypt: jest.fn().mockReturnValue('sk-decrypted-key'),
+    mockCredentials = {
+      describe: jest.fn().mockResolvedValue(null),
+      setSecret: jest.fn().mockResolvedValue(undefined),
+      deleteSecret: jest.fn().mockResolvedValue(undefined),
+      getSecret: jest.fn().mockResolvedValue(null),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SystemSettingsService,
         { provide: PrismaService, useValue: mockPrisma },
-        { provide: CryptoService, useValue: mockCrypto },
+        { provide: CredentialsService, useValue: mockCredentials },
       ],
     }).compile();
 
@@ -449,6 +449,146 @@ describe('SystemSettingsService', () => {
           }) as any,
         },
       });
+    });
+  });
+
+  describe('AI API key (credential store, E4.2)', () => {
+    const PLAINTEXT = 'sk-test-abcdefghijklmnopqrstuvwxyz';
+    const legacyBlock = {
+      ciphertext: 'legacy-ciphertext',
+      iv: 'iv',
+      authTag: 'tag',
+      last4: 'wxyz',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const rowWith = (apiKey: unknown) =>
+      ({
+        ...mockSystemSettings,
+        value: {
+          ui: DEFAULT_SYSTEM_SETTINGS.ui,
+          features: {},
+          ai: {
+            enabled: true,
+            provider: 'openai',
+            model: 'gpt-4o-mini',
+            maxCallsPerUserPerDay: 50,
+            apiKey,
+          },
+        },
+      }) as any;
+
+    beforeEach(() => {
+      mockPrisma.auditEvent.create.mockResolvedValue({} as any);
+    });
+
+    it('projects presence and mask from the credential store, never the row', async () => {
+      mockPrisma.systemSettings.findUnique.mockResolvedValue(rowWith(null));
+      mockCredentials.describe.mockResolvedValue({
+        purpose: 'ai',
+        name: 'openai',
+        hint: '\u2022\u2022\u2022\u2022wxyz',
+        label: null,
+        updatedByUserId: null,
+        createdAt: new Date('2026-02-01T00:00:00Z'),
+        updatedAt: new Date('2026-02-02T00:00:00Z'),
+      });
+
+      const result = await service.getSettings();
+
+      expect(mockCredentials.describe).toHaveBeenCalledWith('ai', 'openai');
+      expect(result.ai).toMatchObject({
+        apiKeyConfigured: true,
+        apiKeyLast4: 'wxyz',
+        apiKeyUpdatedAt: '2026-02-02T00:00:00.000Z',
+      });
+    });
+
+    it('reports not configured when the store has no key, even if a legacy block remains', async () => {
+      mockPrisma.systemSettings.findUnique.mockResolvedValue(rowWith(legacyBlock));
+
+      const result = await service.getSettings();
+
+      expect(result.ai).toMatchObject({ apiKeyConfigured: false, apiKeyLast4: null });
+      expect(JSON.stringify(result)).not.toContain('legacy-ciphertext');
+    });
+
+    it('PATCH with a key writes the credential, blanks the legacy block and keeps the key out of the row and the audit trail', async () => {
+      mockPrisma.systemSettings.findUnique.mockResolvedValue(rowWith(legacyBlock));
+      mockPrisma.systemSettings.update.mockResolvedValue(rowWith(null));
+      mockCredentials.describe.mockResolvedValue({
+        purpose: 'ai', name: 'openai', hint: '\u2022\u2022\u2022\u2022wxyz', label: null,
+        updatedByUserId: mockUserId, createdAt: new Date(), updatedAt: new Date(),
+      });
+
+      await service.patchSettings({ ai: { apiKey: PLAINTEXT } } as any, mockUserId);
+
+      expect(mockCredentials.setSecret).toHaveBeenCalledWith(
+        'ai',
+        'openai',
+        PLAINTEXT,
+        expect.objectContaining({ updatedByUserId: mockUserId }),
+      );
+      const written = mockPrisma.systemSettings.update.mock.calls[0][0] as any;
+      expect(written.data.value.ai.apiKey).toBeNull();
+      const everything = JSON.stringify([
+        written,
+        mockPrisma.auditEvent.create.mock.calls,
+      ]);
+      expect(everything).not.toContain(PLAINTEXT);
+      expect(everything).not.toContain('legacy-ciphertext');
+      expect(everything).toContain('"apiKeyChanged":true');
+    });
+
+    it('PATCH with null deletes the credential and blanks the legacy block', async () => {
+      mockPrisma.systemSettings.findUnique.mockResolvedValue(rowWith(legacyBlock));
+      mockPrisma.systemSettings.update.mockResolvedValue(rowWith(null));
+
+      await service.patchSettings({ ai: { apiKey: null } } as any, mockUserId);
+
+      expect(mockCredentials.deleteSecret).toHaveBeenCalledWith('ai', 'openai');
+      expect(mockCredentials.setSecret).not.toHaveBeenCalled();
+      const written = mockPrisma.systemSettings.update.mock.calls[0][0] as any;
+      expect(written.data.value.ai.apiKey).toBeNull();
+    });
+
+    it('PATCH of other AI fields leaves the credential and a legacy block alone', async () => {
+      mockPrisma.systemSettings.findUnique.mockResolvedValue(rowWith(legacyBlock));
+      mockPrisma.systemSettings.update.mockResolvedValue(rowWith(legacyBlock));
+
+      await service.patchSettings({ ai: { model: 'gpt-4o' } } as any, mockUserId);
+
+      expect(mockCredentials.setSecret).not.toHaveBeenCalled();
+      expect(mockCredentials.deleteSecret).not.toHaveBeenCalled();
+      const written = mockPrisma.systemSettings.update.mock.calls[0][0] as any;
+      expect(written.data.value.ai.apiKey).toEqual(legacyBlock);
+      expect(written.data.value.ai.model).toBe('gpt-4o');
+    });
+
+    it('answers 503 ENCRYPTION_UNAVAILABLE and writes nothing when the store cannot encrypt', async () => {
+      mockPrisma.systemSettings.findUnique.mockResolvedValue(rowWith(null));
+      mockCredentials.setSecret.mockRejectedValue(new Error('SECRETS_ENCRYPTION_KEY is not set'));
+
+      await expect(
+        service.patchSettings({ ai: { apiKey: PLAINTEXT } } as any, mockUserId),
+      ).rejects.toMatchObject({
+        status: 503,
+        response: expect.objectContaining({ code: 'ENCRYPTION_UNAVAILABLE' }),
+      });
+      expect(mockPrisma.systemSettings.update).not.toHaveBeenCalled();
+    });
+
+    it('never puts a legacy ciphertext in the PUT audit trail', async () => {
+      mockPrisma.systemSettings.findUnique.mockResolvedValue(rowWith(legacyBlock));
+      mockPrisma.systemSettings.upsert.mockResolvedValue(rowWith(legacyBlock));
+
+      await service.replaceSettings(
+        { ui: { allowUserThemeOverride: false }, features: {} },
+        mockUserId,
+      );
+
+      expect(JSON.stringify(mockPrisma.auditEvent.create.mock.calls)).not.toContain(
+        'legacy-ciphertext',
+      );
     });
   });
 

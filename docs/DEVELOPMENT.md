@@ -59,6 +59,13 @@ This application uses **Fastify** as the HTTP adapter, not Express. This has imp
    # Edit .env with your Google OAuth credentials and other settings
    ```
 
+   Two encryption keys are required and are NOT interchangeable:
+   `VAULT_ENCRYPTION_KEY` (`openssl rand -hex 32`) encrypts secret values and
+   backups; `SECRETS_ENCRYPTION_KEY` (`openssl rand -base64 32`) encrypts the
+   platform credential store (the OpenAI API key). Back both up with the database.
+   An existing database that still holds the AI key in the old place needs
+   `npm run vault:migrate-ai-key` once: [runbooks/ai-key-migration.md](runbooks/ai-key-migration.md).
+
 3. **Start development environment**
    ```bash
    cd infra/compose
@@ -471,6 +478,8 @@ Backend tests use a separate test database. Configure in `apps/api/.env.test`:
 ```bash
 DATABASE_URL="postgresql://user:password@localhost:5432/app_test"
 JWT_SECRET="test-secret-key-min-32-characters"
+VAULT_ENCRYPTION_KEY="<64 hex chars>"        # secret values
+SECRETS_ENCRYPTION_KEY="<base64, 32 bytes>"  # platform credential store
 NODE_ENV="test"
 ```
 
@@ -608,7 +617,7 @@ const response = await request(app.getHttpServer())
 
 ### Adding New Guards
 
-1. Create guard in `apps/api/src/auth/guards/`
+1. Guards and decorators come from `@marinoscar/platform-api/identity` (`@Auth`, `@Public`, `@CurrentUser`); Vault has no `src/auth/` since E3.2. A new global guard is declared in the `host` conformance suite's `allowedAppGuards` with a reason, not created in an `auth/` folder
 2. Implement `canActivate()` method
 3. Register in module if not global
 4. Add tests for guard logic
