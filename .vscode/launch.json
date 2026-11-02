@@ -77,14 +77,14 @@
       "internalConsoleOptions": "neverOpen"
     },
     {
-      "name": "Debug CLI (tools/app)",
+      "name": "Debug CLI (apps/cli)",
       "type": "node",
       "request": "launch",
-      "program": "${workspaceFolder}/tools/app/bin/app.js",
+      "program": "${workspaceFolder}/apps/cli/dist/cli.js",
       "args": [],
       "cwd": "${workspaceFolder}",
       "sourceMaps": true,
-      "outFiles": ["${workspaceFolder}/tools/app/dist/**/*.js"],
+      "outFiles": ["${workspaceFolder}/apps/cli/dist/**/*.js"],
       "resolveSourceMapLocations": [
         "${workspaceFolder}/**",
         "!**/node_modules/**"
@@ -96,11 +96,11 @@
       "name": "Debug CLI with args",
       "type": "node",
       "request": "launch",
-      "program": "${workspaceFolder}/tools/app/bin/app.js",
+      "program": "${workspaceFolder}/apps/cli/dist/cli.js",
       "args": ["${input:cliCommand}"],
       "cwd": "${workspaceFolder}",
       "sourceMaps": true,
-      "outFiles": ["${workspaceFolder}/tools/app/dist/**/*.js"],
+      "outFiles": ["${workspaceFolder}/apps/cli/dist/**/*.js"],
       "resolveSourceMapLocations": [
         "${workspaceFolder}/**",
         "!**/node_modules/**"
@@ -112,11 +112,11 @@
       "name": "Debug CLI Only (no servers)",
       "type": "node",
       "request": "launch",
-      "program": "${workspaceFolder}/tools/app/bin/app.js",
+      "program": "${workspaceFolder}/apps/cli/dist/cli.js",
       "args": ["${input:cliCommand}"],
       "cwd": "${workspaceFolder}",
       "sourceMaps": true,
-      "outFiles": ["${workspaceFolder}/tools/app/dist/**/*.js"],
+      "outFiles": ["${workspaceFolder}/apps/cli/dist/**/*.js"],
       "resolveSourceMapLocations": [
         "${workspaceFolder}/**",
         "!**/node_modules/**"

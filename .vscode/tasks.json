@@ -19,7 +19,7 @@
       "command": "npm",
       "args": ["run", "build"],
       "options": {
-        "cwd": "${workspaceFolder}/tools/app"
+        "cwd": "${workspaceFolder}/apps/cli"
       },
       "group": "build",
       "problemMatcher": ["$tsc"]
@@ -30,7 +30,7 @@
       "command": "npm",
       "args": ["run", "dev"],
       "options": {
-        "cwd": "${workspaceFolder}/tools/app"
+        "cwd": "${workspaceFolder}/apps/cli"
       },
       "isBackground": true,
       "group": "build",
