@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {
   ConflictException,
   Injectable,
@@ -61,13 +62,15 @@ export class BackupQueueService {
           orgId: null,
           payload: { trigger: 'manual', triggeredById },
         });
+        const runId = randomUUID();
         return tx.backupRun.create({
           data: {
+            id: runId,
             scope: SYSTEM_SCOPE,
             status: 'running',
             trigger: 'manual',
             triggeredById,
-            storageKey: systemBackupStorageKey(startedAt),
+            storageKey: systemBackupStorageKey(startedAt, runId),
             startedAt,
             jobId: job.id,
           },
@@ -118,14 +121,16 @@ export class BackupQueueService {
           subjectId: ownerId,
           payload: { ownerId, selection: { ...selection }, passwordEncrypted },
         });
+        const runId = randomUUID();
         return tx.backupRun.create({
           data: {
+            id: runId,
             scope: USER_SCOPE,
             ownerId,
             status: 'running',
             trigger: 'manual',
             triggeredById: ownerId,
-            storageKey: userBackupStorageKey(ownerId, startedAt),
+            storageKey: userBackupStorageKey(ownerId, startedAt, runId),
             startedAt,
             contents: selectedContentKeys(selection),
             jobId: job.id,

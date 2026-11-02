@@ -382,7 +382,7 @@ The button reads "Download backup" or "Save backup" to match. The content choice
 
 ### Saved user backups
 
-A saved backup is stored under `user-backups/<userId>/vault-backup-YYYY-MM-DD_HHmmss.zip`. The **My saved backups** list in the same card shows when it started, its status, size and contents, with **Download** (a 300 second signed link) and **Delete**, and refreshes every 5 seconds while one is running. Endpoints: [API.md § My backups](API.md#my-backups).
+A saved backup is stored under `user-backups/<userId>/vault-backup-YYYY-MM-DD_HHmmss-<runId8>.zip` (`<runId8>` is the first 8 hex digits of the run id, so runs in the same second never share an object). The **My saved backups** list in the same card shows when it started, its status, size and contents, with **Download** (a 300 second signed link) and **Delete**, and refreshes every 5 seconds while one is running. Endpoints: [API.md § My backups](API.md#my-backups).
 
 - **Keeps 10.** After a successful run the user's newest 10 saved backups are kept and older objects are deleted (the card says "Keeps your 10 most recent saved backups"). Rows stay in the list with `deletedAt` set. A failed run removes any partial object.
 - **The password is never stored.** It is held in memory only while the zip is built, and is never written to the database, logs, audit events or error messages. This differs from the admin schedule, which has to keep its password. Losing the password still means the backup can never be opened.
@@ -435,7 +435,7 @@ Times are wall-clock times in the schedule's IANA time zone. On the spring-forwa
 
 ### What is in the zip
 
-The object key is `system-backups/vault-backup-YYYY-MM-DD_HHmmss.zip` (UTC). The streamed download uses the same layout and file name. Parts appear only when selected:
+The object key is `system-backups/vault-backup-YYYY-MM-DD_HHmmss-<runId8>.zip` (UTC; `<runId8>` is the first 8 hex digits of the run id, so two runs in the same second never share an object, #130). The key is stored on the run row and retention, download and delete use that stored key, never one rebuilt from a time; archives written before the change keep their old `...HHmmss.zip` key. The streamed download (`POST /admin/backups/export`) has no run and keeps the plain `vault-backup-YYYY-MM-DD_HHmmss.zip` name. Parts appear only when selected:
 
 ```
 vault-backup-2026-11-02_090000.zip   (AES-256)
