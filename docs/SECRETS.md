@@ -49,7 +49,7 @@ AWS_SECRET_ACCESS_KEY=...
 CARD_IMAGE_MAX_BYTES=5242880
 ```
 
-AI card scanning is configured entirely through **system settings** (`ai.enabled`, `ai.model`, `ai.maxCallsPerUserPerDay`, `ai.apiKey`), not environment variables — there is no `OPENAI_API_KEY` env var. See [Security Considerations](#security-considerations) and [API.md](API.md#ai-card-extraction).
+AI card scanning is configured entirely at run time in the admin UI, not through environment variables — there is no `OPENAI_API_KEY` env var. The non-secret settings (`ai.enabled`, `ai.model`, `ai.maxCallsPerUserPerDay`) are in system settings; the API key is a platform credential (purpose `ai`, name `openai`) encrypted under `SECRETS_ENCRYPTION_KEY`, a **different key** from `VAULT_ENCRYPTION_KEY` (which keeps encrypting every secret value). See [Security Considerations](#security-considerations) and [API.md](API.md#ai-card-extraction).
 
 `VAULT_ENCRYPTION_KEY` must be a 64-character hexadecimal string representing 32 bytes. The application validates this on startup and will refuse to start if the key is absent or the wrong length.
 
