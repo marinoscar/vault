@@ -51,3 +51,7 @@ worktrees/
 *.tgz
 .cache/
 nul
+
+# Playwright output (tests/e2e, tests/visual)
+test-results/
+playwright-report/

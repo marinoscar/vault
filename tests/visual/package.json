@@ -1,0 +1,15 @@
+{
+  "name": "visual-regression-tests",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Pixel-based visual regression baselines for the refreshed Vault UI (E10.7). Serves the built web app with `vite preview` and answers the API at the network layer; no backend, database or AI key.",
+  "scripts": {
+    "test": "playwright test",
+    "test:update": "playwright test --update-snapshots",
+    "test:report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}
