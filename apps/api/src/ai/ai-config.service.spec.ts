@@ -1,14 +1,18 @@
 import { ServiceUnavailableException } from '@nestjs/common';
 
+import { CredentialsService } from '@marinoscar/platform-api/credentials';
+
+import {
+  VAULT_AI_CREDENTIAL_NAME,
+  VAULT_AI_CREDENTIAL_PURPOSE,
+} from '../platform/credentials/credentials.config';
 import { SystemSettingsService } from '../settings/system-settings/system-settings.service';
 import { AI_ERROR_CODES } from './ai.constants';
 import { AiConfigService } from './ai-config.service';
 import { AiException } from './ai.errors';
 
-type SettingsStub = Pick<
-  SystemSettingsService,
-  'getSettings' | 'getOpenAiApiKeyPlaintext'
->;
+type SettingsStub = Pick<SystemSettingsService, 'getSettings'>;
+type CredentialsStub = Pick<CredentialsService, 'getSecret'>;
 
 const readyAi = {
   enabled: true,
@@ -23,15 +27,21 @@ const readyAi = {
 function buildService(ai: unknown, key: (() => Promise<string | null>) | Error) {
   const settings: jest.Mocked<SettingsStub> = {
     getSettings: jest.fn().mockResolvedValue({ ui: {}, features: {}, ai }),
-    getOpenAiApiKeyPlaintext:
+  } as any;
+  const credentials: jest.Mocked<CredentialsStub> = {
+    getSecret:
       key instanceof Error
         ? jest.fn().mockRejectedValue(key)
         : jest.fn().mockImplementation(key),
   } as any;
 
   return {
-    service: new AiConfigService(settings as unknown as SystemSettingsService),
+    service: new AiConfigService(
+      settings as unknown as SystemSettingsService,
+      credentials as unknown as CredentialsService,
+    ),
     settings,
+    credentials,
   };
 }
 
@@ -57,12 +67,17 @@ describe('AiConfigService', () => {
       });
     });
 
-    it('obtains the key through SystemSettingsService, not the raw row', async () => {
-      const { service, settings } = buildService(readyAi, async () => 'sk-live-1234');
+    it('obtains the key from the credential store (ai/openai), not the settings row', async () => {
+      const { service, credentials } = buildService(readyAi, async () => 'sk-live-1234');
 
       await service.resolveForExtraction();
 
-      expect(settings.getOpenAiApiKeyPlaintext).toHaveBeenCalledTimes(1);
+      expect(credentials.getSecret).toHaveBeenCalledTimes(1);
+      expect(credentials.getSecret).toHaveBeenCalledWith(
+        VAULT_AI_CREDENTIAL_PURPOSE,
+        VAULT_AI_CREDENTIAL_NAME,
+      );
+      expect([VAULT_AI_CREDENTIAL_PURPOSE, VAULT_AI_CREDENTIAL_NAME]).toEqual(['ai', 'openai']);
     });
 
     it('AI_NOT_CONFIGURED when the feature flag is off', async () => {
@@ -77,7 +92,7 @@ describe('AiConfigService', () => {
     });
 
     it('AI_NOT_CONFIGURED when no key is stored', async () => {
-      const { service, settings } = buildService(
+      const { service, credentials } = buildService(
         { ...readyAi, apiKeyConfigured: false, apiKeyLast4: null },
         async () => null,
       );
@@ -86,7 +101,7 @@ describe('AiConfigService', () => {
         AI_ERROR_CODES.NOT_CONFIGURED,
       );
       // Short-circuits before attempting decryption.
-      expect(settings.getOpenAiApiKeyPlaintext).not.toHaveBeenCalled();
+      expect(credentials.getSecret).not.toHaveBeenCalled();
     });
 
     it('AI_NOT_CONFIGURED on a row written before the ai block existed', async () => {
@@ -100,10 +115,7 @@ describe('AiConfigService', () => {
     it('AI_KEY_UNREADABLE when the stored key will not decrypt', async () => {
       const { service } = buildService(
         readyAi,
-        new ServiceUnavailableException({
-          code: 'AI_API_KEY_UNREADABLE',
-          message: 'nope',
-        }),
+        new Error('Credential "ai/openai" could not be decrypted. It must be set again.'),
       );
 
       await expect(codeOf(service.resolveForExtraction())).resolves.toBe(
