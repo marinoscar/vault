@@ -367,13 +367,20 @@ export async function apiStreamRequest(
 
 export interface SecretsExportRequest {
   password: string;
+  /** Current secret values (server default true). */
+  includeSecrets?: boolean;
+  /** Secret attachments; requires includeSecrets (server default true). */
   includeAttachments?: boolean;
+  /** Old secret versions; requires includeSecrets (server default false). */
   includeVersions?: boolean;
+  /** The caller's media library folders and files (server default false). */
+  includeMedia?: boolean;
 }
 
 /**
  * POST /api/secrets/export. Returns the ok streaming Response whose body is
- * the AES-256 encrypted zip; counts are in the X-Vault-Export-* headers.
+ * the AES-256 encrypted zip; counts are in the X-Vault-Export-* headers
+ * (`-Secrets`, `-Attachments`, `-Media-Files`).
  * The password travels only in the request body.
  */
 export async function exportSecretsBackup(dto: SecretsExportRequest): Promise<Response> {

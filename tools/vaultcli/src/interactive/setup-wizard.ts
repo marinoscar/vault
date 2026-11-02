@@ -3,9 +3,12 @@ import { existsSync } from 'fs';
 import { homedir, hostname } from 'os';
 import { resolve as resolvePath } from 'path';
 import chalk from 'chalk';
-import { confirm, input, select } from '@inquirer/prompts';
+import { checkbox, confirm, input, select } from '@inquirer/prompts';
 import {
   DEFAULT_BACKUP_SETTINGS,
+  contentsFromKeys,
+  describeContents,
+  resolveBackupSettings,
   DEFAULT_PASSWORD_ENV,
   SUGGESTED_KEEP_DAYS,
   getDefaultPasswordFilePath,
@@ -16,7 +19,15 @@ import {
 } from '../lib/backup-settings.js';
 import { loadAuth } from '../lib/auth-store.js';
 import { getCurrentUser } from '../lib/api-client.js';
-import { describePasswordSetting, describeRetention, parseRetentionInput, previewTemplate, tokenHelp } from './logic.js';
+import {
+  backupContentChoices,
+  describePasswordSetting,
+  describeRetention,
+  parseRetentionInput,
+  previewTemplate,
+  tokenHelp,
+  validateContentSelection,
+} from './logic.js';
 import { askNewPassword, heading } from './ui.js';
 
 const SUGGESTED_TEMPLATE = '~/vault-backups/vault-backup-{datetime}.zip';
@@ -107,8 +118,14 @@ export async function setupWizard(): Promise<void> {
     if (!process.env[next.passwordEnv]) console.log(chalk.yellow(`Note: ${next.passwordEnv} is not set in this shell right now.`));
   }
 
-  next.includeAttachments = await confirm({ message: 'Include attachments (card photos, files)?', default: current.includeAttachments ?? true });
-  next.includeVersions = await confirm({ message: 'Include old versions of each secret?', default: current.includeVersions ?? false });
+  const { settings: effective } = resolveBackupSettings({}, current);
+  const picked = await checkbox({
+    message: 'What do you want to back up?',
+    instructions: ' (space to toggle, enter to confirm)',
+    choices: backupContentChoices(effective),
+    validate: (items) => validateContentSelection(items.map((i) => i.value)),
+  });
+  Object.assign(next, contentsFromKeys(picked, 'selection'));
 
   console.log(chalk.dim('Retention deletes old backups after each successful backup. Only files matching the template are touched; the newest is always kept.'));
   const days = await input({
@@ -139,8 +156,7 @@ export async function setupWizard(): Promise<void> {
   console.log(`  Output:      ${next.output}`);
   if (preview.ok) console.log(`  Next file:   ${chalk.dim(resolvePath(preview.path))}`);
   console.log(`  Password:    ${describePasswordSetting(next, process.env)}`);
-  console.log(`  Attachments: ${next.includeAttachments ? 'included' : 'excluded'}`);
-  console.log(`  Versions:    ${next.includeVersions ? 'all' : 'current only'}`);
+  console.log(`  Contents:    ${describeContents(resolveBackupSettings({}, next).settings)}`);
   console.log(`  Time zone:   ${next.utc ? 'UTC' : 'local time'}`);
   console.log(`  Retention:   ${describeRetention(next)}`);
 

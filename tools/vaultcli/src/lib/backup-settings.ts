@@ -6,6 +6,10 @@
  *
  * Precedence: command-line flag > saved setting > built-in default
  * ({@link resolveBackupSettings}, pure). Built-in retention is off.
+ *
+ * What goes in the backup (contents): secrets (with attachments, without old
+ * versions) by default; the media library is opt-in. `--contents` replaces the
+ * individual content flags ({@link parseContentsOption}, pure).
  */
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync, chmodSync } from 'fs';
 import { dirname, join } from 'path';
@@ -18,8 +22,10 @@ export interface BackupSettings {
   output?: string;
   passwordEnv?: string;
   passwordFile?: string;
+  includeSecrets?: boolean;
   includeAttachments?: boolean;
   includeVersions?: boolean;
+  includeMedia?: boolean;
   utc?: boolean;
   keepDays?: number;
   keepLast?: number;
@@ -32,24 +38,31 @@ export const BACKUP_SETTING_KEYS: readonly BackupSettingKey[] = [
   'output',
   'passwordEnv',
   'passwordFile',
+  'includeSecrets',
   'includeAttachments',
   'includeVersions',
+  'includeMedia',
   'utc',
   'keepDays',
   'keepLast',
 ] as const;
 
 const STRING_KEYS: readonly BackupSettingKey[] = ['output', 'passwordEnv', 'passwordFile'];
-const BOOLEAN_KEYS: readonly BackupSettingKey[] = ['includeAttachments', 'includeVersions', 'utc'];
+const BOOLEAN_KEYS: readonly BackupSettingKey[] = ['includeSecrets', 'includeAttachments', 'includeVersions', 'includeMedia', 'utc'];
 const INTEGER_KEYS: readonly BackupSettingKey[] = ['keepDays', 'keepLast'];
 
 /** Built-in defaults. Retention (keepDays / keepLast) is off. */
 export const DEFAULT_BACKUP_SETTINGS: Readonly<
-  Required<Pick<BackupSettings, 'output' | 'includeAttachments' | 'includeVersions' | 'utc'>> & BackupSettings
+  Required<
+    Pick<BackupSettings, 'output' | 'includeSecrets' | 'includeAttachments' | 'includeVersions' | 'includeMedia' | 'utc'>
+  > &
+    BackupSettings
 > = Object.freeze({
   output: DEFAULT_BACKUP_TEMPLATE,
+  includeSecrets: true,
   includeAttachments: true,
   includeVersions: false,
+  includeMedia: false,
   utc: false,
 });
 
@@ -58,8 +71,10 @@ export const SUGGESTED_KEEP_DAYS = 30;
 
 export type ResolvedBackupSettings = BackupSettings & {
   output: string;
+  includeSecrets: boolean;
   includeAttachments: boolean;
   includeVersions: boolean;
+  includeMedia: boolean;
   utc: boolean;
 };
 
@@ -109,12 +124,160 @@ export function resolveBackupSettings(
     settings: {
       ...out,
       output: out.output ?? DEFAULT_BACKUP_TEMPLATE,
+      includeSecrets: out.includeSecrets ?? true,
       includeAttachments: out.includeAttachments ?? true,
       includeVersions: out.includeVersions ?? false,
+      includeMedia: out.includeMedia ?? false,
       utc: out.utc ?? false,
     },
     sources,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Backup contents
+// ---------------------------------------------------------------------------
+
+/** Keys accepted by `--contents` (and the setup wizard's checkbox), in display order. */
+export const BACKUP_CONTENT_KEYS = ['secrets', 'attachments', 'versions', 'media'] as const;
+export type BackupContentKey = (typeof BACKUP_CONTENT_KEYS)[number];
+
+/** The four content settings, all explicit. */
+export interface BackupContents {
+  includeSecrets: boolean;
+  includeAttachments: boolean;
+  includeVersions: boolean;
+  includeMedia: boolean;
+}
+
+export const NOTHING_TO_BACK_UP = 'Choose at least one thing to back up (secrets or media)';
+
+/**
+ * Turn a list of content keys into the four content settings. Keys not listed
+ * are off. Throws on an unknown key (listing the valid ones), on attachments or
+ * versions without secrets, and when nothing is selected. Pure.
+ */
+export function contentsFromKeys(keys: readonly string[], label = '--contents'): BackupContents {
+  const valid = BACKUP_CONTENT_KEYS as readonly string[];
+  const unknown = keys.filter((k) => !valid.includes(k));
+  if (unknown.length) {
+    throw new Error(
+      `Unknown ${label} value(s): ${[...new Set(unknown)].join(', ')}. Valid values: ${BACKUP_CONTENT_KEYS.join(', ')}`,
+    );
+  }
+  const set = new Set(keys);
+  const contents: BackupContents = {
+    includeSecrets: set.has('secrets'),
+    includeAttachments: set.has('attachments'),
+    includeVersions: set.has('versions'),
+    includeMedia: set.has('media'),
+  };
+  assertValidContents(contents, label);
+  return contents;
+}
+
+/**
+ * Parse `--contents secrets,attachments,media` (comma separated, case and
+ * surrounding spaces ignored, duplicates allowed). Pure; see
+ * {@link contentsFromKeys} for the rules.
+ */
+export function parseContentsOption(raw: string): BackupContents {
+  const keys = String(raw)
+    .split(',')
+    .map((k) => k.trim().toLowerCase())
+    .filter((k) => k !== '');
+  if (keys.length === 0) {
+    throw new Error(`--contents needs a comma-separated list of: ${BACKUP_CONTENT_KEYS.join(', ')}`);
+  }
+  return contentsFromKeys(keys);
+}
+
+/**
+ * Throws when the contents cannot be sent: nothing selected, or attachments /
+ * versions asked for without secrets. `label` names the option in the message.
+ */
+export function assertValidContents(c: BackupContents, label = '--contents'): void {
+  if (!c.includeSecrets) {
+    const orphan = [c.includeAttachments ? 'attachments' : null, c.includeVersions ? 'versions' : null].filter(Boolean);
+    if (orphan.length) {
+      throw new Error(`${label}: ${orphan.join(' and ')} require secrets (add "secrets", or leave ${orphan.join(' and ')} out)`);
+    }
+  }
+  if (!c.includeSecrets && !c.includeMedia) throw new Error(NOTHING_TO_BACK_UP);
+}
+
+/** The selected content keys of resolved settings (attachments / versions only with secrets). Pure. */
+export function contentKeys(c: BackupContents): BackupContentKey[] {
+  const keys: BackupContentKey[] = [];
+  if (c.includeSecrets) {
+    keys.push('secrets');
+    if (c.includeAttachments) keys.push('attachments');
+    if (c.includeVersions) keys.push('versions');
+  }
+  if (c.includeMedia) keys.push('media');
+  return keys;
+}
+
+/**
+ * The content to request after merging flags, saved settings and defaults.
+ * With secrets off, attachments / versions that come from a saved setting or
+ * the default are dropped silently, but asking for them with a flag in the
+ * same command is an error. Throws when nothing is selected. Pure.
+ */
+export function effectiveContents(
+  settings: BackupContents,
+  sources: Partial<Record<BackupSettingKey, SettingSource>>,
+): BackupContents {
+  if (!settings.includeSecrets) {
+    const flagged = [
+      settings.includeAttachments && sources.includeAttachments === 'flag' ? '--attachments' : null,
+      settings.includeVersions && sources.includeVersions === 'flag' ? '--include-versions' : null,
+    ].filter(Boolean);
+    if (flagged.length) {
+      throw new Error(`${flagged.join(' and ')} require secrets; remove --no-secrets or ${flagged.join(' / ')}`);
+    }
+  }
+  const out: BackupContents = {
+    includeSecrets: settings.includeSecrets,
+    includeAttachments: settings.includeSecrets && settings.includeAttachments,
+    includeVersions: settings.includeSecrets && settings.includeVersions,
+    includeMedia: settings.includeMedia,
+  };
+  if (!out.includeSecrets && !out.includeMedia) {
+    throw new Error(`${NOTHING_TO_BACK_UP}: secrets are off and media is not included (use --media or drop --no-secrets)`);
+  }
+  return out;
+}
+
+/** Body of `POST /api/secrets/export`. The password is only ever sent here. */
+export interface BackupExportBody {
+  password: string;
+  includeSecrets: boolean;
+  includeAttachments: boolean;
+  includeVersions: boolean;
+  includeMedia: boolean;
+}
+
+/** Build the export request body from the effective contents. Pure. */
+export function buildExportBody(contents: BackupContents, password: string): BackupExportBody {
+  return {
+    password,
+    includeSecrets: contents.includeSecrets,
+    includeAttachments: contents.includeSecrets && contents.includeAttachments,
+    includeVersions: contents.includeSecrets && contents.includeVersions,
+    includeMedia: contents.includeMedia,
+  };
+}
+
+/** Short human summary, e.g. "secrets with attachments, media library". Pure. */
+export function describeContents(c: BackupContents): string {
+  const parts: string[] = [];
+  if (c.includeSecrets) {
+    const extras = [c.includeAttachments ? 'attachments' : null, c.includeVersions ? 'old versions' : null].filter(Boolean);
+    parts.push(extras.length ? `secrets with ${extras.join(' and ')}` : 'secrets');
+  }
+  if (c.includeMedia) parts.push('media library');
+  return parts.length ? parts.join(', ') : 'nothing';
 }
 
 export type PasswordSource =

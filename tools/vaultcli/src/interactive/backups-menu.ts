@@ -8,6 +8,8 @@ import {
   BACKUP_SETTING_KEYS,
   DEFAULT_PASSWORD_ENV,
   choosePasswordSource,
+  describeContents,
+  effectiveContents,
   getBackupSettingsPath,
   loadBackupSettings,
   resolveBackupSettings,
@@ -29,7 +31,8 @@ import { askNewPassword, errorLine, heading } from './ui.js';
 async function runNow(): Promise<void> {
   heading('Run a backup now');
   const saved = loadBackupSettings();
-  const { settings } = resolveBackupSettings({}, saved);
+  const { settings, sources } = resolveBackupSettings({}, saved);
+  const contents = effectiveContents(settings, sources);
   assertAuthenticated();
   const source = choosePasswordSource({}, saved, process.env);
   const pw = await resolvePassword(source, {
@@ -39,6 +42,7 @@ async function runNow(): Promise<void> {
   });
   const result = await performBackup({
     settings,
+    contents,
     password: pw,
     overwrite: false,
     progress: (m) => console.log(chalk.dim(m)),
@@ -67,8 +71,7 @@ function viewSettings(): void {
   console.log(`  Output:      ${settings.output}`);
   if (preview.ok) console.log(`  Next file:   ${chalk.dim(resolvePath(preview.path))}`);
   console.log(`  Password:    ${describePasswordSetting(saved, process.env)}`);
-  console.log(`  Attachments: ${settings.includeAttachments ? 'included' : 'excluded'}`);
-  console.log(`  Versions:    ${settings.includeVersions ? 'all' : 'current only'}`);
+  console.log(`  Contents:    ${describeContents(settings)}`);
   console.log(`  Time zone:   ${settings.utc ? 'UTC' : 'local time'}`);
   console.log(`  Retention:   ${describeRetention(settings)}`);
   const savedKeys = BACKUP_SETTING_KEYS.filter((k) => sources[k] === 'saved');
