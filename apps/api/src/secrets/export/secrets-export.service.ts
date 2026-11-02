@@ -36,7 +36,35 @@ const PREFLIGHT_CONCURRENCY = 8;
  * little under 4 GiB so the text entries and headers also fit before the
  * 32-bit offset limit.
  */
-const ZIP64_THRESHOLD_BYTES = 0xf0000000;
+export const ZIP64_THRESHOLD_BYTES = 0xf0000000;
+
+/**
+ * zip.js writer options every vault archive uses: WinZip AE-2 with AES-256
+ * (`encryptionStrength: 3`), never ZipCrypto. Shared with the scheduled
+ * system backup so both archives open the same way in 7-Zip / Keka.
+ */
+export function vaultZipWriterOptions(password: string, zip64: boolean) {
+  return {
+    password,
+    encryptionStrength: 3 as const,
+    zipCrypto: false,
+    useWebWorkers: false,
+    zip64,
+  };
+}
+
+/** Options of {@link SecretsExportService.writeUserEntries}. */
+export interface WriteUserEntriesOptions {
+  /**
+   * Folder inside the zip the user's files go under, e.g. `users/0001/`
+   * (with the trailing slash). Empty for the user export (zip root).
+   */
+  prefix?: string;
+  /** Write `README.txt` too. The user export does; the system backup has its own. */
+  includeReadme?: boolean;
+  /** Label used in log lines, e.g. `Secrets export` or `System backup`. */
+  logLabel?: string;
+}
 
 /**
  * Generic message for a failure after the response has started. It is what
@@ -384,21 +412,11 @@ export class SecretsExportService {
     const { includeAttachments, includeVersions } = options;
     const exportedAt = new Date();
 
-    const rows = await this.loadOwnedSecrets(user.id, includeAttachments, includeVersions);
-
-    const plan = buildExportPlan(rows, {
-      owner: { id: user.id, email: user.email },
-      options: { includeAttachments, includeVersions },
+    const plan = await this.prepareUserPlan(
+      { id: user.id, email: user.email },
+      { includeAttachments, includeVersions },
       exportedAt,
-      decrypt: (version) => this.decryptVersion(version),
-      onDecryptFailure: (secretId, versionId) =>
-        this.logger.warn(
-          `Secrets export for user ${user.id}: version ${versionId} of secret ${secretId} ` +
-            'could not be decrypted; exported without values',
-        ),
-    });
-
-    await this.preflightAttachments(plan, user.id);
+    );
 
     const secretCount = plan.manifest.counts.secrets;
     const attachmentCount = plan.manifest.counts.attachments;
@@ -437,6 +455,36 @@ export class SecretsExportService {
   }
 
   /**
+   * Load the secrets `owner` owns, build the manifest and drop blobs missing
+   * from storage. This is the per-user part of an archive, shared by the user
+   * export and the scheduled system backup. Owner-only by construction.
+   */
+  async prepareUserPlan(
+    owner: { id: string; email: string },
+    options: Pick<ExportSecretsOptions, 'includeAttachments' | 'includeVersions'>,
+    exportedAt: Date,
+    logLabel = 'Secrets export',
+  ): Promise<ExportPlan> {
+    const { includeAttachments, includeVersions } = options;
+    const rows = await this.loadOwnedSecrets(owner.id, includeAttachments, includeVersions);
+
+    const plan = buildExportPlan(rows, {
+      owner: { id: owner.id, email: owner.email },
+      options: { includeAttachments, includeVersions },
+      exportedAt,
+      decrypt: (version) => this.decryptVersion(version),
+      onDecryptFailure: (secretId, versionId) =>
+        this.logger.warn(
+          `${logLabel} for user ${owner.id}: version ${versionId} of secret ${secretId} ` +
+            'could not be decrypted; exported without values',
+        ),
+    });
+
+    await this.preflightAttachments(plan, owner.id, logLabel);
+    return plan;
+  }
+
+  /**
    * Start writing the archive and return its bytes as a Node stream.
    *
    * Order inside the zip: attachments first, then `secrets.json`,
@@ -449,13 +497,7 @@ export class SecretsExportService {
     const output = Readable.fromWeb(readable as unknown as NodeWebReadableStream<Uint8Array>);
 
     const zip64 = plan.files.reduce((sum, f) => sum + f.size, 0) > ZIP64_THRESHOLD_BYTES;
-    const zipWriter = new ZipWriter(writable, {
-      password,
-      encryptionStrength: 3,
-      zipCrypto: false,
-      useWebWorkers: false,
-      zip64,
-    });
+    const zipWriter = new ZipWriter(writable, vaultZipWriterOptions(password, zip64));
 
     void this.writeArchive(plan, zipWriter, userId).catch(async (error: unknown) => {
       this.logger.error(
@@ -477,16 +519,42 @@ export class SecretsExportService {
     zipWriter: ZipWriter<unknown>,
     userId: string,
   ): Promise<void> {
+    await this.writeUserEntries(plan, zipWriter, userId);
+    await zipWriter.close();
+  }
+
+  /**
+   * Write one user's part of an archive into `zipWriter`, under `prefix`:
+   * the attachment blobs, then `secrets.json`, `secrets.html` and (unless
+   * disabled) `README.txt`. Does not close the writer.
+   *
+   * Paths inside the manifest (`attachments/0001-01.jpg`) stay relative to the
+   * user's folder, so the HTML report's links work wherever the folder is.
+   */
+  async writeUserEntries(
+    plan: ExportPlan,
+    zipWriter: ZipWriter<unknown>,
+    userId: string,
+    options: WriteUserEntriesOptions = {},
+  ): Promise<void> {
+    const prefix = options.prefix ?? '';
+    const includeReadme = options.includeReadme ?? true;
+    const logLabel = options.logLabel ?? 'Secrets export';
+
     // Copy: skipPlannedFile() mutates plan.files while we iterate.
     for (const file of plan.files.slice()) {
-      await this.writeAttachment(plan, zipWriter, file, userId);
+      await this.writeAttachment(plan, zipWriter, file, userId, prefix, logLabel);
     }
 
     const manifest = plan.manifest;
-    await zipWriter.add('secrets.json', new TextReader(JSON.stringify(manifest, null, 2)));
-    await zipWriter.add('secrets.html', new TextReader(renderSecretsHtml(manifest)));
-    await zipWriter.add('README.txt', new TextReader(renderReadme(manifest)));
-    await zipWriter.close();
+    await zipWriter.add(
+      `${prefix}secrets.json`,
+      new TextReader(JSON.stringify(manifest, null, 2)),
+    );
+    await zipWriter.add(`${prefix}secrets.html`, new TextReader(renderSecretsHtml(manifest)));
+    if (includeReadme) {
+      await zipWriter.add(`${prefix}README.txt`, new TextReader(renderReadme(manifest)));
+    }
   }
 
   /**
@@ -501,12 +569,14 @@ export class SecretsExportService {
     zipWriter: ZipWriter<unknown>,
     file: PlannedAttachmentFile,
     userId: string,
+    prefix: string,
+    logLabel: string,
   ): Promise<void> {
     let source: Readable;
     try {
       source = await this.storageProvider.download(file.storageKey);
     } catch (error) {
-      this.warnUnreadable(userId, file, error);
+      this.warnUnreadable(userId, file, error, logLabel);
       skipPlannedFile(plan, file);
       return;
     }
@@ -518,7 +588,7 @@ export class SecretsExportService {
 
     try {
       await zipWriter.add(
-        file.path,
+        `${prefix}${file.path}`,
         Readable.toWeb(source) as unknown as ReadableStream<Uint8Array>,
         isAlreadyCompressed(file.mimeType) ? { level: 0 } : undefined,
       );
@@ -526,17 +596,22 @@ export class SecretsExportService {
       if (!sourceFailed) {
         throw error;
       }
-      this.warnUnreadable(userId, file, error);
+      this.warnUnreadable(userId, file, error, logLabel);
       skipPlannedFile(plan, file);
     } finally {
       source.destroy();
     }
   }
 
-  private warnUnreadable(userId: string, file: PlannedAttachmentFile, error: unknown): void {
+  private warnUnreadable(
+    userId: string,
+    file: PlannedAttachmentFile,
+    error: unknown,
+    logLabel = 'Secrets export',
+  ): void {
     // Ids only: no secret name, file name or storage key in server logs.
     this.logger.warn(
-      `Secrets export for user ${userId}: storage object ${file.storageObjectId} ` +
+      `${logLabel} for user ${userId}: storage object ${file.storageObjectId} ` +
         `could not be read and was skipped: ${describeError(error)}`,
     );
   }
@@ -545,7 +620,11 @@ export class SecretsExportService {
    * Drop blobs that are not in storage before any byte is sent, so the
    * `X-Vault-Export-Attachments` header matches the archive in all but a race.
    */
-  private async preflightAttachments(plan: ExportPlan, userId: string): Promise<void> {
+  private async preflightAttachments(
+    plan: ExportPlan,
+    userId: string,
+    logLabel: string,
+  ): Promise<void> {
     const files = plan.files.slice();
     const missing: PlannedAttachmentFile[] = [];
     let next = 0;
@@ -557,12 +636,12 @@ export class SecretsExportService {
         try {
           present = await this.storageProvider.exists(file.storageKey);
         } catch (error) {
-          this.warnUnreadable(userId, file, error);
+          this.warnUnreadable(userId, file, error, logLabel);
           missing.push(file);
           continue;
         }
         if (!present) {
-          this.warnUnreadable(userId, file, 'object does not exist');
+          this.warnUnreadable(userId, file, 'object does not exist', logLabel);
           missing.push(file);
         }
       }

@@ -13,6 +13,6 @@ import { StorageProvidersModule } from '../storage/providers';
   imports: [CommonModule, StorageProvidersModule],
   controllers: [SecretsController],
   providers: [SecretsService, SecretsExportService],
-  exports: [SecretsService],
+  exports: [SecretsService, SecretsExportService],
 })
 export class SecretsModule {}
