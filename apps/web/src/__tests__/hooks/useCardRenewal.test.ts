@@ -21,7 +21,7 @@ const FIELDS: FieldDefinition[] = [
 
 const CURRENT = {
   card_network: 'Visa',
-  cardholder_name: 'ADA LOVELACE',
+  cardholder_name: 'PERSON A',
   number: '4242424242424242',
   exp_month: '07',
   exp_year: '2026',
@@ -56,13 +56,13 @@ function extraction(
 describe('toCurrentValues', () => {
   it('flattens stored values to strings, keyed by the type', () => {
     const current = toCurrentValues(FIELDS, {
-      cardholder_name: 'ADA LOVELACE',
+      cardholder_name: 'PERSON A',
       // Numbers are a legitimate stored shape for an expiry.
       exp_month: 7,
       number: '4242424242424242',
     });
 
-    expect(current.cardholder_name).toBe('ADA LOVELACE');
+    expect(current.cardholder_name).toBe('PERSON A');
     expect(current.exp_month).toBe('7');
     // Declared but absent becomes '' rather than undefined.
     expect(current.notes).toBe('');
@@ -85,12 +85,12 @@ describe('toRenewalValues', () => {
   it('carries every current value forward when there is no extraction', () => {
     const values = toRenewalValues(CURRENT, null);
 
-    expect(values.cardholder_name).toBe('ADA LOVELACE');
+    expect(values.cardholder_name).toBe('PERSON A');
     expect(values.number).toBe('4242424242424242');
     expect(values.notes).toBe('Travel card');
   });
 
-  it('seeds the CVV from the extraction, never from the outgoing card', () => {
+  it('never seeds the CVV, from the outgoing card or from the extraction', () => {
     // No extraction at all: nothing to seed from, so the box starts empty
     // rather than showing the old card's code.
     expect(toRenewalValues(CURRENT, null)[CVV_FIELD]).toBe('');
@@ -101,17 +101,17 @@ describe('toRenewalValues', () => {
       toRenewalValues(CURRENT, extraction({ number: '4111111111111111' }))[CVV_FIELD],
     ).toBe('');
 
-    // Extraction actually read a security code off the new card's photo: that
-    // reading, and only that reading, seeds the field.
+    // Even a code read off the NEW card's photo does not seed it (E10.5): the
+    // CVV is typed by hand, always.
     expect(
       toRenewalValues(CURRENT, extraction({ cvv: '999' }))[CVV_FIELD],
-    ).toBe('999');
+    ).toBe('');
   });
 
   it('never lets the outgoing card CVV leak into the field even when other values are extracted', () => {
     const values = toRenewalValues(
       CURRENT,
-      extraction({ number: '4111111111111111', cardholder_name: 'ADA B LOVELACE' }),
+      extraction({ number: '4111111111111111', cardholder_name: 'PERSON A B' }),
     );
 
     expect(values[CVV_FIELD]).toBe('');
@@ -127,7 +127,7 @@ describe('toRenewalValues', () => {
     expect(values.number).toBe('4111111111111111');
     expect(values.exp_year).toBe('2031');
     // Not extracted, so the outgoing card's value stands.
-    expect(values.cardholder_name).toBe('ADA LOVELACE');
+    expect(values.cardholder_name).toBe('PERSON A');
     expect(values.notes).toBe('Travel card');
   });
 
@@ -138,7 +138,7 @@ describe('toRenewalValues', () => {
       extraction({ number: '4111111111111111', cardholder_name: null }),
     );
 
-    expect(values.cardholder_name).toBe('ADA LOVELACE');
+    expect(values.cardholder_name).toBe('PERSON A');
   });
 
   it('ignores extracted fields the type does not declare', () => {
@@ -211,7 +211,7 @@ describe('diffCardFields', () => {
   it('ignores whitespace-only differences', () => {
     const changes = diffCardFields(FIELDS, CURRENT, {
       ...CURRENT,
-      cardholder_name: '  ADA LOVELACE  ',
+      cardholder_name: '  PERSON A  ',
     });
 
     expect(changes.find((c) => c.field.name === 'cardholder_name')?.changed).toBe(false);
@@ -227,7 +227,7 @@ describe('wasAiAssisted', () => {
     expect(
       wasAiAssisted(extraction({ number: '4111111111111111' }), {
         number: '4111111111111111',
-        cardholder_name: 'ADA LOVELACE',
+        cardholder_name: 'PERSON A',
       }),
     ).toBe(true);
   });

@@ -23,7 +23,7 @@ const SENSITIVE: FieldDefinition = {
 
 describe('formatDiffValue', () => {
   it('shows a non-sensitive value in full', () => {
-    expect(formatDiffValue('ADA LOVELACE', false)).toBe('ADA LOVELACE');
+    expect(formatDiffValue('PERSON A', false)).toBe('PERSON A');
   });
 
   it('reduces a sensitive value to its last four characters', () => {
@@ -45,13 +45,13 @@ describe('formatDiffValue', () => {
 describe('CardFieldDiff', () => {
   it('states the before and after when a field changes', () => {
     render(
-      <CardFieldDiff field={PLAIN} current="ADA LOVELACE" proposed="ADA B LOVELACE" changed />,
+      <CardFieldDiff field={PLAIN} current="PERSON A" proposed="PERSON A B" changed />,
     );
 
     const row = screen.getByLabelText(/^Cardholder Name: changes from/i);
     expect(within(row).getByText('Changes')).toBeInTheDocument();
-    expect(within(row).getByText('ADA LOVELACE')).toBeInTheDocument();
-    expect(within(row).getByText('ADA B LOVELACE')).toBeInTheDocument();
+    expect(within(row).getByText('PERSON A')).toBeInTheDocument();
+    expect(within(row).getByText('PERSON A B')).toBeInTheDocument();
   });
 
   it('states plainly that an untouched field is unchanged', () => {
@@ -59,15 +59,15 @@ describe('CardFieldDiff', () => {
     render(
       <CardFieldDiff
         field={PLAIN}
-        current="ADA LOVELACE"
-        proposed="ADA LOVELACE"
+        current="PERSON A"
+        proposed="PERSON A"
         changed={false}
       />,
     );
 
     const row = screen.getByLabelText(/^Cardholder Name: unchanged$/i);
     expect(within(row).getByText('Unchanged')).toBeInTheDocument();
-    expect(within(row).getByText('ADA LOVELACE')).toBeInTheDocument();
+    expect(within(row).getByText('PERSON A')).toBeInTheDocument();
   });
 
   it('masks both sides of a sensitive comparison', () => {

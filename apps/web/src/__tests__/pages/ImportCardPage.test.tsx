@@ -112,13 +112,13 @@ const CARD_TYPE = {
 
 const EXTRACTION = {
   fields: {
-    cardholder_name: 'ADA LOVELACE',
+    cardholder_name: 'PERSON A',
     number: '4242424242424242',
     exp_month: '07',
     exp_year: '2029',
     card_network: 'Visa',
     card_kind: 'Credit',
-    issuing_bank: 'Bank of Analytics',
+    issuing_bank: 'Bank Alpha',
     security_code_2: null,
   },
   confidence: {
@@ -194,7 +194,17 @@ function selectPhoto(side: 'front' | 'back') {
   });
 }
 
-/** Front capture -> skip the back -> land on the review step. */
+/**
+ * The Crop step (E10.5): the cropped photos with "Adjust crop", then on to the
+ * Review step.
+ */
+async function passCropStep() {
+  await screen.findByRole('heading', { name: /check the crop/i });
+  fireEvent.click(screen.getByRole('button', { name: /continue to details/i }));
+  await screen.findByRole('heading', { name: /check the details/i });
+}
+
+/** Front capture -> skip the back -> Crop -> land on the review step. */
 async function walkToReview() {
   await screen.findByRole('button', { name: /take a photo of the front/i });
   selectPhoto('front');
@@ -204,7 +214,7 @@ async function walkToReview() {
   const skip = await screen.findByRole('button', { name: /skip the back/i });
   fireEvent.click(skip);
 
-  await screen.findByRole('heading', { name: /check the details/i });
+  await passCropStep();
 }
 
 beforeAll(() => {
@@ -279,10 +289,16 @@ describe('ImportCardPage — capture and egress', () => {
     render(<ImportCardPage />);
 
     expect(await screen.findByText(/will be sent to OpenAI/i)).toBeInTheDocument();
+    // The CVV is typed by hand, never filled in from the photo (E10.5).
     expect(
-      screen.getByText(/includes your security code \(CVV \/ CVC\)/i),
+      screen.getByText(/security code \(CVV \/ CVC\) is never filled in from the photo/i),
     ).toBeInTheDocument();
-    expect(screen.getByText(/read from the photo/i)).toBeInTheDocument();
+    // The notice sits above the camera button: read before anything is taken.
+    const notice = screen.getByRole('note', { name: /will be sent to OpenAI/i });
+    const camera = screen.getByRole('button', { name: /take a photo of the front/i });
+    expect(
+      notice.compareDocumentPosition(camera) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(seen.filter((r) => r.includes('/cards/extract'))).toHaveLength(0);
   });
 
@@ -318,7 +334,7 @@ describe('ImportCardPage — capture and egress', () => {
     selectPhoto('back');
     fireEvent.click(await screen.findByRole('button', { name: /read the card/i }));
 
-    await screen.findByRole('heading', { name: /check the details/i });
+    await passCropStep();
     expect(body.front).toMatch(/^data:image\/jpeg;base64,PREPARED-front\.png/);
     expect(body.back).toMatch(/^data:image\/jpeg;base64,PREPARED-back\.png/);
   });
@@ -445,10 +461,10 @@ describe('ImportCardPage — review step', () => {
     render(<ImportCardPage />);
     await walkToReview();
 
-    expect(field(/cardholder name/i)).toHaveValue('ADA LOVELACE');
+    expect(field(/cardholder name/i)).toHaveValue('PERSON A');
     expect(field(/card number/i)).toHaveValue('4242424242424242');
     expect(field(/expiration month/i)).toHaveValue('07');
-    expect(field(/issuing bank/i)).toHaveValue('Bank of Analytics');
+    expect(field(/issuing bank/i)).toHaveValue('Bank Alpha');
 
     // number came back at 0.42 confidence; cardholder_name at 0.95 did not.
     // MUI renders the outlined label twice (visible label + notch legend), so
@@ -593,7 +609,7 @@ describe('ImportCardPage — extraction failure falls back to manual entry', () 
     render(<ImportCardPage />);
     await walkToReview();
 
-    await user.type(field(/cardholder name/i), 'Ada Lovelace');
+    await user.type(field(/cardholder name/i), 'Person A');
     await user.type(field(/card number/i), '4242424242424242');
     await user.type(field(/expiration month/i), '07');
     await user.type(field(/expiration year/i), '2029');
@@ -748,5 +764,137 @@ describe('ImportCardPage — cancelling leaves nothing behind', () => {
     // The card itself is kept — hand-typed details are not thrown away over a
     // failed image link.
     expect(seen).not.toContain('DELETE /api/secrets/secret-9');
+  });
+});
+
+/** The step the stepper marks active (`aria-current="step"`). */
+function activeStep(): string | null {
+  const step = screen.getByRole('list', { hidden: true, name: /progress/i })
+    ?.querySelector('[aria-current="step"]');
+  return step?.textContent ?? null;
+}
+
+describe('ImportCardPage — Capture → Crop → Review → Save stepper (E10.5)', () => {
+  it('walks the four steps in order with the AI mocked', async () => {
+    const user = userEvent.setup();
+    let release: () => void = () => {};
+    server.use(
+      aiStatus(true),
+      secretTypes(),
+      extractOk(),
+      http.post(`${API_BASE}/secrets`, async () => {
+        // Hold the save open so the Save step can be observed.
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        return HttpResponse.json({ data: { id: 'secret-9' } });
+      }),
+      http.post(`${API_BASE}/storage/objects`, () =>
+        HttpResponse.json({ data: { id: 'object-1' } }),
+      ),
+      http.post(`${API_BASE}/secrets/:id/attachments`, () =>
+        HttpResponse.json({ data: { id: 'attachment-1' } }),
+      ),
+    );
+    render(<ImportCardPage />);
+
+    await screen.findByRole('button', { name: /take a photo of the front/i });
+    for (const label of ['Capture', 'Crop', 'Review', 'Save']) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
+    expect(activeStep()).toMatch(/capture/i);
+
+    selectPhoto('front');
+    fireEvent.click(await screen.findByRole('button', { name: /^continue$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /skip the back/i }));
+
+    await screen.findByRole('heading', { name: /check the crop/i });
+    expect(activeStep()).toMatch(/crop/i);
+    // The crop is adjustable here, and the AI's work is summarised.
+    expect(screen.getByRole('button', { name: /adjust crop/i })).toBeInTheDocument();
+    expect(screen.getByText(/details? read from the photo/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /continue to details/i }));
+    await screen.findByRole('heading', { name: /check the details/i });
+    expect(activeStep()).toMatch(/review/i);
+
+    await user.type(field(/cvv/i), '123');
+    fireEvent.click(screen.getByRole('button', { name: /save card/i }));
+
+    await waitFor(() => expect(activeStep()).toMatch(/save/i));
+    release();
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/secrets/secret-9'));
+  });
+
+  it('goes back to the Crop step from the review summary', async () => {
+    server.use(aiStatus(true), secretTypes(), extractOk());
+    render(<ImportCardPage />);
+    await walkToReview();
+
+    expect(screen.getByAltText(/cropped front of the card/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /change crop/i }));
+
+    expect(
+      await screen.findByRole('heading', { name: /check the crop/i }),
+    ).toBeInTheDocument();
+  });
+});
+
+describe('ImportCardPage — the CVV is never prefilled (E10.5)', () => {
+  it('leaves both security codes empty even when the extraction returns them', async () => {
+    server.use(
+      aiStatus(true),
+      secretTypes(),
+      http.post(`${API_BASE}/secrets/cards/extract`, () =>
+        HttpResponse.json({
+          data: {
+            ...EXTRACTION,
+            fields: { ...EXTRACTION.fields, cvv: '999', security_code_2: '4567' },
+            confidence: { ...EXTRACTION.confidence, cvv: 0.99 },
+          },
+        }),
+      ),
+    );
+    render(<ImportCardPage />);
+    await walkToReview();
+
+    expect(field(/cvv/i)).toHaveValue('');
+    expect(screen.getByText(/not read from the photo — type it from the card/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /save card/i })).toBeDisabled();
+  });
+});
+
+describe('ImportCardPage — AI-read fields are marked on the review step (E10.5)', () => {
+  beforeEach(() => {
+    server.use(aiStatus(true), secretTypes(), extractOk());
+  });
+
+  it('marks the fields the AI supplied, and never the CVV', async () => {
+    render(<ImportCardPage />);
+    await walkToReview();
+
+    const holder = field(/cardholder name/i).closest('.MuiFormControl-root') as HTMLElement;
+    expect(within(holder).getAllByLabelText('Read by AI').length).toBeGreaterThan(0);
+
+    // The low-confidence number gets "Check" instead of the AI marker.
+    const number = field(/card number/i).closest('.MuiFormControl-root') as HTMLElement;
+    expect(within(number).queryAllByLabelText('Read by AI')).toHaveLength(0);
+
+    const cvv = field(/cvv/i).closest('.MuiFormControl-root') as HTMLElement;
+    expect(within(cvv).queryAllByLabelText('Read by AI')).toHaveLength(0);
+
+    expect(screen.getByText(/were read from your photo/i)).toBeInTheDocument();
+  });
+
+  it('drops the AI marker once the user edits the field', async () => {
+    const user = userEvent.setup();
+    render(<ImportCardPage />);
+    await walkToReview();
+
+    await user.clear(field(/cardholder name/i));
+    await user.type(field(/cardholder name/i), 'PERSON B');
+
+    const holder = field(/cardholder name/i).closest('.MuiFormControl-root') as HTMLElement;
+    expect(within(holder).queryAllByLabelText('Read by AI')).toHaveLength(0);
   });
 });
