@@ -4,10 +4,11 @@
 // Only the suites of the slices Vault has ADOPTED run. Each suite of a slice that
 // is not adopted yet is listed below with the written reason and the epic
 // child that removes the skip (platform-adoption epic #54: E3.1 = #76 host,
-// E3.2 = #77 identity).
+// E3.2 = #77 identity, E4.1 = #79 settings).
 import '../src/app-registrations/registrations';
 import '@marinoscar/platform-api/host/testing';
 import '@marinoscar/platform-api/identity/testing';
+import '@marinoscar/platform-api/settings/testing';
 
 import { Module } from '@nestjs/common';
 import { join } from 'node:path';
@@ -48,6 +49,15 @@ runPlatformConformance({
       permissions: permissionRegistry.list(),
       roles: roleRegistry.list(),
       grants: catalogGrants(buildPermissionCatalog()),
+    },
+
+    // No secret-named field in any registered system or user namespace (the AI key
+    // is a credential, E4.2), every default valid against its stored schema, and
+    // every org layer gated by a registered org-scope permission (E4.1, #79).
+    // `maintenance` plus Vault's `ui`, `features`, `ai`, `vaultCards`, `vaultBackups`.
+    settings: {
+      permissions: permissionRegistry.list(),
+      minSystemNamespaces: 6,
     },
 
     // Every foreign key to `User` in the composed schema is registered with a purge
