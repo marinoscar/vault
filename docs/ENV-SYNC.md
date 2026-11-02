@@ -1,6 +1,6 @@
-# Backing Up .env Files into Vault with `vaultcli sync`
+# Backing Up .env Files into Vault with `vault sync`
 
-`vaultcli sync` keeps local `.env` files (or any UTF-8 text file) backed up in your Vault instance as **versioned Document secrets**. Every time the file content changes, a new immutable version is written. Unchanged files are skipped, which makes the command safe to call repeatedly from a cron job without creating spurious versions or unnecessary API traffic.
+`vault sync` keeps local `.env` files (or any UTF-8 text file) backed up in your Vault instance as **versioned Document secrets**. Every time the file content changes, a new immutable version is written. Unchanged files are skipped, which makes the command safe to call repeatedly from a cron job without creating spurious versions or unnecessary API traffic.
 
 This is a one-way backup: local files are pushed into Vault. Vault is the read-only archive. The command never modifies files on disk.
 
@@ -25,7 +25,7 @@ Registering a file (via `sync add` or `sync add-dir`) is a local-only operation 
 Registration and cached hashes are persisted in a local registry at:
 
 ```
-~/.config/vaultcli/sync.json
+~/.vault/sync.json
 ```
 
 The file is created with mode `0600` (owner read/write only). The location can be overridden with the `VAULTCLI_CONFIG_DIR` environment variable.
@@ -34,7 +34,7 @@ The file is created with mode `0600` (owner read/write only). The location can b
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│  vaultcli sync run                                               │
+│  vault sync run                                               │
 │                                                                  │
 │  For each registered entry:                                      │
 │    1. Hash local file (SHA-256)                                  │
@@ -56,10 +56,10 @@ The file is created with mode `0600` (owner read/write only). The location can b
 
 ### 1. Authenticate
 
-Run this once. The PAT is stored at `~/.config/vaultcli/auth.json`.
+Run this once. The PAT is stored at `~/.vault/config.json`.
 
 ```bash
-vaultcli auth login
+vault login
 ```
 
 See [personal-access-tokens.md](personal-access-tokens.md) for how to create a token in the web UI.
@@ -67,7 +67,7 @@ See [personal-access-tokens.md](personal-access-tokens.md) for how to create a t
 ### 2. Register a file
 
 ```bash
-vaultcli sync add --name "myapp/env-prod" --path /home/user/myapp/.env.production
+vault sync add --name "myapp/env-prod" --path /home/user/myapp/.env.production
 ```
 
 This writes to the local registry only. No Vault secret is created yet.
@@ -75,7 +75,7 @@ This writes to the local registry only. No Vault secret is created yet.
 ### 3. Push to Vault
 
 ```bash
-vaultcli sync run
+vault sync run
 ```
 
 The CLI hashes each registered file, skips unchanged ones, and creates or updates the corresponding Document secret. On the first run for a new entry, the secret is created.
@@ -84,10 +84,10 @@ The CLI hashes each registered file, skips unchanged ones, and creates or update
 
 ```bash
 # Retrieve the content from the notes field
-vaultcli secrets get "myapp/env-prod" --json | jq -r '.data.values.notes'
+vault secrets get "myapp/env-prod" --json | jq -r '.data.values.notes'
 
 # View version history
-vaultcli versions list "myapp/env-prod"
+vault versions list "myapp/env-prod"
 ```
 
 ### 5. Confirm change detection works
@@ -96,14 +96,14 @@ Edit the file, then run again:
 
 ```bash
 echo "NEW_VAR=1" >> /home/user/myapp/.env.production
-vaultcli sync run
+vault sync run
 # → 1 updated
 ```
 
 Run once more without changing the file:
 
 ```bash
-vaultcli sync run
+vault sync run
 # → 1 unchanged
 ```
 
@@ -116,7 +116,7 @@ vaultcli sync run
 Use `sync add` to register a single file with an explicit secret name:
 
 ```bash
-vaultcli sync add \
+vault sync add \
   --name "myapp/env-prod" \
   --path /absolute/path/to/.env.production \
   --description "Production environment variables"
@@ -132,10 +132,10 @@ Use `sync add-dir` to register a directory. File matching happens at `sync run` 
 
 ```bash
 # Default: matches .env* files in the directory (non-recursive)
-vaultcli sync add-dir --path /home/user/myapp
+vault sync add-dir --path /home/user/myapp
 
 # Custom glob, recursive, with a name prefix
-vaultcli sync add-dir \
+vault sync add-dir \
   --path /home/user/myapp \
   --pattern "*.env" \
   --recursive \
@@ -152,39 +152,39 @@ vaultcli sync add-dir \
 
 ```bash
 # List all registered entries (offline, no network call)
-vaultcli sync list
+vault sync list
 
 # Check what would happen on the next run (dry run)
-vaultcli sync status
+vault sync status
 
 # Remove an entry from the registry (does NOT delete the Vault secret)
-vaultcli sync remove "myapp/env-prod"
-vaultcli sync remove /absolute/path/to/.env.production
+vault sync remove "myapp/env-prod"
+vault sync remove /absolute/path/to/.env.production
 
 # Print the registry file path
-vaultcli sync where
+vault sync where
 ```
 
 ---
 
 ## Running on a Schedule (Cron)
 
-`vaultcli sync run` is designed to be called unattended. Authenticate once interactively, then add a crontab entry.
+`vault sync run` is designed to be called unattended. Authenticate once interactively, then add a crontab entry.
 
 Cron runs with a minimal environment, so set `HOME`, `VAULTCLI_CONFIG_DIR`, and `PATH` explicitly and use absolute paths.
 
 **Crontab entry (every 15 minutes):**
 
 ```cron
-*/15 * * * * HOME=/home/USER VAULTCLI_CONFIG_DIR=/home/USER/.config/vaultcli PATH=/usr/local/bin:/usr/bin:/bin vaultcli sync run --json >> /home/USER/.local/state/vaultcli-sync.log 2>&1
+*/15 * * * * HOME=/home/USER PATH=/usr/local/bin:/usr/bin:/bin vault sync run --json >> /home/USER/.local/state/vault-sync.log 2>&1
 ```
 
 Replace `USER` with your actual username.
 
 **Prerequisites:**
 
-- Authenticate first: `vaultcli auth login`. The PAT is stored at `~/.config/vaultcli/auth.json` and is reused by all subsequent runs.
-- If using a local build instead of the installed symlink, use the absolute path to `node` and `bin/vaultcli.js`.
+- Authenticate first: `vault login`. The PAT is stored at `~/.vault/config.json` and is reused by all subsequent runs.
+- If using a local build instead of the installed symlink, use the absolute path to `node` and `apps/cli/dist/cli.js`.
 - Create the log directory if it does not exist: `mkdir -p ~/.local/state`
 
 **Alerting:** `sync run` exits with code `0` when all entries succeeded and `1` when one or more entries errored. This makes the job alertable via standard cron mail or external monitoring tools that check job exit codes.
@@ -211,7 +211,7 @@ Replace `USER` with your actual username.
 The `notes` field is the versioned, encrypted copy. Read it back and write it to disk:
 
 ```bash
-vaultcli secrets get "myapp/env-prod" --json \
+vault secrets get "myapp/env-prod" --json \
   | jq -r '.data.values.notes' \
   > /path/to/restore/.env.production
 ```
@@ -220,10 +220,10 @@ To restore a specific historical version:
 
 ```bash
 # List versions and find the version ID to restore
-vaultcli versions list "myapp/env-prod"
+vault versions list "myapp/env-prod"
 
 # Read a specific version's notes
-vaultcli versions get "myapp/env-prod" <version-uuid> --json \
+vault versions get "myapp/env-prod" <version-uuid> --json \
   | jq -r '.data.values.notes' \
   > /path/to/restore/.env.production
 ```
@@ -244,14 +244,14 @@ If an attachment was uploaded successfully, download it from the secret's **Atta
 
 **Own secrets only.** `sync run` creates and updates secrets under the authenticated user's account. Admin `*_any` permissions are not required.
 
-**Auth token.** The PAT stored at `~/.config/vaultcli/auth.json` provides access to your Vault secrets. Protect the file and rotate the token regularly. See [personal-access-tokens.md](personal-access-tokens.md) for token management.
+**Auth token.** The PAT stored at `~/.vault/config.json` provides access to your Vault secrets. Protect the file and rotate the token regularly. See [personal-access-tokens.md](personal-access-tokens.md) for token management.
 
 ---
 
 ## Command Reference
 
-This document covers the intended workflows. For a complete flag reference for all `sync` subcommands, see [`../tools/vaultcli/README.md`](../tools/vaultcli/README.md#sync--local-file-sync).
+This document covers the intended workflows. For a complete flag reference for all `sync` subcommands, see [`../apps/cli/README.md`](../apps/cli/README.md#sync--local-file-sync).
 
-For the general vaultcli authentication setup, see [personal-access-tokens.md](personal-access-tokens.md).
+For the general vault authentication setup, see [personal-access-tokens.md](personal-access-tokens.md).
 
 For how Document secrets and versioning work on the server side, see [SECRETS.md](SECRETS.md).

@@ -9,6 +9,7 @@ Vault's product identity, read by the platform tooling (`platform-cli`, `platfor
 | `BACKGROUND_COLOR` | `identity.json` → `backgroundColor` |
 | `REPO_SLUG`, `REPO_URL` | `identity.json` → `repoSlug` |
 | `APP_SLUG` | derived from `APP_NAME` |
+| `CLI_NAME` | `identity.json` → `cliName` |
 | `ANDROID_IDENTITY_SOURCE` | `productName`, `repoSlug`, optional `android` block |
 
 `identity.json` also carries `cliName` (`vault`), the binary name the platform CLI uses from E11.

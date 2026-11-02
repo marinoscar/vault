@@ -12,7 +12,7 @@ Rule: **`AGENTS.md` is the single shared rule set.** Edit rules there. Never cop
 |---|---|---|---|
 | `AGENTS.md` | Claude Code (via `CLAUDE.md`), OpenCode | Shared rules: overview, structure, every MANDATORY section, commands | 24 KB |
 | `CLAUDE.md` | Claude Code | Starts with `@AGENTS.md` (an import), then Claude-only content: the docs table, delegation rules, cloud-session exception | none |
-| `apps/api/AGENTS.md`, `apps/web/AGENTS.md`, `tools/AGENTS.md` | the assistant working in that folder | Area rules | 6 KB each |
+| `apps/api/AGENTS.md`, `apps/web/AGENTS.md`, `apps/cli/AGENTS.md` | the assistant working in that folder | Area rules | 6 KB each |
 | `.claude/agents/*.md` | Claude Code | Subagents `backend-dev`, `frontend-dev`, `database-dev`, `testing-dev`, `docs-dev`, `ops-dev`; frontmatter `name`, `description`, optional `model` | none |
 | `.claude/skills/<name>/SKILL.md` | Claude Code | On-demand recipes: `add-job-type`, `add-settings-page`, `platform-migration`, `add-notification`, `rename-app`. Several describe the platform slice they belong to and apply once that epic lands (see each file's first lines) | 10 KB each |
 | `.claude/settings.local.json` | Claude Code (local) | Personal permission allow-list; not shared | none |
@@ -63,7 +63,7 @@ The root `AGENTS.md` carries the short rule; this is the full text.
 Quick check:
 
 ```bash
-wc -c AGENTS.md CLAUDE.md apps/*/AGENTS.md tools/AGENTS.md .claude/skills/*/SKILL.md
+wc -c AGENTS.md CLAUDE.md apps/*/AGENTS.md .claude/skills/*/SKILL.md
 ```
 
 ## Troubleshooting
