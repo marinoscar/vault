@@ -51,11 +51,18 @@ body:
     attributes:
       label: Affected Component
       options:
-        - API (Backend)
+        - Secrets (API + UI)
+        - Cards (scanning, expiry, gallery)
+        - Backups (admin, my backups)
+        - Media
+        - AI
+        - CLI (vault)
         - Web (Frontend)
+        - API (Backend)
         - Database
         - Authentication
         - Infrastructure
+        - Documentation
         - Other
     validations:
       required: true

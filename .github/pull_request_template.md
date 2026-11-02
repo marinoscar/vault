@@ -2,9 +2,11 @@
 
 <!-- Brief description of the changes in this PR -->
 
-## Type of Change
+## Linked issue
 
-<!-- Mark the relevant option with an 'x' -->
+<!-- Fixes #123 / Relates to #123. Every feature or bug fix needs a tracking issue, see AGENTS.md. Platform migration work links its epic (program #54). -->
+
+## Type of Change
 
 - [ ] Bug fix (non-breaking change which fixes an issue)
 - [ ] New feature (non-breaking change which adds functionality)
@@ -13,13 +15,7 @@
 - [ ] Refactoring (no functional changes)
 - [ ] CI/CD or infrastructure change
 
-## Related Issues
-
-<!-- Link any related issues here using "Fixes #123" or "Relates to #123" -->
-
 ## Changes Made
-
-<!-- List the key changes made in this PR -->
 
 -
 -
@@ -27,32 +23,34 @@
 
 ## Testing
 
-<!-- Describe the tests you ran to verify your changes -->
+<!-- Check the commands you ran; see docs/TESTING.md -->
 
-- [ ] Unit tests pass (`npm test`)
-- [ ] Type checks pass (`npm run typecheck`)
-- [ ] E2E tests pass (if applicable)
+- [ ] `cd apps/api && npm test` (Jest unit + mocked integration)
+- [ ] `cd apps/api && npm run typecheck`
+- [ ] `cd apps/web && npm run test:run` (Vitest)
+- [ ] `cd apps/web && npm run typecheck && npm run typecheck:test`
+- [ ] `npm run vaultcli:build` and `npm test -w tools/vaultcli` (CLI changes)
+- [ ] E2E (`tests/e2e`, if applicable)
 - [ ] Manual testing completed
 
-### Test Instructions
+## Docs updated
 
-<!-- If manual testing is needed, provide steps to test -->
+<!-- Check the one that applies -->
 
-1.
-2.
-3.
-
-## Screenshots
-
-<!-- If applicable, add screenshots to help explain your changes -->
+- [ ] Architecture / API / Security docs (`docs/*.md`)
+- [ ] Spec (`docs/specs/*.md`)
+- [ ] Platform adoption (`docs/platform-adoption/*.md`)
+- [ ] README
+- [ ] AGENTS.md / CLAUDE.md
+- [ ] None needed
 
 ## Checklist
 
-- [ ] My code follows the project's coding standards
 - [ ] I have performed a self-review of my own code
-- [ ] I have commented my code, particularly in hard-to-understand areas
-- [ ] I have made corresponding changes to the documentation
 - [ ] My changes generate no new warnings
+- [ ] A behaviour change carries its tests
+- [ ] No installed migration was edited or renamed
+- [ ] No real people, companies or user material in code, tests, docs or commit messages
 - [ ] Any dependent changes have been merged and published
 
 ## Additional Notes
