@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 
-import { CryptoService } from '../../common/services/crypto.service';
+import { CredentialsService } from '@marinoscar/platform-api/credentials';
+
 import { DEFAULT_SYSTEM_SETTINGS } from '../../common/types/settings.types';
 import { PrismaService } from '../../prisma/prisma.service';
 import { createMockPrismaService, MockPrismaService } from '../../../test/mocks/prisma.mock';
@@ -40,7 +41,7 @@ describe('SystemSettingsService keeps keys it does not own', () => {
       providers: [
         SystemSettingsService,
         { provide: PrismaService, useValue: prisma },
-        { provide: CryptoService, useValue: { encrypt: jest.fn(), decrypt: jest.fn() } },
+        { provide: CredentialsService, useValue: { describe: jest.fn().mockResolvedValue(null), setSecret: jest.fn(), deleteSecret: jest.fn() } },
       ],
     }).compile();
     service = module.get(SystemSettingsService);

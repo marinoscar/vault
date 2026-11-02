@@ -124,6 +124,11 @@ STORAGE_PART_SIZE=10485760
 # Generate with: openssl rand -hex 32
 VAULT_ENCRYPTION_KEY=your-vault-encryption-key-64-hex-chars
 
+# Credential store key (platform; encrypts runtime-configured secrets such as the
+# AI key). A different key from VAULT_ENCRYPTION_KEY.
+# Generate with: openssl rand -base64 32
+SECRETS_ENCRYPTION_KEY=your-secrets-encryption-key-base64
+
 # Observability
 OTEL_ENABLED=false
 LOG_LEVEL=info
@@ -135,6 +140,7 @@ Generate secrets with:
 openssl rand -hex 32   # JWT_SECRET
 openssl rand -hex 32   # COOKIE_SECRET
 openssl rand -hex 32   # VAULT_ENCRYPTION_KEY
+openssl rand -base64 32   # SECRETS_ENCRYPTION_KEY
 ```
 
 ### Step 3 — Run the install script

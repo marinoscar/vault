@@ -19,6 +19,7 @@
     "web:test": "npm -w apps/web test",
     "app": "node tools/app/bin/app.js",
     "app:build": "npm -w tools/app run build",
+    "vault:migrate-ai-key": "npm -w apps/api run vault:migrate-ai-key --",
     "vaultcli": "node tools/vaultcli/bin/vaultcli.js",
     "vaultcli:build": "npm -w tools/vaultcli run build"
   },

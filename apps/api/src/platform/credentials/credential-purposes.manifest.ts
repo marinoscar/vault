@@ -1,0 +1,43 @@
+// =============================================================================
+// Credential purposes (issue #80, epic #54)
+// =============================================================================
+//
+// The platform's `CredentialsService` refuses to write a purpose nobody
+// registered, and a credential's PURPOSE IS ALSO ITS AES-GCM SUB-KEY DOMAIN:
+// renaming a string orphans every secret stored under it.
+//
+//   ai   the platform AI slice's deployment provider key (purpose `'ai'`, name =
+//        provider id). Vault stores its one OpenAI key at `('ai', 'openai')`, the
+//        address the AI slice reads in E8, so the key never has to be moved twice.
+//
+// SHIM(E8): this is a local copy of the platform's `AI_CREDENTIAL_PURPOSE_DEF`
+// (`@marinoscar/platform-api/ai`, `ai/config/ai-credential.constants.ts`). It is
+// NOT imported: pulling the `ai` subpath into the app's type graph makes ts-jest
+// stop resolving `@marinoscar/platform-api/testing` (the conformance and Doctor
+// specs fail with TS2307), and the AI slice is not mounted until E8.
+// `test/credentials/credential-purposes.spec.ts` proves the copy equals the
+// platform's. When `AiModule.forRoot` registers the purpose (E8), delete this
+// registration in the same change: a duplicate registration fails at boot.
+//
+// Not here: Vault's secret values. They are `secret_versions` rows under
+// `VAULT_ENCRYPTION_KEY` (`CryptoService`), a different key and a different
+// store, on purpose (docs/SECRETS.md).
+// =============================================================================
+
+import {
+  registerCredentialPurpose,
+  type CredentialPurposeDef,
+} from '@marinoscar/platform-api/credentials';
+
+/** Purpose of the deployment's AI provider keys (also the cipher sub-key domain). */
+export const AI_CREDENTIAL_PURPOSE = 'ai';
+
+/** SHIM(E8): equal to the platform's `AI_CREDENTIAL_PURPOSE_DEF`. */
+export const AI_CREDENTIAL_PURPOSE_DEF: CredentialPurposeDef = Object.freeze({
+  purpose: AI_CREDENTIAL_PURPOSE,
+  owner: 'ai',
+  label: 'AI provider keys',
+  tiers: Object.freeze(['system', 'org'] as const),
+});
+
+registerCredentialPurpose(AI_CREDENTIAL_PURPOSE_DEF);
