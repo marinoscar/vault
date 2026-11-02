@@ -20,6 +20,7 @@ Index of every document in `docs/`, plus the "Doc map by task". Rules for assist
 | [platform-adoption/module-classification.md](platform-adoption/module-classification.md) | Every module classified, with target slice and epic | |
 | [platform-adoption/local-exceptions.md](platform-adoption/local-exceptions.md) | Deliberate deviations and what removes them | |
 | [platform-adoption/schema-delta.md](platform-adoption/schema-delta.md) | What platform migrations 0003 to 0040 add to the database | |
+| [runbooks/production-cutover.md](runbooks/production-cutover.md) | **Upgrade production to the platform (start here)**: the ordered checklist for a live pre-platform deployment (rehearsal, window, rollback, after) | |
 | [runbooks/database-baseline.md](runbooks/database-baseline.md) | One-time baseline of a live database onto the platform history (rehearse, window, rollback) | |
 | [runbooks/settings-migration.md](runbooks/settings-migration.md) | Move pre-E4.1 user profiles onto the platform settings layout (`vault:migrate-settings`) | |
 | [runbooks/database-restore.md](runbooks/database-restore.md) | Whole-database backup and restore (`db-backup` slice): keys that must match, pre-flight, manual and automated restore, rollback, rehearsal | |

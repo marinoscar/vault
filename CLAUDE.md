@@ -30,7 +30,7 @@ Full index with a "Doc map by task": [docs/README.md](docs/README.md). Read docs
 | Architecture decision records (ADR-0001 packages first) and the `@marinoscar/vault-*` packages: layout, build, `vault.lock`, versioning plan | [docs/decisions/README.md](docs/decisions/README.md), [docs/PACKAGES.md](docs/PACKAGES.md), [docs/runbooks/vault-domain-migration.md](docs/runbooks/vault-domain-migration.md), [docs/runbooks/release-vault-packages.md](docs/runbooks/release-vault-packages.md) |
 | Spec: UX refresh (destinations, shell, brand, settings hub, datatable; E10) | [docs/specs/ux-refresh.md](docs/specs/ux-refresh.md) |
 | Original implementation specs 01 to 24 (historical) | [docs/specs/README.md](docs/specs/README.md), [docs/System_Specification_Document.md](docs/System_Specification_Document.md) |
-| Deployment (VPS) and dev VPS setup | [infra/deploy/DEPLOY.md](infra/deploy/DEPLOY.md), [docs/DEV-VPS-SETUP.md](docs/DEV-VPS-SETUP.md) |
+| Deployment (VPS) and dev VPS setup | [infra/deploy/DEPLOY.md](infra/deploy/DEPLOY.md), [docs/DEV-VPS-SETUP.md](docs/DEV-VPS-SETUP.md), [docs/runbooks/production-cutover.md](docs/runbooks/production-cutover.md) |
 | CLI: `vault` (`apps/cli`, on platform-cli; usage, install, migration from `vaultcli`) | [apps/cli/README.md](apps/cli/README.md), [apps/cli/AGENTS.md](apps/cli/AGENTS.md) |
 | Area rules (API, web, CLI) | [apps/api/AGENTS.md](apps/api/AGENTS.md), [apps/web/AGENTS.md](apps/web/AGENTS.md), [apps/cli/AGENTS.md](apps/cli/AGENTS.md) |
 | Recipe: add a job type (applies from E5) | [.claude/skills/add-job-type/SKILL.md](.claude/skills/add-job-type/SKILL.md) |
