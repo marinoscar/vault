@@ -158,7 +158,12 @@ export class SystemSettingsService {
   async replaceSettings(dto: UpdateSystemSettingsDto, userId: string) {
     const current = await this.getRawValue();
 
+    // Keys this service does not own (the platform's `maintenance`, ...) are
+    // carried over verbatim: a PUT replaces `ui` and `features` only.
+    const { ui: _ui, features: _features, ai: _ai, ...foreign } =
+      current as SystemSettingsValue & Record<string, unknown>;
     const next: SystemSettingsValue = {
+      ...foreign,
       ui: dto.ui,
       features: dto.features,
     };
@@ -225,6 +230,9 @@ export class SystemSettingsService {
 
     // Deep merge with existing settings
     const merged: SystemSettingsValue = {
+      // Keys this service does not own (the platform's `maintenance`, ...) are
+      // kept as stored.
+      ...current,
       ui: {
         allowUserThemeOverride:
           dto.ui?.allowUserThemeOverride ??

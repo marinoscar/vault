@@ -51,7 +51,10 @@ export const aiSettingsSchema = z.object({
   apiKey: encryptedSecretValueSchema.nullable(),
 });
 
-export const systemSettingsSchema = z.object({
+// LOOSE on purpose: the `global` row is shared with the platform's namespaces
+// (`maintenance` today; `jobs`, `nodes`, ... as slices land), which this schema
+// does not describe. A strict `z.object` would STRIP them on every admin save.
+export const systemSettingsSchema = z.looseObject({
   ui: z.object({
     allowUserThemeOverride: z.boolean(),
   }),
