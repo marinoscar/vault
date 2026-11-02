@@ -1,6 +1,7 @@
 // The host-neutral half of the `core` slice: the HTTP port (`configureVaultWeb`), the domain calls, the wire types and the hooks and helpers every slice uses. No component.
 
 export * from './api.js';
+export * from './cardScanAvailability.js';
 export * from './clipboard.js';
 export * from './http.js';
 export * from './relativeTime.js';

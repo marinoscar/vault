@@ -51,7 +51,7 @@ const asLoaded = (status: DashboardResourceStatus): LoadedStatus => (status === 
  * `/secrets/cards/summary?page=1&pageSize=100` (#118: last four digits and
  * expiry decrypted server-side, soonest first; a second page only when more
  * than 100 cards need attention), `/backups/me`, `/media/folders`
- * (count), `/ai/status` (writers) and, for administrators,
+ * (count), `/ai/config` (writers, unless the host shares one copy) and, for administrators,
  * `/admin/backups` with `/admin/backups/schedule`.
  */
 export default function HomePage() {

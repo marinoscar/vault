@@ -40,7 +40,6 @@ import type {
   MediaFoldersResponse,
   MediaFile,
   MediaFilesResponse,
-  AiStatus,
   AttachmentRole,
   CardExtractionResult,
   ExtractCardRequest,
@@ -59,16 +58,9 @@ import type {
 // AI API
 // =============================================================================
 
-/**
- * Whether AI-backed features are available to the current user.
- *
- * Readable by any signed-in user (system settings are admin-only). Since E8.1
- * it is the compatibility alias of the platform's `GET /api/ai/config`, same
- * wire shape. `useAiStatus` combines it with the caller's `ai:use`.
- */
-export async function getAiStatus(): Promise<AiStatus> {
-  return api.get<AiStatus>('/ai/status');
-}
+// Whether AI (and card scanning) is available is the platform's
+// `GET /api/ai/config`, read by `useAiStatus` through `useAiConfig`
+// (`@marinoscar/platform-web/ai/headless`) and judged by `isCardScanAvailable`.
 
 /**
  * Locate a card in FULL photos and read its fields.

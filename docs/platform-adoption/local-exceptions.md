@@ -24,7 +24,7 @@ E0 to E12 are merged. Of the rows in the log below, every one whose epic landed 
 
 | Kind | Items |
 |---|---|
-| **Open** (temporary, each with a follow-up; none blocks the program) | A. Web Push to a closed tab. C. Factory-reset summary shim (waits on EAB seam request 1058). D. Legacy `infra/deploy/`, `nginx.prod.conf`, `scripts/dev.ps1`. E. `useUserSettings` profile shim. F. `GET /api/ai/status` alias. Tracked by epic [#151](https://github.com/marinoscar/vault/issues/151) (#152 to #157) |
+| **Open** (temporary, each with a follow-up; none blocks the program) | A. Web Push to a closed tab. C. Factory-reset summary shim (waits on EAB seam request 1058). D. Legacy `infra/deploy/`, `nginx.prod.conf`, `scripts/dev.ps1`. E. `useUserSettings` profile shim. Tracked by epic [#151](https://github.com/marinoscar/vault/issues/151) (#152 to #157) |
 | **Permanent vault-divergence** | The [table below](#permanent-divergences), plus the rows of the log marked **Permanent** (broadcasts card in single-org, default-org scope, no avatar uploads, legacy settings keys, host glue, platform decorator imports, error-code registrations, job runtime facts, guards, `platform.lock` records) |
 
 The drift this leaves against the base is classified in [drift-final.md](drift-final.md#what-remains-classified).

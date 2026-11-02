@@ -191,19 +191,9 @@ export const handlers = [
     return HttpResponse.json({ message: 'Not found' }, { status: 404 });
   }),
 
-  // AI status
-  //
-  // Present in the default handler set because any page carrying a card-import
-  // entry point calls it on mount. Tests that care about the disabled path
-  // override it with server.use(...).
-  http.get(`${API_BASE}/ai/status`, () => {
-    return HttpResponse.json({
-      data: { enabled: true, features: { cardExtract: true } },
-    });
-  }),
-
-  // The platform AI config (E8.2): VaultAiConfigProvider, RequireAiEnabled and the
-  // packaged AI pages read it. Off by default; a test that needs it on overrides it.
+  // The platform AI config (E8.2): VaultAiConfigProvider, RequireAiEnabled, the
+  // packaged AI pages and vault-web's card-scan gate (`useAiStatus`) read it. Off by
+  // default; a test that needs it on overrides it.
   http.get(`${API_BASE}/ai/config`, () => {
     return HttpResponse.json({
       data: { enabled: false, keyPolicy: 'byok_with_org_fallback', providers: [] },

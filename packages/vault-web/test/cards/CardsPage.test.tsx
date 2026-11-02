@@ -33,6 +33,7 @@ vi.mock('react-router-dom', async () => {
 
 import { useCards } from '../../src/cards/headless/useCards.js';
 import { useLocation } from 'react-router-dom';
+import { AI_CONFIG_OFF } from '../mocks/aiConfig.js';
 
 /** Renders the router's current query string, to assert URL sync. */
 function LocationProbe() {
@@ -99,8 +100,8 @@ describe('CardsPage', () => {
 
   it('offers only "Add manually" in the empty state when AI is disabled', async () => {
     server.use(
-      http.get('*/api/ai/status', () =>
-        HttpResponse.json({ data: { enabled: false, features: { cardExtract: false } } }),
+      http.get('*/api/ai/config', () =>
+        HttpResponse.json({ data: AI_CONFIG_OFF }),
       ),
     );
     mockCards([]);
@@ -356,7 +357,7 @@ describe('CardsPage', () => {
     mockCards([makeSummary({ id: 'card-1' })]);
     render(<CardsPage />);
 
-    // Enabled by the default /api/ai/status handler.
+    // Available through the default /api/ai/config handler.
     const importButton = await screen.findByRole('button', {
       name: /scan a card/i,
     });
@@ -368,8 +369,8 @@ describe('CardsPage', () => {
 
   it('hides the import action entirely when AI is disabled', async () => {
     server.use(
-      http.get('*/api/ai/status', () =>
-        HttpResponse.json({ data: { enabled: false, features: { cardExtract: false } } }),
+      http.get('*/api/ai/config', () =>
+        HttpResponse.json({ data: AI_CONFIG_OFF }),
       ),
     );
     mockCards([makeSummary({ id: 'card-1', name: 'Everyday Card' })]);
@@ -396,7 +397,7 @@ describe('CardsPage', () => {
 
   it('hides the import action when the status check fails', async () => {
     server.use(
-      http.get('*/api/ai/status', () =>
+      http.get('*/api/ai/config', () =>
         HttpResponse.json({ message: 'boom' }, { status: 500 }),
       ),
     );
@@ -427,8 +428,8 @@ describe('CardsPage', () => {
     // the import wizard it must NOT disappear with the AI feature. Hiding it
     // here would remove a working feature from the users least able to fix it.
     server.use(
-      http.get('*/api/ai/status', () =>
-        HttpResponse.json({ data: { enabled: false, features: { cardExtract: false } } }),
+      http.get('*/api/ai/config', () =>
+        HttpResponse.json({ data: AI_CONFIG_OFF }),
       ),
     );
     mockCards([makeSummary({ id: 'card-7', name: 'Business Visa', status: 'expired' })]);
@@ -444,7 +445,7 @@ describe('CardsPage', () => {
 
   it('keeps renewal available when the AI status check fails', async () => {
     server.use(
-      http.get('*/api/ai/status', () =>
+      http.get('*/api/ai/config', () =>
         HttpResponse.json({ message: 'boom' }, { status: 500 }),
       ),
     );

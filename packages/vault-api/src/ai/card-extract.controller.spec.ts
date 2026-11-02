@@ -6,7 +6,6 @@ import { PERMISSIONS } from '../core/roles.constants';
 
 import { AI_ERROR_CODES } from './ai.constants';
 import { AiException } from './ai.errors';
-import { AiStatusController } from './ai-status.controller';
 import { CardExtractController } from './card-extract.controller';
 import { CardExtractService } from './card-extract.service';
 
@@ -52,16 +51,6 @@ describe('CardExtractController', () => {
     it('puts the platform kill switch in front of the class', () => {
       const guards = Reflect.getMetadata('__guards__', CardExtractController.prototype.extract) ?? [];
       expect(guards.map((g: { name: string }) => g.name)).toContain('AiEnabledGuard');
-    });
-
-    it('declares no permission on the AI status route', () => {
-      // Any signed-in user must be able to discover whether the feature exists.
-      const permissions = Reflect.getMetadata(
-        PERMISSIONS_KEY,
-        AiStatusController.prototype.status,
-      );
-
-      expect(permissions).toBeUndefined();
     });
 
     it('responds 200, not 201, to the POST', () => {

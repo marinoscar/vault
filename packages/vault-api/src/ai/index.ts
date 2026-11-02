@@ -1,4 +1,3 @@
-export * from './ai-status.controller';
 export * from './ai.constants';
 export * from './card-extract.controller';
 export * from './card-extract.service';

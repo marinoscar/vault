@@ -17,8 +17,10 @@
  * instead of `RequireAiEnabled` redirecting on a stale "off". Same shape as
  * KVox's `AiConfigBinding.tsx`.
  *
- * This is NOT the card-scan gate: `hooks/useAiStatus.ts` reads `GET /api/ai/status`
- * (the compatibility alias that also says whether `card_extract` is usable).
+ * The card-scan gate reads the same answer: vault-web's `useAiStatus` takes it
+ * through the platform's `useAiConfig` (so no second request is made) and applies
+ * `isCardScanAvailable` (AI on, key policy `byok_with_org_fallback`, the `openai`
+ * provider on with its deployment key), combined with the viewer's `ai:use`.
  */
 
 import { useMemo } from 'react';

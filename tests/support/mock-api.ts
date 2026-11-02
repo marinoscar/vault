@@ -143,10 +143,15 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}): 
       });
     }
     if (path === '/ai/config') {
-      return json(route, { data: { enabled: true, keyPolicy: 'byok_with_org_fallback', providers: [] } });
-    }
-    if (path === '/ai/status') {
-      return json(route, { data: { enabled: true, features: { cardExtract: true } } });
+      // Card scanning available (vault-web `isCardScanAvailable`): AI on, the deployment
+      // key serving everyone and the openai provider on with its key stored.
+      return json(route, {
+        data: {
+          enabled: true,
+          keyPolicy: 'byok_with_org_fallback',
+          providers: [{ id: 'openai', displayName: 'OpenAI', enabled: true, hasOrgKey: true }],
+        },
+      });
     }
     if (path === '/telemetry/config') {
       return json(route, { data: { enabled: false, deployed: false } });

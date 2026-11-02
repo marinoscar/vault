@@ -51,7 +51,7 @@ Tracked by epic [#151](https://github.com/marinoscar/vault/issues/151); the issu
 3. **Factory-reset summary shim**: waits for the platform fix (EAB seam request 1058). [#154](https://github.com/marinoscar/vault/issues/154)
 4. **Legacy `infra/deploy/`, `infra/nginx/nginx.prod.conf`, `scripts/dev.ps1`** still ship; `vault deploy` is the supported path. [#155](https://github.com/marinoscar/vault/issues/155)
 5. **`useUserSettings` profile shim** (`imageSource` to `useProviderImage`) in `vault-web`, until the platform profile page replaces `ProfileSettings`. [#156](https://github.com/marinoscar/vault/issues/156)
-6. **`GET /api/ai/status`** alias of `GET /api/ai/config` is still served; remove it with its last caller. [#157](https://github.com/marinoscar/vault/issues/157)
+6. ~~**`GET /api/ai/status`**~~ (closed by #157) alias of `GET /api/ai/config` is still served; remove it with its last caller. [#157](https://github.com/marinoscar/vault/issues/157)
 
 Conformance at close-out (E11.3): the API runs every `runPlatformConformance` suite, `credentials` and `doctor-read-only` added by this issue; `sharing`, `webhooks`, `alerts` and `android-app` are skipped with a reason (slice not mounted) and `on-event-no-io` because its vacuity guard cannot be met. The web runs 4 suites and skips `shell-local-host` and `settings-ai-cards` with reasons. CI has an OpenAPI dump and lint job.
 

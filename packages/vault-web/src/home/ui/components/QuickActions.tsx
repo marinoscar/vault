@@ -19,7 +19,7 @@ interface QuickAction {
 interface QuickActionsProps {
   /** `secrets:write` */
   canCreateSecret: boolean;
-  /** `secrets:write` and card scanning enabled (`GET /api/ai/status`). */
+  /** `secrets:write` and card scanning available (`useAiStatus`, from `GET /api/ai/config`). */
   canScanCard: boolean;
   /** `secrets:read` (`/api/backups/me`). */
   canBackUp: boolean;

@@ -11,7 +11,7 @@ Status: experimental. Introduced in E12.3 (issue 104) by moving the domain code 
 Entry points (`<slice>/headless` holds hooks, calls and helpers; `<slice>/ui` holds components and pages; pages are named exports, `SecretsPage` and so on):
 
 - `@marinoscar/vault-web`: the root, `VAULT_WEB_PACKAGE` only.
-- `@marinoscar/vault-web/core/headless`: `configureVaultWeb` (the HTTP port), the domain calls (`getSecrets`, `getBackupSchedule`, ...), the wire types, `useCopyToClipboard`, `useDashboardResource`, `useAiStatus`, `useSystemSettings`, `useUserSettings`, `saveBlobAsFile`, `formatRelativeTime`.
+- `@marinoscar/vault-web/core/headless`: `configureVaultWeb` (the HTTP port), the domain calls (`getSecrets`, `getBackupSchedule`, ...), the wire types, `useCopyToClipboard`, `useDashboardResource`, `useAiStatus` (card scanning from the platform's `GET /api/ai/config`) with its pure rule `isCardScanAvailable`, `useSystemSettings`, `useUserSettings`, `saveBlobAsFile`, `formatRelativeTime`.
 - `@marinoscar/vault-web/core/ui`: `LoadingSpinner`, `ErrorBoundary`, `SettingsPageFrame`, `StorageSettingsLink`.
 - `@marinoscar/vault-web/secrets/headless`, `@marinoscar/vault-web/secrets/ui`: secrets and secret types (list, detail, create, edit, versions, attachments, the type builder and its pages).
 - `@marinoscar/vault-web/cards/headless`, `@marinoscar/vault-web/cards/ui`: payment cards (Cards, scan import, renewal, the card-scanning model section and the AI settings page that carries it).

@@ -25,6 +25,7 @@ import {
   cropImageFileToBox,
   cropImageFileToCard,
 } from '../../src/cards/headless/cardImage.js';
+import { aiConfigPayload } from '../mocks/aiConfig.js';
 
 const API_BASE = '*/api';
 const SECRET_ID = 'card-secret-1';
@@ -176,9 +177,7 @@ const EXTRACTION = {
 };
 
 function aiStatus(enabled: boolean) {
-  return http.get(`${API_BASE}/ai/status`, () =>
-    HttpResponse.json({ data: { enabled, features: { cardExtract: enabled } } }),
-  );
+  return http.get(`${API_BASE}/ai/config`, () => HttpResponse.json({ data: aiConfigPayload(enabled) }));
 }
 
 function secretDetail(overrides: Record<string, unknown> = {}) {

@@ -129,8 +129,9 @@ export default function CardsPage() {
 
   // Nothing is shown while the status is in flight, so the button never appears
   // and then vanishes under a user who is reaching for it. Gated on
-  // GET /api/ai/status: with the feature off the wizard can only end in a 503
-  // the user cannot act on. The status call fails closed.
+  // GET /api/ai/config (`useAiStatus`, `isCardScanAvailable`): with card scanning
+  // unavailable the wizard can only end in a 503 the user cannot act on. The
+  // check fails closed.
   const isScanAvailable = !isAiStatusLoading && cardExtractEnabled;
 
   const goScan = () => navigate('/cards/import');

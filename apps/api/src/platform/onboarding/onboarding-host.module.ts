@@ -10,8 +10,7 @@ import { OnboardingDataAdapter } from './onboarding-data.adapter';
 //   ONBOARDING_DATA      -> OnboardingDataAdapter   (this app's Prisma client)
 //   ONBOARDING_FEATURES  -> not bound. No registered step names a `feature`, and an unbound gate only
 //                           omits feature-gated steps. The AI-dependent steps read their own fact
-//                           (`vault.cardScan`), which asks the AI config the same question
-//                           `GET /api/ai/status` does.
+//                           (`vault.cardScan`), which asks the AI config (`isCardScanAvailable`).
 //
 // `@Global()` so the slice's services resolve the port from whichever module instantiates them.
 // =============================================================================

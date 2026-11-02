@@ -99,7 +99,7 @@ What moved in E12.2 (no re-exports are left behind in `apps/api`; the callers im
 |---|---|
 | `secrets/` (service, controller, card summary, `export/`), `secret-types/`, `media/` | the same folder names, with `VaultApiModule` replacing the three Nest modules |
 | `backups/` (archive, queue, runner, handlers, schedule task, notifier, controllers) | `backups/` |
-| `ai/` card extraction (`card-extract.*`, normalizer, schema, `GET /api/ai/status`) | `ai/`; `ai-key-migration` and `ai-platform-migration` (one-off commands) stay |
+| `ai/` card extraction (`card-extract.*`, normalizer, schema) | `ai/`; `ai-key-migration` and `ai-platform-migration` (one-off commands) stay |
 | `card-expiry/` | `card-expiry/` |
 | `prisma/default-org.ts`, `common/utils/image-signature.util.ts`, `common/constants/roles.constants.ts`, `app-registrations/permissions.ts` | `core/` |
 | `notifications-registry/vault-notification-data.ts` (payloads and keys) | `core/notification-data.ts`; the registrations and templates stay |
@@ -120,7 +120,7 @@ What moved in E12.2 (no re-exports are left behind in `apps/api`; the callers im
 | `VAULT_JOBS` | `VaultJobsPort` (`enqueue`, `enqueueWithin`, `registerHandler`) | `VaultJobsAdapter` over `JobsService` + `JobHandlerRegistry` | backups, card expiry |
 | `VAULT_NOTIFY` | `VaultNotifyPort` (`notify`, `notifyNow`, `notifyPermissionHolders`) | the platform `NotificationsService` | backups, card expiry |
 | `VAULT_AI` | `VaultAiPort` (`forUser`) | the platform `AiService` | card extraction |
-| `VAULT_AI_CONFIG` | `VaultAiConfigPort` (`describePublic`) | the platform `AiConfigService` | `GET /api/ai/status` |
+| `VAULT_AI_CONFIG` | `VaultAiConfigPort` (`describePublic`) | the platform `AiConfigService` | the onboarding step "Scan a card" (`isCardScanAvailable`) |
 | `VAULT_AI_KEY_PRESENCE` | `VaultAiKeyPresencePort` (`isConfigured`) | `AiKeyPresence` | backup archive `system/settings.json` |
 | `VAULT_AUDIT` | `VaultAuditPort` (`record`) | `VaultAuditAdapter` over `audit_events` | secrets, secret types, export, backups, card expiry |
 | `VAULT_SETTINGS` | `VaultSettingsPort` (`getNamespace`, `getSettings`) | `VaultSettingsAdapter` over `SystemSettingsService` | secrets, backups, card extraction |

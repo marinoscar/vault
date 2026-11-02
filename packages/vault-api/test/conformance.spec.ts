@@ -14,7 +14,7 @@ import {
   USER_BACKUP_RUN_JOB_TYPE,
 } from '../src/backups';
 import { CardExpiryScanHandler, CARD_EXPIRY_SCAN_JOB_TYPE } from '../src/card-expiry';
-import { AiStatusController, CardExtractController } from '../src/ai';
+import { CardExtractController } from '../src/ai';
 import { MediaController } from '../src/media';
 import { SecretsController } from '../src/secrets';
 import { SecretTypesController } from '../src/secret-types';
@@ -64,7 +64,6 @@ const CONTROLLERS = [
   SecretTypesController,
   SecretsController,
   MediaController,
-  AiStatusController,
   CardExtractController,
   BackupsController,
   MyBackupsController,
