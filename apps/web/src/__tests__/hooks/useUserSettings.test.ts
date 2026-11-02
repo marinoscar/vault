@@ -298,7 +298,14 @@ describe('useUserSettings', () => {
 
       expect(api.patch).toHaveBeenCalledWith(
         '/user-settings',
-        { profile: newProfile },
+        // The platform wire profile: imageSource instead of useProviderImage.
+        {
+          profile: {
+            displayName: 'Updated Name',
+            imageSource: 'none',
+            customImageUrl: 'https://example.com/avatar.jpg',
+          },
+        },
         {
           headers: {
             'If-Match': '1',
@@ -307,6 +314,38 @@ describe('useUserSettings', () => {
       );
 
       expect(result.current.settings?.profile).toEqual(newProfile);
+    });
+
+    it('sends imageSource provider and a null URL (delete) when the provider image is used', async () => {
+      vi.mocked(api.get).mockResolvedValue(mockUserSettings);
+      vi.mocked(api.patch).mockResolvedValue({ ...mockUserSettings, version: 2 });
+      const { result } = renderHook(() => useUserSettings());
+      await waitFor(() => expect(result.current.settings).not.toBeNull());
+
+      await act(async () => {
+        await result.current.updateProfile({ displayName: 'A', useProviderImage: true, customImageUrl: '' });
+      });
+
+      expect(api.patch).toHaveBeenCalledWith(
+        '/user-settings',
+        { profile: { displayName: 'A', imageSource: 'provider', customImageUrl: null } },
+        expect.anything(),
+      );
+    });
+
+    it('reads the platform profile (imageSource) as useProviderImage', async () => {
+      vi.mocked(api.get).mockResolvedValue({
+        ...mockUserSettings,
+        profile: { displayName: 'A', imageSource: 'none', customImageUrl: 'https://example.com/a.png' },
+      } as never);
+      const { result } = renderHook(() => useUserSettings());
+      await waitFor(() => expect(result.current.settings).not.toBeNull());
+
+      expect(result.current.settings?.profile).toEqual({
+        displayName: 'A',
+        useProviderImage: false,
+        customImageUrl: 'https://example.com/a.png',
+      });
     });
 
     it('should update version after profile update', async () => {

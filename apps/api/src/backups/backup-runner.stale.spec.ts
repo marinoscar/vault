@@ -57,7 +57,7 @@ function makeRunner(rows: Row[]) {
     return { count };
   });
   const prisma = { backupRun: { updateMany } };
-  const runner = new BackupRunnerService(prisma as never, {} as never, {} as never, {} as never, {} as never);
+  const runner = new BackupRunnerService(prisma as never, {} as never, {} as never, {} as never, {} as never, {} as never);
   return { runner, updateMany, rows };
 }
 
@@ -125,7 +125,7 @@ describe('BackupRunnerService stale sweeps', () => {
 
   it('startup recovery never throws', async () => {
     const prisma = { backupRun: { updateMany: jest.fn().mockRejectedValue(new Error('db down')) } };
-    const runner = new BackupRunnerService(prisma as never, {} as never, {} as never, {} as never, {} as never);
+    const runner = new BackupRunnerService(prisma as never, {} as never, {} as never, {} as never, {} as never, {} as never);
     await expect(runner.onApplicationBootstrap()).resolves.toBeUndefined();
   });
 
@@ -153,7 +153,7 @@ describe('BackupRunnerService stale sweeps', () => {
       },
     };
     const prisma = { $transaction: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)) };
-    const runner = new BackupRunnerService(prisma as never, {} as never, {} as never, {} as never, {} as never);
+    const runner = new BackupRunnerService(prisma as never, {} as never, {} as never, {} as never, {} as never, {} as never);
 
     // The live run (old start, fresh heartbeat) is not swept, so this is a conflict.
     await expect(runner.startRun('manual', 'admin')).rejects.toMatchObject({ status: 409 });
@@ -177,6 +177,7 @@ describe('BackupRunnerService heartbeat', () => {
     const updateMany = jest.fn().mockResolvedValue({ count: 1 });
     const runner = new BackupRunnerService(
       { backupRun: { updateMany } } as never,
+      {} as never,
       {} as never,
       {} as never,
       {} as never,
@@ -206,7 +207,7 @@ describe('BackupRunnerService heartbeat', () => {
     };
     // No bucket: the run fails immediately, which still has to clear the timer.
     const storage = { getBucket: () => '' };
-    const runner = new BackupRunnerService(prisma as never, {} as never, storage as never, {} as never, {} as never);
+    const runner = new BackupRunnerService(prisma as never, {} as never, storage as never, {} as never, {} as never, {} as never);
     const clearSpy = jest.spyOn(global, 'clearInterval');
 
     await runner.execute({

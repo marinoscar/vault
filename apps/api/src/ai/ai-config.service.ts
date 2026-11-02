@@ -1,11 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { CredentialsService } from '@marinoscar/platform-api/credentials';
+import { SystemSettingsService } from '@marinoscar/platform-api/settings';
 
 import {
   VAULT_AI_CREDENTIAL_NAME,
   VAULT_AI_CREDENTIAL_PURPOSE,
 } from '../platform/credentials/credentials.config';
-import { SystemSettingsService } from '../settings/system-settings/system-settings.service';
+import { VAULT_AI_SYSTEM_SETTINGS } from '../app-registrations/settings';
 import { aiKeyUnreadable, aiNotConfigured } from './ai.errors';
 
 /**
@@ -22,7 +23,7 @@ export interface ResolvedAiConfig {
  * Resolves the admin-configured AI settings into something callable.
  *
  * The non-secret settings (enabled, model, budget) come from
- * `SystemSettingsService.getSettings()`, a masked projection. The plaintext key
+ * the platform `SystemSettingsService` (`ai` namespace, no key material). The plaintext key
  * comes from the platform credential store (purpose `ai`, name `openai`,
  * encrypted under SECRETS_ENCRYPTION_KEY) and exists in memory only between
  * this call and the provider call. There is no fallback to the legacy
@@ -45,10 +46,9 @@ export class AiConfigService {
    * @throws AiException 503 AI_KEY_UNREADABLE - key stored but undecryptable
    */
   async resolveForExtraction(): Promise<ResolvedAiConfig> {
-    const settings = await this.systemSettings.getSettings();
-    const ai = settings.ai;
+    const ai = await this.systemSettings.getNamespace(VAULT_AI_SYSTEM_SETTINGS);
 
-    if (!ai || !ai.enabled || !ai.apiKeyConfigured) {
+    if (!ai.enabled || !(await this.isKeyConfigured())) {
       throw aiNotConfigured();
     }
 
@@ -70,10 +70,9 @@ export class AiConfigService {
    * @throws AiException 503 AI_KEY_UNREADABLE - key stored but undecryptable
    */
   async resolveForVerification(): Promise<ResolvedAiConfig> {
-    const settings = await this.systemSettings.getSettings();
-    const ai = settings.ai;
+    const ai = await this.systemSettings.getNamespace(VAULT_AI_SYSTEM_SETTINGS);
 
-    if (!ai || !ai.apiKeyConfigured) {
+    if (!(await this.isKeyConfigured())) {
       throw aiNotConfigured();
     }
 
@@ -117,6 +116,12 @@ export class AiConfigService {
     };
   }
 
+  /** Whether the credential store holds a key (the mask only, nothing decrypted). */
+  async isKeyConfigured(): Promise<boolean> {
+    const info = await this.credentials.describe(VAULT_AI_CREDENTIAL_PURPOSE, VAULT_AI_CREDENTIAL_NAME);
+    return info !== null;
+  }
+
   /** The decrypted key from the credential store, or null when none is stored. */
   private readApiKey(): Promise<string | null> {
     return this.credentials.getSecret(
@@ -135,9 +140,8 @@ export class AiConfigService {
    */
   async isReady(): Promise<boolean> {
     try {
-      const settings = await this.systemSettings.getSettings();
-      const ai = settings.ai;
-      if (!ai || !ai.enabled || !ai.apiKeyConfigured) return false;
+      const ai = await this.systemSettings.getNamespace(VAULT_AI_SYSTEM_SETTINGS);
+      if (!ai.enabled || !(await this.isKeyConfigured())) return false;
 
       // Prove the credential is actually usable. "Configured but undecryptable"
       // must read as unavailable, otherwise the UI offers a button that can

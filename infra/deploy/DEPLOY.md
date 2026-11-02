@@ -1,5 +1,11 @@
 # Vault — Production Deployment Runbook
 
+> **Deprecated (E11).** This runbook describes the pre-platform deploy (`install-vault.sh`,
+> `update.sh`, `vault.conf`), kept until it is retired. The deploy is now `vault deploy`
+> from the platform CLI (`apps/cli`): see [docs/specs/vps-deploy.md](../../docs/specs/vps-deploy.md)
+> and [docs/runbooks/infra-sync.md](../../docs/runbooks/infra-sync.md). Do not start a new
+> install from this document.
+
 This document describes how to deploy and maintain the Vault application on the VPS.
 
 ## Overview

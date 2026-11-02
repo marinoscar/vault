@@ -42,6 +42,7 @@
     "msw": "^2.14.6",
     "typescript": "^5.x",
     "vite": "^8.0.16",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.8",
+    "vitest-axe": "^1.0.0-pre.5"
   }
 }

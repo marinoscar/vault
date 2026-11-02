@@ -1,18 +1,18 @@
 import { ServiceUnavailableException } from '@nestjs/common';
 
 import { CredentialsService } from '@marinoscar/platform-api/credentials';
+import { SystemSettingsService } from '@marinoscar/platform-api/settings';
 
 import {
   VAULT_AI_CREDENTIAL_NAME,
   VAULT_AI_CREDENTIAL_PURPOSE,
 } from '../platform/credentials/credentials.config';
-import { SystemSettingsService } from '../settings/system-settings/system-settings.service';
 import { AI_ERROR_CODES } from './ai.constants';
 import { AiConfigService } from './ai-config.service';
 import { AiException } from './ai.errors';
 
-type SettingsStub = Pick<SystemSettingsService, 'getSettings'>;
-type CredentialsStub = Pick<CredentialsService, 'getSecret'>;
+type SettingsStub = Pick<SystemSettingsService, 'getNamespace'>;
+type CredentialsStub = Pick<CredentialsService, 'getSecret' | 'describe'>;
 
 const readyAi = {
   enabled: true,
@@ -24,11 +24,28 @@ const readyAi = {
   apiKeyUpdatedAt: '2026-01-01T00:00:00.000Z',
 };
 
-function buildService(ai: unknown, key: (() => Promise<string | null>) | Error) {
+/**
+ * `ai` is the stored `ai` namespace (no key material) plus `apiKeyConfigured`,
+ * which here decides what the credential store's `describe` answers. A `null`
+ * stands for a row with no `ai` block: the namespace reads as its defaults.
+ */
+function buildService(ai: (Record<string, unknown> & { apiKeyConfigured?: boolean }) | null, key: (() => Promise<string | null>) | Error) {
+  const { apiKeyConfigured, ...namespace } = ai ?? {
+    enabled: false,
+    provider: 'openai',
+    model: 'gpt-4o-mini',
+    maxCallsPerUserPerDay: 50,
+    apiKeyConfigured: false,
+  };
   const settings: jest.Mocked<SettingsStub> = {
-    getSettings: jest.fn().mockResolvedValue({ ui: {}, features: {}, ai }),
+    getNamespace: jest.fn().mockResolvedValue(namespace),
   } as any;
   const credentials: jest.Mocked<CredentialsStub> = {
+    describe: jest.fn().mockResolvedValue(
+      apiKeyConfigured === false
+        ? null
+        : { hint: '••••cdef', updatedAt: new Date('2026-01-01T00:00:00.000Z') },
+    ),
     getSecret:
       key instanceof Error
         ? jest.fn().mockRejectedValue(key)
@@ -104,7 +121,7 @@ describe('AiConfigService', () => {
       expect(credentials.getSecret).not.toHaveBeenCalled();
     });
 
-    it('AI_NOT_CONFIGURED on a row written before the ai block existed', async () => {
+    it('AI_NOT_CONFIGURED when no ai block was ever stored (defaults: off, no key)', async () => {
       const { service } = buildService(null, async () => null);
 
       await expect(codeOf(service.resolveForExtraction())).resolves.toBe(
@@ -221,7 +238,7 @@ describe('AiConfigService', () => {
 
     it('false when reading settings blows up entirely', async () => {
       const { service } = buildService(readyAi, async () => 'sk-live-1234');
-      (service as any).systemSettings.getSettings.mockRejectedValue(
+      (service as any).systemSettings.getNamespace.mockRejectedValue(
         new Error('db down'),
       );
       await expect(service.isReady()).resolves.toBe(false);
