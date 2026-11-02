@@ -25,10 +25,10 @@ Sync never overwrites an app-owned file. `infra/compose/postgres-init/20-*.sh` i
 
 ## 3. Vault's overlays
 
+The platform's `base.compose.yml` builds `api` and `web` from the repository root (`context: ../..`, `dockerfile: apps/<name>/Dockerfile`), and so does Vault: its Dockerfiles install from the root lockfile and copy every `packages/*` workspace, so no build or source-mount overlay is needed. CI builds both production images (`docker-build` job). The legacy `infra/deploy` compose uses the same root context; `update.sh` migrates an older install's `compose.yml` in place.
+
 | File | Applies to | What it does |
 |---|---|---|
-| `app.build.compose.yml` | every base mode | Builds `api` and `web` from `apps/api` and `apps/web` (their own Dockerfiles). The platform builds from the repository root; Vault's Dockerfiles expect the app directory as context. |
-| `app.dev.src-mounts.compose.yml` | dev, devdb | Hot-reload mounts at `/app/src` and `/app/prisma` (the platform mounts `/app/apps/api/src`). `!override` replaces the list. |
 | `app.vps.no-stack-agent.compose.yml` | vps | Puts `stack-agent` in the `disabled` profile: Vault has no `apps/stack-agent`. |
 | `app.env.example` | `.env.example` | Vault's own variables: `VAULT_ENCRYPTION_KEY`, `CARD_IMAGE_MAX_BYTES` (and `OTEL_DEBUG`). The object-store variables are gone since E6.1: storage is runtime configuration ([storage-config-migration](storage-config-migration.md)). |
 | `infra/nginx/app.d/server/body-size.conf` | nginx, server level | `client_max_body_size 10g`. Without it nginx's 1 MiB default refuses uploads. |
@@ -46,9 +46,9 @@ Everything else (the API and web services, Postgres, the telemetry and worker st
 
 ```bash
 cd infra/compose
-docker compose -f base.compose.yml -f dev.compose.yml -f app.build.compose.yml -f app.dev.src-mounts.compose.yml config
-docker compose -f base.compose.yml -f prod.compose.yml -f app.build.compose.yml config
-docker compose -f base.compose.yml -f prod.compose.yml -f telemetry.compose.yml -f vps.compose.yml -f vps.telemetry.compose.yml -f app.build.compose.yml -f app.vps.no-stack-agent.compose.yml config
+docker compose -f base.compose.yml -f dev.compose.yml config
+docker compose -f base.compose.yml -f prod.compose.yml config
+docker compose -f base.compose.yml -f prod.compose.yml -f telemetry.compose.yml -f vps.compose.yml -f vps.telemetry.compose.yml -f app.vps.no-stack-agent.compose.yml config
 ```
 
 `vps` needs `DEPLOY_ROOT`, `STACK_AGENT_TOKEN` and the GreptimeDB passwords in the environment (`vault deploy` writes them). The CI job `infra-check` renders every mode with placeholders. nginx is not checked in CI: `nginx -t` needs the upstream hosts, which the platform's conformance suite (`runInfraConformance`) provides when it is wired in.
