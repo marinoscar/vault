@@ -105,6 +105,15 @@ The first user to login with the email matching `INITIAL_ADMIN_EMAIL` (from .env
 
 ---
 
+## Infrastructure Files (generated)
+
+`infra/` is rendered by `@marinoscar/platform-infra`: `npm run platform:infra:sync` writes it, `npm run platform:infra:sync -- --check` fails on drift (CI job `Infra Check`). Never edit a file headed `GENERATED from @marinoscar/platform-infra`. Vault's own changes live in the app-owned files: `infra/compose/app.*.compose.yml` (the image build contexts, the dev source mounts, the stack-agent opt-out), `infra/compose/app.env.example` (Vault's variables, appended to `.env.example`) and `infra/nginx/app.d/` (the body limit and the long-running routes). Each file's header explains its purpose. Full procedure: [runbooks/infra-sync.md](runbooks/infra-sync.md).
+
+Two things to know when running the stack by hand:
+
+- The `.env` template reads `POSTGRES_USER=app`. Vault's CI and runbooks use `vault_app`; set `POSTGRES_USER=vault_app` in `infra/compose/.env` to keep it.
+- Compose files: `base.compose.yml -f dev.compose.yml -f app.build.compose.yml -f app.dev.src-mounts.compose.yml` for development; add `-f telemetry.compose.yml` for GreptimeDB and the collector.
+
 ## Working with NestJS + Fastify
 
 ### Critical Differences from Express
