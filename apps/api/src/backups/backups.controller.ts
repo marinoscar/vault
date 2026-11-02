@@ -23,8 +23,7 @@ import {
 } from '@nestjs/swagger';
 import { FastifyReply } from 'fastify';
 
-import { Auth } from '../auth/decorators/auth.decorator';
-import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { Auth, CurrentUser } from '@marinoscar/platform-api/identity';
 import { PERMISSIONS } from '../common/constants/roles.constants';
 import { BackupsService } from './backups.service';
 import { BackupRunListQueryDto } from './dto/backup-run-list-query.dto';

@@ -617,7 +617,7 @@ const response = await request(app.getHttpServer())
 
 ### Adding New Guards
 
-1. Create guard in `apps/api/src/auth/guards/`
+1. Guards and decorators come from `@marinoscar/platform-api/identity` (`@Auth`, `@Public`, `@CurrentUser`); Vault has no `src/auth/` since E3.2. A new global guard is declared in the `host` conformance suite's `allowedAppGuards` with a reason, not created in an `auth/` folder
 2. Implement `canActivate()` method
 3. Register in module if not global
 4. Add tests for guard logic

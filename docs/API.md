@@ -16,6 +16,8 @@ Authorization: Bearer <access_token>
 
 Access tokens are short-lived (15 minutes by default). Use the refresh token flow to obtain new access tokens.
 
+Since E3.2 the `/api/auth/*`, `/api/users*`, `/api/allowlist*`, `/api/pat*` and `/api/auth/device/*` routes are served by the platform identity slice with the same paths and bodies. Additions: `POST /api/auth/switch-org`, `GET /api/roles`, `/api/org/*` and `/api/admin/organizations` (organization routes exist but a single-organization deployment has one organization), `GET /api/auth/:providerId` for extra providers, and `/api/node-credentials`. The device token poll can return a personal access token (`credentialType: 'pat'`, no `refreshToken`) when the request's `clientInfo.tokenType` is `'pat'`; the default response is unchanged. Roles are `admin` (system) and `org_admin`, `contributor`, `viewer` (organization); a role the API will not assign answers `400 ROLE_NOT_ASSIGNABLE`.
+
 ## Response Format
 
 ### Success Response

@@ -6,10 +6,7 @@ import {
 import { Test } from '@nestjs/testing';
 import { ZodValidationPipe } from 'nestjs-zod';
 
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { PermissionsGuard } from '../auth/guards/permissions.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { RequestUser } from '../auth/interfaces/authenticated-user.interface';
+import { JwtAuthGuard, PermissionsGuard, RolesGuard, RequestUser } from '@marinoscar/platform-api/identity';
 
 import { AiVerifyController } from './ai-verify.controller';
 import { AiVerifyService } from './ai-verify.service';
