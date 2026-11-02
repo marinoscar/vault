@@ -8,10 +8,17 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: vault_test
+      # The image's bootstrap login stays the superuser `postgres`; the
+      # ordinary role the API (and the RLS tests) run as is created from these
+      # by postgres-init/10-application-role.sh on the first start of an empty
+      # volume. An existing volume keeps its old state: recreate it.
+      APP_DB_USER: vault_app
+      APP_DB_PASSWORD: postgres
     ports:
       - "5433:5432"
     volumes:
       - test-db-data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s

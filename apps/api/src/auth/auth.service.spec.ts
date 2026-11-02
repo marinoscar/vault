@@ -27,7 +27,7 @@ describe('AuthService', () => {
   beforeEach(async () => {
     mockPrisma = createMockPrismaService();
     // PLATFORM-ADOPTION-SHIM(E3.2): org roles live on the default-org membership.
-    mockPrisma.organization.findFirst.mockResolvedValue({ id: 'org-default' } as any);
+    mockPrisma.organization.findFirst.mockResolvedValue({ id: '00000000-0000-4000-8000-0000000000d0' } as any);
     mockPrisma.membership.findFirst.mockResolvedValue(null);
     mockPrisma.membership.upsert.mockResolvedValue({} as any);
     mockJwtService = {
@@ -328,7 +328,7 @@ describe('AuthService', () => {
       expect(mockPrisma.membership.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
           create: expect.objectContaining({
-            orgId: 'org-default',
+            orgId: '00000000-0000-4000-8000-0000000000d0',
             userId: mockUser.id,
             roleId: mockRole.id,
           }),

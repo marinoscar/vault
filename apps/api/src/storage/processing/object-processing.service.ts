@@ -1,6 +1,7 @@
 import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { PrismaService } from '../../prisma/prisma.service';
+import { defaultOrgClient } from '../../prisma/default-org';
 import { Prisma } from '@prisma/client';
 import { STORAGE_PROVIDER, StorageProvider } from '../providers';
 import { OBJECT_UPLOADED_EVENT, ObjectUploadedEvent } from './events/object-uploaded.event';
@@ -27,6 +28,15 @@ export class ObjectProcessingService {
     if (this.processors.length > 0) {
       this.logger.debug(`Processors: ${this.processors.map(p => p.name).join(', ')}`);
     }
+  }
+
+  /**
+   * PLATFORM-ADOPTION-SHIM(E6): `storage_objects` / `storage_object_chunks` are
+   * row-level-security tables and the API is an ordinary role, so every access
+   * runs in the default organization's transaction-local scope.
+   */
+  private get orgDb() {
+    return defaultOrgClient(this.prisma);
   }
 
   private normalizeProcessors(
@@ -99,7 +109,7 @@ export class ObjectProcessingService {
     objectId: string,
     processingMetadata: Record<string, unknown>,
   ): Promise<void> {
-    const existing = await this.prisma.storageObject.findUnique({
+    const existing = await this.orgDb.storageObject.findUnique({
       where: { id: objectId },
       select: { metadata: true },
     });
@@ -110,7 +120,7 @@ export class ObjectProcessingService {
       _processedAt: new Date().toISOString(),
     };
 
-    await this.prisma.storageObject.update({
+    await this.orgDb.storageObject.update({
       where: { id: objectId },
       data: {
         status: 'ready',
@@ -125,7 +135,7 @@ export class ObjectProcessingService {
     objectId: string,
     processingMetadata: Record<string, unknown>,
   ): Promise<void> {
-    const existing = await this.prisma.storageObject.findUnique({
+    const existing = await this.orgDb.storageObject.findUnique({
       where: { id: objectId },
       select: { metadata: true },
     });
@@ -137,7 +147,7 @@ export class ObjectProcessingService {
       _processedAt: new Date().toISOString(),
     };
 
-    await this.prisma.storageObject.update({
+    await this.orgDb.storageObject.update({
       where: { id: objectId },
       data: {
         status: 'failed',

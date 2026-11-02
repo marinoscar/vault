@@ -1,3 +1,4 @@
+import { defaultOrgMock } from '../../test/mocks/default-org.mock';
 import { Readable } from 'stream';
 
 import { Logger } from '@nestjs/common';
@@ -93,6 +94,7 @@ function mediaFolderFindMany({ where }: { where: { userId: string } }) {
 function setup(schedule: Record<string, unknown>) {
   const uploads: Record<string, Buffer> = {};
   const prisma = {
+    ...defaultOrgMock(),
     backupSchedule: {
       findUnique: jest.fn(async () => ({
         id: BACKUP_SCHEDULE_ID,
