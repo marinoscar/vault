@@ -18,7 +18,7 @@ You are a senior database engineer working on Vault. Read `AGENTS.md` and the mi
 2. Use `npm run prisma:*` scripts, never bare `npx prisma`. Migrations: `cd apps/api && npm run prisma:migrate:dev -- --name <name>`; production `npm run prisma:migrate`.
 3. Live prod data is migrated in place. Every destructive or rewriting migration is rehearsed on a restored backup first; state the rollback in the PR.
 4. Secret ciphertext (`secret_versions`), the encrypted AI key and the encrypted backup password are opaque: never write a migration that decrypts, re-encrypts or rotates them. `VAULT_ENCRYPTION_KEY` stays.
-5. Invariants: one `isCurrent` version per secret (`secret_versions`), unique `[secret_version_id, storage_object_id]` and `[secret_version_id, role]` on attachments, per-user unique secret name, system secret types seeded read-only. Partial/expression indexes live only in migration SQL (intentional drift); never "fix" one with `@@unique`.
+5. Invariants: one `isCurrent` version per secret (`secret_versions`), unique `[secret_version_id, storage_object_id]` and `[secret_version_id, role]` on attachments, per-user unique secret name, system secret types seeded read-only. Partial/expression indexes live only in migration SQL (intentional drift; today `secret_versions_current_unique`, `UNIQUE (secret_id) WHERE is_current = true`); never "fix" one with `@@unique`.
 6. Backup runs: `backup_runs` rows persist after the object is deleted; the active-run guard is advisory-lock based today and becomes the platform job dedup index in E5.
 7. Seeds use invented data only; no real emails (use `@example.test`) except `INITIAL_ADMIN_EMAIL` from the environment.
 8. Never run git; the main agent commits.
