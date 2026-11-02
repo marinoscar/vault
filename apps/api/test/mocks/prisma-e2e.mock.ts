@@ -1,5 +1,6 @@
 import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 import { mockDeep, DeepMockProxy } from 'jest-mock-extended';
 
 /**
@@ -12,7 +13,10 @@ export class MockPrismaService extends PrismaClient implements OnModuleInit, OnM
   private mock: DeepMockProxy<PrismaClient>;
 
   constructor() {
-    super();
+    // Prisma 7 requires an adapter; PrismaPg connects lazily, so no database is touched.
+    super({
+      adapter: new PrismaPg('postgresql://mock:mock@localhost:5432/mock'),
+    });
     this.mock = mockDeep<PrismaClient>();
 
     // Copy all mock methods to this instance

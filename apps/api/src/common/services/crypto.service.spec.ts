@@ -213,4 +213,25 @@ describe('CryptoService', () => {
       }
     });
   });
+
+  // ============================================================================
+  // Stored-ciphertext compatibility
+  // ============================================================================
+
+  describe('stored ciphertext fixture', () => {
+    // Produced once with TEST_KEY and a fixed IV. Pins the on-disk format of
+    // secret_versions so a toolchain change (Prisma, Node) can never make
+    // existing ciphertext undecryptable.
+    const FIXTURE = {
+      ciphertext: '523iaXOVRyXprqphEsuPtimgYds=',
+      iv: 'AAECAwQFBgcICQoL',
+      authTag: 'P8cYimOy0h8qVMTol06lAg==',
+    };
+
+    it('should decrypt a previously stored ciphertext with the fixed test key', () => {
+      expect(service.decrypt(FIXTURE.ciphertext, FIXTURE.iv, FIXTURE.authTag)).toBe(
+        'fixture-secret-value',
+      );
+    });
+  });
 });

@@ -1,7 +1,12 @@
 import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { buildDatabaseUrl } from '../src/common/database-url';
 import { SYSTEM_SECRET_TYPES } from './system-secret-types';
 
-const prisma = new PrismaClient();
+// Prisma 7 requires a driver adapter.
+const prisma = new PrismaClient({
+  adapter: new PrismaPg(buildDatabaseUrl()),
+});
 
 // =============================================================================
 // Seed Data Definitions
