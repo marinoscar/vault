@@ -42,7 +42,7 @@ describe('TestAuthService', () => {
   beforeEach(async () => {
     mockPrisma = createMockPrismaService();
     // PLATFORM-ADOPTION-SHIM(E3.2): admin -> user_roles, org roles -> default-org membership.
-    mockPrisma.organization.findFirst.mockResolvedValue({ id: 'org-default' } as any);
+    mockPrisma.organization.findFirst.mockResolvedValue({ id: '00000000-0000-4000-8000-0000000000d0' } as any);
     mockPrisma.membership.upsert.mockResolvedValue({} as any);
     mockPrisma.userRole.createMany.mockResolvedValue({ count: 0 });
     mockPrisma.role.findMany.mockImplementation((async (args: any) =>

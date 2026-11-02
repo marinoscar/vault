@@ -104,7 +104,7 @@ describe('membership-role-shim', () => {
 
   describe('setUserRoles (what role assignment writes)', () => {
     beforeEach(() => {
-      prisma.organization.findFirst.mockResolvedValue({ id: 'org-default' } as any);
+      prisma.organization.findFirst.mockResolvedValue({ id: '00000000-0000-4000-8000-0000000000d0' } as any);
       prisma.userRole.deleteMany.mockResolvedValue({ count: 0 });
       prisma.userRole.createMany.mockResolvedValue({ count: 0 });
       prisma.membership.upsert.mockResolvedValue({} as any);
@@ -124,7 +124,7 @@ describe('membership-role-shim', () => {
       });
       expect(prisma.membership.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { orgId_userId: { orgId: 'org-default', userId: 'u1' } },
+          where: { orgId_userId: { orgId: '00000000-0000-4000-8000-0000000000d0', userId: 'u1' } },
           update: { roleId: 'r-org-admin', status: 'active' },
         }),
       );
