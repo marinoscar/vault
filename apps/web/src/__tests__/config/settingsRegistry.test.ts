@@ -28,11 +28,16 @@ import rolesSource from '../../../../api/src/common/constants/roles.constants.ts
 import settingsPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/settings/settings.permissions.js?raw';
 import usersPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/identity/users/users.permissions.js?raw';
 import allowlistPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/identity/allowlist/allowlist.permissions.js?raw';
+import dbBackupPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/db-backup/db-backup.permissions.js?raw';
 import notificationsPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/notifications/notifications.permissions.js?raw';
 import userDataPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/user-data/user-data.permissions.js?raw';
 import aiPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/ai/ai.permissions.js?raw';
 import aiAdminControllerSource from '../../../../../node_modules/@marinoscar/platform-api/dist/ai/config/ai-admin.controller.js?raw';
 import aiUsageAdminControllerSource from '../../../../../node_modules/@marinoscar/platform-api/dist/ai/usage/ai-usage-admin.controller.js?raw';
+import telemetryPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/telemetry/telemetry.permissions.js?raw';
+// E6.1 web follow-up (#84): the platform storage slice's configuration permissions and controller.
+import storageConfigPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/storage/config/storage-config.permissions.js?raw';
+import storageConfigControllerSource from '../../../../../node_modules/@marinoscar/platform-api/dist/storage/config/storage-config.controller.js?raw';
 
 const cardsOf = (sections: SettingsSectionDef[]): SettingsCardDef[] => sections.flatMap((s) => s.cards);
 const ADMIN_CARDS = cardsOf(ADMIN_SECTIONS);
@@ -55,7 +60,10 @@ const API_PERMISSIONS = new Set([
   ...declaredIds(usersPermissionsSource),
   ...declaredIds(allowlistPermissionsSource),
   ...declaredIds(notificationsPermissionsSource),
+  ...declaredIds(dbBackupPermissionsSource),
   ...declaredIds(aiPermissionsSource),
+  ...declaredIds(telemetryPermissionsSource),
+  ...declaredIds(storageConfigPermissionsSource),
   // E9.3 (#91): `system:factory_reset` and `orgs:offboard` (the user-data slice, Admin only).
   ...declaredIds(userDataPermissionsSource),
 ]);
@@ -79,6 +87,12 @@ const CONTROLLER_MIRROR: Record<string, string | undefined> = {
   '/admin/settings/doctor': 'system_settings:read',
   // platform about controller GET /api/admin/about (default)
   '/admin/settings/about': 'system_settings:read',
+  // telemetry-admin.controller.ts GET /api/admin/telemetry/config (E9.2)
+  '/admin/settings/telemetry': 'telemetry:read',
+  // telemetry-explorer.controller.ts POST /api/admin/telemetry/query and the schema (E9.2)
+  '/admin/settings/telemetry/explorer': 'telemetry:query',
+  // telemetry-dashboard.controller.ts GET /api/admin/telemetry/dashboard/* (E9.2)
+  '/admin/settings/telemetry/dashboard': 'telemetry:query',
   // user-settings.controller.ts GET /api/user-settings
   '/settings/profile': 'user_settings:read',
   '/settings/appearance': 'user_settings:read',
@@ -98,10 +112,14 @@ const CONTROLLER_MIRROR: Record<string, string | undefined> = {
   '/admin/settings/broadcasts': 'broadcasts:read',
   // UserNotificationsPage reads the caller's preferences from GET /api/user-settings
   '/settings/notifications': 'user_settings:read',
+  // E9.1, the platform db-backup slice: DatabaseBackupController GET /api/admin/db-backup/config (db_backup:read)
+  '/admin/settings/db-backup': 'db_backup:read',
   // ai-admin.controller GET /api/admin/ai/models (ai_config:read)
   '/admin/settings/ai/models': 'ai_config:read',
   // ai-usage-admin.controller GET /api/admin/ai/usage (ai_config:read)
   '/admin/settings/ai/usage': 'ai_config:read',
+  // E6.1 web follow-up: the platform storage-config.controller GET /api/admin/storage-config (STORAGE_CONFIG_READ)
+  '/admin/settings/storage': 'storage_config:read',
   // E9.3 (#91): the platform onboarding, exports and user-data slices.
   // onboarding.controller GET /api/onboarding adds the admin block for `system_settings:read` (adminPermission)
   '/admin/settings/setup': 'system_settings:read',
@@ -171,6 +189,10 @@ describe.each([
         const parent = cards.find((c) => c.path !== path && path!.startsWith(`${c.path}/`));
         expect(parent, path).toBeDefined();
         expect(parent!.permission).toBe(cards.find((c) => c.path === path)!.permission);
+      } else if (/^telemetry\/(explorer|dashboard)$/.test(path!.slice(hubPath.length + 1))) {
+        // The packaged telemetry Explorer and Dashboard nest under the Telemetry card, as the platform
+        // declares them (E9.2, #90). Their permission (`telemetry:query`) differs from the parent's.
+        expect(paths).toContain(`${hubPath}/telemetry`);
       } else {
         expect(path!.slice(hubPath.length + 1)).not.toContain('/');
       }
@@ -246,8 +268,41 @@ describe('the AI cards (E8.2, the platform AI slice)', () => {
   });
 });
 
+describe('the Storage card (E6.1 web follow-up, the platform storage slice)', () => {
+  const card = ADMIN_CARDS.find((c) => c.path === '/admin/settings/storage');
+
+  it('is an Administration card appended after AI usage (only the E9.3 Setup guide follows), gated on storage_config:read with no feature', () => {
+    const administration = ADMIN_SECTIONS.find((s) => s.label === 'Administration')!;
+    const titles = administration.cards.map((c) => c.title);
+    expect(administration.cards[titles.indexOf('Storage')]).toBe(card);
+    expect(titles.slice(titles.indexOf('Storage'))).toEqual(['Storage', 'Setup guide']);
+    expect(card?.title).toBe('Storage');
+    expect(card?.permission).toBe('storage_config:read');
+    expect(card?.feature).toBeUndefined();
+  });
+
+  it('names the string the platform storage-config controller enforces on its GET', () => {
+    expect(declaredIds(storageConfigPermissionsSource)).toEqual(
+      expect.arrayContaining(['storage_config:read', 'storage_config:write']),
+    );
+    // The GET handler's decorator block: Get() then Auth({ permissions: [STORAGE_CONFIG_READ] }).
+    expect(storageConfigControllerSource).toMatch(
+      /common_1\.Get\)\(\),\s*\(0, index_1\.Auth\)\(\{ permissions: \[storage_constants_1\.PERMISSIONS\.STORAGE_CONFIG_READ\] \}\)/,
+    );
+    // And not the object-access pair.
+    expect(card?.permission).not.toBe('storage:read');
+  });
+
+  it('routes the packaged StorageConfigPage behind the same permission', () => {
+    expect(appSource).toContain("import('@marinoscar/platform-web/storage/ui')");
+    expect(appSource).toMatch(
+      /path="\/admin\/settings\/storage"\s*element=\{<RequirePermission permission="storage_config:read" fallback=\{TO_HOME\}><StorageConfigPage \/>/,
+    );
+  });
+});
+
 describe('the registries as a whole', () => {
-  it('lists the cards in append order (E10.3, then E7.2, E8.2 and E9.3)', () => {
+  it('lists the cards in append order (E10.3, then E7.2, E8.2, E6.1 Storage, E9.1 to E9.3)', () => {
     expect(ADMIN_CARDS.map((card) => card.title)).toEqual([
       'General',
       'Users & Allowlist',
@@ -255,13 +310,18 @@ describe('the registries as a whole', () => {
       'Backups',
       'AI models',
       'AI usage',
+      'Storage',
       'Setup guide',
       'Maintenance',
       'Doctor',
       'About',
+      'Database Backup',
       'Email',
       'Web Push',
       'Broadcasts',
+      'Telemetry',
+      'Telemetry Explorer',
+      'Telemetry Dashboard',
       'Factory reset',
     ]);
     expect(USER_CARDS.map((card) => card.title)).toEqual([
@@ -288,9 +348,12 @@ describe('the registries as a whole', () => {
     const perms = [...hubRoute![1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
     expect(perms).toEqual(consoleDest.anyPermission);
     // Every admin card is reachable by some holder of the hub gate.
-    for (const card of ADMIN_CARDS) {
+    // The `telemetry:*` cards are held by the admin role only, which also holds the hub gate's
+    // `system_settings:read`: the page gate (not the hub gate) is what checks the telemetry string. Likewise
+    // `system:factory_reset` (E9.3, Admin only).
+    for (const card of ADMIN_CARDS.filter((c) => !/^telemetry:/.test(String(c.permission ?? '')))) {
       if (ADMIN_ONLY_CARD_PERMISSIONS.has(card.permission as string)) expect(perms).toContain('system_settings:read');
-      else expect(perms).toContain(card.permission);
+      else expect(perms).toContain(card.permission as string);
     }
   });
 
@@ -341,6 +404,11 @@ describe('the registries as a whole', () => {
     expect(declaredIds(aiPermissionsSource)).toEqual(
       expect.arrayContaining(['ai_config:read', 'ai_config:write', 'ai:use']),
     );
+    expect(declaredIds(telemetryPermissionsSource)).toEqual(
+      expect.arrayContaining(['telemetry:read', 'telemetry:write', 'telemetry:query']),
+    );
+    expect(slices).toContain("'telemetry'");
+    expect(slices).toContain("'storage'");
     // No invented string sneaks in through a loose pattern.
     for (const id of API_PERMISSIONS) expect(id).toMatch(/^[a-z_]+:[a-z_]+$/);
   });

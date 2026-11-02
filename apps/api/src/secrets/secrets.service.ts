@@ -3,6 +3,7 @@ import { Readable } from 'stream';
 import {
   Inject,
   Injectable,
+  Optional,
   Logger,
   NotFoundException,
   ForbiddenException,
@@ -14,6 +15,8 @@ import { SystemSettingsService } from '@marinoscar/platform-api/settings';
 import { PrismaService } from '../prisma/prisma.service';
 import { defaultOrgClient, runInDefaultOrg } from '../prisma/default-org';
 import { CryptoService } from '../common/services/crypto.service';
+import { VaultMetricsService } from '../common/otel/vault-metrics.service';
+import { secretTypeKind } from '../common/otel/vault-metrics';
 import { FieldDefinition } from '../secret-types/dto/create-secret-type.dto';
 import { PERMISSIONS } from '../common/constants/roles.constants';
 import {
@@ -78,6 +81,15 @@ interface CarryForwardExclusions {
 @Injectable()
 export class SecretsService {
   private readonly logger = new Logger(SecretsService.name);
+
+  /**
+   * Vault's metrics (E9.2). Property-injected and optional so this constructor, which
+   * the storage work rewrites, is untouched and a hand-built service runs with metrics off.
+   * Labels are enums only; no secret id, name or user id is ever passed.
+   */
+  @Optional()
+  @Inject(VaultMetricsService)
+  private readonly vaultMetrics?: VaultMetricsService;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -806,6 +818,9 @@ export class SecretsService {
       typeId: secret.typeId,
     });
 
+    this.vaultMetrics?.secretCreated(secretTypeKind(secret.type ?? secretType));
+    this.vaultMetrics?.secretVersionCreated('create');
+
     this.logger.log(`Secret created: ${secret.id}`);
 
     // Return with decrypted values attached
@@ -1046,6 +1061,8 @@ export class SecretsService {
       ...(newEncrypted ? { carriedAttachments } : {}),
     });
 
+    if (newEncrypted) this.vaultMetrics?.secretVersionCreated('update');
+
     this.logger.log(`Secret updated: ${id}`);
 
     // Return with decrypted current data
@@ -1268,6 +1285,8 @@ export class SecretsService {
       carriedAttachments: newVersion.carriedAttachments,
     });
 
+    this.vaultMetrics?.secretVersionCreated('rollback');
+
     this.logger.log(`Secret ${secretId} rolled back, new version created`);
 
     return this.findOne(secretId, userId, userPermissions);
@@ -1422,6 +1441,7 @@ export class SecretsService {
       // SecretVersion is.
       extractionMethod: dto.aiAssisted ? 'ai_assisted' : 'manual',
     });
+    this.vaultMetrics?.secretVersionCreated('renew');
 
     this.logger.log(
       `Secret ${secretId} renewed as version ${newVersion.version} ` +

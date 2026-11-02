@@ -38,6 +38,9 @@ import { aboutModule } from './platform/about/about.config';
 import { exportsModule } from './platform/exports/exports.config';
 import { userDataModule } from './platform/user-data/user-data.config';
 import { onboardingModule } from './platform/onboarding/onboarding.config';
+import { dbBackupModule } from './platform/db-backup/db-backup.config';
+import { telemetryModule } from './platform/telemetry/telemetry.config';
+import { VaultMetricsModule } from './common/otel/vault-metrics.service';
 import { doctorModule } from './doctor/doctor.config';
 import { DoctorChecksModule } from './doctor/doctor-checks.module';
 
@@ -99,6 +102,12 @@ import configuration from './config/configuration';
     // `{ data }` envelope, request log, exception filter, request ids and
     // /api/health. Placed where the health routes sat in the OpenAPI document.
     hostCoreModule,
+    // Telemetry (E9.2, #90): the `telemetry` settings and runtime export gate, the GreptimeDB
+    // connection, the explorer, the dashboard and the Doctor checks (`telemetry:read|write|query`).
+    // Replaces the Uptrace exporter. Needs `jobsModule` and `settingsModule`.
+    telemetryModule,
+    // Typed emitters for Vault's `app.vault.*` metrics (global).
+    VaultMetricsModule,
     // Doctor (/api/admin/doctor), About (/api/admin/about) and Vault's checks
     doctorModule,
     DoctorChecksModule,
@@ -108,6 +117,15 @@ import configuration from './config/configuration';
     storageModule,
     StorageConfigModule,
     StorageEnvImportModule,
+    // Database backup and restore (issue #89, E9.1, epic #64): WHOLE-DATABASE disaster recovery
+    // from the platform slice: `/api/admin/db-backup/*` (`db_backup:read|write|restore`, admin
+    // only), the streaming `pg_dump` into object storage, the schedule and retention, the in-app
+    // restore, the job types `db.backup.run`, `db.backup.sweep`, `db.restore.run` and
+    // `db.restore.old-db-drop`, and the `backup.*` Doctor checks. Distinct from `BackupsModule`
+    // below (selective, password-protected zips of secrets). Every dump and restore carries
+    // `--enable-row-security` AND `PGOPTIONS=-c app.rls_bypass=on`.
+    // `DB_BACKUP_SCHEDULE_ENABLED=false` turns the scheduler off in this process.
+    dbBackupModule,
     SecretTypesModule,
     SecretsModule,
     MediaModule,

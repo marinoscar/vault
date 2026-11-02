@@ -251,3 +251,37 @@ describe('CardExtractService', () => {
     });
   });
 });
+
+describe('CardExtractService metrics (E9.2)', () => {
+  function build(respondStructured: jest.Mock) {
+    const metrics = { cardExtracted: jest.fn() };
+    const service = new CardExtractService(
+      { forUser: jest.fn().mockReturnValue({ respondStructured }) } as never,
+      { getNamespace: jest.fn() } as never,
+    );
+    (service as unknown as { vaultMetrics: typeof metrics }).vaultMetrics = metrics;
+    return { service, metrics };
+  }
+
+  it('counts a success with the outcome only', async () => {
+    const { service, metrics } = build(jest.fn().mockResolvedValue({ parsed: modelOutput(), model: 'gpt-4o-mini' }));
+    await service.extract({ front: FRONT_IMAGE }, user);
+    expect(metrics.cardExtracted).toHaveBeenCalledTimes(1);
+    expect(metrics.cardExtracted).toHaveBeenCalledWith('succeeded');
+  });
+
+  it('counts an invalid payload and an upstream failure, never the card or the user', async () => {
+    const bad = build(jest.fn());
+    await expect(bad.service.extract({ front: 'not-an-image' }, user)).rejects.toBeInstanceOf(AiException);
+    expect(bad.metrics.cardExtracted).toHaveBeenCalledWith('invalid_image');
+
+    const down = build(jest.fn().mockRejectedValue(new Error('socket hang up')));
+    await expect(down.service.extract({ front: FRONT_IMAGE }, user)).rejects.toBeInstanceOf(AiException);
+    expect(down.metrics.cardExtracted).toHaveBeenCalledWith('upstream_error');
+
+    const all = JSON.stringify([...bad.metrics.cardExtracted.mock.calls, ...down.metrics.cardExtracted.mock.calls]);
+    expect(all).not.toContain(user.id);
+    expect(all).not.toContain(user.email);
+    expect(all).not.toContain(PAN);
+  });
+});

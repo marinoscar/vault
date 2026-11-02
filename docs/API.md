@@ -1991,6 +1991,26 @@ Full health check: every registered indicator. Same body as `/health/ready`; `50
 
 ---
 
+### Database backup (admin)
+
+Whole-database disaster recovery from the platform `db-backup` slice (`@marinoscar/platform-api/db-backup`, E9.1): a streaming `pg_dump -Fc` of every table into object storage under `database-backups/`, its schedule and retention, and an in-app restore. **Not** the encrypted secret backups of [Backups (Admin)](#backups-admin) above; the difference is in [SECRETS.md](SECRETS.md#whole-database-backup-versus-encrypted-secret-backups). Base path: `/api/admin/db-backup`. System scope: every route needs the `admin` role **and** the permission below, so an organization's `org_admin` gets 403. All responses use the standard `{ "data": ... }` envelope; the exact shapes are in the generated OpenAPI at `/api/docs` and `@marinoscar/platform-contract/db-backup`.
+
+| Endpoint | Permission | Purpose |
+|---|---|---|
+| `GET /api/admin/db-backup/config` | `db_backup:read` | The policy (schedule, retention, rollback mode), the next scheduled run and whether restore is available |
+| `PUT /api/admin/db-backup/config` | `db_backup:write` | Save the policy (`daily`, `weekly`, `monthly` or a validated `cron`; retention count and age) |
+| `POST /api/admin/db-backup/runs` | `db_backup:write` | Back up now: claims a run (one active run at a time, 409 otherwise) and enqueues `db.backup.run` |
+| `GET /api/admin/db-backup/runs`, `GET /api/admin/db-backup/runs/:id` | `db_backup:read` | History (paginated) and one run: status, size, checksum, `migration_name`, restore progress |
+| `GET /api/admin/db-backup/runs/:id/download` | `db_backup:read` | A signed download URL, valid five minutes (a complete copy of the database: treat as a credential) |
+| `GET /api/admin/db-backup/node-credential-preflight` | `db_backup:read` | Whether a worker node could be issued the per-job SELECT-only role |
+| `POST /api/admin/db-backup/runs/:id/cancel`, `DELETE /api/admin/db-backup/runs/:id` | `db_backup:write` | Cancel an active run; delete a finished one and its archive |
+| `POST /api/admin/db-backup/runs/:id/restore` | `db_backup:restore` | Pre-flight (`ok`, `guided` or `blocked`) and, confirmed, start `db.restore.run` |
+| `POST /api/admin/db-backup/runs/:id/rollback` | `db_backup:restore` | Roll the last restore back |
+
+Restore and rollback answer `403` with `details.reason: "deployment_mode_saas"` when `DEPLOYMENT_MODE=saas`, before any lookup. Every dump and restore carries `--enable-row-security` and `PGOPTIONS=-c app.rls_bypass=on` (environment, never argv). Procedures: [runbooks/database-restore.md](runbooks/database-restore.md). Notifications: `db_backup.backup_failed` and the mandatory `db_backup.restore_completed`, to the holders of `db_backup:read`.
+
+---
+
 ### Exports, user data and onboarding
 
 The platform's `exports`, `user-data` and `onboarding` slices (E9.3, [#91](https://github.com/marinoscar/vault/issues/91)), mounted in `apps/api/src/platform/{exports,user-data,onboarding}/`. The per-endpoint reference is the generated OpenAPI at `/api/docs`; the conventions are the platform's (`{ data }` envelope, `202` for a queued job).

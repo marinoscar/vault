@@ -11,6 +11,7 @@
  */
 
 import { alpha, createTheme } from '@mui/material/styles';
+import { withTelemetryTokens } from '@marinoscar/platform-web/telemetry/headless';
 import type { Theme } from '@mui/material/styles';
 import { createShellTheme } from '@marinoscar/platform-web/shell/headless';
 
@@ -25,7 +26,9 @@ export type ThemeMode = 'light' | 'dark' | 'system';
 
 function createVaultTheme(mode: BrandMode): Theme {
   const t = BRAND_TOKENS[mode];
-  return createShellTheme(mode, {
+  // The telemetry pages read `palette.status.*` and `palette.chart.series` (E9.2, #90); the tokens the
+  // theme does not set are filled from its own palette.
+  return withTelemetryTokens(createShellTheme(mode, {
     palette: {
       primary: { main: t.primary, light: t.primaryLight, dark: t.primaryDark, contrastText: t.onPrimary },
       secondary: { main: t.accent, contrastText: t.onAccent },
@@ -82,7 +85,7 @@ function createVaultTheme(mode: BrandMode): Theme {
           },
         },
       }),
-  });
+  }));
 }
 
 /** The Vault light theme, built once. */

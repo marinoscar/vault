@@ -24,12 +24,12 @@ No operator action is needed. The page shows live counts per category; each dest
 
 Needs `system:factory_reset` (Admin only); disabled when `DEPLOYMENT_MODE=saas`. It deletes, in this order: pending jobs, **every user's data, the actor's included**, every logical backup archive and its record (user and scheduled), other users, every custom secret type, every stored file, every organization but the default one.
 
-It keeps: the actor, roles and permissions, system settings, runtime credentials (storage, AI key, SMTP, VAPID), the system secret types, **the backup schedule and its encrypted password**, the audit log and the platform `db-backup` archives and their jobs once that slice is mounted.
+It keeps: the actor, roles and permissions, system settings, runtime credentials (storage, AI key, SMTP, VAPID), the system secret types, **the backup schedule and its encrypted password**, the audit log and the platform `db-backup` archives and their jobs.
 
 ### Before
 
 1. **Download any archive you want to keep** from Console > Backups. The reset deletes every logical backup, the scheduled ones included, because an archive is secret data in a zip. A database backup (the platform `db-backup` slice) is what survives a reset.
-2. Take a database backup if the slice is mounted, and confirm the object store is reachable (Doctor).
+2. Take a database backup (Console > Database Backup) and confirm the object store is reachable (Doctor).
 3. Tell the users: every secret is deleted, with no recovery after the job runs.
 
 ### Run and verify
@@ -40,9 +40,9 @@ It keeps: the actor, roles and permissions, system settings, runtime credentials
 
 ### Recover
 
-There is no recover: restore a database backup taken before ([database-restore](../specs/database-restore.md) once that slice is mounted) and the matching object store snapshot, then re-run the migrations and `npm run prisma:seed`.
+There is no recover: restore a database backup taken before ([database-restore runbook](database-restore.md)) and the matching object store snapshot, then re-run the migrations and `npm run prisma:seed`.
 
 ## 3. Known limits
 
-- The factory reset summary needs the Vault shim `required-field-filters.ts` (`PLATFORM-ADOPTION-SHIM(E9.3)`, listed in [local-exceptions](../platform-adoption/local-exceptions.md)) until the platform stops filtering required columns with `not: null`.
-- The page links to `/admin/settings/db-backup` for "back up first"; that page exists once the db-backup slice is mounted. Until then use Console > Backups for the logical archives.
+- The factory reset summary needs the Vault shim `required-field-filters.ts` (`PLATFORM-ADOPTION-SHIM(E9.3)`, listed in [local-exceptions](../platform-adoption/local-exceptions.md)) until the platform stops filtering required columns with `not: null` ([EnterpriseAppBase#1058](https://github.com/marinoscar/EnterpriseAppBase/issues/1058)).
+- The page links to `/admin/settings/db-backup` for "back up first" (the db-backup page, mounted in E9.1). The logical archives are in Console > Backups; the reset deletes those.

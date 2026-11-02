@@ -802,6 +802,9 @@ npm run test:ui
 **Issue:** Tests timeout waiting for database
 - **Solution:** Check `DATABASE_URL` in `.env.test`, ensure test DB is running
 
+**Issue:** `test/db-backup/db-backup-rls.db.spec.ts` is skipped (E9.1)
+- **Solution:** The whole-database dump proof needs `pg_dump` and `pg_restore` on `PATH` (a client major at least the server's; the API image installs `postgresql17-client`) and a reachable Postgres superuser. It builds a throwaway database owned by an ordinary role, dumps it with `--enable-row-security` and `PGOPTIONS=-c app.rls_bypass=on` (environment, not argv), restores into a sibling database and counts rows per organization; the console prints the skip reason. Run it with `npm run test:db --workspace=api`.
+
 **Issue:** Prisma mock not working as expected
 - **Solution:** Clear mocks in `afterEach`, use `mockResolvedValue` for promises
 

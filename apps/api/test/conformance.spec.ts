@@ -9,6 +9,7 @@
 import '../src/app-registrations/registrations';
 import '@marinoscar/platform-api/ai/testing';
 import '../src/platform/storage/storage-key-prefix.manifest';
+import '@marinoscar/platform-api/db-backup/testing';
 import '@marinoscar/platform-api/email/testing';
 import '@marinoscar/platform-api/exports/testing';
 import '@marinoscar/platform-api/host/testing';
@@ -17,6 +18,7 @@ import '@marinoscar/platform-api/jobs/testing';
 import '@marinoscar/platform-api/notifications/testing';
 import '@marinoscar/platform-api/onboarding/testing';
 import '@marinoscar/platform-api/settings/testing';
+import '@marinoscar/platform-api/telemetry/testing';
 import '@marinoscar/platform-api/storage/testing';
 import '@marinoscar/platform-api/user-data/testing';
 
@@ -68,10 +70,10 @@ runPlatformConformance({
     // is a credential, E4.2), every default valid against its stored schema, and
     // every org layer gated by a registered org-scope permission (E4.1, #79).
     // `maintenance`, `jobs`, `retention`, `nodes` (E5.1) plus Vault's `ui`, `features`, `ai` (the platform's, E8.1),
-    // `vaultCards`, `vaultBackups`, plus `storage` (E6.1) and `notifications` (E7.1).
+    // `vaultCards`, `vaultBackups`, plus `storage` (E6.1), `notifications` (E7.1) and `databaseBackup` (E9.1).
     settings: {
       permissions: permissionRegistry.list(),
-      minSystemNamespaces: 11,
+      minSystemNamespaces: 13,
     },
 
     // Every foreign key to `User` in the composed schema is registered with a purge
@@ -143,6 +145,13 @@ runPlatformConformance({
     // purpose: Vault has no argued exception.
     notifications: { afterCommitAllowlist: [] },
 
+    // The telemetry slice (E9.2, #90): the platform's metric groups and Vault's own (`vault`) are well
+    // formed and compute against an empty schema, every `/api/admin/telemetry/*` and
+    // `/api/telemetry/*` route carries exactly the permissions its shape needs, the Doctor checks are
+    // read-only, no response carries a stored GreptimeDB password, and the module boots with telemetry
+    // off. The slice's retention cron ships in the package, outside Vault's source root.
+    telemetry: {},
+
     // The `@Cron` half of queue rule 1 (E5.1/E5.3, #81/#83): every `@Cron` body in Vault's own
     // sources only enqueues a job. The platform's crons (the three permanent exemptions, the
     // identity cleanups, the storage stale-upload sweep) ship in the package and are held by its
@@ -188,7 +197,15 @@ runPlatformConformance({
     // The key-prefix registry (every prefix well formed and disjoint, org prefixes build
     // `<prefix><orgId>/...`, no secret-named field in the storage namespace) and that Vault's
     // backup prefixes are registered, so the purge reaches them (E6.1, #84).
-    storage: { requiredPrefixIds: ['system-backups', 'user-backups'] },
+    storage: { requiredPrefixIds: ['system-backups', 'user-backups', 'database-backups'] },
+
+    // The db-backup slice (E9.1, #89): both halves of the RLS pair on every `pg_dump` and
+    // `pg_restore` (flag in argv, option in the ENVIRONMENT, never argv), `db.restore.run` server-only
+    // and `db.backup.run` node-eligible with its profile and broker, every `db_backup:*` permission
+    // system scope, the `database-backups/` prefix registered with deployment scope, and every
+    // registered carry binding `$1`. Vault registers NO carry-over (app-registrations/db-backup.ts
+    // says why), so none is required.
+    dbBackup: { requiredCarryOverIds: [] },
 
     // The exports slice (E9.3, #91): every source names a registered permission and offers a registered
     // writer, the user-owned registry agrees with the datamodel, and the `secret-egress` case fills every

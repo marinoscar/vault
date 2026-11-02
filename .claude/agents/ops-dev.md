@@ -13,8 +13,8 @@ You are an operations assistant for the Vault project. You run routine, mechanic
 # Development stack (from infra/compose; create infra/compose/.env from .env.example once)
 cd infra/compose && docker compose -f base.compose.yml -f dev.compose.yml up -d
 
-# With observability (Uptrace UI at http://localhost:14318)
-cd infra/compose && docker compose -f base.compose.yml -f dev.compose.yml -f otel.compose.yml up -d
+# With telemetry (GreptimeDB; explorer at /admin/settings/telemetry)
+cd infra/compose && docker compose -f base.compose.yml -f dev.compose.yml -f telemetry.compose.yml up -d
 
 # Rebuild / restart / logs / status
 cd infra/compose && docker compose -f base.compose.yml -f dev.compose.yml build api

@@ -15,7 +15,7 @@ import { composedSchemaDatamodel } from '@marinoscar/platform-api/user-data';
 // This wraps the bypass client the user-data slice receives (`USER_DATA_DB.system`) so a
 // `count` with such a filter on a REQUIRED scalar of the model has that key removed. Nothing
 // else is touched: every other method and every filter on an optional column pass through.
-// A seam request on EnterpriseAppBase asks the platform to do this itself; this file is
+// Seam request marinoscar/EnterpriseAppBase#1058 asks the platform to do this itself; this file is
 // deleted with it (listed in docs/platform-adoption/local-exceptions.md).
 // =============================================================================
 

@@ -21,8 +21,14 @@
  */
 
 import type { SettingsSectionDef } from '@marinoscar/platform-web/settings/ui';
+import { dbBackupAdminSections } from '@marinoscar/platform-web/db-backup/ui';
 import { doctorSettingsPage } from '@marinoscar/platform-web/doctor/ui';
 import { identityAdminSections } from '@marinoscar/platform-web/identity/ui';
+// Telemetry (E9.2, #90): the platform's three Observability cards, declared by the package (data
+// only). Each carries the exact permission the telemetry controllers enforce (`telemetry:read` for
+// the settings page, `telemetry:query` for the Explorer and Dashboard); the last two carry
+// `feature: 'telemetry'` (a store is deployed and collection is on).
+import { telemetryAdminCards } from '@marinoscar/platform-web/telemetry/ui';
 import './settingsFeatures';
 import TuneIcon from '@mui/icons-material/TuneOutlined';
 import AiIcon from '@mui/icons-material/AutoAwesomeOutlined';
@@ -37,6 +43,7 @@ import BroadcastIcon from '@mui/icons-material/CampaignOutlined';
 import { setupGuideSettingsPage } from '@marinoscar/platform-web/onboarding/ui';
 import { DANGER_ZONE_GROUP_LABEL } from '@marinoscar/platform-web/user-data/headless';
 import { factoryResetSettingsPage } from '@marinoscar/platform-web/user-data/ui';
+import StorageIcon from '@mui/icons-material/CloudOutlined';
 
 /** The Console hub's title: the hub's heading and the compact AppBar's fallback. */
 export const ADMIN_HUB_TITLE = 'Console';
@@ -108,6 +115,21 @@ export const ADMIN_SECTIONS: SettingsSectionDef[] = [
         permission: 'ai_config:read',
         feature: 'ai',
       },
+      {
+        // E6.1 web follow-up (#84), APPENDED last in Administration. The packaged
+        // StorageConfigPage (`@marinoscar/platform-web/storage/ui`). Since E6.1 the
+        // bucket and its key are runtime configuration, never environment variables.
+        // `storage_config:read` is the exact string the platform's
+        // storage-config.controller enforces on `GET /api/admin/storage-config`
+        // (saving, the connection test and Create bucket need storage_config:write,
+        // gated inside the page). Deliberately NOT `storage:read`, which gates object
+        // access. No `feature`: it is where storage is set up.
+        title: 'Storage',
+        description: 'Where attachments, card faces, media and backups are kept: the bucket, its key, and a connection test.',
+        Icon: StorageIcon,
+        path: '/admin/settings/storage',
+        permission: 'storage_config:read',
+      },
       // E9.3 (#91), APPENDED: the packaged Setup guide. `system_settings:read` is what the
       // platform adds the `admin` block of `GET /api/onboarding` for (its default `adminPermission`;
       // no `onboarding:read` exists) and what gates `GET /api/admin/onboarding/metrics`.
@@ -140,6 +162,17 @@ export const ADMIN_SECTIONS: SettingsSectionDef[] = [
         // The platform about controller `GET /api/admin/about` (default permission
         // system_settings:read; deliberately no `about:read`).
         permission: 'system_settings:read',
+      },
+      {
+        // E9.1 (#89), APPENDED last in Operations. The packaged `Database Backup` card as data:
+        // `/admin/settings/db-backup`, `db_backup:read` (the platform DatabaseBackupController
+        // `GET /api/admin/db-backup/config` and the run list; scheduling needs db_backup:write,
+        // restore and rollback db_backup:restore, gated inside the page). The description is
+        // Vault's own so it is not mistaken for the `Backups` card above, which is the encrypted
+        // secret backup (docs/SECRETS.md).
+        ...dbBackupAdminSections.operations[0],
+        description:
+          'Whole-database disaster recovery: scheduled pg_dump backups of everything, and restoring the entire database. Not the encrypted secret backups.',
       },
     ],
   },
@@ -179,6 +212,14 @@ export const ADMIN_SECTIONS: SettingsSectionDef[] = [
         permission: 'broadcasts:read',
       },
     ],
+  },
+  // E9.2 (#90). A NEW section APPENDED after Operations, so no existing card moves. `Telemetry`
+  // (`telemetry:read`) has no `feature`: it is where collection is switched on, so it must be
+  // reachable while the feature is off. The Explorer and Dashboard (`telemetry:query`) exist only
+  // while a store is deployed and collection is on. Only the admin role holds `telemetry:*`.
+  {
+    label: 'Observability',
+    cards: [...telemetryAdminCards],
   },
   {
     // E9.3 (#91): the packaged factory reset, in a Danger Zone group KEPT LAST of the registry

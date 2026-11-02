@@ -27,10 +27,14 @@
 // they equal what `buildObjectKey` builds.
 //
 // These are the logical secret backups, not the platform `db-backup` slice's
-// `database-backups/` (E9 registers that one alongside).
+// `database-backups/<app>/YYYY/MM/<file>.dump` (E9.1): whole-database `pg_dump` archives,
+// deployment scope, registered here (the slice's own `DB_BACKUP_KEY_PREFIX`, right after the
+// storage slice's four) so a purge reaches them. They are `database_backup_runs` rows, not
+// `storage_objects`, like the zips above.
 // =============================================================================
 
 import { EXPORTS_KEY_PREFIXES } from '@marinoscar/platform-api/exports';
+import { DB_BACKUP_KEY_PREFIX } from '@marinoscar/platform-api/db-backup';
 import {
   STORAGE_SLICE_KEY_PREFIXES,
   registerStorageKeyPrefixes,
@@ -62,6 +66,7 @@ export const VAULT_KEY_PREFIXES: readonly StorageKeyPrefixDef[] = [
 /** Every prefix this deployment registers, in purge order. */
 export const ALL_KEY_PREFIXES: readonly StorageKeyPrefixDef[] = [
   ...STORAGE_SLICE_KEY_PREFIXES,
+  DB_BACKUP_KEY_PREFIX,
   ...VAULT_KEY_PREFIXES,
   // E9.3: `exports/users/<userId>/` and `exports/orgs/<orgId>/` (the exports slice's files).
   ...EXPORTS_KEY_PREFIXES,

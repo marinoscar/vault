@@ -22,6 +22,7 @@ Index of every document in `docs/`, plus the "Doc map by task". Rules for assist
 | [platform-adoption/schema-delta.md](platform-adoption/schema-delta.md) | What platform migrations 0003 to 0040 add to the database | |
 | [runbooks/database-baseline.md](runbooks/database-baseline.md) | One-time baseline of a live database onto the platform history (rehearse, window, rollback) | |
 | [runbooks/settings-migration.md](runbooks/settings-migration.md) | Move pre-E4.1 user profiles onto the platform settings layout (`vault:migrate-settings`) | |
+| [runbooks/database-restore.md](runbooks/database-restore.md) | Whole-database backup and restore (`db-backup` slice): keys that must match, pre-flight, manual and automated restore, rollback, rehearsal | |
 | [runbooks/factory-reset.md](runbooks/factory-reset.md) | Delete a user's data and factory reset a deployment (back up first, verify, recover) | |
 | [runbooks/storage-config-migration.md](runbooks/storage-config-migration.md) | Move the S3 environment variables onto the runtime storage settings (`vault:migrate-storage-config`, boot-time import, cut-over, rollback) | |
 | [platform-adoption/drift-baseline.md](platform-adoption/drift-baseline.md) | Frozen generated drift report | |
@@ -38,7 +39,7 @@ Index of every document in `docs/`, plus the "Doc map by task". Rules for assist
 | Understand the system | ARCHITECTURE.md sections 1 to 3, then the component you touch |
 | Add or change an endpoint | `apps/api/AGENTS.md`, API.md (the area's `###`), DOMAIN-REFERENCE.md; permissions: SECURITY-ARCHITECTURE.md RBAC section |
 | Work on secrets, versions or attachments | SECRETS.md (Versioning, Attachments), root invariants in AGENTS.md |
-| Work on backups or export | SECRETS.md "Backup and export", API.md backups sections; backups are queue jobs since E5.2 ([local-exceptions](platform-adoption/local-exceptions.md#e52-backups-as-queue-jobs-done)) |
+| Work on backups or export | SECRETS.md "Backup and export" (and "Whole-database backup versus encrypted secret backups"), API.md backups sections, runbooks/database-restore.md for the whole-database slice; backups are queue jobs since E5.2 ([local-exceptions](platform-adoption/local-exceptions.md#e52-backups-as-queue-jobs-done)) |
 | Work on card scanning | SECRETS.md (Card fields), `apps/api/src/ai/card-extract.*`; AI rules in AGENTS.md |
 | Change the database | DEVELOPMENT.md, `.claude/skills/platform-migration/SKILL.md`; installed migrations are immutable |
 | Add a settings screen | `.claude/skills/add-settings-page/SKILL.md`, specs/ux-refresh.md |

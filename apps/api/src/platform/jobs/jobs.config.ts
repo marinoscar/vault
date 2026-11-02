@@ -15,8 +15,10 @@
 // after `SettingsModule.forRoot()` composed the request bodies. So `app.module.ts`
 // imports this file BEFORE `platform/settings/settings.config.ts`.
 //
-// Vault registers no node-eligible job type, so a worker node can register and
-// heartbeat but is never offered a job (see `docs/platform-adoption/`).
+// Vault registers no node-eligible job type of its own. The platform's `db.backup.run`
+// (E9.1) is the one node-eligible type in the graph: a worker node can take a whole-database
+// backup through a per-job SELECT-only PostgreSQL role, and is offered nothing else
+// (see `docs/platform-adoption/` and `platform/db-backup/db-backup.config.ts`).
 // =============================================================================
 
 import { APP_NAME } from '@app/shared';

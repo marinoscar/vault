@@ -19,7 +19,7 @@
 // =============================================================================
 
 import '../app-registrations/host';
-import './app-metrics.manifest';
+import '../common/otel/app-metric.manifest';
 
 import { PlatformHostCoreModule } from '@marinoscar/platform-api/host';
 

@@ -59,6 +59,8 @@ describe('Vault onboarding steps', () => {
 
   it('drops the database-backup step while the slice\'s permission is not registered, and keeps the rest', () => {
     const dbBackupMounted = permissionRegistry.has('db_backup:read');
+    // E9.1 is mounted: the guard has activated and the platform's database-backup step is registered.
+    expect(dbBackupMounted).toBe(true);
     expect(onboardingStepRegistry.has(ONBOARDING_STEP_IDS.BACKUP)).toBe(dbBackupMounted);
     // The identity, storage, AI and push steps do not depend on it.
     for (const id of [ONBOARDING_STEP_IDS.STORAGE, ONBOARDING_STEP_IDS.EMAIL, ONBOARDING_STEP_IDS.ACCESS, ONBOARDING_STEP_IDS.AI, ONBOARDING_STEP_IDS.PUSH]) {
