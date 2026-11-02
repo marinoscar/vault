@@ -21,7 +21,7 @@ Vault is a self-hosted secrets manager. It stores credentials, API keys, credit 
 - **.env File Sync**: Back up server `.env` files into Vault as versioned secrets via the `vaultcli` CLI.
 - **Audit Logging**: All secret operations are logged to the audit event store.
 - **Observability**: OpenTelemetry instrumentation with traces, metrics, and structured logging via Uptrace.
-- **API Documentation**: Swagger/OpenAPI documentation at `/api/docs`.
+- **API Documentation**: Scalar API reference (OpenAPI 3.1) at `/api/docs`.
 - **Same-Origin Architecture**: Frontend and API served from the same host via Nginx reverse proxy.
 
 ## Technology Stack
@@ -119,7 +119,7 @@ exit
 
 - **Frontend**: http://localhost:3535
 - **API**: http://localhost:3535/api
-- **Swagger Docs**: http://localhost:3535/api/docs
+- **API reference (Scalar)**: http://localhost:3535/api/docs
 
 ### 7. First Login
 

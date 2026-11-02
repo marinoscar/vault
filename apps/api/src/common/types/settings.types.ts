@@ -21,6 +21,7 @@ export interface UserSettingsValue {
  * `CryptoService.encrypt()`. `last4` exists only so the admin UI can show a
  * recognisable mask - it is never enough to reconstruct the key.
  *
+ * Only the legacy `ai.apiKey` block still has this shape (see `AiSettings`).
  * This shape MUST NEVER leave the API. See `AiSettingsProjection` for the only
  * representation that is safe to return over HTTP.
  */
@@ -38,7 +39,9 @@ export interface EncryptedSecretValue {
  * System-wide AI provider configuration.
  *
  * There are no per-user API keys - a single admin-configured credential is used
- * for every AI-backed feature (card import, etc.).
+ * for every AI-backed feature (card import, etc.). That credential lives in the
+ * platform credential store (purpose `ai`, name `openai`, SECRETS_ENCRYPTION_KEY),
+ * not in this block.
  */
 export interface AiSettings {
   /** Explicit opt-in to sending card images to the provider. Default false. */
@@ -46,6 +49,12 @@ export interface AiSettings {
   provider: 'openai';
   model: string;
   maxCallsPerUserPerDay: number;
+  /**
+   * LEGACY (E4.2). The key used to be stored here, encrypted under
+   * VAULT_ENCRYPTION_KEY. It is never written any more; a row that still holds a
+   * block is waiting for `npm run vault:migrate-ai-key`, which moves it to the
+   * credential store and sets this to null. Removed with the block in E8.
+   */
   apiKey: EncryptedSecretValue | null;
 }
 

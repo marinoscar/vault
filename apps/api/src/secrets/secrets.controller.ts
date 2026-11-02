@@ -11,7 +11,6 @@ import {
   HttpCode,
   HttpStatus,
   Res,
-  StreamableFile,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -115,8 +114,10 @@ export class SecretsController {
     // parseExportSecretsBody. The body is never logged.
     @Body() body: unknown,
     @CurrentUser() user: RequestUser,
-    @Res({ passthrough: true }) reply: FastifyReply,
-  ): Promise<StreamableFile> {
+    // NOT passthrough: the zip is written straight to the reply, so the platform
+    // `{ data }` envelope (which wraps a StreamableFile) never touches it.
+    @Res() reply: FastifyReply,
+  ): Promise<FastifyReply> {
     const options = parseExportSecretsBody(body);
     const result = await this.secretsExportService.createExport(user, options);
 
@@ -125,12 +126,12 @@ export class SecretsController {
     reply.header('X-Vault-Export-Attachments', String(result.attachmentCount));
     reply.header('X-Vault-Export-Media-Files', String(result.mediaFileCount));
 
-    // Returned as a StreamableFile so the platform adapter pipes the raw zip;
-    // TransformInterceptor passes StreamableFile through unwrapped.
-    return new StreamableFile(result.stream, {
-      type: 'application/zip',
-      disposition: `attachment; filename="${result.fileName}"`,
-    });
+    reply.header('Content-Type', 'application/zip');
+    reply.header('Content-Disposition', `attachment; filename="${result.fileName}"`);
+
+    // The raw zip, streamed. The platform TransformInterceptor wraps a returned
+    // StreamableFile in `{ data }`, so the stream is sent on the reply instead.
+    return reply.send(result.stream);
   }
 
   // ---------------------------------------------------------------------------

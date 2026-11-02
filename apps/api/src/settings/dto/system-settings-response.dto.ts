@@ -24,7 +24,7 @@ export const systemSettingsResponseSchema = z.object({
   }),
   features: z.record(z.string(), z.boolean()),
   ai: aiSettingsResponseSchema,
-  updatedAt: z.date(),
+  updatedAt: z.iso.datetime(),
   updatedBy: z
     .object({
       id: z.string().uuid(),

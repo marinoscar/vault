@@ -8,7 +8,7 @@ export const userSettingsResponseSchema = z.object({
     useProviderImage: z.boolean(),
     customImageUrl: z.string().url().nullable().optional(),
   }),
-  updatedAt: z.date(),
+  updatedAt: z.iso.datetime(),
   version: z.number(),
 });
 

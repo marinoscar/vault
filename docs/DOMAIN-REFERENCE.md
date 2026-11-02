@@ -131,7 +131,7 @@ A compact map of the endpoint groups, RBAC, tables, allowlist and environment va
 - `user_identities` - OAuth provider identities (provider + subject)
 - `roles` / `permissions` / `role_permissions` - RBAC
 - `user_roles` - User-to-role assignments
-- `system_settings` - Global app settings (JSONB); as of the card epic, includes a write-only `ai` block (enabled flag, model, daily budget, AES-256-GCM-encrypted OpenAI API key)
+- `system_settings` - Global app settings (JSONB); as of the card epic, includes an `ai` block (enabled flag, model, daily budget). The OpenAI API key is NOT in it since E4.2: it is a write-only platform credential (`credentials` table, purpose `ai`, name `openai`, `SECRETS_ENCRYPTION_KEY`); a legacy `ai.apiKey` block is moved by `npm run vault:migrate-ai-key`
 - `user_settings` - Per-user settings (JSONB)
 - `audit_events` - Action audit log; also backs the AI card-extraction daily budget (counts `ai.card.extract` rows in the trailing 24h); also records `secrets.export` (backup downloads) — see `docs/SECRETS.md`
 - `refresh_tokens` - JWT refresh tokens (hashed)
@@ -200,6 +200,10 @@ Note: `DATABASE_URL` is constructed automatically from these variables at runtim
 - `INITIAL_ADMIN_EMAIL` - First user with this email becomes Admin
 - `DEVICE_CODE_EXPIRY_MINUTES` - Device code lifetime (default: 15)
 - `DEVICE_CODE_POLL_INTERVAL` - Device polling interval in seconds (default: 5)
+
+**Encryption (two different keys, never interchangeable):**
+- `VAULT_ENCRYPTION_KEY` - 64 hex chars (`openssl rand -hex 32`); encrypts secret values (`secret_versions`), backup passwords and the scheduled-backup password via `CryptoService`. See [SECRETS.md](SECRETS.md)
+- `SECRETS_ENCRYPTION_KEY` - base64, 32 bytes (`openssl rand -base64 32`); the platform credential store's key (`credentials` table, today only the OpenAI API key at purpose `ai`, name `openai`). Checked at startup (`verifyEncryptionKeyAtStartup`) and by the Doctor check `secrets.encryption-key`. Moving a pre-E4.2 key: [runbooks/ai-key-migration.md](runbooks/ai-key-migration.md)
 
 **Observability:**
 - `OTEL_ENABLED` - Enable OpenTelemetry (default: true)
