@@ -844,23 +844,35 @@ export class SecretsExportService {
         name: true,
         userId: true,
         createdAt: true,
+        // The folder link is a row of media_folder_files; flatten it back to
+        // the row shape buildMediaPlan expects (see the map below).
         files: {
-          where: { status: MEDIA_READY_STATUS },
-          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          where: { object: { status: MEDIA_READY_STATUS } },
+          orderBy: [{ object: { createdAt: 'asc' } }, { objectId: 'asc' }],
           select: {
-            id: true,
-            name: true,
-            size: true,
-            mimeType: true,
-            storageKey: true,
-            status: true,
             mediaFolderId: true,
-            createdAt: true,
+            object: {
+              select: {
+                id: true,
+                name: true,
+                size: true,
+                mimeType: true,
+                storageKey: true,
+                status: true,
+                createdAt: true,
+              },
+            },
           },
         },
       },
     });
-    return rows as unknown as ExportMediaFolderRow[];
+    return rows.map((folder) => ({
+      ...folder,
+      files: folder.files.map((link) => ({
+        ...link.object,
+        mediaFolderId: link.mediaFolderId,
+      })),
+    })) as unknown as ExportMediaFolderRow[];
   }
 
   private async loadOwnedSecrets(

@@ -17,6 +17,21 @@ import { LinkFileDto } from './dto/link-file.dto';
 import { FolderListQueryDto } from './dto/folder-list-query.dto';
 import { FileListQueryDto } from './dto/file-list-query.dto';
 
+/**
+ * The file shape the API has always returned: the storage object plus the id
+ * of the folder it is in (`mediaFolderId`, which used to be a column of
+ * storage_objects and is now a row of media_folder_files), with `size`
+ * serialised as a string.
+ */
+function toFileResponse<T extends { size: bigint; mediaFolderFile?: unknown }>(
+  object: T,
+  folderId: string,
+) {
+  const { mediaFolderFile: _link, ...rest } = object;
+  void _link;
+  return { ...rest, size: object.size.toString(), mediaFolderId: folderId };
+}
+
 @Injectable()
 export class MediaService {
   private readonly logger = new Logger(MediaService.name);
@@ -195,7 +210,7 @@ export class MediaService {
 
     // Fetch all storage objects in this folder
     const files = await this.prisma.storageObject.findMany({
-      where: { mediaFolderId: folderId },
+      where: { mediaFolderFile: { mediaFolderId: folderId } },
       select: { id: true },
     });
 
@@ -238,7 +253,7 @@ export class MediaService {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {
-      mediaFolderId: folderId,
+      mediaFolderFile: { mediaFolderId: folderId },
       ...(search
         ? { name: { contains: search, mode: 'insensitive' as const } }
         : {}),
@@ -252,6 +267,7 @@ export class MediaService {
     const [items, totalItems] = await Promise.all([
       this.prisma.storageObject.findMany({
         where,
+        include: { mediaFolderFile: true },
         orderBy: { [sortBy]: sortOrder },
         skip,
         take: pageSize,
@@ -262,10 +278,7 @@ export class MediaService {
     const totalPages = Math.ceil(totalItems / pageSize);
 
     return {
-      items: items.map((item) => ({
-        ...item,
-        size: item.size.toString(),
-      })),
+      items: items.map((item) => toFileResponse(item, folderId)),
       meta: {
         page,
         pageSize,
@@ -290,9 +303,10 @@ export class MediaService {
 
     const file = await this.prisma.storageObject.findUnique({
       where: { id: fileId },
+      include: { mediaFolderFile: true },
     });
 
-    if (!file || file.mediaFolderId !== folderId) {
+    if (!file || file.mediaFolderFile?.mediaFolderId !== folderId) {
       throw new NotFoundException('File not found in this folder');
     }
 
@@ -308,10 +322,7 @@ export class MediaService {
       data: { metadata: updatedMetadata as Prisma.InputJsonValue },
     });
 
-    return {
-      ...updated,
-      size: updated.size.toString(),
-    };
+    return toFileResponse(updated, folderId);
   }
 
   async renameFile(
@@ -330,9 +341,10 @@ export class MediaService {
 
     const file = await this.prisma.storageObject.findUnique({
       where: { id: fileId },
+      include: { mediaFolderFile: true },
     });
 
-    if (!file || file.mediaFolderId !== folderId) {
+    if (!file || file.mediaFolderFile?.mediaFolderId !== folderId) {
       throw new NotFoundException('File not found in this folder');
     }
 
@@ -343,10 +355,7 @@ export class MediaService {
       data: { name: dto.name },
     });
 
-    return {
-      ...updated,
-      size: updated.size.toString(),
-    };
+    return toFileResponse(updated, folderId);
   }
 
   async deleteFile(
@@ -364,9 +373,10 @@ export class MediaService {
 
     const file = await this.prisma.storageObject.findUnique({
       where: { id: fileId },
+      include: { mediaFolderFile: true },
     });
 
-    if (!file || file.mediaFolderId !== folderId) {
+    if (!file || file.mediaFolderFile?.mediaFolderId !== folderId) {
       throw new NotFoundException('File not found in this folder');
     }
 
@@ -392,9 +402,10 @@ export class MediaService {
 
     const file = await this.prisma.storageObject.findUnique({
       where: { id: fileId },
+      include: { mediaFolderFile: true },
     });
 
-    if (!file || file.mediaFolderId !== folderId) {
+    if (!file || file.mediaFolderFile?.mediaFolderId !== folderId) {
       throw new NotFoundException('File not found in this folder');
     }
 
@@ -434,14 +445,18 @@ export class MediaService {
       `Linking storage object ${dto.storageObjectId} to folder ${folderId}`,
     );
 
-    const updated = await this.prisma.storageObject.update({
-      where: { id: dto.storageObjectId },
-      data: { mediaFolderId: folderId },
+    // The link lives in media_folder_files (one row per object); linking an
+    // object that is already in a folder moves it.
+    await this.prisma.mediaFolderFile.upsert({
+      where: { objectId: storageObject.id },
+      create: {
+        objectId: storageObject.id,
+        orgId: storageObject.orgId,
+        mediaFolderId: folderId,
+      },
+      update: { mediaFolderId: folderId },
     });
 
-    return {
-      ...updated,
-      size: updated.size.toString(),
-    };
+    return toFileResponse(storageObject, folderId);
   }
 }
