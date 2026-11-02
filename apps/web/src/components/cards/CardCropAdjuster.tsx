@@ -368,7 +368,13 @@ export function CardCropAdjuster({
           down.
         </Box>
 
-        <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
+        <Stack
+          direction="row"
+          spacing={2}
+          sx={{
+            alignItems: "center",
+            mb: 2
+          }}>
           <ZoomOutIcon fontSize="small" color="action" />
           <Slider
             value={adjust.zoom}

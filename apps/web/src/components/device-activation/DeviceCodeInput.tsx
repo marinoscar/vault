@@ -56,7 +56,12 @@ export function DeviceCodeInput({
 
   return (
     <Box component="form" onSubmit={handleSubmit}>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+      <Typography
+        variant="body2"
+        sx={{
+          color: "text.secondary",
+          mb: 2
+        }}>
         Enter the code shown on your device
       </Typography>
 
@@ -66,13 +71,15 @@ export function DeviceCodeInput({
         placeholder="XXXX-XXXX"
         value={code}
         onChange={handleCodeChange}
-        inputProps={{
-          maxLength: 9,
-          style: { textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: '1.2rem' },
-        }}
         sx={{ mb: 2 }}
         autoFocus
         error={!!error}
+        slotProps={{
+          htmlInput: {
+            maxLength: 9,
+            style: { textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: '1.2rem' },
+          }
+        }}
       />
 
       {error && (

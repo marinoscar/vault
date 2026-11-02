@@ -32,7 +32,7 @@ export default function HomePage() {
 
         <Grid container spacing={3}>
           {/* Stats Row */}
-          <Grid item xs={12}>
+          <Grid size={12}>
             <StatsCards
               totalSecrets={totalSecrets}
               totalFolders={totalFolders}
@@ -42,18 +42,34 @@ export default function HomePage() {
           </Grid>
 
           {/* Recent Secrets (primary) + Recent Media (secondary) */}
-          <Grid item xs={12} md={8}>
+          <Grid
+            size={{
+              xs: 12,
+              md: 8
+            }}>
             <RecentSecrets secrets={secrets} isLoading={secretsLoading} />
           </Grid>
-          <Grid item xs={12} md={4}>
+          <Grid
+            size={{
+              xs: 12,
+              md: 4
+            }}>
             <RecentMedia folders={folders} isLoading={foldersLoading} />
           </Grid>
 
           {/* Quick Actions + Secret Types */}
-          <Grid item xs={12} md={8}>
+          <Grid
+            size={{
+              xs: 12,
+              md: 8
+            }}>
             <QuickActions />
           </Grid>
-          <Grid item xs={12} md={4}>
+          <Grid
+            size={{
+              xs: 12,
+              md: 4
+            }}>
             <SecretTypesOverview types={types} isLoading={typesLoading} />
           </Grid>
         </Grid>

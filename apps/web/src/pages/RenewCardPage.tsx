@@ -376,7 +376,9 @@ export default function RenewCardPage() {
       >
         Cards
       </Link>
-      <Typography color="text.primary">Renew</Typography>
+      <Typography sx={{
+        color: "text.primary"
+      }}>Renew</Typography>
     </Breadcrumbs>
   );
 
@@ -418,7 +420,12 @@ export default function RenewCardPage() {
       <Typography variant="h4" gutterBottom>
         Renew {secret.name}
       </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+      <Typography
+        variant="body2"
+        sx={{
+          color: "text.secondary",
+          mb: 1
+        }}>
         Saves a new version. The current card — its number, name and photos —
         stays readable in this card's version history.
       </Typography>
@@ -501,7 +508,9 @@ export default function RenewCardPage() {
           <Typography variant="h6" gutterBottom>
             {isExtracting ? 'Reading the new card…' : 'Preparing the photos…'}
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{
+            color: "text.secondary"
+          }}>
             {isExtracting
               ? 'Your photos have been sent to OpenAI, which locates the card and reads the printed details. This usually takes a few seconds.'
               : 'Cropping the photos to the card…'}
@@ -523,7 +532,9 @@ export default function RenewCardPage() {
                   : `${changedCount} field${changedCount === 1 ? '' : 's'} change`
               }
             />
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: "text.secondary"
+            }}>
               Everything else is saved exactly as it is now.
             </Typography>
           </Box>

@@ -180,9 +180,10 @@ export function CardReviewForm({
                   helperText={helperText}
                   disabled={disabled}
                   sx={warningSx}
-                  InputLabelProps={{ shrink: true }}
-                  SelectProps={{ displayEmpty: true }}
-                >
+                  slotProps={{
+                    select: { displayEmpty: true },
+                    inputLabel: { shrink: true }
+                  }}>
                   {!field.required && (
                     <MenuItem value="">
                       <em>None</em>
@@ -215,21 +216,23 @@ export function CardReviewForm({
                   helperText={helperText}
                   disabled={disabled}
                   sx={warningSx}
-                  InputProps={{
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <IconButton
-                          edge="end"
-                          size="small"
-                          onClick={() => toggleReveal(field.name)}
-                          aria-label={
-                            isRevealed ? `Hide ${field.label}` : `Show ${field.label}`
-                          }
-                        >
-                          {isRevealed ? <VisibilityOffIcon /> : <VisibilityIcon />}
-                        </IconButton>
-                      </InputAdornment>
-                    ),
+                  slotProps={{
+                    input: {
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <IconButton
+                            edge="end"
+                            size="small"
+                            onClick={() => toggleReveal(field.name)}
+                            aria-label={
+                              isRevealed ? `Hide ${field.label}` : `Show ${field.label}`
+                            }
+                          >
+                            {isRevealed ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                          </IconButton>
+                        </InputAdornment>
+                      ),
+                    }
                   }}
                 />
               );

@@ -307,7 +307,7 @@ describe('AiSettings', () => {
       await renderLoaded();
 
       await user.click(
-        screen.getByRole('checkbox', { name: /enable ai card recognition/i }),
+        screen.getByRole('switch', { name: /enable ai card recognition/i }),
       );
       await user.click(screen.getByRole('button', { name: /save changes/i }));
 
@@ -358,7 +358,7 @@ describe('AiSettings', () => {
       await user.type(screen.getByLabelText(/replace api key/i), VALID_KEY);
 
       await user.click(
-        screen.getByRole('checkbox', { name: /enable ai card recognition/i }),
+        screen.getByRole('switch', { name: /enable ai card recognition/i }),
       );
       await user.click(screen.getByRole('button', { name: /save changes/i }));
 
@@ -373,7 +373,7 @@ describe('AiSettings', () => {
       await renderLoaded();
 
       await user.click(
-        screen.getByRole('checkbox', { name: /enable ai card recognition/i }),
+        screen.getByRole('switch', { name: /enable ai card recognition/i }),
       );
       await user.click(screen.getByRole('button', { name: /save changes/i }));
 
@@ -389,7 +389,7 @@ describe('AiSettings', () => {
       expect(save).toBeDisabled();
 
       await user.click(
-        screen.getByRole('checkbox', { name: /enable ai card recognition/i }),
+        screen.getByRole('switch', { name: /enable ai card recognition/i }),
       );
       expect(save).not.toBeDisabled();
     });
@@ -490,7 +490,7 @@ describe('AiSettings', () => {
       await renderLoaded();
 
       expect(
-        screen.getByRole('checkbox', { name: /enable ai card recognition/i }),
+        screen.getByRole('switch', { name: /enable ai card recognition/i }),
       ).toBeDisabled();
     });
 
@@ -498,7 +498,7 @@ describe('AiSettings', () => {
       await renderLoaded();
 
       expect(
-        screen.getByRole('checkbox', { name: /enable ai card recognition/i }),
+        screen.getByRole('switch', { name: /enable ai card recognition/i }),
       ).not.toBeDisabled();
     });
 
@@ -520,7 +520,7 @@ describe('AiSettings', () => {
       await renderLoaded();
 
       expect(
-        screen.getByRole('checkbox', { name: /enable ai card recognition/i }),
+        screen.getByRole('switch', { name: /enable ai card recognition/i }),
       ).toBeChecked();
     });
   });
@@ -913,7 +913,7 @@ describe('AiSettings', () => {
       await screen.findByTestId('ai-verify-result');
 
       await user.click(
-        screen.getByRole('checkbox', { name: /enable ai card recognition/i }),
+        screen.getByRole('switch', { name: /enable ai card recognition/i }),
       );
       await user.click(screen.getByRole('button', { name: /save changes/i }));
 
@@ -1252,7 +1252,7 @@ describe('AiSettings', () => {
         screen.getByRole('button', { name: /remove key/i }),
       ).toBeDisabled();
       expect(
-        screen.getByRole('checkbox', { name: /enable ai card recognition/i }),
+        screen.getByRole('switch', { name: /enable ai card recognition/i }),
       ).toBeDisabled();
       expect(screen.getByLabelText(/^model$/i)).toBeDisabled();
     });

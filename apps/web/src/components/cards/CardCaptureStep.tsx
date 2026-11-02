@@ -110,7 +110,12 @@ export function CardCaptureStep({
       <Typography variant="h6" gutterBottom>
         {heading ?? copy.heading}
       </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+      <Typography
+        variant="body2"
+        sx={{
+          color: "text.secondary",
+          mb: 2
+        }}>
         {helpText ?? copy.help}
       </Typography>
 

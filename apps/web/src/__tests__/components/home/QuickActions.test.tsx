@@ -41,7 +41,7 @@ const ACTIONS = [
     description: 'Store a new secret',
     accessibleName: 'Create Secret: Store a new secret',
     path: '/secrets/new',
-    iconTestId: 'AddCircleOutlineIcon',
+    iconTestId: 'AddCircleOutlineOutlinedIcon',
   },
   {
     title: 'Upload Media',
@@ -184,7 +184,7 @@ describe('QuickActions', () => {
     it('should render one Grid item per action tile', () => {
       const { container } = render(<QuickActions />);
 
-      expect(container.querySelectorAll('.MuiGrid-item')).toHaveLength(ACTIONS.length);
+      expect(container.querySelectorAll('.MuiGrid-root:not(.MuiGrid-container)')).toHaveLength(ACTIONS.length);
     });
   });
 });

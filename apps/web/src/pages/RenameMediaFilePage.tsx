@@ -99,7 +99,9 @@ export default function RenameMediaFilePage() {
         >
           {folderName}
         </Link>
-        <Typography color="text.primary">Rename</Typography>
+        <Typography sx={{
+          color: "text.primary"
+        }}>Rename</Typography>
       </Breadcrumbs>
 
       <Typography variant="h4" gutterBottom>

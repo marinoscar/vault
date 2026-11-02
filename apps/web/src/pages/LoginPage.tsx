@@ -61,16 +61,24 @@ export default function LoginPage() {
         <CardContent sx={{ p: 4 }}>
           {/* Logo/Header */}
           <Box sx={{ textAlign: 'center', mb: 4 }}>
-            <Typography variant="h4" component="h1" fontWeight="bold">
+            <Typography variant="h4" component="h1" sx={{
+              fontWeight: "bold"
+            }}>
               Welcome
             </Typography>
-            <Typography color="text.secondary" sx={{ mt: 1 }}>
+            <Typography
+              sx={{
+                color: "text.secondary",
+                mt: 1
+              }}>
               Sign in to continue
             </Typography>
           </Box>
 
           <Divider sx={{ mb: 3 }}>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: "text.secondary"
+            }}>
               Sign in with
             </Typography>
           </Divider>
@@ -86,7 +94,11 @@ export default function LoginPage() {
                 />
               ))
             ) : (
-              <Typography color="text.secondary" textAlign="center">
+              <Typography
+                sx={{
+                  color: "text.secondary",
+                  textAlign: "center"
+                }}>
                 No authentication providers configured
               </Typography>
             )}
@@ -94,7 +106,9 @@ export default function LoginPage() {
 
           {/* Footer */}
           <Box sx={{ mt: 4, textAlign: 'center' }}>
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" sx={{
+              color: "text.secondary"
+            }}>
               By signing in, you agree to our Terms of Service and Privacy Policy
             </Typography>
           </Box>

@@ -120,11 +120,17 @@ export default function ActivateDevicePage() {
         <CardContent sx={{ p: { xs: 3, sm: 4 } }}>
           {/* Header */}
           <Box sx={{ textAlign: 'center', mb: 4 }}>
-            <Typography variant="h4" component="h1" fontWeight="bold">
+            <Typography variant="h4" component="h1" sx={{
+              fontWeight: "bold"
+            }}>
               {state.step === 'complete' ? 'Authorization Complete' : 'Authorize Device'}
             </Typography>
             {state.step !== 'complete' && (
-              <Typography color="text.secondary" sx={{ mt: 1 }}>
+              <Typography
+                sx={{
+                  color: "text.secondary",
+                  mt: 1
+                }}>
                 Link a device to your account
               </Typography>
             )}

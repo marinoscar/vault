@@ -14,7 +14,9 @@ export function SecretTypesOverview({ types, isLoading }: SecretTypesOverviewPro
   return (
     <Card sx={{ height: '100%' }}>
       <CardContent>
-        <Typography variant="h6" fontWeight={600} gutterBottom>Secret Types</Typography>
+        <Typography variant="h6" gutterBottom sx={{
+          fontWeight: 600
+        }}>Secret Types</Typography>
         {isLoading ? (
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
             {Array.from({ length: 4 }).map((_, i) => (
@@ -22,7 +24,9 @@ export function SecretTypesOverview({ types, isLoading }: SecretTypesOverviewPro
             ))}
           </Box>
         ) : types.length === 0 ? (
-          <Typography color="text.secondary" variant="body2">No secret types available</Typography>
+          <Typography variant="body2" sx={{
+            color: "text.secondary"
+          }}>No secret types available</Typography>
         ) : (
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
             {types.map((type) => (

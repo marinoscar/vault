@@ -67,7 +67,9 @@ export default function SecretsPage() {
         <Link color="inherit" href="/" onClick={(e) => { e.preventDefault(); navigate('/'); }}>
           Home
         </Link>
-        <Typography color="text.primary">Secrets</Typography>
+        <Typography sx={{
+          color: "text.primary"
+        }}>Secrets</Typography>
       </Breadcrumbs>
 
       <Typography variant="h4" gutterBottom>

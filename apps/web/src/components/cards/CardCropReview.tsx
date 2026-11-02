@@ -98,7 +98,12 @@ export function CardCropReview({
       <Typography variant="subtitle1" gutterBottom>
         Card photos
       </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+      <Typography
+        variant="body2"
+        sx={{
+          color: "text.secondary",
+          mb: 1.5
+        }}>
         These crops are what gets saved with the card — the full photos are
         never stored. Adjust a crop if the card was not framed right.
       </Typography>
@@ -112,7 +117,9 @@ export function CardCropReview({
       <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
         {sides.map((entry) => (
           <Box key={entry.side} sx={{ width: { xs: '100%', sm: 232 } }}>
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" sx={{
+              color: "text.secondary"
+            }}>
               {entry.side === 'front' ? 'Front' : 'Back'}
             </Typography>
             {entry.crop ? (

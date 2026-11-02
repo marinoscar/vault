@@ -59,7 +59,9 @@ export function FieldOptionsEditor({
 
   return (
     <Box sx={{ mt: 2 }}>
-      <Typography variant="caption" color="text.secondary" component="div">
+      <Typography variant="caption" component="div" sx={{
+        color: "text.secondary"
+      }}>
         Options
       </Typography>
 
@@ -88,11 +90,13 @@ export function FieldOptionsEditor({
                 error={Boolean(error)}
                 helperText={error ?? undefined}
                 placeholder="Value"
-                inputProps={{
-                  'aria-label': `Option ${index + 1} for ${owner}`,
-                  maxLength: MAX_OPTION_LENGTH,
-                }}
                 sx={{ flex: '1 1 220px', maxWidth: 360 }}
+                slotProps={{
+                  htmlInput: {
+                    'aria-label': `Option ${index + 1} for ${owner}`,
+                    maxLength: MAX_OPTION_LENGTH,
+                  }
+                }}
               />
 
               <IconButton

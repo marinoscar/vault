@@ -1,9 +1,9 @@
 import { Chip, Tooltip } from '@mui/material';
 import {
-  ErrorOutline as ExpiredIcon,
+  ErrorOutlineOutlined as ExpiredIcon,
   WarningAmber as ExpiringIcon,
-  CheckCircleOutline as ValidIcon,
-  HelpOutline as UnknownIcon,
+  CheckCircleOutlineOutlined as ValidIcon,
+  HelpOutlineOutlined as UnknownIcon,
 } from '@mui/icons-material';
 import { EXPIRING_SOON_DAYS, type CardExpiryStatus } from '../../utils/cardExpiry';
 

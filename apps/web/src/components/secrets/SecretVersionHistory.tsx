@@ -49,9 +49,13 @@ export function SecretVersionHistory({
 
   if (versions.length === 0) {
     return (
-      <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
-        No version history available.
-      </Typography>
+      <Typography
+        variant="body2"
+        sx={{
+          color: "text.secondary",
+          py: 2
+        }}>No version history available.
+              </Typography>
     );
   }
 
