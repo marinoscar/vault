@@ -16,7 +16,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { eventListenerBodies, listenerIoMarkers, stripListenerComments } from '@marinoscar/platform-api/jobs/testing';
 
-import { API_SOURCE_ROOT, LISTENER_EXEMPTIONS } from './cron-source-roots';
+import { LISTENER_EXEMPTIONS, VAULT_SOURCE_ROOTS } from './cron-source-roots';
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {
@@ -26,9 +26,9 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
-const listeners = sourceFiles(API_SOURCE_ROOT)
-  .map((path) => ({
-    rel: relative(API_SOURCE_ROOT, path).split('\\').join('/'),
+const listeners = VAULT_SOURCE_ROOTS.flatMap((root) => sourceFiles(root).map((path) => ({ root, path })))
+  .map(({ root, path }) => ({
+    rel: relative(root, path).split('\\').join('/'),
     source: stripListenerComments(readFileSync(path, 'utf8')),
   }))
   .filter((file) => file.source.includes('@On' + 'Event('))

@@ -2,7 +2,7 @@ import { writeFileSync, existsSync } from 'node:fs';
 
 import { classifyOpenAiModel } from '@marinoscar/platform-api/ai';
 
-import { AI_PROVIDER_ID } from './ai.constants';
+import { AI_PROVIDER_ID } from '@marinoscar/vault-api/ai';
 import {
   VAULT_AI_CREDENTIAL_NAME,
   VAULT_AI_CREDENTIAL_PURPOSE,

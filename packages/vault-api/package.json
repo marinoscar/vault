@@ -1,0 +1,108 @@
+{
+  "name": "@marinoscar/vault-api",
+  "version": "0.1.0-next.0",
+  "description": "The NestJS side of the Vault domain behind ports: secrets, secret types, attachments, the export zip, backups, media and card extraction (CommonJS).",
+  "license": "MIT",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=24"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marinoscar/vault.git",
+    "directory": "packages/vault-api"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./ports": {
+      "types": "./dist/ports/index.d.ts",
+      "default": "./dist/ports/index.js"
+    },
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "default": "./dist/core/index.js"
+    },
+    "./secrets": {
+      "types": "./dist/secrets/index.d.ts",
+      "default": "./dist/secrets/index.js"
+    },
+    "./secret-types": {
+      "types": "./dist/secret-types/index.d.ts",
+      "default": "./dist/secret-types/index.js"
+    },
+    "./media": {
+      "types": "./dist/media/index.d.ts",
+      "default": "./dist/media/index.js"
+    },
+    "./backups": {
+      "types": "./dist/backups/index.d.ts",
+      "default": "./dist/backups/index.js"
+    },
+    "./ai": {
+      "types": "./dist/ai/index.d.ts",
+      "default": "./dist/ai/index.js"
+    },
+    "./card-expiry": {
+      "types": "./dist/card-expiry/index.d.ts",
+      "default": "./dist/card-expiry/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "default": "./dist/testing/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "prebuild": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "prepack": "node ../../scripts/vault-packages/copy-license.mjs",
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "typecheck": "tsc --noEmit",
+    "test": "jest --config ./test/jest.config.js",
+    "test:run": "jest --config ./test/jest.config.js --ci"
+  },
+  "dependencies": {
+    "@zip.js/zip.js": "2.23.0"
+  },
+  "peerDependencies": {
+    "@marinoscar/platform-api": "0.1.0-next.21",
+    "@marinoscar/platform-contract": "0.1.0-next.21",
+    "@marinoscar/vault-contract": ">=0.0.0-0 || >=0.1.0-0",
+    "@nestjs/common": "^11.1.12",
+    "@nestjs/core": "^11.1.12",
+    "@nestjs/platform-fastify": "^11.1.12",
+    "@nestjs/schedule": "^6.1.0",
+    "@nestjs/swagger": "^11.2.5",
+    "@prisma/client": "^7.8.0",
+    "@prisma/client-runtime-utils": "^7.8.0",
+    "fastify": "^5.0.0",
+    "nestjs-zod": "^5.4.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@marinoscar/vault-contract": "0.1.0-next.0",
+    "@nestjs/testing": "^11.1.12",
+    "@types/jest": "^29.x",
+    "@types/node": "^24.x",
+    "jest": "^29.x",
+    "ts-jest": "^29.4.12",
+    "typescript": "^5.x"
+  }
+}

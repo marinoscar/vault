@@ -16,7 +16,7 @@ import {
   backupScopeLabel,
   formatBytes,
   type VaultBackupNotificationData,
-} from '../notifications-registry/vault-notification-data';
+} from '@marinoscar/vault-api/core';
 import { absoluteLink, detailRow } from './vault-email-common';
 
 // =============================================================================

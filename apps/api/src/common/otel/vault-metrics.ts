@@ -21,28 +21,25 @@
 
 import type { AppMetricDef } from '@marinoscar/platform-api/otel-core';
 
-/** System secret types (`prisma/system-secret-types.ts`); every other type is `custom`. */
-export const SECRET_TYPE_KINDS = ['credential', 'api_key', 'card', 'token', 'note', 'document', 'custom'] as const;
-export type SecretTypeKind = (typeof SECRET_TYPE_KINDS)[number];
-
-/** Why a secret version was minted. */
-export const SECRET_VERSION_SOURCES = ['create', 'update', 'rollback', 'renew'] as const;
-export type SecretVersionSource = (typeof SECRET_VERSION_SOURCES)[number];
-
-export const BACKUP_SCOPES = ['system', 'user'] as const;
-export const BACKUP_TRIGGERS = ['schedule', 'manual'] as const;
-export const BACKUP_OUTCOMES = ['succeeded', 'failed'] as const;
-
-/** How a card scan ended (mirrors `AI_ERROR_CODES` of the card-extraction path). */
-export const CARD_EXTRACTION_OUTCOMES = [
-  'succeeded',
-  'failed',
-  'invalid_image',
-  'not_configured',
-  'rate_limited',
-  'quota_exceeded',
-  'upstream_error',
-] as const;
+export {
+  secretTypeKind,
+  BACKUP_OUTCOMES,
+  BACKUP_SCOPES,
+  BACKUP_TRIGGERS,
+  CARD_EXTRACTION_OUTCOMES,
+  SECRET_TYPE_KINDS,
+  SECRET_VERSION_SOURCES,
+  type SecretTypeKind,
+  type SecretVersionSource,
+} from '@marinoscar/vault-api/core';
+import {
+  BACKUP_OUTCOMES,
+  BACKUP_SCOPES,
+  BACKUP_TRIGGERS,
+  CARD_EXTRACTION_OUTCOMES,
+  SECRET_TYPE_KINDS,
+  SECRET_VERSION_SOURCES,
+} from '@marinoscar/vault-api/core';
 
 const oneOf = (...values: readonly string[]) => ({ kind: 'enum' as const, values });
 
@@ -108,8 +105,3 @@ declare module '@marinoscar/platform-api/otel-core' {
  * `custom`. Takes the type row's `isSystem` and `name`; the NAME of a custom type
  * is never returned.
  */
-export function secretTypeKind(type: { isSystem: boolean; name: string } | null | undefined): SecretTypeKind {
-  if (!type?.isSystem) return 'custom';
-  const kind = type.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
-  return (SECRET_TYPE_KINDS as readonly string[]).includes(kind) && kind !== 'custom' ? (kind as SecretTypeKind) : 'custom';
-}

@@ -6,7 +6,7 @@ import fastifyCookie from '@fastify/cookie';
 import request from 'supertest';
 
 import { AppModule } from '../../src/app.module';
-import { BackupsService } from '../../src/backups/backups.service';
+import { BackupsService } from '@marinoscar/vault-api/backups';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { prismaMock, resetPrismaMock } from '../mocks/prisma.mock';
 import { setupBaseMocks } from '../fixtures/mock-setup.helper';
