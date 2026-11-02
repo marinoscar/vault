@@ -62,7 +62,9 @@ describe('BackupQueueService.queueSystemRun', () => {
       triggeredById: ADMIN,
       jobId: 'job-1',
     });
-    expect(run.id).toBe('run-1');
+    // #130: the row id is generated before the archive key, which embeds it.
+    expect(run.id).toBe(tx.backupRun.create.mock.calls[0][0].data.id);
+    expect(run.id).toMatch(/^[0-9a-f-]{36}$/);
   });
 
   it('is a 409 when the queue already holds an active system backup, and writes no row', async () => {

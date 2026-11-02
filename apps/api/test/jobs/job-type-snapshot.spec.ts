@@ -46,6 +46,8 @@ const PINNED_JOB_TYPES = [
   // backups (E5.2): the logical secret backups, both server-only
   'vault.backup.run',
   'vault.user_backup.run',
+  // card expiry reminders (E7.2): the daily scan, server-only
+  'vault.cards.expiry_scan',
 ] as const;
 
 describe('job type snapshot (issue #81)', () => {
