@@ -10,8 +10,7 @@ import { resolveOrgId } from '@marinoscar/platform-api/identity';
 
 /**
  * The default organization's id, for work that has no request principal
- * (the backup runner, the storage cleanup sweep, object post-processing) and
- * for the storage call sites that are still Vault's own (E6).
+ * (the backup runner) and for the domain call sites that read `storage_objects`.
  *
  * Resolved with identity's `resolveOrgId`, so it honours the tenancy mode: in
  * `single` mode (Vault's only mode) it is the row with `is_default = true`; in
@@ -19,9 +18,12 @@ import { resolveOrgId } from '@marinoscar/platform-api/identity';
  * organization. Cached per client; a failed lookup is not cached.
  *
  * A request's principal carries the same organization (`principal.activeOrgId`)
- * in single mode, which is why the request paths do not thread it yet:
- * PLATFORM-ADOPTION-SHIM(E6) threads the principal's org through the storage
- * slice and removes this. Listed in docs/platform-adoption/local-exceptions.md.
+ * in single mode, which is why Vault's DOMAIN code (secrets, the exports, media,
+ * the backup archive) reads `storage_objects` through it instead of threading
+ * the principal's org. The storage slice itself (E6.1) is org-scoped by the
+ * platform and uses none of this. PLATFORM-ADOPTION-SHIM(multi-org): threading
+ * the principal's org through those four services is the work `TENANCY_MODE=multi`
+ * would need; Vault is single-tenancy. Listed in docs/platform-adoption/local-exceptions.md.
  */
 const cache = new WeakMap<object, Promise<string>>();
 
@@ -44,8 +46,8 @@ export function getDefaultOrgId(prisma: Pick<PrismaClient, 'organization'>): Pro
  * returns nothing and an unscoped insert fails the policy.
  *
  * No S3 or other slow I/O inside `fn` (Prisma's interactive transactions time
- * out after 5 s). PLATFORM-ADOPTION-SHIM(E6): storage becomes the platform
- * slice, which scopes by the principal's organization.
+ * out after 5 s). Vault's domain
+ * services use it for their reads of storage_objects (see {@link getDefaultOrgId}).
  */
 export async function runInDefaultOrg<C extends PrismaClient, R>(
   prisma: C,
@@ -68,7 +70,7 @@ const scopedClients = new WeakMap<object, ModelClient>();
  * `$transaction([...])` (the operations are awaited, not lazy), and it has no
  * `$queryRaw`.
  *
- * PLATFORM-ADOPTION-SHIM(E6), like {@link runInDefaultOrg}.
+ * PLATFORM-ADOPTION-SHIM(multi-org), like {@link getDefaultOrgId}.
  */
 export function defaultOrgClient(prisma: PrismaClient): ModelClient {
   const hit = scopedClients.get(prisma);

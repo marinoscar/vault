@@ -6,7 +6,7 @@ import { CryptoService } from '../../src/common/services/crypto.service';
 
 // Two keys, two stores, on purpose (issue #80, docs/SECRETS.md):
 //   VAULT_ENCRYPTION_KEY   -> secret versions, backups, the scheduled-backup password
-//   SECRETS_ENCRYPTION_KEY -> the platform credential store (the AI key)
+//   SECRETS_ENCRYPTION_KEY -> the platform credential store (the AI key, the object store access key)
 // Adopting the credentials slice must not move a secret value to the platform
 // cipher: that would need a rehearsed re-encryption, not a refactor.
 
@@ -56,7 +56,7 @@ describe('secret values stay under VAULT_ENCRYPTION_KEY', () => {
     expect(service).toMatch(/crypto\.encrypt\(/);
   });
 
-  it('only the AI key presence reader and the legacy key migration read the credential store in application code', () => {
+  it('only the AI key presence reader, the legacy key migration and the storage key import read the credential store in application code', () => {
     const readers = sourceFiles(SRC)
       .filter((file) => /import(?:\s+type)?\s*\{[^}]*\bCredentialsService\b[^}]*\}\s*from/.test(readFileSync(file, 'utf8')))
       .map((f) => relative(SRC, f))
@@ -64,6 +64,9 @@ describe('secret values stay under VAULT_ENCRYPTION_KEY', () => {
     expect(readers).toEqual([
       'ai/ai-key-migration.ts',
       'platform/credentials/ai-key-presence.service.ts',
+      // E6.1: the one-time import of the object store's access key (purpose `storage`).
+      'platform/storage/storage-env-import.service.ts',
+      'platform/storage/storage-env-import.ts',
     ]);
   });
 });

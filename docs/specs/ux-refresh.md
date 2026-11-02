@@ -117,7 +117,7 @@ Generate favicon, PWA and app-bar marks from `media/app_logo.png` and `media/fav
 | AI | Settings tab "AI" | `ai_config:read` since E8.2 (platform `ai-admin.controller` `GET /api/admin/ai/config`); writes `ai_config:write` | The card that switches AI on; carries no `feature`. The packaged `AiConfigPage` |
 | Card scanning | part of the AI tab | `system_settings:read` / `:write` (it saves `ai.cardExtractModel` through `system-settings.controller.ts`) | Not a card since E8.2: the `Card scanning model` section in the `AfterContent` slot of the AI page. The daily budget is the platform's `ai.limits` on the same page |
 | AI models, AI usage | new (E8.2) | `ai_config:read` (`ai-admin.controller` `GET /api/admin/ai/models`, `ai-usage-admin.controller` `GET /api/admin/ai/usage`) | `feature: 'ai'`; see the as-built table below |
-| Storage | storage config | platform storage controller permission (E6) | |
+| Storage | storage config | `storage_config:read` (E6.1; the page is `StorageConfigPage` of `@marinoscar/platform-web/storage/ui`) | |
 | General | UI Settings, Feature Flags tabs | `system_settings:read` / `:write` (`system-settings.controller.ts`) | "Advanced (JSON)" is dropped unless E10.2 records a need |
 | Doctor, Jobs, Telemetry | new | the platform controllers' permissions | Appear as their slices land (E5, E9) |
 | Email, Web Push, Broadcasts | new | `system_settings:read`, `push:read`, `broadcasts:read` (the platform email and notifications controllers) | E7.2; see the as-built table below |

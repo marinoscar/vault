@@ -334,7 +334,6 @@ describe('BackupsService.getDownload', () => {
       {
         expiresIn: BACKUP_DOWNLOAD_URL_TTL_SECONDS,
         responseContentDisposition: 'attachment; filename="vault-backup-2026-05-01_030000.zip"',
-        responseContentType: 'application/zip',
       },
     );
     expect(result.url).toBe('https://storage.example.test/signed');

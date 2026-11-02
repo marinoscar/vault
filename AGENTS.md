@@ -99,7 +99,7 @@ Every settings surface, admin or per-user, is a registry-driven hub (in force si
 Design: EAB `docs/specs/job-queue.md`; recipe: [`add-job-type` skill](.claude/skills/add-job-type/SKILL.md).
 
 1. **No long-running work outside the queue.** Anything that outlives the HTTP request or cron tick is a registered `JobHandler` with a declared `type`, enqueued through `JobsService` with an explicit `orgId`. A detached `void this.doX()`, an `@OnEvent` body that downloads or spawns, and a `@Cron` body that works inline are violations. A `@Cron` only decides whether work is due and enqueues (`enqueueHousekeepingJob`).
-2. **Backups are queue jobs since E5.2:** `vault.backup.run` and `vault.user_backup.run` (server-only), queued by an enqueue-only schedule tick and by the routes, deduplicated by the queue (409), with no advisory locks. **Known exceptions, each a `PLATFORM-ADOPTION-SHIM` with a written reason in `apps/api/test/jobs/cron-source-roots.ts`:** the storage cleanup `@Cron` and the upload-processing `@OnEvent`, until E6. Do not copy these patterns; they are listed in [local-exceptions](docs/platform-adoption/local-exceptions.md). The queue is `apps/api/src/platform/jobs/`; the `cron-enqueue-only` suite (`test/conformance.spec.ts`) and `test/jobs/on-event-no-io.spec.ts` enforce the rule.
+2. **Backups are queue jobs since E5.2:** `vault.backup.run` and `vault.user_backup.run` (server-only), queued by an enqueue-only schedule tick and by the routes, deduplicated by the queue (409), with no advisory locks. **No inline `@Cron` or `@OnEvent` exemption is left since E6.1:** the stale-upload sweep and the post-upload processing are the platform storage slice's enqueue-only cron and `storage.object.process` job; `CRON_EXEMPTIONS` and `LISTENER_EXEMPTIONS` in `apps/api/test/jobs/cron-source-roots.ts` are empty and a new one needs a written reason and an entry in [local-exceptions](docs/platform-adoption/local-exceptions.md). The queue is `apps/api/src/platform/jobs/`; the `cron-enqueue-only` suite (`test/conformance.spec.ts`) and `test/jobs/on-event-no-io.spec.ts` enforce the rule.
 3. **Backup jobs are server-only**: the archive password and `VAULT_ENCRYPTION_KEY` never go to a worker node (no `nodeResultSchema`/`persistNodeResult`). A node never persists a job-scoped credential.
 4. A job declares `profile` `{ maxRuntimeMs, maxAttempts }` or takes the default; never add `leaseMs` or `heartbeatMs`. A job `type` string is permanent once jobs of that type exist.
 
@@ -146,7 +146,7 @@ Guardrails: `test/ai-conformance.spec.ts` (`ai-kill-switch`, `ai-rbac-matrix`, `
 - JWT access tokens are short-lived (15 min); refresh tokens are HttpOnly cookies, rotated on use. The access JWT is read only from `Authorization: Bearer`.
 - Validate input on every endpoint. File uploads: size and type limits, randomized filenames; card face images are capped (default 5 MB).
 - The email allowlist restricts access; `INITIAL_ADMIN_EMAIL` always bypasses it; claimed entries cannot be removed.
-- Storage, AI and (later) Web Push and SMTP are configured at runtime in the admin UI and must **never** get environment variables.
+- Storage, AI and (later) Web Push and SMTP are configured at runtime in the admin UI and must **never** get environment variables. Storage is runtime configuration since E6.1 (`/admin/settings/storage`); `STORAGE_PROVIDER`, `S3_*` and `AWS_*` are only imported once ([runbook](docs/runbooks/storage-config-migration.md)).
 
 ## Environment variables
 

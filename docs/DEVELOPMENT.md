@@ -68,6 +68,16 @@ This application uses **Fastify** as the HTTP adapter, not Express. This has imp
    An existing database with Vault's old `ai` settings block also needs
    `npm run vault:migrate-ai-platform` once (E8.1): [runbooks/ai-platform-migration.md](runbooks/ai-platform-migration.md).
 
+   **Object storage has no environment variables.** The S3 / R2 / S3-compatible
+   bucket, region, endpoint and access keys are entered by an administrator at
+   `/admin/settings/storage` (the secret access key is encrypted with
+   `SECRETS_ENCRYPTION_KEY`); until then uploads answer 503. Only the limits stay in
+   `.env`: `MAX_FILE_SIZE`, `ALLOWED_MIME_TYPES`, `SIGNED_URL_EXPIRY`,
+   `STORAGE_PART_SIZE`. An environment that still has `STORAGE_PROVIDER`,
+   `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT`, `AWS_ACCESS_KEY_ID` and
+   `AWS_SECRET_ACCESS_KEY` imports them once at boot (or with
+   `npm run vault:migrate-storage-config`): [runbooks/storage-config-migration.md](runbooks/storage-config-migration.md).
+
 3. **Start development environment**
    ```bash
    cd infra/compose

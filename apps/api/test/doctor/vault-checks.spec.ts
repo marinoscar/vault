@@ -14,6 +14,7 @@ import {
   VaultBackupScheduleDoctorCheck,
   type BackupScheduleFacts,
 } from '../../src/doctor/checks/vault-backup-schedule.doctor-check';
+import { decideStorageEnv, VaultStorageEnvDoctorCheck } from '../../src/doctor/checks/vault-storage-env.doctor-check';
 import {
   decideEncryptionKey,
   VaultEncryptionKeyDoctorCheck,
@@ -176,5 +177,30 @@ describe('VaultBackupScheduleDoctorCheck', () => {
         expectStatus: 'fail',
       },
     ],
+  });
+});
+
+describe('decideStorageEnv (issue #84, E6.1)', () => {
+  it('passes when no legacy storage variable names a bucket', () => {
+    expect(decideStorageEnv({}).status).toBe('pass');
+    expect(decideStorageEnv({ S3_BUCKET: 'your-bucket-name', AWS_ACCESS_KEY_ID: 'k' }).status).toBe('pass');
+  });
+
+  it('warns, naming variables and never values, while a real bucket is still set', () => {
+    const out = decideStorageEnv({ S3_BUCKET: 'vault-bucket', AWS_SECRET_ACCESS_KEY: 'sekret-value' });
+    expect(out.status).toBe('warn');
+    expect(out.remedy).toContain('vault:migrate-storage-config');
+    expect(JSON.stringify(out)).not.toContain('sekret-value');
+    expect(JSON.stringify(out)).not.toContain('vault-bucket');
+    expect(out.data).toEqual({ legacyVariables: 'S3_BUCKET, AWS_SECRET_ACCESS_KEY' });
+  });
+
+  it('registers itself with the Doctor', () => {
+    const registry = new DoctorCheckRegistry();
+    const register = jest.spyOn(registry, 'register');
+    const check = new VaultStorageEnvDoctorCheck(registry);
+    check.onModuleInit();
+    expect(register).toHaveBeenCalledWith(check);
+    expect(check.id).toBe('vault.storage_env');
   });
 });

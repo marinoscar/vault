@@ -11,6 +11,8 @@
 //        is the address the AI slice reads. Since E8.1 (issue #87) the definition is
 //        the platform's own `AI_CREDENTIAL_PURPOSE_DEF`; the local SHIM(E8) copy is
 //        gone. The slice does not register it itself: the app's manifest does, here.
+//   storage   the platform storage slice's object-store secret access key (purpose `'storage'`,
+//        name `default`; E6.1). Registered from the slice's own `STORAGE_CREDENTIAL_PURPOSE_DEF`.
 //
 //   smtp, email_ses, push_vapid   (E7.1) the email slice's and the notifications slice's secrets.
 //
@@ -21,6 +23,7 @@
 
 import { AI_CREDENTIAL_PURPOSE_DEF } from '@marinoscar/platform-api/ai';
 import { registerCredentialPurpose } from '@marinoscar/platform-api/credentials';
+import { STORAGE_CREDENTIAL_PURPOSE_DEF } from '@marinoscar/platform-api/storage';
 import { SES_CREDENTIAL_PURPOSE_DEF, SMTP_CREDENTIAL_PURPOSE_DEF } from '@marinoscar/platform-api/email';
 import { PUSH_VAPID_CREDENTIAL_PURPOSE_DEF } from '@marinoscar/platform-api/notifications';
 
@@ -29,6 +32,8 @@ export const AI_CREDENTIAL_PURPOSE = AI_CREDENTIAL_PURPOSE_DEF.purpose;
 
 registerCredentialPurpose(AI_CREDENTIAL_PURPOSE_DEF);
 
+// E6.1: the object store's secret access key (`storage` / `default`).
+registerCredentialPurpose(STORAGE_CREDENTIAL_PURPOSE_DEF);
 // E7.1 (#85): the email transports' secrets and the Web Push private key. The
 // platform declares the definitions; the app only registers the ones it stores.
 // SMTP / SES / VAPID are runtime-configured in the admin UI: no environment variable.

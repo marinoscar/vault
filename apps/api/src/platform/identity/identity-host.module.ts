@@ -10,7 +10,7 @@
 //   IDENTITY_NOTIFIER         -> NotificationsService      (the platform's, E7.1)
 //   IDENTITY_JOBS             -> JobsService + registry    (the platform's, E5.1)
 //   USER_DEFAULTS             -> DEFAULT_USER_SETTINGS     (moves with the settings slice, E4.1)
-//   IDENTITY_PROFILE_IMAGES   -> Vault's profile settings  (the storage slice replaces it, E6)
+//   IDENTITY_PROFILE_IMAGES   -> Vault's profile settings  (stays: Vault has no avatar upload, so the storage slice's ProfileImageModule is not mounted, E6.1)
 //   IDENTITY_NODE_CREDENTIALS -> NodeCredentialService     (the platform's, mounted below)
 //   IDENTITY_EVENT_BUS        -> EVENT_BUS                 (host core)
 //   IDENTITY_METRICS          -> AppMetricsService         (host core)

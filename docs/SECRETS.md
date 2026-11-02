@@ -35,12 +35,11 @@ The secrets feature provides encrypted storage for sensitive data such as creden
 # Generate: openssl rand -hex 32
 VAULT_ENCRYPTION_KEY=<64-character-hex-string>
 
-# For file attachments (optional)
-STORAGE_PROVIDER=s3
-S3_BUCKET=your-bucket
-S3_REGION=us-east-1
-AWS_ACCESS_KEY_ID=...
-AWS_SECRET_ACCESS_KEY=...
+# File attachments need object storage, but it is NOT configured here: the
+# provider, bucket, region, endpoint and access keys are runtime settings at
+# /admin/settings/storage (the secret access key is encrypted with
+# SECRETS_ENCRYPTION_KEY). STORAGE_PROVIDER, S3_* and AWS_* are not read; an
+# upgrade imports them once (docs/runbooks/storage-config-migration.md).
 
 # Card face image size cap in bytes (optional, default 5 MB = 5242880)
 # Applies only to card_front / card_back attachments. A non-numeric or
@@ -227,6 +226,8 @@ Generic (role-less) attachments have no MIME type or size constraint beyond what
 
 The `FOR UPDATE` lock is what makes step 3 correct under concurrency: without it, two simultaneous unlinks of the last two references could each observe "1 remaining" and neither would delete, leaking the object and its blob forever.
 
+**Where the bytes live (E6.1).** The blob is deleted through the platform's `STORAGE_PROVIDER` (`@marinoscar/platform-api/storage`), by the row's stored `storage_key` (old objects `uploads/<timestamp>/<uuid>`, new ones `uploads/<orgId>/<timestamp>/<uuid>`). The object store is runtime configuration (`/admin/settings/storage`), not environment variables ([migration runbook](runbooks/storage-config-migration.md)). The card-face checks above run when the file is **attached** with a role, not at upload: the Storage Objects API stores a generic object and cannot know the role yet, so they are not a post-upload processor. `test/storage/storage-adoption.db.spec.ts` proves the refcount rules (a blob shared by two versions survives the first unlink and is deleted with the last) against a real database as the application role.
+
 ### General
 
 - Files are uploaded first via the Storage Objects API, then linked to a secret's current version using the returned storage object ID (`POST /secrets/:id/attachments`), or supplied as part of a renewal (`POST /secrets/:id/renew`).
@@ -235,6 +236,15 @@ The `FOR UPDATE` lock is what makes step 3 correct under concurrency: without it
 - The attachments tab in the UI is only shown when the secret's type has `allowAttachments: true`.
 
 ---
+
+## Card expiry notifications
+
+A daily tick (`CardExpiryTask`, 05:37 UTC, enqueue-only) queues the server-only job `vault.cards.expiry_scan`. The job reads the current version of every Card secret, decrypts it with `VAULT_ENCRYPTION_KEY` **in memory**, keeps only `exp_month` and `exp_year` (a two-digit year is read as 20YY) and tells the owner through the `vault.card_expiring` event:
+
+- **When:** 30 days before, 7 days before and on the last day of the expiry month (a card is valid through that day, UTC). After an outage only the most urgent threshold reached is sent, once. An expired card is not notified.
+- **Once:** each (card, expiry, threshold) is recorded as an `audit_events` row `vault.card.expiry_notified` (target = the secret, meta `{ threshold, expiry }`), and later scans skip it. Renewing the card changes the expiry and re-arms the reminders. Audit retention is off by default; enabling it with fewer than 31 days would re-send a reminder.
+- **What the message says:** the secret's name, the expiry as `MM/YYYY`, and a link to `/secrets/:id`. Never the number, last four, CVV, holder, notes or any other field value; the payload type has no field for them, and a test renders a card whose fields carry distinctive markers and asserts none appears in the payload, the email, the bell text, the inbox rows or the audit trail.
+- **Failure modes:** a version that cannot be decrypted is skipped and logged by secret id; if every card is unreadable the job fails (a rotated key must fail loudly). Users can mute the event per channel in their notification preferences.
 
 ## Backup and export
 

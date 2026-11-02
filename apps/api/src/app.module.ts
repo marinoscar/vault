@@ -14,18 +14,20 @@ import { ZodValidationPipe } from 'nestjs-zod';
 
 import { PrismaModule } from './prisma/prisma.module';
 import { CommonModule } from './common/common.module';
-import { StorageModule } from './storage/storage.module';
 import { SecretTypesModule } from './secret-types/secret-types.module';
 import { SecretsModule } from './secrets/secrets.module';
 import { MediaModule } from './media/media.module';
 import { AiModule } from './ai/ai.module';
 import { BackupsModule } from './backups/backups.module';
+import { CardExpiryModule } from './card-expiry/card-expiry.module';
 import { LoggerModule } from './common/logger/logger.module';
 
 // MUST precede `settings.config`: the jobs and nodes slices ensure the `jobs`,
 // `retention` and `nodes` system-settings namespaces, which the platform refuses
 // once `SettingsModule.forRoot()` has composed the request bodies.
 import { jobsModule, nodesModule } from './platform/jobs/jobs.config';
+import { StorageConfigModule, storageModule } from './platform/storage/storage.config';
+import { StorageEnvImportModule } from './platform/storage/storage-env-import.module';
 import { emailModule } from './platform/email/email.config';
 import { notificationsModule, BroadcastsModule } from './platform/notifications/notifications.config';
 import { identityModule } from './platform/identity/identity.config';
@@ -98,13 +100,17 @@ import configuration from './config/configuration';
     doctorModule,
     DoctorChecksModule,
     aboutModule,
-    StorageModule,
+    // Storage (issue #84, E6.1): the objects API, the stale-upload sweep, the processor job and
+    // the admin storage configuration from the platform slice. Runtime-configured (no env vars).
+    storageModule,
+    StorageConfigModule,
+    StorageEnvImportModule,
     SecretTypesModule,
     SecretsModule,
     MediaModule,
     AiModule,
     BackupsModule,
-
+    CardExpiryModule,
   ],
   providers: [
     // Global validation pipe (Zod)

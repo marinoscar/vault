@@ -1,60 +1,74 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import type { Readable } from 'node:stream';
 
 import type { AiObjectStore } from '@marinoscar/platform-api/ai';
+import {
+  STORAGE_PROVIDER,
+  STORAGE_SETTINGS_PATH,
+  StorageConfigService,
+  StorageNotConfiguredError,
+  type StorageProvider,
+} from '@marinoscar/platform-api/storage';
 
 // =============================================================================
-// AI_OBJECT_STORE: SHIM(E6) (issue #87, E8.1)
+// AI_OBJECT_STORE over the platform storage slice (issue #87, E8.1; E6.1 mounted it)
 // =============================================================================
 //
-// Image, audio and file-input AI runs read and write platform storage objects
-// through this port. Vault's storage is still its own provider (the platform
-// storage slice is E6), and the only AI feature Vault has, card extraction, sends
-// its images inline and stores nothing. So this port refuses every operation with
-// a clear reason; the platform maps that to "storage not configured" for an image
-// or audio run, which Vault does not expose (no `/api/ai/images` consumer in the
-// web, and `ai.defaults.allowBackgroundRuns` is irrelevant to a synchronous call).
-//
-// E6 replaces this class with an adapter over the platform `STORAGE_PROVIDER`
-// (see KVox's `platform/ai/ai-object-store.adapter.ts`).
+// Image, audio and file-input AI runs read and write storage objects through this
+// port. It is a thin view over the active `STORAGE_PROVIDER` (the runtime-configured
+// object store) and `StorageConfigService` (the configuration questions). It owns no
+// configuration of its own: when storage is not configured the platform's own
+// `StorageNotConfiguredError` (503 with its remedy) is what an AI run reports.
+// Card extraction sends its images inline and never touches this port.
 // =============================================================================
-
-const REASON = 'storage_not_configured';
 
 @Injectable()
 export class AiObjectStoreAdapter implements AiObjectStore {
-  /** Where an administrator would fix it; the platform storage page arrives with E6. */
-  readonly settingsPath = '/admin/settings';
+  readonly settingsPath = STORAGE_SETTINGS_PATH;
 
-  private unavailable(): never {
-    throw new Error(REASON);
+  constructor(
+    @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
+    private readonly config: StorageConfigService,
+  ) {}
+
+  async upload(
+    key: string,
+    body: Readable,
+    opts: { mimeType: string; contentLength: number },
+  ): Promise<{ bucket: string }> {
+    const result = await this.storage.upload(key, body, {
+      mimeType: opts.mimeType,
+      contentLength: opts.contentLength,
+    });
+    return { bucket: result.bucket };
   }
 
-  upload(_key: string, _body: Readable): Promise<{ bucket: string }> {
-    return this.unavailable();
+  delete(key: string): Promise<void> {
+    return this.storage.delete(key);
   }
 
-  delete(_key: string): Promise<void> {
-    return this.unavailable();
+  download(key: string): Promise<Readable> {
+    return this.storage.download(key);
   }
 
-  download(_key: string): Promise<Readable> {
-    return this.unavailable();
+  getSignedDownloadUrl(key: string, opts: { expiresIn: number }): Promise<string> {
+    return this.storage.getSignedDownloadUrl(key, { expiresIn: opts.expiresIn });
   }
 
-  getSignedDownloadUrl(_key: string): Promise<string> {
-    return this.unavailable();
-  }
-
-  assertWritable(): Promise<void> {
-    return this.unavailable();
+  async assertWritable(): Promise<void> {
+    const resolution = await this.config.resolve();
+    if (!resolution.configured) {
+      throw StorageNotConfiguredError.missing(resolution.provider, resolution.missing);
+    }
   }
 
   activeProvider(): Promise<string> {
-    return Promise.resolve('none');
+    return this.config.activeProvider();
   }
 
   notConfiguredReason(err: unknown): string | null {
-    return err instanceof Error && err.message === REASON ? REASON : null;
+    if (!(err instanceof StorageNotConfiguredError)) return null;
+    const body = err.getResponse() as { details?: { reason?: unknown } };
+    return typeof body.details?.reason === 'string' ? body.details.reason : 'storage_not_configured';
   }
 }

@@ -33,6 +33,10 @@ const PINNED_JOB_TYPES = [
   'nodes.fleet.sweep',
   'nodes.fleet.prune',
   'nodes.node_events_purge',
+  // storage slice (`StorageModule.forRoot`, E6.1): the stale-upload sweep and the post-upload processors,
+  // both server-only (they hold no node result schema)
+  'storage.cleanup.stale-uploads',
+  'storage.object.process',
   // notifications slice (`NotificationsModule.forRoot`, E7.1): retention of the inbox and delivery rows
   'notifications.inbox.purge',
   'notifications.deliveries.purge',
@@ -42,6 +46,8 @@ const PINNED_JOB_TYPES = [
   // backups (E5.2): the logical secret backups, both server-only
   'vault.backup.run',
   'vault.user_backup.run',
+  // card expiry reminders (E7.2): the daily scan, server-only
+  'vault.cards.expiry_scan',
 ] as const;
 
 describe('job type snapshot (issue #81)', () => {

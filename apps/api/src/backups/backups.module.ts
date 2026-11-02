@@ -1,13 +1,14 @@
 import { Module } from '@nestjs/common';
 
 import { CommonModule } from '../common/common.module';
-import { StorageProvidersModule } from '../storage/providers';
+import { StorageProvidersModule } from '@marinoscar/platform-api/storage';
 import { SecretsModule } from '../secrets/secrets.module';
 import { AiKeyPresenceModule } from '../platform/credentials/ai-key-presence.service';
 import { BackupsController } from './backups.controller';
 import { BackupsService } from './backups.service';
 import { BackupArchiveService } from './backup-archive.service';
 import { BackupQueueService } from './backup-queue.service';
+import { BackupNotifier } from './backup-notifier.service';
 import { BackupRunnerService } from './backup-runner.service';
 import { BackupScheduleTask } from './backup-schedule.task';
 import { BackupRunHandler } from './jobs/backup-run.handler';
@@ -28,6 +29,7 @@ import { MyBackupsService } from './my-backups.service';
     MyBackupsService,
     BackupArchiveService,
     BackupQueueService,
+    BackupNotifier,
     BackupRunnerService,
     BackupScheduleTask,
     BackupRunHandler,

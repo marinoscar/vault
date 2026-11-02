@@ -21,7 +21,7 @@ import {
   isDeclaredTypeConsistent,
   IMAGE_SIGNATURE_HEADER_BYTES,
 } from '../common/utils/image-signature.util';
-import { STORAGE_PROVIDER, StorageProvider } from '../storage/providers';
+import { STORAGE_PROVIDER, StorageProvider } from '@marinoscar/platform-api/storage';
 import { CreateSecretDto } from './dto/create-secret.dto';
 import { UpdateSecretDto } from './dto/update-secret.dto';
 import {
@@ -92,7 +92,7 @@ export class SecretsService {
   ) {}
 
   /**
-   * PLATFORM-ADOPTION-SHIM(E6): reads that join `storage_objects` (a row-level
+   * PLATFORM-ADOPTION-SHIM(multi-org): reads that join `storage_objects` (a row-level
    * security table) run in the default organization's scope, as do the
    * attachment transactions (`runInDefaultOrg`). The API is an ordinary role.
    */

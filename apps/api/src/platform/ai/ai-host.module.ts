@@ -11,6 +11,7 @@ import {
 } from '@marinoscar/platform-api/ai';
 import { forSystem } from '@marinoscar/platform-api/core';
 import { AppMetricsService } from '@marinoscar/platform-api/host';
+import { StorageProvidersModule } from '@marinoscar/platform-api/storage';
 
 import { PrismaService } from '../../prisma/prisma.service';
 import { AiObjectStoreAdapter } from './ai-object-store.adapter';
@@ -25,7 +26,7 @@ import { VaultAiTargetResolver } from './vault-ai-target-resolver';
 //                          catalogue sync's organization-less usage row. Vault has one
 //                          connection pool and no second system client; the bypass is the
 //                          transaction-local `app.rls_bypass` the platform sets.
-//   AI_OBJECT_STORE     -> AiObjectStoreAdapter   SHIM(E6): refuses (no storage slice yet)
+//   AI_OBJECT_STORE     -> AiObjectStoreAdapter   the active STORAGE_PROVIDER (platform storage slice, E6.1)
 //   AI_METRICS          -> AppMetricsService      the host core's instruments
 //   AI_TARGET_RESOLVER  -> VaultAiTargetResolver  `card_extract` runs on `ai.cardExtractModel`
 //
@@ -34,7 +35,7 @@ import { VaultAiTargetResolver } from './vault-ai-target-resolver';
 
 @Global()
 @Module({
-  imports: [AiCoreModule],
+  imports: [AiCoreModule, StorageProvidersModule],
   providers: [
     {
       provide: AI_SYSTEM_PRISMA,

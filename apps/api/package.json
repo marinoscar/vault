@@ -36,6 +36,7 @@
     "db:test": "node scripts/test-db-connection.js",
     "vault:migrate-ai-key": "ts-node --project prisma/tsconfig.json --transpile-only scripts/migrate-ai-key.ts",
     "vault:migrate-ai-platform": "ts-node --project prisma/tsconfig.json --transpile-only scripts/migrate-ai-platform.ts",
+    "vault:migrate-storage-config": "ts-node --project prisma/tsconfig.json --transpile-only scripts/migrate-storage-config.ts",
     "vault:migrate-settings": "ts-node --project prisma/tsconfig.json --transpile-only scripts/migrate-settings.ts",
     "test:db": "jest --config ./test/jest.config.js --testRegex '\\.db\\.spec\\.ts$' --runInBand",
     "prisma:typecheck": "tsc -p prisma/tsconfig.json --noEmit"
