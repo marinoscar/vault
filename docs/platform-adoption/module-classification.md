@@ -16,12 +16,12 @@ Baseline classification of every Vault module against EnterpriseAppBase (EAB) an
 
 | Module | Files | Category | Target slice or package | Epic | Notes and workaround |
 |---|---|---|---|---|---|
-| `auth` (Google OAuth, JWT, refresh, guards, strategies, `token-cleanup.task`) | 28 | noise | platform `identity` | E3 | Platform sign-in, sessions, refresh rotation. Re-bind the Google provider through `registerAuthProvider`; keep cookie and token lifetimes (15 min / 14 days) |
-| `users` | 11 | noise | `identity` users | E3 | |
-| `allowlist` | 8 | noise | `identity` allowlist | E3 | `INITIAL_ADMIN_EMAIL` bypass and claimed-entry rule must survive |
-| `pat` (personal access tokens) | 8 | noise | `identity` PATs | E3 | Existing token hashes must stay valid: verify hash format in the E2/E3 rehearsal |
-| `device-auth` (RFC 8628) | 16 | noise | `identity` device flow | E3 | `vaultcli` login depends on it; test against the new CLI in E11 |
-| `test-auth` (`/api/auth/test/login`) | 7 | vault-divergence | app test-login binding | E3 | Mock OAuth for CI; keep or replace with the platform's test helpers |
+| `auth` (Google OAuth, JWT, refresh, guards, strategies, `token-cleanup.task`) | 28 | noise | platform `identity` | E3 | Platform sign-in, sessions, refresh rotation. Re-bind the Google provider through `registerAuthProvider`; keep cookie and token lifetimes (15 min / 14 days) **Done in E3.2 (#77): deleted, served by `IdentityModule.forRoot` (`apps/api/src/platform/identity/`).** |
+| `users` | 11 | noise | `identity` users | E3 | **Done in E3.2 (#77): deleted, served by `IdentityModule.forRoot` (`apps/api/src/platform/identity/`).** |
+| `allowlist` | 8 | noise | `identity` allowlist | E3 | `INITIAL_ADMIN_EMAIL` bypass and claimed-entry rule must survive **Done in E3.2 (#77): deleted, served by `IdentityModule.forRoot` (`apps/api/src/platform/identity/`).** |
+| `pat` (personal access tokens) | 8 | noise | `identity` PATs | E3 | Existing token hashes must stay valid: verify hash format in the E2/E3 rehearsal **Done in E3.2 (#77): deleted, served by `IdentityModule.forRoot` (`apps/api/src/platform/identity/`).** |
+| `device-auth` (RFC 8628) | 16 | noise | `identity` device flow | E3 | `vaultcli` login depends on it; test against the new CLI in E11 **Done in E3.2 (#77): deleted, served by `IdentityModule.forRoot` (`apps/api/src/platform/identity/`).** |
+| `test-auth` (`/api/auth/test/login`) | 7 | vault-divergence | app test-login binding | E3 | Mock OAuth for CI; keep or replace with the platform's test helpers **Done in E3.2 (#77): deleted, served by `IdentityModule.forRoot` (`apps/api/src/platform/identity/`).** |
 | `health` | 5 | noise | `host` health controller | E3 | **Done in E3.1 (#76)**: deleted; `/api/health`, `/live` and `/ready` are the platform's, pinned by `test/health/health.integration.spec.ts` |
 | `settings` (`system-settings`, `user-settings`) | 13 | backport | `settings` registries | E4 | Vault stores an `ai` block (enabled, model, daily budget, encrypted key) in `system_settings` and UI/feature-flag JSON; become namespace registrations. The encrypted key moved to the credentials store in E4.2 (`vault:migrate-ai-key`); the rest of the block moves at E8 |
 | `common/services/crypto.service.ts` | 1 | vault-divergence | app-owned; platform `credentials` for runtime keys | E4 | **Permanent** for secret ciphertext: `VAULT_ENCRYPTION_KEY`, AES-256-GCM. See local-exceptions |
@@ -65,10 +65,10 @@ Baseline classification of every Vault module against EnterpriseAppBase (EAB) an
 
 | Tool | Category | Target | Epic | Notes |
 |---|---|---|---|---|
-| `tools/app` (`@vault/cli`, generic template CLI: allowlist, auth, config, docker, health, prisma, settings, storage, sync, test, users) | noise | `@marinoscar/platform-cli` `createCli` commands | E11 | Delete; README names EnterpriseAppBase |
-| `tools/vaultcli` core (`auth`, `config`, `health`, TUI plumbing) | noise | platform-cli `login`, `config`, `api` | E11 | Config dir `~/.config/vaultcli` migration to the platform path needs a documented step |
-| `tools/vaultcli` domain (`secrets`, `versions`, `backup`, `admin-backups`, `sync`, `types`, interactive menus) | domain | `extraCommands` of the `vault` CLI | E11 | |
-| `tools/vaultcli/install.sh`, `infra/deploy/*` | vault-divergence | `vault deploy` pipeline | E11 | `infra/deploy/install-vault.sh`, `update.sh`, `vault.conf`, `DEPLOY.md` replaced by `vault deploy` |
+| `tools/app` (`@vault/cli`, generic template CLI: allowlist, auth, config, docker, health, prisma, settings, storage, sync, test, users) | noise | `@marinoscar/platform-cli` `createCli` commands | E11 | Deleted in E11.1 (#99) |
+| `tools/vaultcli` core (`auth`, `config`, `health`, TUI plumbing) | noise | platform-cli `login`, `config`, `api` | E11 | Done in E11.1 (#99): `vault login`/`config`/`auth`; `~/.config/vaultcli` files are still read, [migration table](../../apps/cli/README.md#migrating-from-vaultcli) |
+| `tools/vaultcli` domain (`secrets`, `versions`, `backup`, `admin-backups`, `sync`, `types`, interactive menus) | domain | `extraCommands` of the `vault` CLI | E11 | Done in E11.1 (#99): `apps/cli/src/vault/` |
+| `tools/vaultcli/install.sh` (now `apps/cli/install.sh`), `infra/deploy/*` | vault-divergence | `vault deploy` pipeline | E11 | `infra/deploy/install-vault.sh`, `update.sh`, `vault.conf`, `DEPLOY.md` replaced by `vault deploy` |
 
 ## Prisma models (composed from `@marinoscar/platform-db` plus `apps/api/prisma/fragments/`)
 

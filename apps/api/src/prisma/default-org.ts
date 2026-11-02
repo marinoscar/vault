@@ -2,37 +2,33 @@ import type { PrismaClient } from '@prisma/client';
 
 import {
   runInOrg,
+  type RlsRunnableClient,
   type RlsTransactionClient,
   type RlsTransactionOptions,
-} from './org-scope';
+} from '@marinoscar/platform-api/core';
+import { resolveOrgId } from '@marinoscar/platform-api/identity';
 
 /**
- * PLATFORM-ADOPTION-SHIM(E3.2)
+ * The default organization's id, for work that has no request principal
+ * (the backup runner, the storage cleanup sweep, object post-processing) and
+ * for the storage call sites that are still Vault's own (E6).
  *
- * The platform schema makes `storage_objects.org_id` NOT NULL, but Vault is
- * single-tenant until the identity slice is adopted (E3.2): every storage
- * object belongs to the one default organization created by platform migration
- * 0023. This resolves that organization's id (the row with `is_default = true`)
- * and caches it per client.
+ * Resolved with identity's `resolveOrgId`, so it honours the tenancy mode: in
+ * `single` mode (Vault's only mode) it is the row with `is_default = true`; in
+ * `multi` mode it throws `MissingOrgScopeError` instead of quietly choosing an
+ * organization. Cached per client; a failed lookup is not cached.
  *
- * Removed with the legacy storage code (E6) / replaced by identity's
- * `resolveOrgId` (E3.2). Listed in docs/platform-adoption/local-exceptions.md.
+ * A request's principal carries the same organization (`principal.activeOrgId`)
+ * in single mode, which is why the request paths do not thread it yet:
+ * PLATFORM-ADOPTION-SHIM(E6) threads the principal's org through the storage
+ * slice and removes this. Listed in docs/platform-adoption/local-exceptions.md.
  */
 const cache = new WeakMap<object, Promise<string>>();
 
 export function getDefaultOrgId(prisma: Pick<PrismaClient, 'organization'>): Promise<string> {
   const hit = cache.get(prisma);
   if (hit) return hit;
-  const pending = prisma.organization
-    .findFirst({ where: { isDefault: true }, select: { id: true } })
-    .then((org) => {
-      if (!org) {
-        throw new Error(
-          'No default organization found (organizations.is_default = true). Apply the platform migrations (npm run prisma:migrate).',
-        );
-      }
-      return org.id;
-    });
+  const pending = resolveOrgId(prisma, undefined, 'Vault default-organization scope');
   cache.set(prisma, pending);
   // A failed lookup must not be cached forever.
   pending.catch(() => cache.delete(prisma));
@@ -57,7 +53,7 @@ export async function runInDefaultOrg<C extends PrismaClient, R>(
   options?: RlsTransactionOptions,
 ): Promise<R> {
   const orgId = await getDefaultOrgId(prisma);
-  return runInOrg(prisma as never as { $executeRaw(q: TemplateStringsArray, ...v: never[]): unknown }, { orgId }, fn as never, options) as Promise<R>;
+  return runInOrg(prisma as never as RlsRunnableClient, { orgId }, fn as never, options) as Promise<R>;
 }
 
 type ModelClient = RlsTransactionClient<PrismaClient>;

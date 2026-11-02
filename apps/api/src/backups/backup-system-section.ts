@@ -16,7 +16,25 @@
  * other encrypted credential, the backup password, the audit log.
  */
 
-import { membershipRoleNames } from '../auth/membership-role-shim';
+/**
+ * The role names an archive lists for a user: the system roles in `user_roles`
+ * plus the role of the user's active membership of the default organization
+ * (the platform keeps `contributor` / `viewer` on the membership, not in
+ * `user_roles`). `org_admin` is left out because it is implied by `admin`
+ * (platform migration 0024 gave every admin an `org_admin` membership) and the
+ * archive format has never carried it.
+ */
+function effectiveRoleNames(
+  userRoles: Array<{ role: { name: string } | null }> | undefined,
+  memberships: Array<{ role: { name: string } | null }> | undefined,
+): string[] {
+  const names = new Set<string>();
+  for (const ur of userRoles ?? []) if (ur.role) names.add(ur.role.name);
+  for (const m of memberships ?? []) {
+    if (m.role && m.role.name !== 'org_admin') names.add(m.role.name);
+  }
+  return [...names];
+}
 
 export const SYSTEM_SECTION_DIR = 'system';
 
@@ -38,7 +56,7 @@ export const SYSTEM_USERS_SELECT = {
   isActive: true,
   createdAt: true,
   userRoles: { select: { role: { select: { name: true } } } },
-  // PLATFORM-ADOPTION-SHIM(E3.2): org roles live on the default-org membership.
+  // Org roles (contributor, viewer) live on the default-org membership.
   memberships: {
     where: { status: 'active', org: { isDefault: true } },
     select: { role: { select: { name: true } } },
@@ -189,7 +207,7 @@ export function toSystemUsers(rows: SystemUserRow[]): SystemUserEntry[] {
       email: row.email,
       displayName: row.displayName ?? null,
       isActive: row.isActive,
-      roles: membershipRoleNames(row.userRoles, row.memberships).sort(),
+      roles: effectiveRoleNames(row.userRoles, row.memberships).sort(),
       createdAt: row.createdAt.toISOString(),
     };
     if (row.lastLoginAt) {

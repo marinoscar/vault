@@ -16,9 +16,9 @@ Vault is a self-hosted secrets manager. It stores credentials, API keys, credit 
 - **Authorization**: Role-based access control (RBAC) with Admin, Contributor, and Viewer roles. Admins can view secrets across all users.
 - **Access Control**: Email allowlist restricts access to pre-authorized users only.
 - **Personal Access Tokens**: Long-lived tokens for programmatic API and CLI access.
-- **Encrypted Data Backup**: choose what to back up (secrets with attachments by default, plus old versions and your media library) and either download an AES-256 password-protected zip or save it to the storage account (newest 10 kept, password never stored), from the web app or with `vaultcli backup`, including scheduled backups with saved settings, automatic cleanup of old backups and a guided terminal menu (`vaultcli`).
-- **Admin Backups**: administrators schedule hourly, daily, weekly or monthly AES-256 zip backups of every user's data into object storage (Admin Settings > Backups), choosing secrets, media library and system configuration, with run-now, a one-off "Download a backup now", history, signed downloads and keep-last-N retention. Also available as `vaultcli admin backups` and an Admin backups terminal menu.
-- **.env File Sync**: Back up server `.env` files into Vault as versioned secrets via the `vaultcli` CLI.
+- **Encrypted Data Backup**: choose what to back up (secrets with attachments by default, plus old versions and your media library) and either download an AES-256 password-protected zip or save it to the storage account (newest 10 kept, password never stored), from the web app or with `vault backup`, including scheduled backups with saved settings, automatic cleanup of old backups and a guided terminal menu (`vault menu`).
+- **Admin Backups**: administrators schedule hourly, daily, weekly or monthly AES-256 zip backups of every user's data into object storage (Admin Settings > Backups), choosing secrets, media library and system configuration, with run-now, a one-off "Download a backup now", history, signed downloads and keep-last-N retention. Also available as `vault admin backups` and an Admin backups terminal menu.
+- **.env File Sync**: Back up server `.env` files into Vault as versioned secrets via the `vault` CLI.
 - **Audit Logging**: All secret operations are logged to the audit event store.
 - **Observability**: OpenTelemetry instrumentation with traces, metrics, and structured logging via Uptrace.
 - **API Documentation**: Scalar API reference (OpenAPI 3.1) at `/api/docs`.
@@ -195,71 +195,17 @@ Development mode (`dev.compose.yml`) includes hot reload for both frontend and b
 
 ## CLI Tools
 
-This repository includes two separate CLI tools with different purposes:
-
-- **`app`** — Dev/admin CLI for managing the development environment, running tests, seeding the database, and performing administrative API operations. See [tools/app/README.md](tools/app/README.md).
-- **`vaultcli`** — Secrets CLI for interacting with Vault secrets programmatically. Includes the `vaultcli sync` command for backing up local `.env` files into Vault as versioned Document secrets. See [tools/vaultcli/README.md](tools/vaultcli/README.md).
-
-### `app` — Development and Admin CLI
-
-A cross-platform CLI (`app`) is available for managing development, testing, and API operations. The CLI can connect to any deployed instance, not just localhost.
-
-### Installation
+One CLI, **`vault`** (`apps/cli`), built on `@marinoscar/platform-cli`. It has the platform's commands (`login` with device flow, `config`, `api`, `init`, `deploy`, `node`, and a terminal UI) plus Vault's own: `secrets`, `versions`, `types`, `sync` (back up local `.env` files into Vault as versioned Document secrets), `backup`, `admin backups`, `health`, `auth` and `menu`. It replaces the earlier `vaultcli` and `app` CLIs; the command mapping is in [apps/cli/README.md](apps/cli/README.md#migrating-from-vaultcli).
 
 ```bash
-# Build the CLI
-cd tools/app && npm run build
-
-# Link globally (recommended)
-npm link
-
-# Now you can use 'app' from anywhere
-app --help
+npm install
+npm run cli:build                      # builds apps/cli
+npm run vault -- login --server http://localhost:3535
+npm run vault -- secrets list
+npm run vault -- --help
 ```
 
-### Quick CLI Commands
-
-```bash
-# Configure CLI to connect to a server
-app config set-url https://vault.example.com
-
-# Start development environment
-app start
-
-# Login (opens browser for OAuth)
-app auth login
-
-# Run tests
-app test
-
-# Manage users (admin only)
-app users list
-app allowlist add newuser@example.com
-
-# Database operations
-app prisma migrate
-app prisma seed
-
-# Interactive mode (menu-driven)
-app
-```
-
-### Working with Remote Servers
-
-```bash
-# Configure for production
-app config set-url https://vault.example.com
-app auth login
-app users list
-
-# Switch to another instance
-app config set-url https://vault-staging.example.com
-
-# View current configuration
-app config show
-```
-
-For complete `app` CLI documentation, see [tools/app/README.md](tools/app/README.md).
+Install on a workstation or server with `curl -fsSL https://raw.githubusercontent.com/marinoscar/vault/main/apps/cli/install.sh | bash`. Full usage: [apps/cli/README.md](apps/cli/README.md).
 
 ## Project Structure
 
@@ -294,8 +240,7 @@ vault/
 │       │   ├── contexts/       # React contexts (Auth, Theme)
 │       │   └── services/       # API client
 │       └── src/__tests__/      # Component tests
-├── tools/
-│   └── app/                    # CLI tool for development and API management
+├── apps/cli/                   # the `vault` CLI (platform-cli based)
 ├── docs/                       # Documentation
 │   ├── DEVELOPMENT.md          # Development guide (start here)
 │   ├── SECURITY.md             # Security design and practices
@@ -315,9 +260,8 @@ vault/
 
 ## Documentation
 
-- **[app CLI](tools/app/README.md)** - Dev/admin CLI for development, testing, and API management
-- **[vaultcli CLI](tools/vaultcli/README.md)** - Secrets CLI for programmatic access to Vault
-- **[ENV-SYNC.md](docs/ENV-SYNC.md)** - Backing up `.env` files into Vault via the `vaultcli` CLI
+- **[vault CLI](apps/cli/README.md)** - Secrets, backup and sync CLI (platform-cli based); migrating from `vaultcli`
+- **[ENV-SYNC.md](docs/ENV-SYNC.md)** - Backing up `.env` files into Vault via the `vault` CLI
 - **[DEVELOPMENT.md](docs/DEVELOPMENT.md)** - Development setup, common patterns, and troubleshooting
 - **[SECURITY.md](docs/SECURITY.md)** - Security design and implementation
 - **[OBSERVABILITY.md](docs/OBSERVABILITY.md)** - Monitoring, logging, and tracing

@@ -15,7 +15,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { PrismaService } from '../../src/prisma/prisma.service';
-import { runInOrg, ScopedAccessError } from '../../src/prisma/org-scope';
+import { runInOrg, ScopedAccessError } from '@marinoscar/platform-api/core';
 import {
   findAdminCredentials,
   provisionAppRoleDatabase,

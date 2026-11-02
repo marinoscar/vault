@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Shared rules for AI assistants working on this codebase (loaded by OpenCode, and by Claude Code through `CLAUDE.md`). Area rules live in nested `AGENTS.md` files: `apps/api`, `apps/web`, `tools`. How the tools share files: [docs/AI-ASSISTANTS.md](docs/AI-ASSISTANTS.md).
+Shared rules for AI assistants working on this codebase (loaded by OpenCode, and by Claude Code through `CLAUDE.md`). Area rules live in nested `AGENTS.md` files: `apps/api`, `apps/web`, `apps/cli`. How the tools share files: [docs/AI-ASSISTANTS.md](docs/AI-ASSISTANTS.md).
 
 ## Project overview
 
@@ -14,8 +14,7 @@ Start at [README.md](README.md) and [docs/README.md](docs/README.md) (index with
 ```
 apps/api/        NestJS API: src/<module>/ (auth, users, allowlist, settings, secrets, secret-types, backups, media, ai, storage, pat, device-auth, health, common), test/, prisma/ (schema.prisma, migrations/, seed.ts, system-secret-types.ts)
 apps/web/        React app: src/pages/, components/, contexts/, hooks/, services/api.ts, theme/, utils/, __tests__/ (Vitest)
-tools/app/       generic template CLI (README still names EnterpriseAppBase); replaced in E11
-tools/vaultcli/  domain CLI `vaultcli`: admin-backups, backup, secrets, versions, sync, auth, config, health; becomes `vault` in E11
+apps/cli/        the `vault` CLI on `createCli` of @marinoscar/platform-cli: src/vault/ holds the domain commands (secrets, versions, types, sync, backup, admin backups, health, auth, menu)
 docs/            ARCHITECTURE, API, SECRETS, SECURITY-ARCHITECTURE, DEVELOPMENT, TESTING, specs/, platform-adoption/
 infra/           compose/ (base, dev, otel, prod, test + .env.example), nginx/, otel/, deploy/ (DEPLOY.md, install-vault.sh, update.sh)
 tests/e2e/       Playwright specs; media/  brand logo and favicon; scripts/  PowerShell dev helpers
@@ -33,7 +32,7 @@ Full index: [docs/README.md](docs/README.md). The most used:
 - Endpoint reference: [docs/API.md](docs/API.md) (also `/api/docs`)
 - Dev loop, env vars: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md); testing: [docs/TESTING.md](docs/TESTING.md)
 - Platform migration plan, module classification, local exceptions: [docs/platform-adoption/README.md](docs/platform-adoption/README.md)
-- UX target (E10): [docs/specs/ux-refresh.md](docs/specs/ux-refresh.md); CLI: [tools/vaultcli/README.md](tools/vaultcli/README.md); deploy: [infra/deploy/DEPLOY.md](infra/deploy/DEPLOY.md)
+- UX target (E10): [docs/specs/ux-refresh.md](docs/specs/ux-refresh.md); CLI: [apps/cli/README.md](apps/cli/README.md); deploy: [infra/deploy/DEPLOY.md](infra/deploy/DEPLOY.md)
 
 ## Working with a small context window
 
@@ -124,7 +123,7 @@ Today AI is the generic config/verify/OpenAI provider plus card extraction in `a
 - **Export endpoints return a raw zip, not `{ data }`** (`POST /api/secrets/export`, `POST /api/admin/backups/export`), streamed, with the `X-Vault-Export-*` headers, audited as `secrets.export` / `backups.export`. Permanent; the platform `{data}` envelope must not wrap them.
 - **Installed migrations are never edited or renamed** (comments inside `migration.sql` count). The seven existing ones are history. From E2 `platform.lock` proves it; `npm run db:check` fails on any byte change. Raw-SQL partial/expression indexes are intentional drift (today `secret_versions_current_unique`, `UNIQUE (secret_id) WHERE is_current = true`); never "fix" one with `@@unique` or a `findFirst` pre-check.
 - **`notify()` runs after the triggering write commits**, outside any `$transaction` (TARGET from E7).
-- **RLS (in force since E2.3):** every `storage_objects` / `storage_object_chunks` access, and every query joining through them, runs in the default organization's scope (`runInDefaultOrg` / `defaultOrgClient`, `apps/api/src/prisma/default-org.ts`); an unscoped read returns nothing or a null include, an unscoped insert fails. Never a forOrg client inside `$transaction(async tx => ...)`. The API connects as an ordinary `NOSUPERUSER NOBYPASSRLS` role that owns the tables; `app.org_id` and friends are set only with `set_config(..., true)` as the first statement of a transaction; every dump and restore carries `--enable-row-security` and `PGOPTIONS=-c app.rls_bypass=on`.
+- **RLS (TARGET from E2):** the API connects as an ordinary `NOSUPERUSER NOBYPASSRLS` role that owns the tables; `app.org_id` and friends are set only with `set_config(..., true)` as the first statement of a transaction; every dump and restore carries `--enable-row-security` and `PGOPTIONS=-c app.rls_bypass=on`.
 - **A backup archive is never buffered**: dumps stream into object storage and the upload and exit code are both awaited.
 - **There is no `*:read_any` bypass by accident**: `secrets:read_any`/`write_any`/`delete_any` and `storage:*_any` are Admin only; a no-access read answers 404 for foreign resources.
 
@@ -163,7 +162,7 @@ cd apps/web && npm run test:run                        # Vitest;  npm run typech
 cd apps/api && npm run prisma:generate                 # after schema changes
 cd apps/api && npm run prisma:migrate:dev -- --name <name>   # new migration (dev)
 cd apps/api && npm run prisma:migrate                  # apply (production)
-npm run vaultcli:build && npm run vaultcli -- --help   # domain CLI;  npm run app:build for tools/app
+npm run cli:build && npm run vault -- --help           # the vault CLI (apps/cli); npm run test:run --workspace=cli
 ```
 
 Root shortcuts: `npm run api:test`, `npm run web:test`. App: http://localhost:3535; API reference: http://localhost:3535/api/docs. CI (`.github/workflows/ci.yml`): API typecheck + tests, web typecheck + test typecheck + tests.

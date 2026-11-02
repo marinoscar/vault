@@ -32,27 +32,30 @@ export function resetPrismaMock(): void {
 }
 
 /**
- * Defaults for the two PLATFORM-ADOPTION-SHIMs every request-level test passes
- * through (docs/platform-adoption/local-exceptions.md):
- *  - the default organization exists (storage objects are written with its id,
- *    org roles are assigned on its membership);
- *  - role assignment: `admin` stays in user_roles, org roles go on the
- *    membership (src/auth/membership-role-shim.ts).
+ * A fresh transaction client over the mock. Prisma hands a NEW client to every
+ * interactive transaction; the platform's `runInOrg` remembers the scope of the
+ * client it handed out (a WeakMap), so a mock that passes the SAME object to
+ * every callback would make the second `runInOrg` look nested and skip its
+ * `$transaction`. A prototype child shares every mocked method with the mock.
+ */
+export function freshTransactionClient(mock: any): any {
+  return Object.create(mock);
+}
+
+/**
+ * Defaults every request-level test passes through:
+ *  - the default organization exists (storage objects are written with its id
+ *    inside `runInDefaultOrg`; src/prisma/default-org.ts);
+ *  - interactive transactions run their callback on a fresh client over the mock.
  * Tests that care override these after calling resetPrismaMock().
  */
 export function installPlatformAdoptionDefaults(mock: any): void {
   // Storage access runs in `runInDefaultOrg` (an interactive $transaction whose
   // first statement is set_config); a unit test runs the callback on the mock.
   mock.$transaction.mockImplementation(async (arg: any) =>
-    typeof arg === 'function' ? arg(mock) : Array.isArray(arg) ? Promise.all(arg) : arg,
+    typeof arg === 'function' ? arg(freshTransactionClient(mock)) : Array.isArray(arg) ? Promise.all(arg) : arg,
   );
   mock.organization.findFirst.mockResolvedValue({ id: '00000000-0000-4000-8000-0000000000d0' });
-  mock.membership.findFirst.mockResolvedValue(null);
-  mock.membership.upsert.mockResolvedValue({});
-  mock.userRole.createMany.mockResolvedValue({ count: 0 });
-  mock.role.findMany.mockImplementation(async (args: any) =>
-    ((args?.where?.name?.in as string[]) ?? []).map((name) => ({ id: `role-${name}`, name })),
-  );
 }
 
 /**
@@ -62,7 +65,7 @@ export function mockPrismaTransaction(): void {
   prismaMock.$transaction.mockImplementation(async (arg: any) => {
     if (typeof arg === 'function') {
       // Interactive transaction
-      return arg(prismaMock);
+      return arg(freshTransactionClient(prismaMock));
     } else if (Array.isArray(arg)) {
       // Sequential operations
       return Promise.all(arg);

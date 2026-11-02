@@ -2,7 +2,7 @@
 
 @AGENTS.md
 
-Claude Code loads the shared rules above (project overview, structure, every MANDATORY section, key commands) from [AGENTS.md](AGENTS.md). Area rules load from the nested `AGENTS.md` of the folder you work in (`apps/api`, `apps/web`, `tools`). This file adds only what is specific to Claude Code: the documentation table, the subagent delegation rules and the cloud-session exception. How Claude Code and OpenCode share these files: [docs/AI-ASSISTANTS.md](docs/AI-ASSISTANTS.md).
+Claude Code loads the shared rules above (project overview, structure, every MANDATORY section, key commands) from [AGENTS.md](AGENTS.md). Area rules load from the nested `AGENTS.md` of the folder you work in (`apps/api`, `apps/web`, `apps/cli`). This file adds only what is specific to Claude Code: the documentation table, the subagent delegation rules and the cloud-session exception. How Claude Code and OpenCode share these files: [docs/AI-ASSISTANTS.md](docs/AI-ASSISTANTS.md).
 
 ## MANDATORY: No real people, companies or user material
 
@@ -30,8 +30,8 @@ Full index with a "Doc map by task": [docs/README.md](docs/README.md). Read docs
 | Spec: UX refresh (destinations, shell, brand, settings hub, datatable; E10) | [docs/specs/ux-refresh.md](docs/specs/ux-refresh.md) |
 | Original implementation specs 01 to 24 (historical) | [docs/specs/README.md](docs/specs/README.md), [docs/System_Specification_Document.md](docs/System_Specification_Document.md) |
 | Deployment (VPS) and dev VPS setup | [infra/deploy/DEPLOY.md](infra/deploy/DEPLOY.md), [docs/DEV-VPS-SETUP.md](docs/DEV-VPS-SETUP.md) |
-| CLIs: `vaultcli` (domain), `tools/app` (template) | [tools/vaultcli/README.md](tools/vaultcli/README.md), [tools/app/README.md](tools/app/README.md), [tools/AGENTS.md](tools/AGENTS.md) |
-| Area rules (API, web, tools) | [apps/api/AGENTS.md](apps/api/AGENTS.md), [apps/web/AGENTS.md](apps/web/AGENTS.md), [tools/AGENTS.md](tools/AGENTS.md) |
+| CLI: `vault` (`apps/cli`, on platform-cli; usage, install, migration from `vaultcli`) | [apps/cli/README.md](apps/cli/README.md), [apps/cli/AGENTS.md](apps/cli/AGENTS.md) |
+| Area rules (API, web, CLI) | [apps/api/AGENTS.md](apps/api/AGENTS.md), [apps/web/AGENTS.md](apps/web/AGENTS.md), [apps/cli/AGENTS.md](apps/cli/AGENTS.md) |
 | Recipe: add a job type (applies from E5) | [.claude/skills/add-job-type/SKILL.md](.claude/skills/add-job-type/SKILL.md) |
 | Recipe: add a settings page (applies from E10; rule now) | [.claude/skills/add-settings-page/SKILL.md](.claude/skills/add-settings-page/SKILL.md) |
 | Recipe: change the schema / platform migration (applies from E2) | [.claude/skills/platform-migration/SKILL.md](.claude/skills/platform-migration/SKILL.md) |
@@ -48,7 +48,7 @@ Delegate development work to the matching subagent in `.claude/agents/`. Each ag
 | `backend-dev` | NestJS API, Fastify, auth, RBAC | **Any** backend code: endpoints, services, guards, middleware, JWT, OAuth, backups, job handlers |
 | `frontend-dev` | React, MUI, TypeScript | **Any** frontend code: components, pages, hooks, theming, responsive design |
 | `database-dev` | PostgreSQL, Prisma | **Any** database work: schema, migrations, seeds, queries |
-| `testing-dev` | Jest/Supertest (API), Vitest/RTL (web), node:test (vaultcli) | **Any** testing: unit, integration, typecheck, fixtures |
+| `testing-dev` | Jest/Supertest (API), Vitest/RTL (web), Vitest (CLI) | **Any** testing: unit, integration, typecheck, fixtures |
 | `docs-dev` | Technical documentation | **Any** documentation: ARCHITECTURE.md, SECURITY-ARCHITECTURE.md, API.md, README, specs, runbooks |
 | `ops-dev` | Routine operations (Haiku) | Rebuilding/restarting containers, running Prisma migrations, running typecheck |
 

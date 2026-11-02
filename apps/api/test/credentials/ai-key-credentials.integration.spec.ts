@@ -4,15 +4,13 @@ import { Test } from '@nestjs/testing';
 import { ZodValidationPipe } from 'nestjs-zod';
 import { PLATFORM_PRISMA, decryptSecret, encryptSecret } from '@marinoscar/platform-api/core';
 import { CredentialsService } from '@marinoscar/platform-api/credentials';
+import { JwtAuthGuard, PermissionsGuard, RolesGuard } from '@marinoscar/platform-api/identity';
 
 import { AiBurstLimiterService } from '../../src/ai/ai-burst-limiter.service';
 import { AiConfigService } from '../../src/ai/ai-config.service';
 import { CardExtractController } from '../../src/ai/card-extract.controller';
 import { CardExtractService } from '../../src/ai/card-extract.service';
 import { AI_VISION_PROVIDER } from '../../src/ai/providers/vision-provider.interface';
-import { JwtAuthGuard } from '../../src/auth/guards/jwt-auth.guard';
-import { PermissionsGuard } from '../../src/auth/guards/permissions.guard';
-import { RolesGuard } from '../../src/auth/guards/roles.guard';
 import { DEFAULT_SYSTEM_SETTINGS } from '../../src/common/types/settings.types';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import '../../src/platform/credentials/credentials.config';
