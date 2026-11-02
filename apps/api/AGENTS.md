@@ -18,7 +18,7 @@ Root rules ([AGENTS.md](../../AGENTS.md)) apply. Endpoint reference: [docs/API.m
 - **Secret versions**: a data change writes a new immutable `secret_versions` row and flips `isCurrent` in one transaction; exactly one current version. Attachments are version-scoped; delete by refcount (see root invariants and [SECRETS.md](../../docs/SECRETS.md)).
 - **Backups**: the archive password is used in memory or stored encrypted, never logged. `backup-runner.service.ts` is a known exception to the queue rule (in-process `@Cron` + detached `launch()` + advisory locks); do not extend it, E5 turns it into `vault.backup.run` and `vault.user_backup.run` job types ([local-exceptions](../../docs/platform-adoption/local-exceptions.md)). Dumps and archives stream; never buffer.
 - **AI**: provider code stays under `src/ai/providers/<provider>/`; card extraction persists nothing and never requests the CVV; budget is counted from `audit_events` (`ai.card.extract`).
-- **Prisma**: use `npm run prisma:*`, never bare `npx prisma`. Never edit an existing migration (comments count). Partial/expression indexes are hand-written SQL, intentional drift. Schema work goes to `database-dev`.
+- **Prisma** (v7, driver adapter `@prisma/adapter-pg`; config in `prisma.config.ts`, datasource URL not in the schema): use `npm run prisma:*`, never bare `npx prisma`. Never edit an existing migration (comments count). Partial/expression indexes are hand-written SQL, intentional drift. Schema work goes to `database-dev`.
 - **Long-running work is a queue job** (root rule, TARGET E5); **`notify()` after commit** (TARGET E7); platform-owned behaviour is requested by a seam issue on EAB, never copied locally.
 - **A behaviour change carries tests** in the same or the next commit.
 

@@ -17,6 +17,7 @@ RUN corepack enable
 FROM base AS deps
 COPY package*.json ./
 COPY prisma ./prisma/
+COPY prisma.config.ts ./
 COPY scripts ./scripts/
 # Using npm install since this is a workspace package without its own lock file
 # Set dummy DATABASE_URL for Prisma generate (actual connection not needed at build time)
@@ -48,6 +49,7 @@ COPY --from=build /app/dist ./dist
 COPY --from=deps /app/node_modules ./node_modules
 COPY package*.json ./
 COPY prisma ./prisma/
+COPY prisma.config.ts ./
 COPY scripts ./scripts/
 # The seed runs through ts-node against prisma/seed.ts, which imports shared
 # constants from src/ (so the seeded secret-type options and the AI request
