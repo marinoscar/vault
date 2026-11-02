@@ -8,6 +8,7 @@ import { registerHealthCommands } from './commands/health.js';
 import { registerConfigCommands } from './commands/config.js';
 import { registerSyncCommands } from './commands/sync.js';
 import { registerBackupCommands } from './commands/backup.js';
+import { registerAdminCommands } from './commands/admin-backups.js';
 import { VERSION } from './version.js';
 
 const program = new Command();
@@ -79,6 +80,7 @@ registerHealthCommands(program);
 registerConfigCommands(program);
 registerSyncCommands(program);
 registerBackupCommands(program);
+registerAdminCommands(program);
 
 // Help examples
 program.addHelpText(
@@ -123,6 +125,11 @@ ${chalk.bold('Examples:')}
   $ vaultcli backup config set --keep-days 30                    ${chalk.dim('# Delete backups older than 30 days')}
   $ vaultcli backup prune --dry-run                              ${chalk.dim('# Preview retention')}
   $ vaultcli -i                                                  ${chalk.dim('# Interactive menu (also: vaultcli with no args)')}
+
+  ${chalk.dim('# Server backups of every user (administrators)')}
+  $ vaultcli admin backups schedule show                         ${chalk.dim('# Schedule, next and last run')}
+  $ vaultcli admin backups run --wait                            ${chalk.dim('# Back up now and follow it')}
+  $ vaultcli admin backups list                                  ${chalk.dim('# History')}
 
   ${chalk.dim('# Server health (no auth needed)')}
   $ vaultcli health live                                      ${chalk.dim('# Liveness check')}

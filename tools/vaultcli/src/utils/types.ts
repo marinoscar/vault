@@ -27,6 +27,10 @@ export interface UserInfo {
   profileImageUrl: string | null;
   isActive: boolean;
   isAdmin: boolean;
+  /** Role names, as `GET /auth/me` returns them. */
+  roles?: { name: string }[];
+  /** Effective permission strings, as `GET /auth/me` returns them. */
+  permissions?: string[];
 }
 
 export interface Secret {

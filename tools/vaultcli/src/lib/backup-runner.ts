@@ -191,7 +191,7 @@ function firstFreePath(target: string, startAttempt = 0): { path: string; attemp
  * link to the first free name (atomic EEXIST → next suffix), falling back to
  * check-then-rename on filesystems without hard links.
  */
-async function commitPartial(partial: string, target: string, overwrite: boolean): Promise<string> {
+export async function commitPartial(partial: string, target: string, overwrite: boolean): Promise<string> {
   if (overwrite) {
     await rename(partial, target);
     return target;
