@@ -41,6 +41,12 @@ describe('TestAuthService', () => {
 
   beforeEach(async () => {
     mockPrisma = createMockPrismaService();
+    // PLATFORM-ADOPTION-SHIM(E3.2): admin -> user_roles, org roles -> default-org membership.
+    mockPrisma.organization.findFirst.mockResolvedValue({ id: '00000000-0000-4000-8000-0000000000d0' } as any);
+    mockPrisma.membership.upsert.mockResolvedValue({} as any);
+    mockPrisma.userRole.createMany.mockResolvedValue({ count: 0 });
+    mockPrisma.role.findMany.mockImplementation((async (args: any) =>
+      [mockAdminRole].filter((r) => (args.where.name.in as string[]).includes(r.name))) as any);
 
     // Setup transaction mock to handle both array and callback forms
     mockPrismaTransaction.call({ $transaction: mockPrisma.$transaction });
@@ -492,12 +498,15 @@ describe('TestAuthService', () => {
       expect(mockPrisma.userRole.deleteMany).toHaveBeenCalledWith({
         where: { userId: existingUser.id },
       });
-      expect(mockPrisma.userRole.create).toHaveBeenCalledWith({
-        data: {
-          userId: existingUser.id,
-          roleId: mockAdminRole.id,
-        },
+      // admin is the one role still in user_roles; the org role is org_admin on the membership.
+      expect(mockPrisma.userRole.createMany).toHaveBeenCalledWith({
+        data: [{ userId: existingUser.id, roleId: mockAdminRole.id }],
       });
+      expect(mockPrisma.membership.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({ userId: existingUser.id }),
+        }),
+      );
       expect(result.user.roles).toContain('admin');
     });
 

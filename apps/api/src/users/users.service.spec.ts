@@ -6,6 +6,7 @@ import { createMockPrismaService, MockPrismaService } from '../../test/mocks/pri
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateUserRolesDto } from './dto/update-user-roles.dto';
 import { ROLES } from '../common/constants/roles.constants';
+import { DEFAULT_ORG_MEMBERSHIP_NAME_INCLUDE } from '../auth/membership-role-shim';
 
 describe('UsersService', () => {
   let service: UsersService;
@@ -77,6 +78,10 @@ describe('UsersService', () => {
 
   beforeEach(async () => {
     mockPrisma = createMockPrismaService();
+    // PLATFORM-ADOPTION-SHIM(E3.2): org roles live on the default-org membership.
+    mockPrisma.organization.findFirst.mockResolvedValue({ id: '00000000-0000-4000-8000-0000000000d0' } as any);
+    mockPrisma.role.findUnique.mockResolvedValue({ id: 'org-role-id' } as any);
+    mockPrisma.membership.upsert.mockResolvedValue({} as any);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -145,6 +150,7 @@ describe('UsersService', () => {
             userRoles: {
               include: { role: true },
             },
+            memberships: DEFAULT_ORG_MEMBERSHIP_NAME_INCLUDE,
           },
         });
       });
@@ -182,6 +188,7 @@ describe('UsersService', () => {
             userRoles: {
               include: { role: true },
             },
+            memberships: DEFAULT_ORG_MEMBERSHIP_NAME_INCLUDE,
           },
         });
       });
@@ -274,6 +281,7 @@ describe('UsersService', () => {
             userRoles: {
               include: { role: true },
             },
+            memberships: DEFAULT_ORG_MEMBERSHIP_NAME_INCLUDE,
           },
         });
       });
@@ -299,11 +307,22 @@ describe('UsersService', () => {
         expect(mockPrisma.user.findMany).toHaveBeenCalledWith(
           expect.objectContaining({
             where: {
-              userRoles: {
-                some: {
-                  role: { name: 'admin' },
+              AND: [
+                {
+                  OR: [
+                    { userRoles: { some: { role: { name: 'admin' } } } },
+                    {
+                      memberships: {
+                        some: {
+                          status: 'active',
+                          org: { isDefault: true },
+                          role: { name: 'admin' },
+                        },
+                      },
+                    },
+                  ],
                 },
-              },
+              ],
             },
           }),
         );
@@ -538,6 +557,7 @@ describe('UsersService', () => {
             userRoles: {
               include: { role: true },
             },
+            memberships: DEFAULT_ORG_MEMBERSHIP_NAME_INCLUDE,
             identities: {
               select: {
                 provider: true,

@@ -7,6 +7,7 @@ import {
 import { Prisma } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { defaultOrgClient } from '../prisma/default-org';
 import { ObjectsService } from '../storage/objects/objects.service';
 import { PERMISSIONS } from '../common/constants/roles.constants';
 
@@ -16,6 +17,21 @@ import { RenameFileDto } from './dto/rename-file.dto';
 import { LinkFileDto } from './dto/link-file.dto';
 import { FolderListQueryDto } from './dto/folder-list-query.dto';
 import { FileListQueryDto } from './dto/file-list-query.dto';
+
+/**
+ * The file shape the API has always returned: the storage object plus the id
+ * of the folder it is in (`mediaFolderId`, which used to be a column of
+ * storage_objects and is now a row of media_folder_files), with `size`
+ * serialised as a string.
+ */
+function toFileResponse<T extends { size: bigint; mediaFolderFile?: unknown }>(
+  object: T,
+  folderId: string,
+) {
+  const { mediaFolderFile: _link, ...rest } = object;
+  void _link;
+  return { ...rest, size: object.size.toString(), mediaFolderId: folderId };
+}
 
 @Injectable()
 export class MediaService {
@@ -59,6 +75,15 @@ export class MediaService {
     }
 
     return folder;
+  }
+
+  /**
+   * PLATFORM-ADOPTION-SHIM(E6): `storage_objects` / `storage_object_chunks` are
+   * row-level-security tables and the API is an ordinary role, so every access
+   * runs in the default organization's transaction-local scope.
+   */
+  private get orgDb() {
+    return defaultOrgClient(this.prisma);
   }
 
   // ---------------------------------------------------------------------------
@@ -194,8 +219,8 @@ export class MediaService {
     this.logger.log(`Deleting media folder ${folderId} and all its files`);
 
     // Fetch all storage objects in this folder
-    const files = await this.prisma.storageObject.findMany({
-      where: { mediaFolderId: folderId },
+    const files = await this.orgDb.storageObject.findMany({
+      where: { mediaFolderFile: { mediaFolderId: folderId } },
       select: { id: true },
     });
 
@@ -238,7 +263,7 @@ export class MediaService {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {
-      mediaFolderId: folderId,
+      mediaFolderFile: { mediaFolderId: folderId },
       ...(search
         ? { name: { contains: search, mode: 'insensitive' as const } }
         : {}),
@@ -250,22 +275,20 @@ export class MediaService {
     const skip = (page - 1) * pageSize;
 
     const [items, totalItems] = await Promise.all([
-      this.prisma.storageObject.findMany({
+      this.orgDb.storageObject.findMany({
         where,
+        include: { mediaFolderFile: true },
         orderBy: { [sortBy]: sortOrder },
         skip,
         take: pageSize,
       }),
-      this.prisma.storageObject.count({ where }),
+      this.orgDb.storageObject.count({ where }),
     ]);
 
     const totalPages = Math.ceil(totalItems / pageSize);
 
     return {
-      items: items.map((item) => ({
-        ...item,
-        size: item.size.toString(),
-      })),
+      items: items.map((item) => toFileResponse(item, folderId)),
       meta: {
         page,
         pageSize,
@@ -288,11 +311,12 @@ export class MediaService {
       userPermissions,
     );
 
-    const file = await this.prisma.storageObject.findUnique({
+    const file = await this.orgDb.storageObject.findUnique({
       where: { id: fileId },
+      include: { mediaFolderFile: true },
     });
 
-    if (!file || file.mediaFolderId !== folderId) {
+    if (!file || file.mediaFolderFile?.mediaFolderId !== folderId) {
       throw new NotFoundException('File not found in this folder');
     }
 
@@ -303,15 +327,12 @@ export class MediaService {
       lastAccessedAt: new Date().toISOString(),
     };
 
-    const updated = await this.prisma.storageObject.update({
+    const updated = await this.orgDb.storageObject.update({
       where: { id: fileId },
       data: { metadata: updatedMetadata as Prisma.InputJsonValue },
     });
 
-    return {
-      ...updated,
-      size: updated.size.toString(),
-    };
+    return toFileResponse(updated, folderId);
   }
 
   async renameFile(
@@ -328,25 +349,23 @@ export class MediaService {
       userPermissions,
     );
 
-    const file = await this.prisma.storageObject.findUnique({
+    const file = await this.orgDb.storageObject.findUnique({
       where: { id: fileId },
+      include: { mediaFolderFile: true },
     });
 
-    if (!file || file.mediaFolderId !== folderId) {
+    if (!file || file.mediaFolderFile?.mediaFolderId !== folderId) {
       throw new NotFoundException('File not found in this folder');
     }
 
     this.logger.log(`Renaming file ${fileId} to "${dto.name}"`);
 
-    const updated = await this.prisma.storageObject.update({
+    const updated = await this.orgDb.storageObject.update({
       where: { id: fileId },
       data: { name: dto.name },
     });
 
-    return {
-      ...updated,
-      size: updated.size.toString(),
-    };
+    return toFileResponse(updated, folderId);
   }
 
   async deleteFile(
@@ -362,11 +381,12 @@ export class MediaService {
       userPermissions,
     );
 
-    const file = await this.prisma.storageObject.findUnique({
+    const file = await this.orgDb.storageObject.findUnique({
       where: { id: fileId },
+      include: { mediaFolderFile: true },
     });
 
-    if (!file || file.mediaFolderId !== folderId) {
+    if (!file || file.mediaFolderFile?.mediaFolderId !== folderId) {
       throw new NotFoundException('File not found in this folder');
     }
 
@@ -390,11 +410,12 @@ export class MediaService {
       userPermissions,
     );
 
-    const file = await this.prisma.storageObject.findUnique({
+    const file = await this.orgDb.storageObject.findUnique({
       where: { id: fileId },
+      include: { mediaFolderFile: true },
     });
 
-    if (!file || file.mediaFolderId !== folderId) {
+    if (!file || file.mediaFolderFile?.mediaFolderId !== folderId) {
       throw new NotFoundException('File not found in this folder');
     }
 
@@ -415,7 +436,7 @@ export class MediaService {
     );
 
     // Verify storage object exists and is owned by the caller
-    const storageObject = await this.prisma.storageObject.findUnique({
+    const storageObject = await this.orgDb.storageObject.findUnique({
       where: { id: dto.storageObjectId },
     });
 
@@ -434,14 +455,18 @@ export class MediaService {
       `Linking storage object ${dto.storageObjectId} to folder ${folderId}`,
     );
 
-    const updated = await this.prisma.storageObject.update({
-      where: { id: dto.storageObjectId },
-      data: { mediaFolderId: folderId },
+    // The link lives in media_folder_files (one row per object); linking an
+    // object that is already in a folder moves it.
+    await this.orgDb.mediaFolderFile.upsert({
+      where: { objectId: storageObject.id },
+      create: {
+        objectId: storageObject.id,
+        orgId: storageObject.orgId,
+        mediaFolderId: folderId,
+      },
+      update: { mediaFolderId: folderId },
     });
 
-    return {
-      ...updated,
-      size: updated.size.toString(),
-    };
+    return toFileResponse(storageObject, folderId);
   }
 }

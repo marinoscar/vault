@@ -13,6 +13,7 @@ import { randomUUID } from 'crypto';
 import { extname } from 'path';
 
 import { PrismaService } from '../../prisma/prisma.service';
+import { defaultOrgClient, getDefaultOrgId } from '../../prisma/default-org';
 import { Prisma } from '@prisma/client';
 import { STORAGE_PROVIDER } from '../providers/storage-provider.interface';
 import type { StorageProvider } from '../providers/storage-provider.interface';
@@ -104,8 +105,10 @@ export class ObjectsService {
     );
 
     // Create StorageObject record
-    const storageObject = await this.prisma.storageObject.create({
+    const storageObject = await this.orgDb.storageObject.create({
       data: {
+        // PLATFORM-ADOPTION-SHIM(E6): storage_objects.org_id is NOT NULL; Vault is single-org.
+        orgId: await getDefaultOrgId(this.prisma),
         name,
         size: BigInt(size),
         mimeType,
@@ -147,13 +150,22 @@ export class ObjectsService {
   }
 
   /**
+   * PLATFORM-ADOPTION-SHIM(E6): `storage_objects` / `storage_object_chunks` are
+   * row-level-security tables and the API is an ordinary role, so every access
+   * runs in the default organization's transaction-local scope.
+   */
+  private get orgDb() {
+    return defaultOrgClient(this.prisma);
+  }
+
+  /**
    * Get upload status and progress
    */
   async getUploadStatus(
     objectId: string,
     userId: string,
   ): Promise<UploadStatusResponseDto> {
-    const storageObject = await this.prisma.storageObject.findUnique({
+    const storageObject = await this.orgDb.storageObject.findUnique({
       where: { id: objectId },
       include: { chunks: true },
     });
@@ -197,7 +209,7 @@ export class ObjectsService {
     dto: CompleteUploadDto,
     userId: string,
   ): Promise<ObjectResponseDto> {
-    const storageObject = await this.prisma.storageObject.findUnique({
+    const storageObject = await this.orgDb.storageObject.findUnique({
       where: { id: objectId },
       include: { chunks: true },
     });
@@ -222,7 +234,7 @@ export class ObjectsService {
     // Record chunks in database
     await Promise.all(
       parts.map((part) =>
-        this.prisma.storageObjectChunk.upsert({
+        this.orgDb.storageObjectChunk.upsert({
           where: {
             objectId_partNumber: {
               objectId,
@@ -231,6 +243,8 @@ export class ObjectsService {
           },
           create: {
             objectId,
+            // PLATFORM-ADOPTION-SHIM(E6): chunks carry their object's org_id.
+            orgId: storageObject.orgId,
             partNumber: part.partNumber,
             eTag: part.eTag,
             size: BigInt(0), // We don't know exact part size from client
@@ -250,7 +264,7 @@ export class ObjectsService {
     );
 
     // Update status to processing
-    const updated = await this.prisma.storageObject.update({
+    const updated = await this.orgDb.storageObject.update({
       where: { id: objectId },
       data: { status: 'processing' },
     });
@@ -278,7 +292,7 @@ export class ObjectsService {
    * Abort multipart upload
    */
   async abortUpload(objectId: string, userId: string): Promise<void> {
-    const storageObject = await this.prisma.storageObject.findUnique({
+    const storageObject = await this.orgDb.storageObject.findUnique({
       where: { id: objectId },
     });
 
@@ -304,7 +318,7 @@ export class ObjectsService {
     );
 
     // Delete database records
-    await this.prisma.storageObject.delete({
+    await this.orgDb.storageObject.delete({
       where: { id: objectId },
     });
 
@@ -341,8 +355,10 @@ export class ObjectsService {
 
     // We don't know the size until after upload for streams
     // Use a default size of 0, should be updated in post-processing
-    const storageObject = await this.prisma.storageObject.create({
+    const storageObject = await this.orgDb.storageObject.create({
       data: {
+        // PLATFORM-ADOPTION-SHIM(E6): storage_objects.org_id is NOT NULL; Vault is single-org.
+        orgId: await getDefaultOrgId(this.prisma),
         name: filename,
         size: BigInt(0), // Will be updated by post-processing
         mimeType: mimetype,
@@ -400,13 +416,13 @@ export class ObjectsService {
     }
 
     const [items, totalItems] = await Promise.all([
-      this.prisma.storageObject.findMany({
+      this.orgDb.storageObject.findMany({
         where,
         orderBy,
         skip,
         take,
       }),
-      this.prisma.storageObject.count({ where }),
+      this.orgDb.storageObject.count({ where }),
     ]);
 
     const totalPages = Math.ceil(totalItems / pageSize);
@@ -478,7 +494,7 @@ export class ObjectsService {
     await this.storageProvider.delete(object.storageKey);
 
     // Delete from database (cascade deletes chunks)
-    await this.prisma.storageObject.delete({
+    await this.orgDb.storageObject.delete({
       where: { id },
     });
 
@@ -510,7 +526,7 @@ export class ObjectsService {
     };
 
     // Update in database
-    const updated = await this.prisma.storageObject.update({
+    const updated = await this.orgDb.storageObject.update({
       where: { id },
       data: { metadata: mergedMetadata as Prisma.InputJsonValue },
     });
@@ -534,7 +550,7 @@ export class ObjectsService {
     id: string,
     userId: string,
   ): Promise<any> {
-    const object = await this.prisma.storageObject.findUnique({
+    const object = await this.orgDb.storageObject.findUnique({
       where: { id },
     });
 

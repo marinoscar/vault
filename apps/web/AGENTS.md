@@ -19,6 +19,17 @@ React 19, MUI 9 (`@mui/material`, `@mui/icons-material`), react-router-dom 7, Vi
 - A `Switch` has the ARIA role `switch`, not `checkbox`; query it with `getByRole('switch', ...)`.
 - Tests: an MSW handler must not call `request.formData()` on an upload (undici cannot read a jsdom `File`); spy on `FormData.prototype.append` instead (see `ImportCardPage.test.tsx`).
 
+## Stack
+
+React 19, MUI 9 (`@mui/material`, `@mui/icons-material`), react-router-dom 7, Vite 8, Vitest 4 + React Testing Library 16 + jsdom 29, aligned with the peer dependencies of `@marinoscar/platform-web` (E1.3, #70). MUI 9 conventions:
+
+- No system props on `Box`, `Stack`, `Typography`, `Grid`: put `color`, `fontWeight`, `display`, `alignItems` and friends in `sx`. `Typography` has no `paragraph` (use `sx={{ marginBottom: '16px' }}`).
+- `Grid` is the v2 API: `<Grid size={{ xs: 12, md: 6 }}>`, no `item`, no `xs`/`md` props.
+- Slot props, never the removed `*Props`: `slotProps.input`/`htmlInput`/`inputLabel`/`select` on `TextField`, `slotProps.primary`/`secondary` on `ListItemText`, `slotProps.paper` on `Menu`.
+- `*Outline` icons are gone: use `*OutlineOutlined` (same glyph; `*Outlined` is the filled one).
+- A `Switch` has the ARIA role `switch`, not `checkbox`; query it with `getByRole('switch', ...)`.
+- Tests: an MSW handler must not call `request.formData()` on an upload (undici cannot read a jsdom `File`); spy on `FormData.prototype.append` instead (see `ImportCardPage.test.tsx`).
+
 ## Rules
 
 - **Settings UI** (root rule; the registry exists from E10): a new settings page is a card appended to a registry, never a new tab of `SystemSettingsPage`/`UserSettingsPage`; a card's `permission` is the exact string the API controller enforces; reuse `SettingsHub`, never fork. Recipe: [`add-settings-page` skill](../../.claude/skills/add-settings-page/SKILL.md).

@@ -8,6 +8,17 @@ vi.mock('../../hooks/useUserSettings', () => ({
   useUserSettings: vi.fn(),
 }));
 
+vi.mock('../../hooks/usePersonalAccessTokens', () => ({
+  usePersonalAccessTokens: vi.fn(() => ({
+    tokens: [],
+    isLoading: false,
+    error: null,
+    fetchTokens: vi.fn(),
+    createToken: vi.fn(),
+    revokeToken: vi.fn(),
+  })),
+}));
+
 import { useUserSettings } from '../../hooks/useUserSettings';
 
 const mockUseUserSettings = vi.mocked(useUserSettings);

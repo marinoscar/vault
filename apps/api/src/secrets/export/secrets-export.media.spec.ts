@@ -1,3 +1,4 @@
+import { defaultOrgMock } from '../../../test/mocks/default-org.mock';
 import { Readable } from 'stream';
 
 import { Logger } from '@nestjs/common';
@@ -37,10 +38,22 @@ const mediaRow = (over: Partial<ExportMediaFolderRow> = {}): ExportMediaFolderRo
   ...over,
 });
 
+/**
+ * What prisma.mediaFolder.findMany returns now: each folder's files are
+ * media_folder_files link rows carrying the storage object under `object`
+ * (the service flattens them back to ExportMediaFolderRow).
+ */
+const asLinkRows = (folders: ExportMediaFolderRow[]) =>
+  folders.map((folder) => ({
+    ...folder,
+    files: folder.files.map(({ mediaFolderId, ...object }) => ({ mediaFolderId, object })),
+  }));
+
 function makeService(folders: ExportMediaFolderRow[], storage: Partial<Record<string, jest.Mock>> = {}) {
   const prisma = {
+    ...defaultOrgMock(),
     secret: { findMany: jest.fn().mockResolvedValue([]) },
-    mediaFolder: { findMany: jest.fn().mockResolvedValue(folders) },
+    mediaFolder: { findMany: jest.fn().mockResolvedValue(asLinkRows(folders)) },
     auditEvent: { create: jest.fn().mockResolvedValue({}) },
   };
   const storageProvider = {
@@ -135,7 +148,7 @@ describe('SecretsExportService media library', () => {
     const zip = await exportZip([mediaRow()], { includeMedia: true });
     const args = zip.prisma.mediaFolder.findMany.mock.calls[0][0];
     expect(args.where).toEqual({ userId: USER.id });
-    expect(args.select.files.where).toEqual({ status: 'ready' });
+    expect(args.select.files.where).toEqual({ object: { status: 'ready' } });
     await zip.close();
   });
 

@@ -16,6 +16,11 @@ import { DEFAULT_USER_SETTINGS } from '../common/types/settings.types';
 import { GoogleProfile } from './strategies/google.strategy';
 import { JwtPayload } from './strategies/jwt.strategy';
 import { AuthenticatedUser } from './interfaces/authenticated-user.interface';
+import {
+  ORG_ADMIN_ROLE,
+  setMembershipRole,
+  withMembershipRoles,
+} from './membership-role-shim';
 import { TokenResponseDto } from './dto/auth-user.dto';
 import { AuthProviderDto } from './dto/auth-provider.dto';
 
@@ -150,7 +155,10 @@ export class AuthService {
     }
 
     // Generate JWT tokens
-    const tokens = await this.generateFullTokens(user);
+    // PLATFORM-ADOPTION-SHIM(E3.2): the org role lives on the membership (migration 0024).
+    const tokens = await this.generateFullTokens(
+      await withMembershipRoles(this.prisma, user),
+    );
 
     this.logger.log(`Login successful for user: ${user.email}`);
     return tokens;
@@ -205,12 +213,8 @@ export class AuthService {
               providerEmail: profile.email,
             },
           },
-          // Assign default role
-          userRoles: {
-            create: {
-              roleId: defaultRole.id,
-            },
-          },
+          // The default (org) role is assigned on the membership below, not in
+          // user_roles (PLATFORM-ADOPTION-SHIM(E3.2), migration 0024).
           // Create default user settings
           userSettings: {
             create: {
@@ -234,6 +238,13 @@ export class AuthService {
           },
         },
       });
+
+      // PLATFORM-ADOPTION-SHIM(E3.2): org roles live on the default org membership.
+      await setMembershipRole(
+        tx,
+        newUser.id,
+        shouldGrantAdmin ? ORG_ADMIN_ROLE : DEFAULT_ROLE,
+      );
 
       // Grant admin role if applicable
       if (shouldGrantAdmin) {
@@ -451,7 +462,10 @@ export class AuthService {
 
     // Generate new tokens
     const newRefreshToken = await this.createRefreshToken(storedToken.userId);
-    const accessToken = this.generateAccessToken(storedToken.user);
+    // PLATFORM-ADOPTION-SHIM(E3.2): include the membership role in the token claim.
+    const accessToken = this.generateAccessToken(
+      await withMembershipRoles(this.prisma, storedToken.user),
+    );
 
     return {
       accessToken: accessToken.token,
@@ -543,7 +557,8 @@ export class AuthService {
       return null;
     }
 
-    return user;
+    // PLATFORM-ADOPTION-SHIM(E3.2): permissions of the default-org membership role.
+    return withMembershipRoles(this.prisma, user);
   }
 
   /**
@@ -572,7 +587,7 @@ export class AuthService {
    * Returns current user details with computed display name and image
    */
   async getCurrentUser(userId: string) {
-    const user = await this.prisma.user.findUnique({
+    const rawUser = await this.prisma.user.findUnique({
       where: { id: userId },
       include: {
         userRoles: {
@@ -591,9 +606,11 @@ export class AuthService {
       },
     });
 
-    if (!user) {
+    if (!rawUser) {
       throw new UnauthorizedException('User not found');
     }
+    // PLATFORM-ADOPTION-SHIM(E3.2): permissions of the default-org membership role.
+    const user = await withMembershipRoles(this.prisma, rawUser);
 
     // Compute display name (override takes precedence)
     const displayName = user.displayName || user.providerDisplayName || null;
@@ -603,9 +620,11 @@ export class AuthService {
       user.profileImageUrl || user.providerProfileImageUrl || null;
 
     // Extract roles
-    const roles = user.userRoles.map((ur) => ({
-      name: ur.role.name,
-    }));
+    const roles = user.userRoles
+      .filter((ur) => ur.role.name !== ORG_ADMIN_ROLE)
+      .map((ur) => ({
+        name: ur.role.name,
+      }));
 
     // Aggregate permissions
     const permissionsSet = new Set<string>();

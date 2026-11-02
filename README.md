@@ -278,7 +278,7 @@ vault/
 │   │   │   │       └── crypto.service.ts  # AES-256-GCM encryption
 │   │   │   └── prisma/         # Database service
 │   │   ├── prisma/
-│   │   │   ├── schema.prisma   # Database schema
+│   │   │   ├── schema/          # GENERATED Prisma schema (fragments/ hold the sources)
 │   │   │   ├── seed.ts         # Database seeds
 │   │   │   └── migrations/     # Migration history
 │   │   └── test/               # Integration tests

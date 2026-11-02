@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../src/prisma/prisma.service';
 
 /**
@@ -57,7 +58,7 @@ export async function createUserWithSettings(
       },
       userSettings: {
         create: {
-          value: settings,
+          value: settings as Prisma.InputJsonValue,
         },
       },
     },

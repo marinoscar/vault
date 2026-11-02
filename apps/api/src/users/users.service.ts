@@ -10,6 +10,12 @@ import { UserListQueryDto } from './dto/user-list-query.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateUserRolesDto } from './dto/update-user-roles.dto';
 import { ROLES } from '../common/constants/roles.constants';
+import {
+  DEFAULT_ORG_MEMBERSHIP_NAME_INCLUDE,
+  DEFAULT_ORG_ACTIVE_MEMBERSHIP,
+  membershipRoleNames,
+  setUserRoles,
+} from '../auth/membership-role-shim';
 
 @Injectable()
 export class UsersService {
@@ -36,11 +42,12 @@ export class UsersService {
     }
 
     if (role) {
-      where.userRoles = {
-        some: {
-          role: { name: role },
-        },
-      };
+      // PLATFORM-ADOPTION-SHIM(E3.2): org roles live on the default-org membership.
+      const roleFilter = [
+        { userRoles: { some: { role: { name: role } } } },
+        { memberships: { some: { ...DEFAULT_ORG_ACTIVE_MEMBERSHIP, role: { name: role } } } },
+      ];
+      where.AND = [...(where.AND ?? []), { OR: roleFilter }];
     }
 
     if (isActive !== undefined) {
@@ -58,6 +65,7 @@ export class UsersService {
           userRoles: {
             include: { role: true },
           },
+          memberships: DEFAULT_ORG_MEMBERSHIP_NAME_INCLUDE,
         },
       }),
       this.prisma.user.count({ where }),
@@ -72,7 +80,7 @@ export class UsersService {
       profileImageUrl: user.profileImageUrl,
       providerProfileImageUrl: user.providerProfileImageUrl,
       isActive: user.isActive,
-      roles: user.userRoles.map((ur) => ur.role.name),
+      roles: membershipRoleNames(user.userRoles, user.memberships),
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     }));
@@ -96,6 +104,7 @@ export class UsersService {
         userRoles: {
           include: { role: true },
         },
+        memberships: DEFAULT_ORG_MEMBERSHIP_NAME_INCLUDE,
         identities: {
           select: {
             provider: true,
@@ -118,7 +127,7 @@ export class UsersService {
       profileImageUrl: user.profileImageUrl,
       providerProfileImageUrl: user.providerProfileImageUrl,
       isActive: user.isActive,
-      roles: user.userRoles.map((ur) => ur.role.name),
+      roles: membershipRoleNames(user.userRoles, user.memberships),
       identities: user.identities,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
@@ -154,6 +163,7 @@ export class UsersService {
         userRoles: {
           include: { role: true },
         },
+        memberships: DEFAULT_ORG_MEMBERSHIP_NAME_INCLUDE,
       },
     });
 
@@ -172,7 +182,7 @@ export class UsersService {
       profileImageUrl: updated.profileImageUrl,
       providerProfileImageUrl: updated.providerProfileImageUrl,
       isActive: updated.isActive,
-      roles: updated.userRoles.map((ur) => ur.role.name),
+      roles: membershipRoleNames(updated.userRoles, updated.memberships),
       createdAt: updated.createdAt,
       updatedAt: updated.updatedAt,
     };
@@ -210,16 +220,9 @@ export class UsersService {
 
     // Replace all roles in a transaction
     await this.prisma.$transaction(async (tx) => {
-      // Remove existing roles
-      await tx.userRole.deleteMany({ where: { userId: id } });
-
-      // Add new roles
-      await tx.userRole.createMany({
-        data: roles.map((role) => ({
-          userId: id,
-          roleId: role.id,
-        })),
-      });
+      // PLATFORM-ADOPTION-SHIM(E3.2): admin goes to user_roles, the org role
+      // (contributor / viewer) to the default-org membership (migration 0024).
+      await setUserRoles(tx, id, dto.roleNames);
     });
 
     // Log audit event

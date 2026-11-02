@@ -1,3 +1,4 @@
+import { defaultOrgMock } from '../../test/mocks/default-org.mock';
 import { Readable } from 'stream';
 
 import { Logger } from '@nestjs/common';
@@ -72,16 +73,19 @@ function mediaFolderFindMany({ where }: { where: { userId: string } }) {
     name: f.name,
     userId: f.userId,
     createdAt: new Date('2026-02-01T00:00:00Z'),
+    // media_folder_files link rows; the export flattens `object` back out.
     files: [
       {
-        id: `obj-${f.id}`,
-        name: f.file,
-        size: 3n,
-        mimeType: 'video/mp4',
-        storageKey: `media/${f.id}`,
-        status: 'ready',
         mediaFolderId: f.id,
-        createdAt: new Date('2026-02-02T00:00:00Z'),
+        object: {
+          id: `obj-${f.id}`,
+          name: f.file,
+          size: 3n,
+          mimeType: 'video/mp4',
+          storageKey: `media/${f.id}`,
+          status: 'ready',
+          createdAt: new Date('2026-02-02T00:00:00Z'),
+        },
       },
     ],
   }));
@@ -90,6 +94,7 @@ function mediaFolderFindMany({ where }: { where: { userId: string } }) {
 function setup(schedule: Record<string, unknown>) {
   const uploads: Record<string, Buffer> = {};
   const prisma = {
+    ...defaultOrgMock(),
     backupSchedule: {
       findUnique: jest.fn(async () => ({
         id: BACKUP_SCHEDULE_ID,
@@ -264,7 +269,7 @@ describe('System backup content selection', () => {
     expect(data).toMatchObject({ status: 'succeeded', mediaFileCount: 2, contents: ['media'] });
     expect(ctx.prisma.storageObject.aggregate.mock.calls[0][0].where).toEqual({
       status: 'ready',
-      mediaFolderId: { not: null },
+      mediaFolderFile: { isNot: null },
     });
     await zip.close();
   });
@@ -342,7 +347,7 @@ describe('System backup content selection', () => {
     await ctx.runner.execute(runRow());
     const systemUsersCall = ctx.prisma.user.findMany.mock.calls.find((c) => c[0].select.userRoles);
     expect(Object.keys(systemUsersCall![0].select).sort()).toEqual(
-      ['createdAt', 'displayName', 'email', 'id', 'isActive', 'userRoles'].sort(),
+      ['createdAt', 'displayName', 'email', 'id', 'isActive', 'memberships', 'userRoles'].sort(),
     );
     expect(ctx.prisma.allowedEmail.findMany.mock.calls[0][0].select.addedBy).toEqual({ select: { email: true } });
     expect(ctx.prisma.secretType.findMany.mock.calls[0][0].select.createdBy).toEqual({ select: { email: true } });

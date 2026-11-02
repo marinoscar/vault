@@ -1,11 +1,13 @@
 # Platform adoption
 
-Vault is migrating from the very old copy of EnterpriseAppBase (EAB) it forked from onto the published `@marinoscar/platform-*` packages (pinned `0.1.0-next.21`), the same way `kvox` was. The program is epic [#54](https://github.com/marinoscar/vault/issues/54); this documentation epic is E0 ([#55](https://github.com/marinoscar/vault/issues/55)). Today Vault uses **no** platform package.
+Vault is migrating from the very old copy of EnterpriseAppBase (EAB) it forked from onto the published `@marinoscar/platform-*` packages (pinned `0.1.0-next.21`), the same way `kvox` was. The program is epic [#54](https://github.com/marinoscar/vault/issues/54); this documentation epic is E0 ([#55](https://github.com/marinoscar/vault/issues/55)). As of E2.1 and E2.2 Vault consumes `@marinoscar/platform-db` (composed Prisma schema, the platform migration history, `platform.lock`); the other slices are adopted by E3 onwards.
 
 | File | What it is |
 |---|---|
 | [module-classification.md](module-classification.md) | Hand-written. Every API module, web area, CLI, Prisma model, migration and infra file classified as noise, backport, domain or vault-divergence, with the target slice and the epic that deals with it |
 | [local-exceptions.md](local-exceptions.md) | Every place Vault deviates from the platform on purpose, and the epic that removes it (or why it is permanent). An exception without a row is a bug |
+| [schema-delta.md](schema-delta.md) | What platform migrations 0003 to 0040 add to the Vault database (E2.1 and E2.2) |
+| [../runbooks/database-baseline.md](../runbooks/database-baseline.md) | The one-time baseline of a live database onto the platform history: rehearsal, production window, rollback |
 | [drift-baseline.md](drift-baseline.md) | The raw generated drift report. Frozen; never edited |
 
 ## Baseline

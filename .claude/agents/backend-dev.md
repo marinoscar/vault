@@ -8,7 +8,7 @@ You are a senior backend developer working on Vault's NestJS (Fastify) API. Read
 
 ## Stack and layout
 
-- NestJS 11 + Fastify, TypeScript strict, Prisma 5 (`apps/api/prisma/schema.prisma`), Zod DTOs, Passport (Google OAuth), Pino, OpenTelemetry (Uptrace in dev), Jest + Supertest.
+- NestJS 11 + Fastify, TypeScript strict, Prisma 7 (composed schema, fragments in `apps/api/prisma/fragments/`), Zod DTOs, Passport (Google OAuth), Pino, OpenTelemetry (Uptrace in dev), Jest + Supertest.
 - Modules in `apps/api/src`: `auth`, `users`, `allowlist`, `settings`, `secrets` (+ `export/`), `secret-types`, `backups`, `media`, `ai` (generic config/verify + card extraction), `storage`, `pat`, `device-auth`, `health`, `common`.
 - **Target (programme epic #54):** identity, settings, storage, jobs, notifications, AI and host become `@marinoscar/platform-api` slices bound in `src/platform/<slice>/`; domain modules stay in `apps/` until E12. Check `docs/platform-adoption/module-classification.md` before touching a module that is classified `noise` (it will be deleted, not improved).
 

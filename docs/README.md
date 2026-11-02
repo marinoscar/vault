@@ -19,6 +19,8 @@ Index of every document in `docs/`, plus the "Doc map by task". Rules for assist
 | [platform-adoption/README.md](platform-adoption/README.md) | Platform migration (program #54): baseline, epic order | |
 | [platform-adoption/module-classification.md](platform-adoption/module-classification.md) | Every module classified, with target slice and epic | |
 | [platform-adoption/local-exceptions.md](platform-adoption/local-exceptions.md) | Deliberate deviations and what removes them | |
+| [platform-adoption/schema-delta.md](platform-adoption/schema-delta.md) | What platform migrations 0003 to 0040 add to the database | |
+| [runbooks/database-baseline.md](runbooks/database-baseline.md) | One-time baseline of a live database onto the platform history (rehearse, window, rollback) | |
 | [platform-adoption/drift-baseline.md](platform-adoption/drift-baseline.md) | Frozen generated drift report | |
 | [specs/ux-refresh.md](specs/ux-refresh.md) | UX spec for E10: destinations, shell, brand, settings hub, datatable, Home | |
 | [specs/README.md](specs/README.md) | Historical implementation specs 01 to 24 | |

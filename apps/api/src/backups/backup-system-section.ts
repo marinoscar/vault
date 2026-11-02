@@ -16,6 +16,8 @@
  * other encrypted credential, the backup password, the audit log.
  */
 
+import { membershipRoleNames } from '../auth/membership-role-shim';
+
 export const SYSTEM_SECTION_DIR = 'system';
 
 export const SYSTEM_SECTION_FILES = {
@@ -36,6 +38,11 @@ export const SYSTEM_USERS_SELECT = {
   isActive: true,
   createdAt: true,
   userRoles: { select: { role: { select: { name: true } } } },
+  // PLATFORM-ADOPTION-SHIM(E3.2): org roles live on the default-org membership.
+  memberships: {
+    where: { status: 'active', org: { isDefault: true } },
+    select: { role: { select: { name: true } } },
+  },
 } as const;
 
 export const SYSTEM_ALLOWLIST_SELECT = {
@@ -71,6 +78,7 @@ export interface SystemUserRow {
   createdAt: Date;
   lastLoginAt?: Date | null;
   userRoles?: Array<{ role: { name: string } | null }>;
+  memberships?: Array<{ role: { name: string } | null }>;
 }
 
 export interface SystemAllowlistRow {
@@ -181,10 +189,7 @@ export function toSystemUsers(rows: SystemUserRow[]): SystemUserEntry[] {
       email: row.email,
       displayName: row.displayName ?? null,
       isActive: row.isActive,
-      roles: (row.userRoles ?? [])
-        .map((ur) => ur.role?.name)
-        .filter((name): name is string => typeof name === 'string')
-        .sort(),
+      roles: membershipRoleNames(row.userRoles, row.memberships).sort(),
       createdAt: row.createdAt.toISOString(),
     };
     if (row.lastLoginAt) {

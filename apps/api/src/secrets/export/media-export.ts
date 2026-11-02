@@ -14,7 +14,7 @@ import { extensionForMimeType } from './attachment-file-name';
  * the encrypted `media.json`.
  *
  * Ownership: only folders whose `userId` is the owner, and only files whose
- * `mediaFolderId` is one of those folders, ever reach a plan. The query
+ * `mediaFolderId` (its media_folder_files link) is one of those folders, ever reach a plan. The query
  * filters on it and {@link buildMediaPlan} checks it again, so a user's
  * archive can never contain another user's media.
  */

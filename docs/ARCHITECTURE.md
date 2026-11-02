@@ -280,7 +280,7 @@ EnterpriseAppBase/
 │   │   │   ├── config/               # Configuration module
 │   │   │   └── main.ts               # Application entry
 │   │   ├── prisma/
-│   │   │   ├── schema.prisma         # Database schema
+│   │   │   ├── schema/                # GENERATED schema; edit prisma/fragments/
 │   │   │   ├── migrations/           # Migration history
 │   │   │   └── seed.ts               # Database seeding
 │   │   ├── test/                     # Integration tests
@@ -1525,7 +1525,7 @@ exit
 
 ```bash
 # 1. Modify schema
-# Edit apps/api/prisma/schema.prisma
+# Edit apps/api/prisma/fragments/*.prisma, then npm run db:compose
 
 # 2. Create migration
 cd apps/api

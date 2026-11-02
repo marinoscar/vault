@@ -1,26 +1,51 @@
 import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { buildDatabaseUrl } from '../src/common/database-url';
 import { SYSTEM_SECRET_TYPES } from './system-secret-types';
 
-const prisma = new PrismaClient();
+// Prisma 7 requires a driver adapter.
+const prisma = new PrismaClient({
+  adapter: new PrismaPg(buildDatabaseUrl()),
+});
 
 // =============================================================================
 // Seed Data Definitions
 // =============================================================================
 
+// `scope` mirrors what platform migration 0024_split_system_org_roles writes on
+// an existing database, so a freshly seeded database and a migrated one agree:
+// `admin` is a system role (user_roles); the org roles are carried by the
+// default organization's membership.
 const ROLES = [
   {
     name: 'admin',
     description: 'Full system access - manage users, roles, and all settings',
+    scope: 'system',
+  },
+  {
+    name: 'org_admin',
+    description: 'Organization administrator - everything a contributor can do, plus manage the organization',
+    scope: 'org',
   },
   {
     name: 'contributor',
     description: 'Standard user - can manage own settings and future features',
+    scope: 'org',
   },
   {
     name: 'viewer',
     description: 'Read-only access - can view content and manage own settings',
+    scope: 'org',
   },
 ] as const;
+
+// Permissions 0024 marks 'org'; every other permission keeps the 'system' default.
+const ORG_SCOPED_PERMISSIONS = new Set([
+  'user_settings:read',
+  'user_settings:write',
+  'storage:read',
+  'storage:write',
+]);
 
 const PERMISSIONS = [
   // System settings
@@ -100,6 +125,13 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'media:write_any',
     'media:delete_any',
   ],
+  // What 0024 moves from admin to org_admin on an existing database.
+  org_admin: [
+    'user_settings:read',
+    'user_settings:write',
+    'storage:read',
+    'storage:write',
+  ],
   contributor: [
     'user_settings:read',
     'user_settings:write',
@@ -143,7 +175,7 @@ async function seedRoles() {
   for (const role of ROLES) {
     await prisma.role.upsert({
       where: { name: role.name },
-      update: { description: role.description },
+      update: { description: role.description, scope: role.scope },
       create: role,
     });
   }
@@ -157,8 +189,14 @@ async function seedPermissions() {
   for (const permission of PERMISSIONS) {
     await prisma.permission.upsert({
       where: { name: permission.name },
-      update: { description: permission.description },
-      create: permission,
+      update: {
+        description: permission.description,
+        scope: ORG_SCOPED_PERMISSIONS.has(permission.name) ? 'org' : 'system',
+      },
+      create: {
+        ...permission,
+        scope: ORG_SCOPED_PERMISSIONS.has(permission.name) ? 'org' : 'system',
+      },
     });
   }
 

@@ -1,36 +1,30 @@
 ---
 name: platform-migration
-description: Change the Vault database schema. Today the schema is a hand-edited schema.prisma with plain Prisma migrations; from E2 it is composed from platform-db fragments plus app fragments and baselined onto platform.lock. Covers editing a fragment, composing, creating the migration, keeping lock and drift checks green, and the live-data baseline rehearsal. Use when adding or changing a table, column or index, or bumping @marinoscar/platform-db.
+description: Change the Vault database schema. The schema is composed from @marinoscar/platform-db fragments plus the app fragments in apps/api/prisma/fragments (E2.1) and the database is baselined onto the platform history proven by platform.lock (E2.2). Covers editing a fragment, composing, creating the migration, keeping lock and drift checks green, and the live-data baseline rehearsal. Use when adding or changing a table, column or index, or bumping @marinoscar/platform-db.
 ---
 
 # Schema and platform migrations
 
 Schema work goes to the `database-dev` agent; the main agent does the git steps. Use `npm run prisma:*` from `apps/api`, never bare `npx prisma`.
 
-## Before E2 (today)
+## Where we are (E2.1 + E2.2 landed)
 
-1. Edit `apps/api/prisma/schema.prisma`.
-2. `cd apps/api && npm run prisma:migrate:dev -- --name <snake_case_name>`, then `npm run prisma:generate`.
-3. Never edit or rename an installed migration (the seven in `apps/api/prisma/migrations/`); comments inside `migration.sql` count. Partial/expression indexes are hand-written SQL in the migration, never `@@unique`.
-4. Never write SQL that decrypts, re-encrypts or rotates `secret_versions` ciphertext, the AI key or the backup password; `VAULT_ENCRYPTION_KEY` stays.
-5. Add tests; commit schema and migration together.
+The schema is composed and the database is baselined onto the platform history. Procedure for the one-time baseline of a database that has not taken it yet: [docs/runbooks/database-baseline.md](../../../docs/runbooks/database-baseline.md) (rehearse on a restored backup first; `apps/api/scripts/baseline-rehearsal.sh` builds a pre-baseline database from the seven original migrations when no backup is at hand).
 
-## E2: the baseline (one-time, live data)
+Hard rules that stay:
 
-Vault's production database already holds data, so the platform history is **baselined in place**, never re-run. Follow EAB `docs/runbooks/database-baseline.md` and Vault's own runbook that E2 adds. In order:
+1. Never edit or rename an installed migration (Vault's seven, the 38 installed platform copies); comments inside `migration.sql` count, and `npm run db:check` proves it. Partial/expression indexes are hand-written SQL in the migration, never `@@unique`.
+2. Never write SQL that decrypts, re-encrypts or rotates `secret_versions` ciphertext, the AI key or the backup password; `VAULT_ENCRYPTION_KEY` stays.
+3. A migration that touches an org table (`storage_objects`, `storage_object_chunks`, ...) runs as `BEGIN; SELECT set_config('app.rls_bypass','on',true); ...; COMMIT;`.
+4. An app migration that depends on an installed platform migration must sort AFTER it (`media_folder_files` needs 0025's `org_id`): name it with a timestamp later than the newest installed directory. `db:check` reports `APP_MIGRATION_OUT_OF_ORDER`.
+5. Add tests; commit fragment, generated schema, migration and (when relevant) `platform.lock` together.
 
-1. Restore the latest backup to a scratch database; rehearse everything there first.
-2. Compose the schema: platform fragments from `@marinoscar/platform-db` plus `apps/api/prisma/fragments/*.prisma` (domain: secrets, secret types, versions, attachments, media folders, backup schedules/runs) with `npm run db:compose`; `apps/api/prisma/schema/` is **generated, never hand-edited**.
-3. `platform db baseline` records the platform migrations as applied; declare any difference as a `deviations` entry in `platform.lock` and list it in `docs/platform-adoption/local-exceptions.md`.
-4. Create the application database role `NOSUPERUSER NOBYPASSRLS` owning the tables; org tables force RLS on `org_id` (a migration touching them runs `BEGIN; SELECT set_config('app.rls_bypass','on',true); ...; COMMIT;`). Doctor check `db.rls_role` proves it.
-5. Verify `db:check`, `db:drift`, row counts, and decrypt a sample secret with `VAULT_ENCRYPTION_KEY` on the rehearsal copy before touching production. Write the rollback plan (restore point) into the PR.
-
-## After E2
+## Day to day
 
 - Edit the owning fragment, run `npm run db:compose`, then `prisma:generate`; CI's `db:compose:check` fails on a stale generated file.
 - App-owned table: `npm run prisma:migrate:dev -- --name <name>`; a back-relation on a platform model is an `extend model` block, never an edit to a platform file.
 - A change to a **platform** table is a seam request on marinoscar/EnterpriseAppBase (`seam_request.yml`), not a local edit; a stop-gap is a side table or a declared deviation.
-- Installed platform migrations are byte copies proven by `prisma/platform.lock`; `npm run db:check` fails on any byte change. New raw-SQL index: also add it to the raw-SQL index list the lock tracks.
+- Installed platform migrations are byte copies proven by `prisma/platform.lock`; `npm run db:check` fails on any byte change. New raw-SQL index: also add `{ name, definition }` (exactly `pg_indexes.indexdef`) to `rawSqlIndexes` in `prisma/platform.lock`; the lock's `deviations` are tied to the baseline and never grow afterwards.
 - Every dump and restore keeps `--enable-row-security` **and** `PGOPTIONS=-c app.rls_bypass=on`.
 
 Check commands (after E2): `cd apps/api && npm run db:compose && npm run db:check && npm run db:drift`.

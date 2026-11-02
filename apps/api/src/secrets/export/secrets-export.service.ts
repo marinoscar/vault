@@ -5,6 +5,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { TextReader, ZipWriter } from '@zip.js/zip.js';
 
 import { PrismaService } from '../../prisma/prisma.service';
+import { defaultOrgClient } from '../../prisma/default-org';
 import { CryptoService } from '../../common/services/crypto.service';
 import { RequestUser } from '../../auth/interfaces/authenticated-user.interface';
 import { STORAGE_PROVIDER, StorageProvider } from '../../storage/providers';
@@ -501,6 +502,15 @@ export class SecretsExportService {
   ) {}
 
   /**
+   * PLATFORM-ADOPTION-SHIM(E6): reads that touch `storage_objects` (a
+   * row-level-security table) run in the default organization's scope; the API
+   * is an ordinary role.
+   */
+  private get orgDb() {
+    return defaultOrgClient(this.prisma);
+  }
+
+  /**
    * Prepare an export and return its metadata plus the zip stream.
    *
    * Everything that can fail cheaply (the query, decryption, the storage
@@ -836,7 +846,7 @@ export class SecretsExportService {
    * one of those folders. `buildMediaPlan` checks both again.
    */
   private async loadOwnedMediaFolders(userId: string): Promise<ExportMediaFolderRow[]> {
-    const rows = await this.prisma.mediaFolder.findMany({
+    const rows = await this.orgDb.mediaFolder.findMany({
       where: { userId },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       select: {
@@ -844,23 +854,35 @@ export class SecretsExportService {
         name: true,
         userId: true,
         createdAt: true,
+        // The folder link is a row of media_folder_files; flatten it back to
+        // the row shape buildMediaPlan expects (see the map below).
         files: {
-          where: { status: MEDIA_READY_STATUS },
-          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          where: { object: { status: MEDIA_READY_STATUS } },
+          orderBy: [{ object: { createdAt: 'asc' } }, { objectId: 'asc' }],
           select: {
-            id: true,
-            name: true,
-            size: true,
-            mimeType: true,
-            storageKey: true,
-            status: true,
             mediaFolderId: true,
-            createdAt: true,
+            object: {
+              select: {
+                id: true,
+                name: true,
+                size: true,
+                mimeType: true,
+                storageKey: true,
+                status: true,
+                createdAt: true,
+              },
+            },
           },
         },
       },
     });
-    return rows as unknown as ExportMediaFolderRow[];
+    return rows.map((folder) => ({
+      ...folder,
+      files: folder.files.map((link) => ({
+        ...link.object,
+        mediaFolderId: link.mediaFolderId,
+      })),
+    })) as unknown as ExportMediaFolderRow[];
   }
 
   private async loadOwnedSecrets(
@@ -868,7 +890,7 @@ export class SecretsExportService {
     includeAttachments: boolean,
     includeVersions: boolean,
   ): Promise<ExportSecretRow[]> {
-    const rows = await this.prisma.secret.findMany({
+    const rows = await this.orgDb.secret.findMany({
       // Owner-only, regardless of secrets:read_any. Not negotiable.
       where: { createdById: userId },
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
