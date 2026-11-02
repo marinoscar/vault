@@ -43,6 +43,7 @@ describe('RolesGuard', () => {
           id: `role-${name}`,
           name,
           description: `${name} role`,
+          scope: 'system',
           rolePermissions: [],
         },
       })),
