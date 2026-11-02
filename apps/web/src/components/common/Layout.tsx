@@ -8,10 +8,8 @@ import type { ReactNode } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 
 import { BOTTOM_BAR_NAVIGATION, VAULT_NAVIGATION } from '../../config/shell';
-import { PRODUCT_NAME } from '../../theme/tokens';
-import { BrandLockup } from '../brand/BrandLockup';
-import { ErrorBoundary } from './ErrorBoundary';
-import { LoadingSpinner } from './LoadingSpinner';
+import { BrandLockup, PRODUCT_NAME } from '@marinoscar/vault-web/brand';
+import { ErrorBoundary, LoadingSpinner } from '@marinoscar/vault-web/core/ui';
 
 const BRAND = <BrandLockup />;
 const BELL = <NotificationBell />;

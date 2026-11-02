@@ -7,7 +7,7 @@ import {
   isDestinationVisible,
   owns,
   resolveActiveDestination,
-} from '../../config/destinations';
+} from '@marinoscar/vault-web/navigation';
 import { ADMIN_SECTIONS } from '../../config/adminSections';
 import { BOTTOM_BAR_NAVIGATION, VAULT_NAVIGATION } from '../../config/shell';
 import appSource from '../../App.tsx?raw';

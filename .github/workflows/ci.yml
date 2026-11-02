@@ -258,7 +258,7 @@ jobs:
           test "$(q "SELECT count(*) FROM pg_policies WHERE tablename = 'media_folder_files'")" = "1"
 
   packages:
-    name: Packages (vault-contract, vault-db, vault-api)
+    name: Packages (vault-contract, vault-db, vault-api, vault-web)
     runs-on: ubuntu-latest
     services:
       postgres:

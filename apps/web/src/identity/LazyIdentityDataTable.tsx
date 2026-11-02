@@ -14,7 +14,7 @@ import type {
   IdentityDataTableProps,
 } from '@marinoscar/platform-web/identity/headless';
 
-import { LoadingSpinner } from '../components/common/LoadingSpinner';
+import { LoadingSpinner } from '@marinoscar/vault-web/core/ui';
 
 const PlatformDataTable = lazy(() =>
   import('@marinoscar/platform-web/datatable/ui').then((m) => ({

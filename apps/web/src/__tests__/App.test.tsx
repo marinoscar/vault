@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { http, HttpResponse } from 'msw';
 import { server } from './mocks/server';
 import App from '../App';
-import { PRODUCT_TAGLINE } from '../theme/tokens';
+import { PRODUCT_TAGLINE } from '@marinoscar/vault-web/brand';
 
 // MemoryRouter (not BrowserRouter) deliberately: src/__tests__/setup.ts
 // replaces `window.location` with a static plain object for other tests'

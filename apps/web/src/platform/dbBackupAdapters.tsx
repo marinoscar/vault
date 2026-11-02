@@ -25,7 +25,7 @@ import type {
   DbBackupWebAdapters,
 } from '@marinoscar/platform-web/db-backup/headless';
 
-import { LoadingSpinner } from '../components/common/LoadingSpinner';
+import { LoadingSpinner } from '@marinoscar/vault-web/core/ui';
 import { vaultPlatformApi } from './platformHost';
 
 const PlatformDataTable = lazy(() =>

@@ -169,23 +169,32 @@ runPlatformConformance({
         { name: 'apps/api/src', root: join(API_DIR, 'src'), minFiles: 100 },
         { name: 'packages/vault-api/src', root: VAULT_API_SOURCE_ROOT, minFiles: 60 },
       ],
-      webTrees: [{ name: 'apps/web/src', root: join(REPO_DIR, 'apps', 'web', 'src'), minFiles: 50 }],
+      // Since E12.3 (#104) the web host keeps only routes, providers and adapters; the domain
+      // pages live in @marinoscar/vault-web, scanned as its own tree.
+      webTrees: [
+        { name: 'apps/web/src', root: join(REPO_DIR, 'apps', 'web', 'src'), minFiles: 25 },
+        { name: 'packages/vault-web/src', root: join(REPO_DIR, 'packages', 'vault-web', 'src'), minFiles: 80 },
+      ],
       noSdkManifests: [
         join(REPO_DIR, 'package.json'),
         join(API_DIR, 'package.json'),
         join(REPO_DIR, 'apps', 'web', 'package.json'),
         join(REPO_DIR, 'apps', 'cli', 'package.json'),
+        join(REPO_DIR, 'packages', 'vault-api', 'package.json'),
+        join(REPO_DIR, 'packages', 'vault-web', 'package.json'),
       ],
     },
     // No agent-orchestration framework anywhere; `allowedRoots` is EMPTY on purpose.
     aiOrchestrationBoundary: {
       apiSourceRoots: [join(API_DIR, 'src'), VAULT_API_SOURCE_ROOT],
-      webSourceRoots: [join(REPO_DIR, 'apps', 'web', 'src')],
+      webSourceRoots: [join(REPO_DIR, 'apps', 'web', 'src'), join(REPO_DIR, 'packages', 'vault-web', 'src')],
       packageJsonPaths: [
         join(REPO_DIR, 'package.json'),
         join(API_DIR, 'package.json'),
         join(REPO_DIR, 'apps', 'web', 'package.json'),
         join(REPO_DIR, 'apps', 'cli', 'package.json'),
+        join(REPO_DIR, 'packages', 'vault-api', 'package.json'),
+        join(REPO_DIR, 'packages', 'vault-web', 'package.json'),
       ],
       allowedRoots: {},
     },

@@ -9,7 +9,7 @@
  */
 
 import type { AiWebAdapters } from '@marinoscar/platform-web/ai/headless';
-import { LoadingSpinner } from '../components/common/LoadingSpinner';
+import { LoadingSpinner } from '@marinoscar/vault-web/core/ui';
 
 export const vaultAiAdapters: AiWebAdapters = {
   Spinner: LoadingSpinner,

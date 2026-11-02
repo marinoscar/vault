@@ -1,0 +1,18 @@
+{
+  // The build: `tsc -p tsconfig.build.json` emits ESM and declarations to dist/
+  // under NodeNext (so a relative import without its `.js` extension fails
+  // here), then scripts/copy-assets.mjs copies the brand image beside its module.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": false,
+    "declaration": true,
+    "rootDir": "src",
+    "outDir": "dist",
+    "types": ["node"],
+    "noEmitOnError": true
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist", "test"]
+}

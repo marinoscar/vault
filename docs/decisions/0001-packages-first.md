@@ -38,7 +38,7 @@ Rules:
 3. `@marinoscar/vault-contract` has no framework, platform or Node dependency beyond `zod` (a peer). It holds shapes and pure rules, never behaviour that touches a database or a request.
 4. `@marinoscar/vault-db` owns the domain's fragments and migrations. The app holds installed copies written by `vault-db sync` and proven by `prisma/vault.lock`. An installed migration is never edited or renamed. A package migration is never edited after it is published.
 5. A platform gap is a seam request on EnterpriseAppBase, never a change to platform code and never a copy of it into a Vault package.
-6. Until E12.3 lands, the not-yet-moved web code stays in `apps/web` and is listed as an exception in [platform-adoption/local-exceptions.md](../platform-adoption/local-exceptions.md). The API side moved in E12.2. The rule applies to new work now.
+6. The API side moved in E12.2 and the web side in E12.3 (#104): `apps/web` holds no domain pages or components, they are `@marinoscar/vault-web`. The rule is in force for all four packages.
 
 ## Consequences
 
@@ -62,7 +62,7 @@ Rules:
 - `npm run db:check` runs `platform db check` and `vault-db check`: every installed fragment and migration is byte-identical to the package and to `prisma/vault.lock`; raw-SQL indexes are listed and merged into `platform.lock`.
 - `npm run db:compose:check` fails when `prisma/schema/` differs from a fresh compose of the package fragments.
 - The package tests (`npm run test:packages`) cover the manifest hashes, the raw-SQL index tripwire, `sync`, `check` and `promote` of `vault-db`, and the schemas, error codes and system types of `vault-contract`; CI builds and tests both packages.
-- `apps/api/test/architecture/no-domain-logic.spec.ts` (E12.2, #103) fails when a moved domain folder, a controller, a `@Cron`, a deep import of `@marinoscar/vault-api` or an unlisted Prisma access to a domain table appears in `apps/api`. The package's `test/conformance.spec.ts` boots `VaultApiModule` over fake ports, pins the route table, the job types and their server-only shape. The guard for `apps/web` arrives with E12.3 (#104).
+- `apps/api/test/architecture/no-domain-logic.spec.ts` (E12.2, #103) fails when a moved domain folder, a controller, a `@Cron`, a deep import of `@marinoscar/vault-api` or an unlisted Prisma access to a domain table appears in `apps/api`. The package's `test/conformance.spec.ts` boots `VaultApiModule` over fake ports, pins the route table, the job types and their server-only shape. - `apps/web/src/__tests__/config/packagesFirst.test.ts` (E12.3, #104) fails when a domain page or component is redefined in `apps/web`, a domain folder (`hooks/`, `utils/`, `types/`, a domain component folder) comes back, a non-glue page appears under `pages/`, or the host reaches into the package's files instead of its public subpaths. `packages/vault-web/test/guards/packageBoundary.test.ts` guards the package side.
 - Review item for any pull request: "no domain logic or wire schema is added to `apps/`".
 
 ## Related issues
