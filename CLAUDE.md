@@ -332,6 +332,14 @@ cd apps/api && npm run prisma:migrate
 - `GET /api/ai/status` - Whether AI-backed features are available to the current user (no permission required)
 - `POST /api/secrets/cards/extract` - Extract candidate card fields from cropped card photos via an admin-configured OpenAI vision model (`secrets:write`). Persists nothing; the CVV is never requested or returned. Disabled by default — see `docs/SECRETS.md` and `docs/API.md`.
 
+### Admin Backups
+- `GET /api/admin/backups/schedule` - Get the backup schedule (`system_settings:read`); never returns the password (`passwordConfigured`, `passwordUpdatedAt` only)
+- `PUT /api/admin/backups/schedule` - Replace the schedule; optional write-only `password` (`system_settings:write`)
+- `POST /api/admin/backups/run` - Start a backup now, 202 (`system_settings:write`)
+- `GET /api/admin/backups` - List runs, newest first, paginated (`system_settings:read`)
+- `GET /api/admin/backups/{id}/download` - Signed URL (300 s) `{url, expiresAt, fileName}` (`system_settings:write`)
+- `DELETE /api/admin/backups/{id}` - Delete the backup object, 204 (409 while running, 502 if storage refuses) (`system_settings:write`). See `docs/SECRETS.md`
+
 ### Health
 - `GET /api/health/live` - Liveness check
 - `GET /api/health/ready` - Readiness check (includes DB)
@@ -373,6 +381,8 @@ cd apps/api && npm run prisma:migrate
 - `secret_types` - Secret type schemas (system + custom); `fields` is a JSONB array of field definitions (`string` \| `number` \| `date` \| `select`, the last requiring `options`)
 - `secrets` - Secret metadata (name, description, type, owner); values live only in `secret_versions`
 - `secret_versions` - One immutable, AES-256-GCM-encrypted row per version of a secret's field data; exactly one `isCurrent = true` per secret
+- `backup_schedules` - Singleton row (`default`): admin backup schedule, keep count, options, encrypted password, `next_run_at` / `last_run_at`
+- `backup_runs` - History of scheduled and manual backups (status, trigger, `storage_key`, size, counts, error, `heartbeat_at`, `deleted_at`); the object is removed by retention or delete, the row stays
 - `secret_attachments` - Files linked to a secret. **As of migration `20260727120000_version_scoped_attachments`, scoped to a `secret_version_id` (not just `secret_id`), and carries an optional `role` (`card_front` \| `card_back`).** Unique on `[secret_version_id, storage_object_id]` and `[secret_version_id, role]`; deleting the last reference to a `storage_objects` row deletes it, but a referenced object is never deleted out from under another version or secret still pointing at it
 
 ## Access Control: Email Allowlist

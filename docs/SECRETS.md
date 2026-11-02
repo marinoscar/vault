@@ -12,6 +12,7 @@ This document describes the secrets management feature of the Vault application:
 - [Rollback](#rollback)
 - [Attachments](#attachments)
 - [Backup and export](#backup-and-export)
+- [Scheduled backups (admin)](#scheduled-backups-admin)
 - [API Reference](#api-reference)
 - [RBAC Permissions](#rbac-permissions)
 - [Data Validation](#data-validation)
@@ -344,6 +345,85 @@ The archive is streamed to the client; it is not assembled in memory. If streami
 
 ---
 
+## Scheduled backups (admin)
+
+An administrator can schedule automatic backups of **every user's** secrets into the configured object storage. Each run writes one AES-256 (WinZip AE-2) zip, opened with the same tools as the [user export](#encryption-and-the-tools-that-open-it) (7-Zip, Keka, `7z`). Endpoints: [API.md § Backups (Admin)](API.md#backups-admin).
+
+### Set it up
+
+1. Make sure object storage is configured. Enabling a schedule without it is refused with 400.
+2. Open **Admin Settings > Backups** (needs `system_settings:read` to view, `system_settings:write` to change).
+3. Choose a frequency, how many backups to keep, and the options (include attachments, include old versions).
+4. Set a password (6 to 256 characters). The tab offers the same "Suggest one for me" button and soft warning as the user card. Enabling without a password is refused with 400.
+5. Turn on **Scheduled backups enabled** and save. The tab shows a summary and the next run time.
+
+Use **Run backup now** for an immediate backup. The history table shows each run's status, size and counts, with **Download** (a 300 second signed link) and **Delete**. The table refreshes every 5 seconds while a run is in progress.
+
+A manual run without storage or a password is accepted (202) and then fails with a clear message in the history.
+
+### Schedule
+
+| Frequency | Runs | Notes |
+|-----------|------|-------|
+| `hourly` | on the hour, every 1, 2, 3, 4, 6, 8 or 12 hours, counted from local midnight | `timeOfDay` is ignored |
+| `daily` | every day at `HH:mm` | |
+| `weekly` | on `dayOfWeek` (0 = Sunday) at `HH:mm` | |
+| `monthly` | on `dayOfMonth` (1 to 28) at `HH:mm` | days 29 to 31 are not offered |
+
+Times are wall-clock times in the schedule's IANA time zone. On the spring-forward day a time that does not exist runs just after the jump; on the fall-back day a repeated time runs once, at its first occurrence. After downtime the schedule runs once and then resumes; missed slots are not replayed.
+
+### What is in the zip
+
+The object key is `system-backups/vault-backup-YYYY-MM-DD_HHmmss.zip` (UTC).
+
+```
+vault-backup-2026-11-02_090000.zip   (AES-256)
+├── README.txt        what this is, how to open it, counts, warnings
+├── index.json        formatVersion 1, kind "system-backup"
+└── users/
+    ├── 0001/
+    │   ├── secrets.html
+    │   ├── secrets.json
+    │   └── attachments/0001-01.jpg
+    └── 0002/ ...
+```
+
+- Per-user `secrets.html` and `secrets.json` use the same renderers and shape as the [user export](#whats-in-the-zip).
+- `index.json` holds `formatVersion`, `kind`, `counts` (`users`, `usersWithSecrets`, `secrets`, `attachments`), `users[]` and `warnings`. Each `users[]` entry names its `folder`, or `null` for a user with no secrets (such users get no folder).
+- Folder names are opaque (`users/NNNN`) because the zip listing is readable without the password. Emails and names appear only inside the encrypted `index.json`.
+- Secrets whose owner was deleted are not included; a warning gives their count.
+- Unreadable attachments are skipped with a warning, as in the user export.
+
+The archive is streamed into storage and never buffered in memory.
+
+### Retention
+
+After a **successful** run, the newest `keepCount` (1 to 365, default 7) successful, not-yet-deleted backups are kept and older objects are deleted. The run just written is never deleted. Rows stay in the history with `deletedAt` set. A retention failure is logged and does not fail the run. A failed run removes any partial object.
+
+### Several API instances
+
+Every instance runs an every-minute cron. A due slot is claimed atomically (a conditional update of `next_run_at`), so only one instance starts it, and a Postgres advisory transaction lock allows one run at a time. A running backup refreshes `heartbeat_at` every 30 seconds; a `running` row whose heartbeat is older than 3 minutes is marked failed ("Interrupted (the server running it stopped)").
+
+### Password handling and risks
+
+- The password is write-only. It is encrypted with `CryptoService` (`VAULT_ENCRYPTION_KEY`) and never returned (the API reports only `passwordConfigured` and `passwordUpdatedAt`), logged or audited.
+- **One password protects every user's data.** Treat it like a master key.
+- **The server must hold the password** to run unattended. Anyone with the database plus `VAULT_ENCRYPTION_KEY` can decrypt it and therefore open the backups.
+- The zip format derives its key with PBKDF2-SHA1 at 1000 iterations (see [the trade-off above](#password-policy-and-the-honest-trade-off)), so a stolen backup can be attacked offline quickly. Use a long, multi-word password.
+- **Losing the password means the backups can never be opened.** There is no recovery. Changing the password applies to future runs only; older backups keep the password they were written with.
+
+### Audit
+
+| Event | Metadata |
+|-------|----------|
+| `backups.schedule.update` | `{ changedFields, passwordChanged }` |
+| `backups.run`, `backups.download`, `backups.delete` | `{ runId }` |
+| `backups.run.completed` | `{ runId, status, trigger, sizeBytes, counts }` |
+
+Tables: `backup_schedules` (singleton row `default`) and `backup_runs`.
+
+---
+
 ## API Reference
 
 All endpoints require a valid JWT Bearer token. Ownership checks are enforced at the service layer: non-admin users can only access their own secrets. Admins with `*_any` permissions can access all secrets.
@@ -475,6 +555,7 @@ Every secret and secret type operation is written to the `audit_events` table. T
 | `secret.renew` | `{ fromVersionId, version, carriedAttachments, replacedAttachments, replacedRoles, extractionMethod }` — `extractionMethod` is `'ai_assisted'` or `'manual'`, from the request's `aiAssisted` flag |
 | `secret.attachment.unlink` | `{ attachmentId, storageObjectId, storageObjectDeleted }` |
 | `secrets.export` | `{ secretCount, attachmentCount, includeVersions, includeAttachments, warningCount }` — target is the exporting user; never contains the password |
+| `backups.*` | scheduled admin backups; see [Scheduled backups (admin)](#scheduled-backups-admin) |
 | `secret_type.create` | `{ name }` |
 | `secret_type.update` | `{ name }` |
 | `secret_type.delete` | `{ name }` |

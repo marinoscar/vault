@@ -1774,6 +1774,150 @@ Every settings write is audited (`system_settings:patch` / `system_settings:repl
 
 ---
 
+### Backups (Admin)
+
+Scheduled, system-wide backups of every user's vault data into object storage. Concepts, zip layout and the password risks are in [SECRETS.md § Scheduled backups (admin)](SECRETS.md#scheduled-backups-admin). Base path: `/api/admin/backups`. Reads need `system_settings:read`; anything that changes state or hands out an archive needs `system_settings:write`. All responses use the standard `{ "data": ... }` envelope.
+
+#### GET /admin/backups/schedule
+
+**Requires Authentication** (`system_settings:read`) - Returns the schedule, or the defaults (disabled, daily 03:00 UTC, keep 7) when none is saved.
+
+**Success Response (200 OK):**
+```json
+{
+  "data": {
+    "enabled": true,
+    "frequency": "daily",
+    "intervalHours": null,
+    "timeOfDay": "03:00",
+    "dayOfWeek": null,
+    "dayOfMonth": null,
+    "timezone": "America/Chicago",
+    "keepCount": 7,
+    "includeAttachments": true,
+    "includeVersions": false,
+    "passwordConfigured": true,
+    "passwordUpdatedAt": "2026-11-01T20:15:38.000Z",
+    "nextRunAt": "2026-11-03T09:00:00.000Z",
+    "lastRunAt": "2026-11-02T09:00:04.000Z",
+    "storageConfigured": true,
+    "updatedAt": "2026-11-01T20:15:38.000Z"
+  }
+}
+```
+
+The password and its ciphertext are never returned; only `passwordConfigured` and `passwordUpdatedAt`.
+
+#### PUT /admin/backups/schedule
+
+**Requires Authentication** (`system_settings:write`) - Replaces the schedule and recomputes `nextRunAt`. Returns the same shape as GET.
+
+**Request Body:**
+```json
+{
+  "enabled": true,
+  "frequency": "weekly",
+  "intervalHours": null,
+  "timeOfDay": "03:00",
+  "dayOfWeek": 0,
+  "dayOfMonth": null,
+  "timezone": "America/Chicago",
+  "keepCount": 7,
+  "includeAttachments": true,
+  "includeVersions": false,
+  "password": "blue tiger river lamp"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `enabled` | boolean | Required. Enabling needs a stored (or supplied) password and configured storage. |
+| `frequency` | string | `hourly`, `daily`, `weekly` or `monthly`. |
+| `intervalHours` | number \| null | `hourly` only: 1, 2, 3, 4, 6, 8 or 12. Runs on the hour, counted from local midnight; `timeOfDay` is ignored. |
+| `timeOfDay` | string | `HH:mm`, for daily, weekly and monthly. |
+| `dayOfWeek` | number \| null | Weekly only, 0 (Sunday) to 6. |
+| `dayOfMonth` | number \| null | Monthly only, 1 to 28. |
+| `timezone` | string | IANA zone, for example `America/Chicago`. |
+| `keepCount` | number | 1 to 365 (default 7). |
+| `includeAttachments` | boolean | Include attachment files. |
+| `includeVersions` | boolean | Include every version, not just the current one. |
+| `password` | string | Optional, write-only, 6 to 256 characters, not trimmed. Omit to keep the stored password; a string replaces it. |
+
+All fields except `password` are required (full replace).
+
+**Error Cases:**
+- `400 Bad Request` - validation failed, or `enabled: true` without a password or without configured storage. Messages never echo the password.
+- `401 Unauthorized` / `403 Forbidden`
+
+**Audit:** `backups.schedule.update` with `{ changedFields, passwordChanged }`. The password is never logged or audited.
+
+#### POST /admin/backups/run
+
+**Requires Authentication** (`system_settings:write`) - Starts a backup now. Returns `202 Accepted` with the run (`status: "running"`). The run finishes in the background; poll `GET /admin/backups`.
+
+If storage or the password is not configured, the call still returns 202 and the run then fails with a clear message in `error`. If a run is already in progress, the request returns `409 Conflict`.
+
+**Audit:** `backups.run` with `{ runId }`.
+
+#### GET /admin/backups
+
+**Requires Authentication** (`system_settings:read`) - Lists runs, newest first. Query: `page` (default 1), `pageSize` (default 20, max 100).
+
+**Success Response (200 OK):**
+```json
+{
+  "data": {
+    "items": [
+      {
+        "id": "<run-uuid>",
+        "status": "succeeded",
+        "trigger": "schedule",
+        "triggeredBy": null,
+        "sizeBytes": 1048576,
+        "userCount": 3,
+        "secretCount": 42,
+        "attachmentCount": 7,
+        "warningCount": 0,
+        "error": null,
+        "startedAt": "2026-11-02T09:00:00.000Z",
+        "finishedAt": "2026-11-02T09:00:04.000Z",
+        "deletedAt": null,
+        "downloadable": true
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "pageSize": 20,
+    "totalPages": 1
+  }
+}
+```
+
+`status` is `running`, `succeeded` or `failed`; `trigger` is `schedule` or `manual`; `triggeredBy` is `{ id, email, displayName }` for manual runs. `downloadable` is true for a succeeded run whose object has not been deleted. This list wraps its paging fields inside `data` rather than using the `meta` envelope shown under [Pagination](#pagination).
+
+#### GET /admin/backups/:id/download
+
+**Requires Authentication** (`system_settings:write`) - Returns a signed storage URL valid for 300 seconds.
+
+```json
+{ "data": { "url": "https://storage.example.test/...", "expiresAt": "2026-11-02T09:05:00.000Z", "fileName": "vault-backup-2026-11-02_090000.zip" } }
+```
+
+`404 Not Found` if the run does not exist, did not succeed or its object was deleted. **Audit:** `backups.download` with `{ runId }`.
+
+#### DELETE /admin/backups/:id
+
+**Requires Authentication** (`system_settings:write`) - Deletes the backup object and marks the run `deletedAt`; the row stays as history. Returns `204 No Content`.
+
+- `404 Not Found` - unknown id
+- `409 Conflict` - the run is still running
+- `502 Bad Gateway` - storage refused the delete (the run is not marked deleted)
+- Deleting an already-deleted backup is a `204` no-op.
+
+**Audit:** `backups.delete` with `{ runId }`.
+
+---
+
 ### Health
 
 **Public endpoints** - Used for Kubernetes liveness/readiness probes.

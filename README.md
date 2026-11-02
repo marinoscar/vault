@@ -17,6 +17,7 @@ Vault is a self-hosted secrets manager. It stores credentials, API keys, credit 
 - **Access Control**: Email allowlist restricts access to pre-authorized users only.
 - **Personal Access Tokens**: Long-lived tokens for programmatic API and CLI access.
 - **Encrypted Data Backup**: download an AES-256 password-protected zip of your own secrets (readable HTML report, JSON and attachments) from the web app or with `vaultcli backup`, including scheduled backups with saved settings, automatic cleanup of old backups and a guided terminal menu (`vaultcli`).
+- **Scheduled Admin Backups**: administrators schedule hourly, daily, weekly or monthly AES-256 zip backups of every user's secrets into object storage (Admin Settings > Backups), with run-now, history, signed downloads and keep-last-N retention.
 - **.env File Sync**: Back up server `.env` files into Vault as versioned secrets via the `vaultcli` CLI.
 - **Audit Logging**: All secret operations are logged to the audit event store.
 - **Observability**: OpenTelemetry instrumentation with traces, metrics, and structured logging via Uptrace.
