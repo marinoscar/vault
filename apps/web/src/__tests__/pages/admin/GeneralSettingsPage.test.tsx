@@ -9,12 +9,13 @@ vi.mock('../../../hooks/useSystemSettings', () => ({
   useSystemSettings: vi.fn(),
 }));
 
-vi.mock('../../../hooks/usePermissions', () => ({
+vi.mock('@marinoscar/platform-web/identity/headless', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@marinoscar/platform-web/identity/headless')>()),
   usePermissions: vi.fn(),
 }));
 
 import { useSystemSettings } from '../../../hooks/useSystemSettings';
-import { usePermissions } from '../../../hooks/usePermissions';
+import { usePermissions } from '@marinoscar/platform-web/identity/headless';
 
 const mockUseSystemSettings = vi.mocked(useSystemSettings);
 const mockUsePermissions = vi.mocked(usePermissions);

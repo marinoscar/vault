@@ -5,11 +5,12 @@ import { MemoryRouter } from 'react-router-dom';
 import { http, HttpResponse } from 'msw';
 import { server } from './mocks/server';
 import App from '../App';
+import { PRODUCT_TAGLINE } from '../theme/tokens';
 
 // MemoryRouter (not BrowserRouter) deliberately: src/__tests__/setup.ts
 // replaces `window.location` with a static plain object for other tests'
 // convenience, which is incompatible with BrowserRouter's use of the real
-// History API. Under BrowserRouter + that mock, ProtectedRoute's redirect to
+// History API. Under BrowserRouter + that mock, RequireAuth's redirect to
 // /login never registers as a location change, so it re-renders in an
 // infinite loop ("Maximum update depth exceeded"). MemoryRouter keeps its
 // own in-memory history and isn't affected, and is the standard choice for
@@ -36,7 +37,7 @@ describe('App', () => {
   });
 
   it('renders the login page when there is no valid session', async () => {
-    // Simulate an unauthenticated visitor: refresh fails, so AuthContext
+    // Simulate an unauthenticated visitor: refresh fails, so the packaged AuthProvider
     // never calls GET /auth/me and isAuthenticated stays false, which the
     // router resolves to LoginPage.
     server.use(
@@ -51,10 +52,12 @@ describe('App', () => {
 
     await waitFor(
       () => {
-        expect(screen.getByRole('heading', { name: 'Welcome' })).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'Sign in to Vault' })).toBeInTheDocument();
       },
       { timeout: 5000 }
     );
-    expect(screen.getByText('Sign in to continue')).toBeInTheDocument();
+    // The packaged LoginPage, branded through its slots (identity/LoginPage.tsx).
+    expect(screen.getByTestId('login-logo')).toBeInTheDocument();
+    expect(screen.getByText(PRODUCT_TAGLINE)).toBeInTheDocument();
   });
 });

@@ -48,21 +48,21 @@ describe('/settings (per-user hub)', () => {
     renderHub('user', withPerms(mockUser, ['secrets:read', 'secret_types:read']));
 
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument();
-    expect(cardTitles()).toEqual(['Profile', 'Appearance', 'Access tokens', 'My backups', 'Secret types']);
+    expect(cardTitles()).toEqual(['Profile', 'Appearance', 'Access Tokens', 'My backups', 'Secret types']);
   });
 
   it('hides My backups without secrets:read and Secret types without secret_types:read', () => {
     setViewportWidth(1440);
     renderHub('user', mockUser);
 
-    expect(cardTitles()).toEqual(['Profile', 'Appearance', 'Access tokens']);
+    expect(cardTitles()).toEqual(['Profile', 'Appearance', 'Access Tokens']);
   });
 
-  it('always shows Access tokens (ownership-scoped, no permission)', () => {
+  it('always shows Access Tokens (ownership-scoped, no permission)', () => {
     setViewportWidth(1440);
     renderHub('user', { ...mockUser, permissions: [] });
 
-    expect(cardTitles()).toEqual(['Access tokens']);
+    expect(cardTitles()).toEqual(['Access Tokens']);
   });
 
   it('navigates to the card route', async () => {
@@ -92,16 +92,16 @@ describe('/admin/settings (Console hub)', () => {
     renderHub('admin', mockAdminUser);
 
     expect(screen.getByRole('heading', { name: 'Console' })).toBeInTheDocument();
-    expect(cardTitles()).toEqual(['General', 'Users & allowlist', 'AI', 'Backups', 'Maintenance', 'Doctor', 'About']);
+    expect(cardTitles()).toEqual(['General', 'Users & Allowlist', 'AI', 'Backups', 'Maintenance', 'Doctor', 'About']);
     expect(screen.getByText('Administration')).toBeInTheDocument();
     expect(screen.getByText('Operations')).toBeInTheDocument();
   });
 
-  it('shows only Users & allowlist to a users:read-only operator (Operations group dropped)', () => {
+  it('shows only Users & Allowlist to a users:read-only operator (Operations group dropped)', () => {
     setViewportWidth(1440);
     renderHub('admin', { ...mockUser, permissions: ['users:read'] });
 
-    expect(cardTitles()).toEqual(['Users & allowlist']);
+    expect(cardTitles()).toEqual(['Users & Allowlist']);
     expect(screen.queryByText('Operations')).not.toBeInTheDocument();
   });
 

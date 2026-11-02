@@ -112,7 +112,7 @@ describe('Layout (platform shell binding)', () => {
       const rail = screen.getByRole('navigation', { name: 'Console navigation' });
       expect(within(rail).getByRole('link', { name: 'Back to Vault' })).toHaveAttribute('href', '/');
       expect(within(rail).getByRole('link', { name: 'General' })).toHaveAttribute('href', '/admin/settings/general');
-      expect(within(rail).getByRole('link', { name: 'Users & allowlist' })).toHaveAttribute('aria-current', 'page');
+      expect(within(rail).getByRole('link', { name: 'Users & Allowlist' })).toHaveAttribute('aria-current', 'page');
       for (const name of ['AI', 'Backups', 'Maintenance', 'Doctor', 'About']) {
         expect(within(rail).getByRole('link', { name })).toBeInTheDocument();
       }

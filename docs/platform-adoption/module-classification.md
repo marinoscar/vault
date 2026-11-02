@@ -43,12 +43,12 @@ Baseline classification of every Vault module against EnterpriseAppBase (EAB) an
 
 | Area | Category | Target | Epic | Notes |
 |---|---|---|---|---|
-| `contexts/AuthContext`, `components/auth`, `LoginPage`, `AuthCallbackPage`, `ProtectedRoute`, `RequirePermission`, `hooks/usePermissions` | noise | `@marinoscar/platform-web/identity` | E3 | Brand mark goes in the `Logo` slot |
-| `components/device-activation`, `ActivateDevicePage` | noise | identity UI | E3 | |
-| `UserManagementPage`, `components/admin` (`UserList`, `AllowlistTable`, `AddEmailDialog`) | noise | identity `UsersPage` (Users + Allowlist tabs) | E3 | |
+| `contexts/AuthContext`, `components/auth`, `LoginPage`, `AuthCallbackPage`, `ProtectedRoute`, `RequirePermission`, `hooks/usePermissions` | noise | `@marinoscar/platform-web/identity` | E3 | Brand mark goes in the `Logo` slot **Done in E3.3 (#78): deleted, replaced by `@marinoscar/platform-web/identity` (headless + ui), bound in `apps/web/src/identity/`.** |
+| `components/device-activation`, `ActivateDevicePage` | noise | identity UI | E3 | **Done in E3.3 (#78): deleted, replaced by `@marinoscar/platform-web/identity` (headless + ui), bound in `apps/web/src/identity/`.** |
+| `UserManagementPage`, `components/admin` (`UserList`, `AllowlistTable`, `AddEmailDialog`) | noise | identity `UsersPage` (Users + Allowlist tabs) | E3 | **Done in E3.3 (#78): deleted, replaced by `@marinoscar/platform-web/identity` (headless + ui), bound in `apps/web/src/identity/`.** |
 | `SystemSettingsPage` (tabs), `UserSettingsPage`, `components/admin/{SystemSettingsEditor,UISettings,FeatureFlagsList}` | vault-divergence | registry-driven `SettingsHub` | E10 | Tabs are the divergence; "Advanced (JSON)" tab needs a decision (likely dropped) |
 | `components/settings/{ProfileSettings,ThemeSettings,ImageUpload}` | noise | platform Profile / Appearance pages | E4 / E10 | |
-| `components/settings/{PersonalAccessTokens,CreatePatDialog,PatTokenRevealDialog}` | noise | identity PAT UI | E3 / E10 | |
+| `components/settings/{PersonalAccessTokens,CreatePatDialog,PatTokenRevealDialog}` | noise | identity PAT UI | E3 / E10 | **Done in E3.3 (#78): deleted, replaced by `@marinoscar/platform-web/identity` (headless + ui), bound in `apps/web/src/identity/`.** |
 | `components/settings/{AiSettings}` | noise | platform AI pages | E8 / E10 | |
 | `components/settings/{DataBackup,BackupContentsGroup,BackupPasswordFields,BackupRunsTable}`, `components/admin/{ScheduledBackups,AdminBackupDownloadDialog}`, `utils/{backupContents,backupPassword,backupSchedule}` | domain | vault-web; become settings cards "My backups" and "Backups" | E10 / E12 | |
 | `components/navigation` (`Sidebar`, `AppBar`, `UserMenu`), `components/common/Layout.tsx` | vault-divergence | platform `ShellLayout` + `ShellNavigation` | E10 | Flat sidebar replaced by destinations |

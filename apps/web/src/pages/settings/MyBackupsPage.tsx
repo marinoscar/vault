@@ -1,5 +1,5 @@
 import { Navigate } from 'react-router-dom';
-import { usePermissions } from '../../hooks/usePermissions';
+import { usePermissions } from '@marinoscar/platform-web/identity/headless';
 import { DataBackup } from '../../components/settings/DataBackup';
 import { SettingsPageFrame } from '../../components/settings/SettingsPageFrame';
 

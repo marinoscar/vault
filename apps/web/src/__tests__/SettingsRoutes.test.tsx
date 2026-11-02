@@ -2,7 +2,7 @@
  * The settings routes through the real App (E10.3, #94): old URLs redirect to
  * their cards, a card route refuses a viewer without the card's permission,
  * and the packaged Doctor, About and Maintenance pages reach the API through
- * Vault's client (PlatformHostBridge), bearer token included.
+ * Vault's client (platform/platformHost.tsx), bearer token included.
  */
 import { describe, it, expect } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
@@ -60,11 +60,11 @@ function renderAt(path: string) {
 const SLOW = { timeout: 5000 };
 
 describe('settings routes', () => {
-  it('redirects /admin/users to the Users & allowlist card', async () => {
+  it('redirects /admin/users to the Users & Allowlist card', async () => {
     signInAs(ADMIN_PERMISSIONS);
     renderAt('/admin/users');
 
-    expect(await screen.findByRole('heading', { level: 1, name: 'Users & allowlist' }, SLOW)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Users & Allowlist' }, SLOW)).toBeInTheDocument();
     expect(probe).toBe('/admin/settings/users');
   });
 

@@ -80,3 +80,10 @@ export const BRAND_THEME_COLOR = BRAND_TOKENS.light.primary;
 
 /** The product name shown in the app bar and the document title. */
 export const PRODUCT_NAME = 'Vault';
+
+/**
+ * The one-line product promise under the sign-in heading. Mirrors `tagline`
+ * in `packages/shared/identity.json` (the rebrand source);
+ * `__tests__/theme/tokens.test.ts` fails when the two drift.
+ */
+export const PRODUCT_TAGLINE = 'Your secrets, cards and documents, encrypted and versioned.';
