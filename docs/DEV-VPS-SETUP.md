@@ -159,11 +159,9 @@ INITIAL_ADMIN_EMAIL=<your-email>
 # Cookie signing secret
 COOKIE_SECRET=<generate with: openssl rand -base64 32>
 
-# AWS S3 storage
-S3_BUCKET=<your-s3-bucket-name>
-S3_REGION=<your-aws-region>
-AWS_ACCESS_KEY_ID=<your-access-key-id>
-AWS_SECRET_ACCESS_KEY=<your-secret-access-key>
+# Object storage (S3 bucket, region, access keys) is NOT set here: an administrator
+# enters it at /admin/settings/storage after the first sign-in
+# (docs/runbooks/storage-config-migration.md). The access key needs SECRETS_ENCRYPTION_KEY.
 
 # Vault encryption key — 64 hex characters (32 bytes)
 # Generate with: openssl rand -hex 32
@@ -358,7 +356,7 @@ Use this checklist when deploying to the dev VPS for the first time.
 - [ ] Set `APP_URL=https://vault.dev.marin.cr`
 - [ ] Set `GOOGLE_CALLBACK_URL=https://vault.dev.marin.cr/api/auth/google/callback`
 - [ ] Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`
-- [ ] Set `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET`, `S3_REGION`
+- [ ] After the first sign-in, enter the S3 bucket, region and access keys at `/admin/settings/storage`
 - [ ] Set `INITIAL_ADMIN_EMAIL`
 - [ ] Set `COMPOSE_PROJECT_NAME=vault` in `.env`
 - [ ] Add `https://vault.dev.marin.cr/api/auth/google/callback` to Google OAuth client

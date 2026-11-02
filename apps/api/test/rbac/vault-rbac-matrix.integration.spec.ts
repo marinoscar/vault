@@ -6,7 +6,7 @@
 // run over the full `AppModule` with a mocked Prisma client. For each of the
 // three roles and for no credential at all, every Vault route (secrets, secret
 // types, media, admin and user backups, card extraction, exports, storage
-// objects, settings) is called and the answer checked:
+// objects and their configuration, settings) is called and the answer checked:
 //
 //   anonymous                        401
 //   a role without the permission    403
@@ -38,7 +38,7 @@ import { ANY_PERMISSIONS_KEY, PERMISSIONS_KEY } from '@marinoscar/platform-api/i
 import { discoverControllers } from '@marinoscar/platform-api/identity/testing';
 
 import { AppModule } from '../../src/app.module';
-import { BackupRunnerService } from '../../src/backups/backup-runner.service';
+import { BackupQueueService } from '../../src/backups/backup-queue.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { prismaMock, resetPrismaMock } from '../mocks/prisma.mock';
 
@@ -72,6 +72,8 @@ const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
     'storage:read',
     'storage:write',
     'storage:delete_any',
+    'storage_config:read',
+    'storage_config:write',
     'secrets:read_any',
     'secrets:write_any',
     'secrets:delete_any',
@@ -89,6 +91,12 @@ const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
     'jobs:write',
     'nodes:read',
     'nodes:write',
+    // The platform AI slice (E8.1): `ai_config:*` is system (admin), the rest come from `org_admin`.
+    'ai_config:read',
+    'ai_config:write',
+    'ai:use',
+    'org_ai_config:read',
+    'org_ai_config:write',
     // E7.1: the notifications slice (system: broadcasts, push; org: org_broadcasts, held through org_admin)
     'broadcasts:read',
     'broadcasts:write',
@@ -100,13 +108,6 @@ const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
     'telemetry:read',
     'telemetry:write',
     'telemetry:query',
-    // The platform AI slice's permissions, registered for the telemetry assistant route (`ai:use`);
-    // `ai_config:*` is system (admin), the rest come from `org_admin`.
-    'ai_config:read',
-    'ai_config:write',
-    'ai:use',
-    'org_ai_config:read',
-    'org_ai_config:write',
   ],
   contributor: [...SECRETS_RW, ...USER_SETTINGS, 'storage:read', 'storage:write', 'ai:use'],
   viewer: ['secrets:read', 'secret_types:read', 'media:read', ...USER_SETTINGS, 'storage:read'],
@@ -115,6 +116,8 @@ const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
 /** The scope of every permission the oracle mentions (org permissions come from the membership). */
 const SYSTEM_PERMISSIONS = new Set([
   'storage:delete_any',
+  'storage_config:read',
+  'storage_config:write',
   'secrets:read_any',
   'secrets:write_any',
   'secrets:delete_any',
@@ -132,6 +135,8 @@ const SYSTEM_PERMISSIONS = new Set([
   'jobs:write',
   'nodes:read',
   'nodes:write',
+  'ai_config:read',
+  'ai_config:write',
   'broadcasts:read',
   'broadcasts:write',
   'push:read',
@@ -139,8 +144,6 @@ const SYSTEM_PERMISSIONS = new Set([
   'telemetry:read',
   'telemetry:write',
   'telemetry:query',
-  'ai_config:read',
-  'ai_config:write',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -177,6 +180,7 @@ const ROUTES: readonly Route[] = [
   ['DELETE', `/api/secrets/${ID}/attachments/${ID}`, 'secrets:write'],
   // Exports and card extraction
   ['POST', '/api/secrets/export', 'secrets:read'],
+  // Also needs `ai:use` and the platform kill switch (a class guard that runs first).
   ['POST', '/api/secrets/cards/extract', 'secrets:write'],
   // Media
   ['POST', '/api/media/folders', 'media:write'],
@@ -205,19 +209,27 @@ const ROUTES: readonly Route[] = [
   ['GET', `/api/backups/me/${ID}/download`, 'secrets:read'],
   ['DELETE', `/api/backups/me/${ID}`, 'secrets:read'],
   // AI
+  // The compatibility alias of the platform's GET /api/ai/config (not behind the kill switch).
+  // The platform's own /api/ai/* and /api/admin/ai/* routes are held by the `ai-rbac-matrix`
+  // conformance suite (test/ai-conformance.spec.ts).
   ['GET', '/api/ai/status', null],
-  ['POST', '/api/system-settings/ai/verify', 'system_settings:write'],
-  // Storage objects (bare @Auth: ownership-scoped)
-  ['GET', '/api/storage/objects', null],
-  ['GET', `/api/storage/objects/${ID}`, null],
-  ['GET', `/api/storage/objects/${ID}/download`, null],
-  ['DELETE', `/api/storage/objects/${ID}`, null],
-  ['PATCH', `/api/storage/objects/${ID}/metadata`, null],
-  ['POST', '/api/storage/objects/upload/init', null],
-  ['GET', `/api/storage/objects/${ID}/upload/status`, null],
-  ['POST', `/api/storage/objects/${ID}/upload/complete`, null],
-  ['DELETE', `/api/storage/objects/${ID}/upload/abort`, null],
-  ['POST', '/api/storage/objects', null],
+  // Storage objects and status (the platform storage slice since E6.1; ownership-scoped on top)
+  ['GET', '/api/storage/objects', 'storage:read'],
+  ['GET', `/api/storage/objects/${ID}`, 'storage:read'],
+  ['GET', `/api/storage/objects/${ID}/download`, 'storage:read'],
+  ['DELETE', `/api/storage/objects/${ID}`, 'storage:write'],
+  ['PATCH', `/api/storage/objects/${ID}/metadata`, 'storage:write'],
+  ['POST', '/api/storage/objects/upload/init', 'storage:write'],
+  ['GET', `/api/storage/objects/${ID}/upload/status`, 'storage:write'],
+  ['POST', `/api/storage/objects/${ID}/upload/complete`, 'storage:write'],
+  ['DELETE', `/api/storage/objects/${ID}/upload/abort`, 'storage:write'],
+  ['POST', '/api/storage/objects', 'storage:write'],
+  ['GET', '/api/storage/status', 'storage:read'],
+  // Storage configuration (admin only: system permissions)
+  ['GET', '/api/admin/storage-config', 'storage_config:read'],
+  ['PUT', '/api/admin/storage-config', 'storage_config:write'],
+  ['POST', '/api/admin/storage-config/test', 'storage_config:write'],
+  ['POST', '/api/admin/storage-config/bucket', 'storage_config:write'],
   // Settings (the platform settings slice since E4.1)
   ['GET', '/api/user-settings', 'user_settings:read'],
   ['PUT', '/api/user-settings', 'user_settings:write'],
@@ -391,8 +403,8 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(PrismaService)
       .useValue(prismaMock)
-      // No route of the matrix may start a real backup.
-      .overrideProvider(BackupRunnerService)
+      // No route of the matrix may queue a real backup job.
+      .overrideProvider(BackupQueueService)
       .useValue(new Proxy({}, { get: (_target, key) => (key === 'then' ? undefined : async () => undefined) }))
       .compile();
 
@@ -433,9 +445,10 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
         'BackupsController',
         'MyBackupsController',
         'CardExtractController',
-        'AiController',
-        'AiVerifyController',
+        'AiStatusController',
         'ObjectsController',
+        'StorageStatusController',
+        'StorageConfigController',
         'UserSettingsController',
         'SystemSettingsController',
         'JobAdminController',
@@ -496,7 +509,7 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
       const grants = catalogGrants(buildPermissionCatalog());
       const heldBy = (roleNames: string[]) =>
         grants.filter((g) => roleNames.includes(g.role)).map((g) => g.permission);
-      const mine = (permissions: readonly string[]) => permissions.filter((p) => /^(secrets|secret_types|media|jobs|nodes|broadcasts|org_broadcasts|push|telemetry|ai|ai_config|org_ai_config):/.test(p));
+      const mine = (permissions: readonly string[]) => permissions.filter((p) => /^(secrets|secret_types|media|jobs|nodes|ai|ai_config|org_ai_config|broadcasts|org_broadcasts|push|telemetry):/.test(p));
 
       expect(mine(heldBy(['admin', 'org_admin'])).sort()).toEqual(mine(ROLE_PERMISSIONS.admin).sort());
       expect(mine(heldBy(['contributor'])).sort()).toEqual(mine(ROLE_PERMISSIONS.contributor).sort());
@@ -517,7 +530,12 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
         (typeof permission === 'string' ? held.includes(permission) : permission.some((p) => held.includes(p)));
       const response = await call(method, path, tokenFor(USERS[role], role));
 
-      if (allowed) {
+      if (allowed && path === '/api/secrets/cards/extract') {
+        // Past authentication and permissions the route meets the platform kill switch; the mocked
+        // settings have AI off, so the proof of access is the AI slice's own refusal.
+        expect(response.status).not.toBe(401);
+        if (response.status === 403) expect(response.body?.details?.reason).toBe('AI_DISABLED');
+      } else if (allowed) {
         expect([401, 403]).not.toContain(response.status);
       } else {
         expect(response.status).toBe(403);

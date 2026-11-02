@@ -14,15 +14,16 @@ import {
 import { SystemSettingsService } from '@marinoscar/platform-api/settings';
 import { PrismaService } from '../prisma/prisma.service';
 import { CryptoService } from '../common/services/crypto.service';
-import { STORAGE_PROVIDER, StorageProvider } from '../storage/providers';
+import { STORAGE_PROVIDER, StorageProvider } from '@marinoscar/platform-api/storage';
 import { encryptBackupPassword } from './backup-password';
 import { BackupFrequency, computeNextRunAt } from './backup-schedule';
 import {
   BACKUP_FAILURE_MESSAGES,
   BACKUP_SCHEDULE_ID,
-  BackupRunnerService,
   SYSTEM_SCOPE,
 } from './backup-runner.service';
+import { BackupArchiveService } from './backup-archive.service';
+import { BackupQueueService } from './backup-queue.service';
 import { decryptBackupPassword } from './backup-password';
 import { systemBackupFileName } from './backup-archive';
 import { selectedContentKeys } from '../secrets/export/backup-contents';
@@ -34,6 +35,7 @@ import {
   BackupRunResponse,
   BackupRunRow,
   BackupScheduleResponse,
+  effectiveRunStatus,
   toBackupRunResponse,
 } from './dto/backup-responses';
 import { BackupRunListQuery } from './dto/backup-run-list-query.dto';
@@ -114,7 +116,7 @@ export const ENABLE_WITHOUT_STORAGE_MESSAGE =
 
 /**
  * Admin API of the scheduled system backup: the schedule, the run history,
- * download links and deletion. The work itself is {@link BackupRunnerService}.
+ * download links and deletion. The work itself is a queue job (`vault.backup.run`).
  *
  * The schedule's password is write-only: encrypted on the way in, and neither
  * it nor its ciphertext is ever returned, logged or audited.
@@ -128,7 +130,8 @@ export class BackupsService {
     private readonly crypto: CryptoService,
     @Inject(STORAGE_PROVIDER)
     private readonly storageProvider: StorageProvider,
-    private readonly runner: BackupRunnerService,
+    private readonly archive: BackupArchiveService,
+    private readonly queue: BackupQueueService,
     private readonly systemSettings: SystemSettingsService,
   ) {}
 
@@ -159,7 +162,7 @@ export class BackupsService {
       if (!existing?.passwordEncrypted && !passwordChanged) {
         throw new BadRequestException({ message: ENABLE_WITHOUT_PASSWORD_MESSAGE });
       }
-      if (!this.runner.isStorageConfigured()) {
+      if (!this.archive.isStorageConfigured()) {
         throw new BadRequestException({ message: ENABLE_WITHOUT_STORAGE_MESSAGE });
       }
     }
@@ -220,18 +223,17 @@ export class BackupsService {
   }
 
   /**
-   * Start a manual run. 202 with the `running` row; the work continues in
-   * the background.
+   * Queue a manual run. 202 with the `running` row; a worker runs the
+   * `vault.backup.run` job.
    *
-   * @throws ConflictException when a run is already in progress.
+   * @throws ConflictException when a run is already queued or running.
    */
   async runNow(actorUserId: string): Promise<BackupRunResponse> {
-    const run = await this.runner.startRun('manual', actorUserId);
+    const run = await this.queue.queueSystemRun(actorUserId);
     await this.audit(actorUserId, BACKUPS_AUDIT_ACTIONS.run, 'backup_run', run.id, {
       runId: run.id,
       trigger: 'manual',
     });
-    this.runner.launch(run);
     return toBackupRunResponse(run);
   }
 
@@ -272,7 +274,8 @@ export class BackupsService {
       // The web uses a hidden <a download>, whose attribute is ignored for a
       // cross-origin URL: the storage response itself must say "attachment".
       responseContentDisposition: `attachment; filename="${fileName}"`,
-      responseContentType: 'application/zip',
+      // No response-content-type override (the platform's SignedUrlOptions has none):
+      // the archive is uploaded with Content-Type application/zip, which the response carries.
     });
 
     await this.audit(actorUserId, BACKUPS_AUDIT_ACTIONS.download, 'backup_run', run.id, {
@@ -293,7 +296,7 @@ export class BackupsService {
     if (!run) {
       throw new NotFoundException({ message: 'Backup not found' });
     }
-    if (run.status === 'running') {
+    if (effectiveRunStatus(run) === 'running') {
       throw new ConflictException({ message: 'A running backup cannot be deleted' });
     }
     if (run.deletedAt) {
@@ -347,7 +350,7 @@ export class BackupsService {
     }
 
     const createdAt = new Date();
-    const counts = await this.runner.countSystemArchive(input.selection, createdAt);
+    const counts = await this.archive.countSystemArchive(input.selection, createdAt);
 
     await this.audit(actorUserId, BACKUPS_AUDIT_ACTIONS.export, 'backup_export', actorUserId, {
       contents: selectedContentKeys(input.selection),
@@ -371,13 +374,13 @@ export class BackupsService {
       secretCount: counts.secretCount,
       attachmentCount: counts.attachmentCount,
       mediaFileCount: counts.mediaFileCount,
-      stream: await this.runner.streamSystemArchive(input.selection, password, createdAt),
+      stream: await this.archive.streamSystemArchive(input.selection, password, createdAt),
     };
   }
 
   /** A system run by id; a user-saved run is invisible here (`null`). */
   private async findSystemRun(id: string) {
-    const run = await this.prisma.backupRun.findUnique({ where: { id } });
+    const run = await this.prisma.backupRun.findUnique({ where: { id }, include: { job: BACKUP_RUN_INCLUDE.job } });
     if (!run || (run.scope ?? SYSTEM_SCOPE) !== SYSTEM_SCOPE) {
       return null;
     }
@@ -407,7 +410,7 @@ export class BackupsService {
       passwordUpdatedAt: row?.passwordUpdatedAt ? row.passwordUpdatedAt.toISOString() : null,
       nextRunAt: row?.nextRunAt ? row.nextRunAt.toISOString() : null,
       lastRunAt: row?.lastRunAt ? row.lastRunAt.toISOString() : null,
-      storageConfigured: this.runner.isStorageConfigured(),
+      storageConfigured: this.archive.isStorageConfigured(),
       updatedAt: row?.updatedAt ? row.updatedAt.toISOString() : null,
     };
   }

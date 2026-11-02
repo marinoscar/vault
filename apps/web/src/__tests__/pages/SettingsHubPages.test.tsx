@@ -7,6 +7,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Route, Routes, useLocation } from 'react-router-dom';
+import type { ReactElement } from 'react';
+import { AiConfigContext } from '@marinoscar/platform-web/ai/headless';
+import type { UseAiConfigReturn } from '@marinoscar/platform-web/ai/headless';
 
 import { render, mockAdminUser, mockUser } from '../utils/test-utils';
 import type { MockUser } from '../utils/test-utils';
@@ -18,14 +21,26 @@ function Location() {
   return <p data-testid="location">{useLocation().pathname}</p>;
 }
 
-function renderHub(hub: 'user' | 'admin', user: MockUser) {
+/** The shared AI config with AI switched on (what `VaultAiConfigProvider` answers). */
+const AI_ON: UseAiConfigReturn = {
+  config: { enabled: true, keyPolicy: 'byok_with_org_fallback', providers: [] },
+  isLoading: false,
+  error: null,
+  refresh: async () => {},
+};
+
+function renderHub(hub: 'user' | 'admin', user: MockUser, { aiOn = false } = {}) {
   const path = hub === 'user' ? '/settings' : '/admin/settings';
   const Hub = hub === 'user' ? UserSettingsHubPage : AdminSettingsHubPage;
+  const withAi = (node: ReactElement): ReactElement =>
+    aiOn ? <AiConfigContext.Provider value={AI_ON}>{node}</AiConfigContext.Provider> : node;
   return render(
-    <Routes>
-      <Route path={path} element={<Hub />} />
-      <Route path="*" element={<Location />} />
-    </Routes>,
+    withAi(
+      <Routes>
+        <Route path={path} element={<Hub />} />
+        <Route path="*" element={<Location />} />
+      </Routes>,
+    ),
     { wrapperOptions: { route: path, user } },
   );
 }
@@ -48,14 +63,21 @@ describe('/settings (per-user hub)', () => {
     renderHub('user', withPerms(mockUser, ['secrets:read', 'secret_types:read']));
 
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument();
-    expect(cardTitles()).toEqual(['Profile', 'Appearance', 'Access Tokens', 'My backups', 'Secret types']);
+    expect(cardTitles()).toEqual([
+      'Profile',
+      'Appearance',
+      'Access Tokens',
+      'My backups',
+      'Secret types',
+      'Notifications',
+    ]);
   });
 
   it('hides My backups without secrets:read and Secret types without secret_types:read', () => {
     setViewportWidth(1440);
     renderHub('user', mockUser);
 
-    expect(cardTitles()).toEqual(['Profile', 'Appearance', 'Access Tokens']);
+    expect(cardTitles()).toEqual(['Profile', 'Appearance', 'Access Tokens', 'Notifications']);
   });
 
   it('always shows Access Tokens (ownership-scoped, no permission)', () => {
@@ -89,12 +111,32 @@ describe('/settings (per-user hub)', () => {
 describe('/admin/settings (Console hub)', () => {
   it('shows every admin card to an admin, grouped', () => {
     setViewportWidth(1440);
-    renderHub('admin', mockAdminUser);
+    renderHub('admin', withPerms(mockAdminUser, ['push:read', 'broadcasts:read']));
 
     expect(screen.getByRole('heading', { name: 'Console' })).toBeInTheDocument();
-    expect(cardTitles()).toEqual(['General', 'Users & Allowlist', 'AI', 'Backups', 'Maintenance', 'Doctor', 'About']);
+    expect(cardTitles()).toEqual([
+      'General',
+      'Users & Allowlist',
+      'AI',
+      'Backups',
+      'Maintenance',
+      'Doctor',
+      'About',
+      'Email',
+      'Web Push',
+      'Broadcasts',
+    ]);
     expect(screen.getByText('Administration')).toBeInTheDocument();
     expect(screen.getByText('Operations')).toBeInTheDocument();
+    expect(screen.getByText('Messaging')).toBeInTheDocument();
+  });
+
+  it('hides Web Push without push:read and Broadcasts without broadcasts:read', () => {
+    setViewportWidth(1440);
+    renderHub('admin', withPerms(mockAdminUser, ['push:read']));
+
+    expect(cardTitles()).toContain('Web Push');
+    expect(cardTitles()).not.toContain('Broadcasts');
   });
 
   it('shows only Users & Allowlist to a users:read-only operator (Operations group dropped)', () => {
@@ -109,7 +151,41 @@ describe('/admin/settings (Console hub)', () => {
     setViewportWidth(1440);
     renderHub('admin', { ...mockUser, permissions: ['system_settings:read'] });
 
-    expect(cardTitles()).toEqual(['General', 'AI', 'Backups', 'Maintenance', 'Doctor', 'About']);
+    // AI needs ai_config:read since E8.2 (the platform AI admin controller).
+    expect(cardTitles()).toEqual(['General', 'Backups', 'Maintenance', 'Doctor', 'About', 'Email']);
+  });
+
+  it('shows AI models and AI usage only while AI is on, and the AI card always (E8.2)', () => {
+    setViewportWidth(1440);
+    const admin = withPerms(mockAdminUser, ['push:read', 'broadcasts:read']);
+    const { unmount } = renderHub('admin', admin);
+    expect(cardTitles()).toContain('AI');
+    expect(cardTitles()).not.toContain('AI models');
+    expect(cardTitles()).not.toContain('AI usage');
+    unmount();
+
+    renderHub('admin', admin, { aiOn: true });
+    expect(cardTitles()).toEqual([
+      'General',
+      'Users & Allowlist',
+      'AI',
+      'Backups',
+      'AI models',
+      'AI usage',
+      'Maintenance',
+      'Doctor',
+      'About',
+      'Email',
+      'Web Push',
+      'Broadcasts',
+    ]);
+  });
+
+  it('shows only the AI cards to an ai_config:read-only operator', () => {
+    setViewportWidth(1440);
+    renderHub('admin', { ...mockUser, permissions: ['ai_config:read'] }, { aiOn: true });
+
+    expect(cardTitles()).toEqual(['AI', 'AI models', 'AI usage']);
   });
 
   it('navigates to the Backups card route', async () => {

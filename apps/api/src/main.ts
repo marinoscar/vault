@@ -16,6 +16,9 @@ import multipart from '@fastify/multipart';
 import { buildCorsOptions, registerPlatformDocs } from '@marinoscar/platform-api/host';
 import { verifyEncryptionKeyAtStartup } from '@marinoscar/platform-api/core';
 import { registerRequestSpanAttributes } from '@marinoscar/platform-api/otel-core';
+import { STORAGE_OPTIONS, simpleUploadFileSizeLimit } from '@marinoscar/platform-api/storage';
+import type { ResolvedStorageModuleOptions } from '@marinoscar/platform-api/storage';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from './prisma/prisma.service';
 import { AppModule } from './app.module';
 import { APP_OPENAPI } from './openapi/document';
@@ -66,7 +69,12 @@ async function bootstrap() {
   // Register multipart plugin for file uploads
   await app.register(multipart, {
     limits: {
-      fileSize: 10 * 1024 * 1024 * 1024, // 10GB for large media files
+      // The simple upload's ceiling: min(MAX_FILE_SIZE, the storage slice's
+      // maxSimpleUploadBytes, 10 GiB in storage.config.ts), so large media files still stream.
+      fileSize: simpleUploadFileSizeLimit(
+        app.get(ConfigService).get<number>('storage.maxFileSize'),
+        app.get<ResolvedStorageModuleOptions>(STORAGE_OPTIONS).maxSimpleUploadBytes,
+      ),
       files: 1,
     },
   });

@@ -1,22 +1,24 @@
 /**
- * What the packaged telemetry pages take from this app (issue #90, E9.2).
+ * What the packaged telemetry pages take from this app (issue #90, E9.2; the AI hooks over the
+ * E8 AI slice).
  *
- * `@marinoscar/platform-web/telemetry/ui` renders the Telemetry settings page, the
- * Explorer and the Dashboard. The pages are the platform's; what is this app's is
- * handed in here, once, as a module constant:
+ * `@marinoscar/platform-web/telemetry/ui` renders the Telemetry settings page, the Explorer and
+ * the Dashboard. The pages are the platform's; what is this app's is handed in here, once, as a
+ * module constant:
  *
  *   - `Spinner`: this app's `LoadingSpinner`.
- *   - `useAiEnabled` / `useAssistantModels`: the telemetry assistant's two app
- *     hooks. PLATFORM-ADOPTION-SHIM(E8): Vault has no platform AI slice yet, so AI
- *     reads as OFF and there are no models: the assistant is hidden (the API's
- *     assistant route answers 503 `AI_NOT_CONFIGURED` too). E8 replaces both with
- *     the platform AI hooks (`useAiConfig`, `useAiModels` from
- *     `@marinoscar/platform-web/ai/headless`) and deletes the marker.
+ *   - `useAiEnabled` / `useAssistantModels`: the telemetry assistant's two app hooks, over the
+ *     platform AI slice. "AI is on" is the platform's shell-wide answer (`GET /api/ai/config`,
+ *     mounted once by `VaultAiConfigProvider`) and the picker lists the platform's enabled
+ *     `ai_models` rows (`GET /api/admin/ai/models`, `ai_config:read`, which is why the package
+ *     calls `useAssistantModels` only for a viewer holding it).
  *
- * The hooks are called by the package on every render of its pages, so they are
- * module-level functions, never recreated.
+ * The hooks are called by the package on every render of its pages, so they are module-level
+ * functions, never recreated.
  */
 
+import { useMemo } from 'react';
+import { useAiConfig, useAiModels } from '@marinoscar/platform-web/ai/headless';
 import type {
   TelemetryAiEnabledState,
   TelemetryAssistantModelsState,
@@ -24,15 +26,31 @@ import type {
 } from '@marinoscar/platform-web/telemetry/headless';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 
-const AI_OFF: TelemetryAiEnabledState = { enabled: false, isLoading: false };
-const NO_MODELS: TelemetryAssistantModelsState = { models: [], isLoading: false, error: null };
+/** The id the catalogue gives a model that can call tools (the assistant needs it). */
+const TOOLS_CAPABILITY = 'tools';
+
+/** Enabled models only; the catalogue's page size cap is generous for a picker. */
+const ASSISTANT_MODEL_FILTER = { enabled: true, pageSize: 100 } as const;
 
 function useAiEnabled(): TelemetryAiEnabledState {
-  return AI_OFF;
+  const { config, isLoading } = useAiConfig();
+  return { enabled: config.enabled, isLoading };
 }
 
 function useAssistantModels(): TelemetryAssistantModelsState {
-  return NO_MODELS;
+  const { models, isLoading, error } = useAiModels(ASSISTANT_MODEL_FILTER);
+  const options = useMemo(
+    () =>
+      models.map((model) => ({
+        id: model.id,
+        provider: model.provider,
+        modelId: model.modelId,
+        label: model.displayName ?? model.modelId,
+        supportsToolCalling: model.capabilities?.capabilities.includes(TOOLS_CAPABILITY) ?? false,
+      })),
+    [models],
+  );
+  return { models: options, isLoading, error };
 }
 
 export const appTelemetryAdapters: TelemetryWebAdapters = {

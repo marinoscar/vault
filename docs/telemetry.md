@@ -26,23 +26,12 @@ Declared in `apps/api/src/common/otel/vault-metrics.ts`; the table name is the m
 |---|---|---|
 | `app.vault.secrets.created` | `type_kind` | `SecretsService.create` |
 | `app.vault.secret_versions.created` | `source` (`create`, `update`, `rollback`, `renew`) | `SecretsService` |
-| `app.vault.backups.runs` | `scope`, `trigger`, `outcome` | backups (wiring pending, see below) |
-| `app.vault.backups.duration` (s) | `scope`, `trigger`, `outcome` | backups (wiring pending) |
-| `app.vault.cards.extractions` | `outcome` | card extraction (wiring pending) |
+| `app.vault.backups.runs` | `scope`, `trigger`, `outcome` | `BackupRunnerService` (every settle point, after the run row commits) |
+| `app.vault.backups.duration` (s) | `scope`, `trigger`, `outcome` | `BackupRunnerService` |
+| `app.vault.cards.extractions` | `outcome` | `CardExtractService.extract` (one count per request) |
 
 The platform also emits its own `app.backup.*`, `app.jobs.*`, `app.auth.*` and `app.ai.*` metrics.
 
 ## Label rule (no PII)
 
 Every Vault attribute is an `enum` with a closed value list; a value outside the list is exported as `other`. No label ever carries a user id, email, organization id, secret id or name, secret-type name, file name, storage key or archive name. A custom secret type is the single value `custom`. `apps/api/test/telemetry/vault-metrics-labels.spec.ts` enforces it for every `app.vault.*` metric; add a metric there when you add one.
-
-## Pending emit calls
-
-`VaultMetricsService` (`apps/api/src/common/otel/vault-metrics.service.ts`) has the emitters; these call sites do not use them yet, because the files are being rewritten by concurrent work. Add each call AFTER the write commits, outside any `$transaction`, with enum arguments only:
-
-| Where | Call | When |
-|---|---|---|
-| backup run settlement (E5.2, the `vault.backup.run` and `vault.user_backup.run` handlers) | `backupFinished({ scope, trigger, outcome, durationMs })` | once per run, on success and on failure |
-| `ai/card-extract.service.ts` (E8) | `cardExtracted(outcome)` | once per request: `succeeded`, `failed`, `invalid_image`, `not_configured`, `rate_limited`, `quota_exceeded` or `upstream_error` |
-
-Inject it the way `SecretsService` does (`@Optional() @Inject(VaultMetricsService)`), or as a normal constructor dependency in a rewritten service (`VaultMetricsModule` is global).

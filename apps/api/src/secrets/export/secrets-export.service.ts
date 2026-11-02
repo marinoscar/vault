@@ -8,7 +8,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { defaultOrgClient } from '../../prisma/default-org';
 import { CryptoService } from '../../common/services/crypto.service';
 import { RequestUser } from '@marinoscar/platform-api/identity';
-import { STORAGE_PROVIDER, StorageProvider } from '../../storage/providers';
+import { STORAGE_PROVIDER, StorageProvider } from '@marinoscar/platform-api/storage';
 import { ExportSecretsOptions } from '../dto/export-secrets.dto';
 import {
   attachmentFileName,
@@ -502,7 +502,7 @@ export class SecretsExportService {
   ) {}
 
   /**
-   * PLATFORM-ADOPTION-SHIM(E6): reads that touch `storage_objects` (a
+   * PLATFORM-ADOPTION-SHIM(multi-org): reads that touch `storage_objects` (a
    * row-level-security table) run in the default organization's scope; the API
    * is an ordinary role.
    */

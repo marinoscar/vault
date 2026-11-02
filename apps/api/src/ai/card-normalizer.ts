@@ -16,7 +16,7 @@ import {
   RawCardConfidence,
   RawCardFields,
   RawExtraction,
-} from './providers/vision-provider.interface';
+} from './card-extraction.types';
 
 export interface NormalizedExtraction {
   fields: RawCardFields;
@@ -129,22 +129,6 @@ export function normalizeExpYear(value: string | null): string | null {
 }
 
 /**
- * Card security code reduced to digits, accepted only at a real length.
- *
- * A security code is 3 digits on most networks and 4 on American Express, so
- * anything else came from the model reading the wrong thing - the last group of
- * the account number, a "MEMBER SINCE" year, an expiry - and a wrong code is
- * worse than an empty box: it looks authoritative on the review screen and only
- * fails at a payment terminal months later. Rejecting the odd lengths sends the
- * user to the one place the value can be checked in a second, the card itself.
- */
-export function normalizeSecurityCode(value: string | null): string | null {
-  if (value === null) return null;
-  const digits = value.replace(/\D/g, '');
-  return digits.length === 3 || digits.length === 4 ? digits : null;
-}
-
-/**
  * Match a model answer against the shared constants, case-insensitively.
  *
  * Returns `Other` for anything unrecognised rather than null, because `Other`
@@ -241,28 +225,16 @@ export function normalizeExtractions(
     confidence.exp_year = 0;
   }
 
-  // Security codes: digits only, and only at a length a real code can have.
-  const rawCvv = fields.cvv;
-  fields.cvv = normalizeSecurityCode(rawCvv);
-  if (rawCvv !== null && fields.cvv === null) {
-    warnings.push(
-      'The security code could not be read reliably — type it from the card.',
-    );
-    confidence.cvv = 0;
-  }
-
-  const rawSecondCode = fields.security_code_2;
-  fields.security_code_2 = normalizeSecurityCode(rawSecondCode);
-  if (rawSecondCode !== null && fields.security_code_2 === null) {
-    confidence.security_code_2 = 0;
-  }
-
-  // A model that finds one code and reports it twice would otherwise leave the
-  // user with a phantom "second code" to reconcile against a card that has one.
-  if (fields.cvv !== null && fields.security_code_2 === fields.cvv) {
-    fields.security_code_2 = null;
-    confidence.security_code_2 = 0;
-  }
+  // Security codes are NEVER carried (issue #87, E8.1): the prompt does not ask
+  // for them, and anything a model returns under these names, or inside `notes`,
+  // is dropped here. The keys stay in the response (null, confidence 0) so the
+  // wire shape of the review form does not change; the user types the code.
+  fields.cvv = null;
+  confidence.cvv = 0;
+  fields.security_code_2 = null;
+  confidence.security_code_2 = 0;
+  fields.notes = scrubSecurityCodeLines(fields.notes);
+  if (fields.notes === null) confidence.notes = 0;
 
   // Select fields must land on a seeded option or /api/secrets will 400 on save.
   const network = matchOption(fields.card_network, CARD_NETWORKS);
@@ -303,6 +275,23 @@ export function normalizeExtractions(
   };
 
   return { fields, confidence, warnings: dedupe(warnings), crops, partial };
+}
+
+const SECURITY_CODE_LINE =
+  /\b(cvv2?|cvc2?|cid|csc|cvn|security\s*code|sec\.?\s*code|verification\s*(code|value)|card\s*code)\b/i;
+
+/**
+ * Drops every line of `notes` that names a security code. Defence in depth:
+ * the prompt already forbids a code in `notes`, and a model can still copy one.
+ */
+export function scrubSecurityCodeLines(notes: string | null): string | null {
+  if (notes === null) return null;
+  const kept = notes
+    .split(/\r?\n/)
+    .filter((line) => !SECURITY_CODE_LINE.test(line))
+    .join('\n')
+    .trim();
+  return kept.length === 0 ? null : kept;
 }
 
 function dedupe(values: string[]): string[] {

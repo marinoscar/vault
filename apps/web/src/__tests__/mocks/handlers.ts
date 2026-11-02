@@ -31,6 +31,8 @@ const mockSystemSettings = {
     allowUserThemeOverride: true,
   },
   features: {},
+  // The platform AI policy (E8.1) as far as Vault's UI reads it, plus Vault's extension.
+  ai: { enabled: true, keyPolicy: 'byok_with_org_fallback', cardExtractModel: 'gpt-4o-mini' },
   updatedAt: new Date().toISOString(),
   updatedBy: null,
   version: 1,
@@ -200,6 +202,14 @@ export const handlers = [
     });
   }),
 
+  // The platform AI config (E8.2): VaultAiConfigProvider, RequireAiEnabled and the
+  // packaged AI pages read it. Off by default; a test that needs it on overrides it.
+  http.get(`${API_BASE}/ai/config`, () => {
+    return HttpResponse.json({
+      data: { enabled: false, keyPolicy: 'byok_with_org_fallback', providers: [] },
+    });
+  }),
+
   // Health endpoints
   http.get(`${API_BASE}/health/live`, () => {
     return HttpResponse.json({
@@ -250,6 +260,22 @@ export const handlers = [
     return HttpResponse.json({
       data: { items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 },
     });
+  }),
+
+  // The platform notification centre (E7.2): an empty inbox by default, so every
+  // shell render has a quiet bell. Tests that need items override these.
+  http.get(`${API_BASE}/notifications/unread-count`, () => {
+    return HttpResponse.json({ data: { unreadCount: 0 } });
+  }),
+
+  http.get(`${API_BASE}/notifications`, () => {
+    return HttpResponse.json({
+      data: { items: [], total: 0, page: 1, pageSize: 20, totalPages: 0 },
+    });
+  }),
+
+  http.get(`${API_BASE}/notifications/config`, () => {
+    return HttpResponse.json({ data: { browserEnabled: true, pushEnabled: false, vapidPublicKey: null } });
   }),
 
   http.post(`${API_BASE}/auth/device/authorize`, async ({ request }) => {

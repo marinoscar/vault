@@ -1,6 +1,17 @@
 /**
- * The settings-card feature keys Vault's registries can name, beyond the
- * platform's `ai` and `telemetry` (`telemetry` is resolved below).
+ * The settings-card feature keys Vault's registries can name, and the
+ * resolvers that answer them.
+ *
+ * `ai` (E8.2, #88): the platform's key. Its resolver reads the shared answer of
+ * `GET /api/ai/config` that `VaultAiConfigProvider` (`platform/aiConfig.tsx`)
+ * mounts once around the signed-in tree, so the `AI models` and `AI usage`
+ * cards show only while an administrator has switched AI on. The `AI` card
+ * (where it is switched on) carries no `feature`, so it never hides.
+ *
+ * `telemetry` (E9.2, #90): the platform's key. A store is deployed AND collection is on,
+ * read from the one answer of `GET /api/telemetry/config` that `AppTelemetryConfigProvider`
+ * holds. The Explorer and Dashboard cards declare it; the Telemetry card does not (it is where
+ * collection is switched on).
  *
  * `orgs`: the packaged identity cards are typed with it
  * (`IdentitySettingsCard['feature']` is `'orgs' | undefined`), so spreading
@@ -12,6 +23,7 @@
 
 import { registerSettingsFeature } from '@marinoscar/platform-web/settings/headless';
 import { useTelemetryFeatures } from '@marinoscar/platform-web/telemetry/headless';
+import { useAiFeatures } from '@marinoscar/platform-web/ai/headless';
 
 declare module '@marinoscar/platform-web/settings/headless' {
   interface SettingsFeatureRegistry {
@@ -20,9 +32,6 @@ declare module '@marinoscar/platform-web/settings/headless' {
   }
 }
 
-// `telemetry` (E9.2, #90): a store is deployed AND collection is on, read from the one copy of
-// `GET /api/telemetry/config` that `AppTelemetryConfigProvider` holds (platform/TelemetryConfigBinding.tsx).
-// The Explorer and Dashboard cards declare it; the Telemetry card does not (it switches collection on).
+registerSettingsFeature('ai', () => useAiFeatures().ai);
+// `telemetry` (E9.2, #90): see the header; the provider is platform/TelemetryConfigBinding.tsx.
 registerSettingsFeature('telemetry', () => useTelemetryFeatures().telemetry);
-
-export {};

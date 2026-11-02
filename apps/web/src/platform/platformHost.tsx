@@ -12,7 +12,9 @@
  *     Built ONCE at module scope: packaged hooks key on its identity.
  *   - `viewer`: the signed-in user from the packaged `AuthProvider`;
  *     `hasPermission` is `usePermissions`'s, the predicate every route guard
- *     uses. Vault declares no deployment features yet (E8 adds `ai`).
+ *     uses. `isFeatureEnabled` answers the one deployment feature Vault
+ *     declares, `ai` (E8.2), from the AI config `VaultAiConfigProvider`
+ *     (`platform/aiConfig.tsx`) mounts above this host; anything else is off.
  *   - `applyTheme`: the shell's `setMode` (held by `ShellRoot` in `App.tsx`),
  *     so a packaged page that changes the theme changes Vault's.
  *
@@ -25,6 +27,7 @@ import { PlatformHostProvider, createPlatformApiClient } from '@marinoscar/platf
 import type { PlatformViewer, PlatformWebHost } from '@marinoscar/platform-web/core';
 import { useAuth, usePermissions } from '@marinoscar/platform-web/identity/headless';
 import { useOptionalShellTheme } from '@marinoscar/platform-web/shell/headless';
+import { useAiFeatures } from '@marinoscar/platform-web/ai/headless';
 import type { ShellThemeMode } from '@marinoscar/platform-web/shell/headless';
 
 import { api } from '../services/api';
@@ -32,16 +35,13 @@ import { api } from '../services/api';
 /** The packaged `PlatformApiClient` over Vault's client. A module constant. */
 export const vaultPlatformApi = createPlatformApiClient(api);
 
-/** No deployment feature is declared to the platform yet. */
-function noFeature(): boolean {
-  return false;
-}
-
 /** Vault's {@link PlatformWebHost}, memoised. Runs inside the auth provider. */
 export function useVaultPlatformHost(): PlatformWebHost {
   const { user, refreshUser } = useAuth();
   const { hasPermission } = usePermissions();
   const setMode = useOptionalShellTheme()?.setMode;
+  const aiEnabled = useAiFeatures().ai;
+  const isFeatureEnabled = useCallback((feature: string) => feature === 'ai' && aiEnabled, [aiEnabled]);
 
   const applyTheme = useCallback(
     (theme: string) => {
@@ -54,8 +54,8 @@ export function useVaultPlatformHost(): PlatformWebHost {
   const email = user?.email ?? null;
 
   const viewer = useMemo<PlatformViewer>(
-    () => ({ userId, email, hasPermission, isFeatureEnabled: noFeature, refresh: refreshUser }),
-    [userId, email, hasPermission, refreshUser],
+    () => ({ userId, email, hasPermission, isFeatureEnabled, refresh: refreshUser }),
+    [userId, email, hasPermission, isFeatureEnabled, refreshUser],
   );
 
   return useMemo<PlatformWebHost>(

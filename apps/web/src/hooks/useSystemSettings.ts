@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { api, ApiError, patchSystemSettingsAi } from '../services/api';
-import { SystemSettings, AiSettingsUpdate } from '../types';
+import { api, ApiError, patchCardExtractModel } from '../services/api';
+import type { SystemSettings } from '../types';
 
 const CONFLICT_MESSAGE =
   'Settings were updated elsewhere. Please review and try again.';
@@ -12,11 +12,10 @@ interface UseSystemSettingsReturn {
   isSaving: boolean;
   updateSettings: (updates: Partial<SystemSettings>) => Promise<void>;
   /**
-   * Update the AI block. Pass only the fields being changed - in particular,
-   * omit `apiKey` unless the admin explicitly set or cleared the credential.
-   * See `patchSystemSettingsAi` for the three-state contract.
+   * Set `ai.cardExtractModel`, the model card scanning runs on (E8.2). The rest
+   * of the `ai` namespace is the platform's AI page's (`/api/admin/ai/*`).
    */
-  updateAiSettings: (updates: AiSettingsUpdate) => Promise<void>;
+  updateCardExtractModel: (model: string) => Promise<void>;
   replaceSettings: (settings: Omit<SystemSettings, 'updatedAt' | 'updatedBy' | 'version'>) => Promise<void>;
   refresh: () => Promise<void>;
 }
@@ -79,15 +78,15 @@ export function useSystemSettings(): UseSystemSettingsReturn {
     [settings, fetchSettings],
   );
 
-  const updateAiSettings = useCallback(
-    async (updates: AiSettingsUpdate) => {
+  const updateCardExtractModel = useCallback(
+    async (model: string) => {
       if (!settings) return;
 
       try {
         setIsSaving(true);
         setError(null);
 
-        const data = await patchSystemSettingsAi(updates, settings.version);
+        const data = await patchCardExtractModel(model, settings.version);
 
         setSettings(data);
       } catch (err) {
@@ -130,7 +129,7 @@ export function useSystemSettings(): UseSystemSettingsReturn {
     error,
     isSaving,
     updateSettings,
-    updateAiSettings,
+    updateCardExtractModel,
     replaceSettings,
     refresh: fetchSettings,
   };

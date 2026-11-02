@@ -31,9 +31,14 @@ import { telemetryAdminCards } from '@marinoscar/platform-web/telemetry/ui';
 import './settingsFeatures';
 import TuneIcon from '@mui/icons-material/TuneOutlined';
 import AiIcon from '@mui/icons-material/AutoAwesomeOutlined';
+import ModelsIcon from '@mui/icons-material/ModelTrainingOutlined';
+import UsageIcon from '@mui/icons-material/QueryStatsOutlined';
 import BackupIcon from '@mui/icons-material/BackupOutlined';
 import MaintenanceIcon from '@mui/icons-material/ConstructionOutlined';
 import AboutIcon from '@mui/icons-material/InfoOutlined';
+import EmailIcon from '@mui/icons-material/EmailOutlined';
+import PushIcon from '@mui/icons-material/NotificationsActiveOutlined';
+import BroadcastIcon from '@mui/icons-material/CampaignOutlined';
 
 /** The Console hub's title: the hub's heading and the compact AppBar's fallback. */
 export const ADMIN_HUB_TITLE = 'Console';
@@ -62,12 +67,15 @@ export const ADMIN_SECTIONS: SettingsSectionDef[] = [
       ...identityAdminSections.access,
       {
         title: 'AI',
-        description: 'Switch card scanning on, the OpenAI key, model and daily budget.',
+        description: 'Switch AI on, the OpenAI key, limits, and the model card scanning runs on.',
         Icon: AiIcon,
         path: '/admin/settings/ai',
-        // system-settings.controller.ts (the `ai` namespace); verify (ai-verify.controller.ts)
-        // and saving need system_settings:write. The card that SWITCHES AI ON: no `feature`.
-        permission: 'system_settings:read',
+        // E8.2 (#88): the packaged AiConfigPage. `ai_config:read` is the string the
+        // platform's ai-admin.controller enforces on `GET /api/admin/ai/config`
+        // (`ai_config:write` on every write, gated inside the page). Vault's
+        // `Card scanning model` section on the page saves through system settings
+        // (system_settings:write). The card that SWITCHES AI ON: no `feature`.
+        permission: 'ai_config:read',
       },
       {
         title: 'Backups',
@@ -77,6 +85,30 @@ export const ADMIN_SECTIONS: SettingsSectionDef[] = [
         // backups.controller.ts `GET /api/admin/backups/schedule` and the run list;
         // run, export, delete and save need system_settings:write.
         permission: 'system_settings:read',
+      },
+      {
+        // E8.2 (#88), APPENDED last in Administration. The packaged AiModelsPage,
+        // beneath the AI route at the path the platform's pages link to.
+        // `ai_config:read` is what ai-admin.controller enforces on
+        // `GET /api/admin/ai/models` (enabling a model, refreshing the catalogue and
+        // editing its limits need ai_config:write, gated inside the page).
+        // `feature: 'ai'`: hidden while AI is off (the AI card switches it on).
+        title: 'AI models',
+        description: 'The model catalogue: what each model can do, which ones may be used, and their limits.',
+        Icon: ModelsIcon,
+        path: '/admin/settings/ai/models',
+        permission: 'ai_config:read',
+        feature: 'ai',
+      },
+      {
+        // E8.2 (#88). The packaged AiUsagePage; `ai_config:read` is what
+        // ai-usage-admin.controller enforces on `GET /api/admin/ai/usage`.
+        title: 'AI usage',
+        description: 'Calls and tokens across the deployment, by user, model, provider or feature (card scanning).',
+        Icon: UsageIcon,
+        path: '/admin/settings/ai/usage',
+        permission: 'ai_config:read',
+        feature: 'ai',
       },
     ],
   },
@@ -106,6 +138,43 @@ export const ADMIN_SECTIONS: SettingsSectionDef[] = [
         // The platform about controller `GET /api/admin/about` (default permission
         // system_settings:read; deliberately no `about:read`).
         permission: 'system_settings:read',
+      },
+    ],
+  },
+  {
+    // E7.2: the platform email and notifications slices (API mounted in E7.1,
+    // #85). APPENDED as a section of its own, after Operations. Each page is
+    // the packaged one; writes are gated inside it.
+    label: 'Messaging',
+    cards: [
+      {
+        title: 'Email',
+        description: 'How Vault sends email (SMTP or SES), and a test message to prove it works.',
+        Icon: EmailIcon,
+        path: '/admin/settings/email',
+        // The platform email-settings.controller `GET /api/email-settings`
+        // (SETTINGS_PERMISSIONS.SYSTEM_SETTINGS_READ); saving and test-sending need system_settings:write.
+        permission: 'system_settings:read',
+      },
+      {
+        title: 'Web Push',
+        description: 'Generate, enable or rotate the VAPID key pair that lets Vault send browser push notifications.',
+        Icon: PushIcon,
+        path: '/admin/settings/push',
+        // The platform push-config.controller `GET /api/admin/push-config` (`push:read`, a
+        // pair of its own: rotating the keys silences every subscriber); changes need push:write.
+        permission: 'push:read',
+      },
+      {
+        title: 'Broadcasts',
+        description: 'Write an announcement and send it to every active user now or later, then watch it go out.',
+        Icon: BroadcastIcon,
+        path: '/admin/settings/broadcasts',
+        // The platform broadcasts.controller `GET /api/admin/broadcasts` admits
+        // `broadcasts:read` OR `org_broadcasts:read`; Vault runs one organization and only
+        // `admin` holds either, so the card and route name the system string. Composing,
+        // cancelling and test-sending need broadcasts:write.
+        permission: 'broadcasts:read',
       },
     ],
   },

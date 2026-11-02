@@ -7,8 +7,8 @@ import {
 import { Prisma } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
-import { defaultOrgClient } from '../prisma/default-org';
-import { ObjectsService } from '../storage/objects/objects.service';
+import { defaultOrgClient, getDefaultOrgId } from '../prisma/default-org';
+import { ObjectsService } from '@marinoscar/platform-api/storage';
 import { PERMISSIONS } from '../common/constants/roles.constants';
 
 import { CreateFolderDto } from './dto/create-folder.dto';
@@ -78,9 +78,12 @@ export class MediaService {
   }
 
   /**
-   * PLATFORM-ADOPTION-SHIM(E6): `storage_objects` / `storage_object_chunks` are
-   * row-level-security tables and the API is an ordinary role, so every access
-   * runs in the default organization's transaction-local scope.
+   * `storage_objects` / `storage_object_chunks` are row-level-security tables and
+   * the API is an ordinary role, so a read of them (and of media_folder_files'
+   * join) runs in the default organization's transaction-local scope. Vault is a
+   * `single`-tenancy app, so that organization is the principal's; the platform's
+   * ObjectsService calls below receive the same id. See
+   * docs/platform-adoption/local-exceptions.md ("Domain reads of storage_objects").
    */
   private get orgDb() {
     return defaultOrgClient(this.prisma);
@@ -227,7 +230,7 @@ export class MediaService {
     // Delete each storage object (S3 + DB) via ObjectsService
     for (const file of files) {
       try {
-        await this.objectsService.delete(file.id, userId);
+        await this.objectsService.delete(file.id, userId, await getDefaultOrgId(this.prisma));
       } catch (err) {
         // Log but continue — we want to clean up as many files as possible
         this.logger.warn(
@@ -392,7 +395,7 @@ export class MediaService {
 
     this.logger.log(`Deleting file ${fileId} from folder ${folderId}`);
 
-    await this.objectsService.delete(fileId, userId);
+    await this.objectsService.delete(fileId, userId, await getDefaultOrgId(this.prisma));
 
     this.logger.log(`File deleted: ${fileId}`);
   }
@@ -419,7 +422,7 @@ export class MediaService {
       throw new NotFoundException('File not found in this folder');
     }
 
-    return this.objectsService.getDownloadUrl(fileId, userId);
+    return this.objectsService.getDownloadUrl(fileId, userId, await getDefaultOrgId(this.prisma));
   }
 
   async linkFileToFolder(

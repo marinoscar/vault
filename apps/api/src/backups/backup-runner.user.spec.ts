@@ -2,19 +2,17 @@ import { defaultOrgMock } from '../../test/mocks/default-org.mock';
 import { Readable } from 'stream';
 import { inspect } from 'util';
 
-import { ConflictException, Logger } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { FileEntry, Uint8ArrayReader, Uint8ArrayWriter, ZipReader } from '@zip.js/zip.js';
 
 import { CryptoService } from '../common/services/crypto.service';
 import { SecretsExportService } from '../secrets/export/secrets-export.service';
 import {
-  BACKUP_RUN_LOCK_KEY,
   BACKUPS_USER_RUN_COMPLETED_AUDIT_ACTION,
   BackupRunnerService,
   USER_BACKUP_KEEP_COUNT,
-  USER_BACKUP_LOCK_NAMESPACE,
-  USER_RUN_ALREADY_RUNNING_MESSAGE,
 } from './backup-runner.service';
+import { BackupArchiveService } from './backup-archive.service';
 import type { BackupRunRow } from './dto/backup-responses';
 
 const PASSWORD = 'User-Only-Pass-77';
@@ -37,7 +35,7 @@ beforeEach(() => {
 });
 afterEach(() => jest.restoreAllMocks());
 
-function setup(opts: { runs?: Array<Record<string, unknown>>; running?: number } = {}) {
+function setup(opts: { runs?: Array<Record<string, unknown>> } = {}) {
   const uploads: Record<string, Buffer> = {};
   const enc = crypto.encrypt(JSON.stringify({ user: 'alpha-login' }));
   const prisma = {
@@ -47,7 +45,6 @@ function setup(opts: { runs?: Array<Record<string, unknown>>; running?: number }
       update: jest.fn().mockResolvedValue({}),
       updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       findMany: jest.fn(async (_args: { where: unknown }) => opts.runs ?? []),
-      count: jest.fn(async (_args: { where: unknown }) => opts.running ?? 0),
       create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => ({ id: 'run-u1', ...data })),
     },
     secret: {
@@ -67,10 +64,7 @@ function setup(opts: { runs?: Array<Record<string, unknown>>; running?: number }
       ]),
     },
     auditEvent: { create: jest.fn().mockResolvedValue({}) },
-    $queryRaw: jest.fn().mockResolvedValue([{ locked: 1 }]),
-    $transaction: jest.fn(),
   };
-  prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => fn(prisma));
   const storage = {
     getBucket: jest.fn(() => 'bucket'),
     exists: jest.fn(async () => true),
@@ -84,7 +78,8 @@ function setup(opts: { runs?: Array<Record<string, unknown>>; running?: number }
     delete: jest.fn().mockResolvedValue(undefined),
   };
   const exportService = new SecretsExportService(prisma as never, crypto, storage as never);
-  const runner = new BackupRunnerService(prisma as never, crypto, storage as never, exportService, {} as never, {} as never);
+  const archive = new BackupArchiveService(prisma as never, storage as never, exportService, {} as never, {} as never);
+  const runner = new BackupRunnerService(prisma as never, crypto, storage as never, archive, exportService);
   return { runner, prisma, storage, uploads };
 }
 
@@ -109,48 +104,6 @@ const userRun = (): BackupRunRow =>
   }) as BackupRunRow;
 
 describe('BackupRunnerService user-saved runs', () => {
-  it('startUserRun: per-user two-key lock, counts only that user, stores scope, owner and key', async () => {
-    jest.useFakeTimers({ now: NOW, doNotFake: ['setInterval', 'clearInterval', 'setImmediate', 'nextTick', 'queueMicrotask'] });
-    try {
-      const { runner, prisma } = setup();
-      const run = await runner.startUserRun(OWNER.id, SELECTION);
-
-      const sql = (prisma.$queryRaw.mock.calls[0][0] as string[]).join('?');
-      expect(sql).toContain('pg_advisory_xact_lock(?::int, hashtext(?::text))');
-      expect(prisma.$queryRaw.mock.calls[0].slice(1)).toEqual([USER_BACKUP_LOCK_NAMESPACE, OWNER.id]);
-      expect(prisma.$queryRaw.mock.calls[0].slice(1)).not.toContain(BACKUP_RUN_LOCK_KEY);
-      expect(prisma.backupRun.count.mock.calls[0][0].where).toEqual({
-        status: 'running',
-        scope: 'user',
-        ownerId: OWNER.id,
-      });
-      expect(prisma.backupRun.create.mock.calls[0][0].data).toMatchObject({
-        scope: 'user',
-        ownerId: OWNER.id,
-        triggeredById: OWNER.id,
-        storageKey: KEY,
-        contents: ['secrets', 'attachments'],
-      });
-      expect(run.storageKey).toBe(KEY);
-    } finally {
-      jest.useRealTimers();
-    }
-  });
-
-  it('startUserRun: 409 when that user already has one running', async () => {
-    const { runner } = setup({ running: 1 });
-    const error = await runner.startUserRun(OWNER.id, SELECTION).catch((e) => e);
-    expect(error).toBeInstanceOf(ConflictException);
-    expect(error.getResponse().message).toBe(USER_RUN_ALREADY_RUNNING_MESSAGE);
-  });
-
-  it('startRun (system) only counts and creates system runs', async () => {
-    const { runner, prisma } = setup();
-    await runner.startRun('manual', 'admin-1');
-    expect(prisma.backupRun.count.mock.calls[0][0].where).toEqual({ status: 'running', scope: 'system' });
-    expect(prisma.backupRun.create.mock.calls[0][0].data.scope).toBe('system');
-  });
-
   it('writes the user zip to the user key, readable with the password', async () => {
     const { runner, prisma, uploads } = setup();
     await runner.executeUserRun(userRun(), OWNER, SELECTION, PASSWORD);
@@ -172,7 +125,7 @@ describe('BackupRunnerService user-saved runs', () => {
 
   it('never persists, logs or audits the password', async () => {
     const { runner, prisma, uploads } = setup();
-    const run = await runner.startUserRun(OWNER.id, SELECTION);
+    const run = userRun();
     await runner.executeUserRun(run, OWNER, SELECTION, PASSWORD);
 
     const writes = JSON.stringify(
@@ -231,11 +184,5 @@ describe('BackupRunnerService user-saved runs', () => {
     prisma.backupSchedule.findUnique.mockResolvedValue({ keepCount: 7 });
     await runner.applyRetention('x');
     expect(prisma.backupRun.findMany.mock.calls[0][0].where).toMatchObject({ scope: 'system' });
-  });
-
-  it('the stale sweep is not limited to a scope', async () => {
-    const { runner, prisma } = setup();
-    await runner.failStaleRuns(NOW);
-    expect(prisma.backupRun.updateMany.mock.calls[0][0].where).not.toHaveProperty('scope');
   });
 });

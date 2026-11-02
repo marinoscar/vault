@@ -81,9 +81,10 @@ describe('system section mappers', () => {
       features: { a: true },
       ai: {
         enabled: false,
-        provider: 'openai',
-        model: 'm',
-        maxCallsPerUserPerDay: 5,
+        keyPolicy: 'byok_with_org_fallback',
+        providers: { openai: { enabled: true, baseUrl: 'https://proxy.example.test' } },
+        cardExtractModel: 'm',
+        limits: { perUser: { requestsPerDay: 5 } },
         apiKeyConfigured: true,
         apiKeyLast4: 'ABCD',
         apiKeyUpdatedAt: '2026-01-01T00:00:00.000Z',
@@ -96,13 +97,21 @@ describe('system section mappers', () => {
     expect(settings).toEqual({
       ui: { allowUserThemeOverride: false },
       features: { a: true },
-      ai: { enabled: false, provider: 'openai', model: 'm', maxCallsPerUserPerDay: 5, apiKeyConfigured: true },
+      ai: {
+        enabled: false,
+        keyPolicy: 'byok_with_org_fallback',
+        cardExtractModel: 'm',
+        providers: { openai: true },
+        perUserRequestsPerMinute: null,
+        perUserRequestsPerDay: 5,
+        apiKeyConfigured: true,
+      },
       updatedAt: T.toISOString(),
       updatedBy: 'admin@example.test',
       version: 2,
     });
     const json = JSON.stringify(settings);
-    for (const leaked of ['ABCD', 'CIPHER', 'IV', 'TAG', 'apiKeyLast4', 'apiKeyUpdatedAt']) {
+    for (const leaked of ['ABCD', 'CIPHER', 'IV', 'TAG', 'apiKeyLast4', 'apiKeyUpdatedAt', 'proxy.example.test']) {
       expect(json).not.toContain(leaked);
     }
   });

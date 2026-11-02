@@ -77,16 +77,13 @@ export default () => {
     token: (process.env.STACK_AGENT_TOKEN || '').trim(),
   },
 
-  // Storage Configuration
+  // Storage limits. WHERE objects go (provider, bucket, region, endpoint, keys) is
+  // NOT configuration here: it is the platform `storage` system setting and the
+  // encrypted `storage/default` credential, edited at /admin/settings/storage
+  // (E6.1; the legacy STORAGE_PROVIDER / S3_* / AWS_* variables are imported once,
+  // docs/runbooks/storage-config-migration.md). What is read below bounds this
+  // deployment's uploads and signed URLs.
   storage: {
-    provider: process.env.STORAGE_PROVIDER || 's3',
-    s3: {
-      bucket: process.env.S3_BUCKET || '',
-      region: process.env.S3_REGION || 'us-east-1',
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
-      endpoint: process.env.S3_ENDPOINT || undefined,
-    },
     maxFileSize: parseInt(process.env.MAX_FILE_SIZE || '10737418240', 10), // 10GB default
     allowedMimeTypes: (
       process.env.ALLOWED_MIME_TYPES || 'image/*,application/pdf,video/*'

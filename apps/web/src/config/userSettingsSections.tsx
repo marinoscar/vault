@@ -17,6 +17,9 @@ import PersonIcon from '@mui/icons-material/PersonOutlined';
 import PaletteIcon from '@mui/icons-material/PaletteOutlined';
 import BackupIcon from '@mui/icons-material/BackupOutlined';
 import CategoryIcon from '@mui/icons-material/CategoryOutlined';
+import NotificationsIcon from '@mui/icons-material/NotificationsOutlined';
+// The feature resolvers (`ai`), registered before any hub reads them.
+import './settingsFeatures';
 
 /** The per-user hub's title. */
 export const USER_HUB_TITLE = 'Settings';
@@ -69,6 +72,24 @@ export const USER_SETTINGS_SECTIONS: SettingsSectionDef[] = [
         // secret-types.controller.ts `GET /api/secret-types`; create/edit need
         // secret_types:write, delete secret_types:delete.
         permission: 'secret_types:read',
+      },
+    ],
+  },
+  {
+    // E7.2: APPENDED as a section of its own. The packaged
+    // `UserNotificationsPage` (@marinoscar/platform-web/notifications/ui).
+    label: 'Notifications',
+    cards: [
+      {
+        title: 'Notifications',
+        description: 'Choose which events notify you, and whether by email or in your browser.',
+        Icon: NotificationsIcon,
+        path: '/settings/notifications',
+        // The page reads and saves the caller's `notifications` preferences in
+        // user-settings.controller.ts (`GET /api/user-settings`, user_settings:read; saving
+        // needs user_settings:write), like Profile and Appearance. The event and channel
+        // registries it draws (`GET /api/notifications/events|channels`) are bare `@Auth()`.
+        permission: 'user_settings:read',
       },
     ],
   },

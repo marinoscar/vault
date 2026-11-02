@@ -3,7 +3,7 @@ import { SecretsController } from './secrets.controller';
 import { SecretsService } from './secrets.service';
 import { SecretsExportService } from './export/secrets-export.service';
 import { CommonModule } from '../common/common.module';
-import { StorageProvidersModule } from '../storage/providers';
+import { StorageProvidersModule } from '@marinoscar/platform-api/storage';
 
 @Module({
   // StorageProvidersModule (not StorageModule): the service needs the raw

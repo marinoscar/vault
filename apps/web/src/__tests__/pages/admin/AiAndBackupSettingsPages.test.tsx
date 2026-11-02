@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen } from '@testing-library/react';
+import type { ComponentType } from 'react';
 import { render, mockAdminUser, mockUser } from '../../utils/test-utils';
 import AiSettingsPage from '../../../pages/admin/AiSettingsPage';
 import BackupSettingsPage from '../../../pages/admin/BackupSettingsPage';
@@ -9,37 +10,34 @@ import BackupSettingsPage from '../../../pages/admin/BackupSettingsPage';
 vi.mock('../../../components/admin/ScheduledBackups', () => ({
   ScheduledBackups: () => <div data-testid="scheduled-backups">Scheduled backups panel</div>,
 }));
-vi.mock('../../../components/settings/AiSettings', () => ({
-  AiSettings: ({ disabled }: { disabled?: boolean }) => (
-    <div data-testid="ai-settings" data-disabled={String(Boolean(disabled))}>
-      AI panel
-    </div>
-  ),
+// The packaged AiConfigPage is the platform's (its own tests cover it); here it is
+// a stub that proves Vault hands it the card-scanning-model section as a slot.
+vi.mock('@marinoscar/platform-web/ai/ui/config-page', () => ({
+  default: ({ slots }: { slots?: { AfterContent?: () => unknown } }) => {
+    const After = slots?.AfterContent as ComponentType | undefined;
+    return (
+      <div data-testid="packaged-ai-config-page">
+        <h1>AI</h1>
+        {After ? <After /> : null}
+      </div>
+    );
+  },
+}));
+vi.mock('../../../components/settings/CardScanModelSection', () => ({
+  CardScanModelSection: () => <div data-testid="card-scan-model-section" />,
 }));
 
 const readOnlyAdmin = { ...mockAdminUser, permissions: ['system_settings:read'] };
 
-describe('AI card page (/admin/settings/ai, was the AI tab)', () => {
+describe('AI card page (/admin/settings/ai, the packaged AiConfigPage, E8.2)', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('renders the AI panel, writable for system_settings:write', () => {
+  it('renders the packaged AI page with Vault\'s card scanning model section in its AfterContent slot', () => {
     render(<AiSettingsPage />, { wrapperOptions: { user: mockAdminUser } });
 
+    expect(screen.getByTestId('packaged-ai-config-page')).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 1, name: 'AI' })).toBeInTheDocument();
-    expect(screen.getByTestId('ai-settings')).toHaveAttribute('data-disabled', 'false');
-  });
-
-  it('disables the panel for a read-only admin and says so', () => {
-    render(<AiSettingsPage />, { wrapperOptions: { user: readOnlyAdmin } });
-
-    expect(screen.getByTestId('ai-settings')).toHaveAttribute('data-disabled', 'true');
-    expect(screen.getByText(/read-only/i)).toBeInTheDocument();
-  });
-
-  it('redirects without system_settings:read', () => {
-    render(<AiSettingsPage />, { wrapperOptions: { user: mockUser } });
-
-    expect(screen.queryByTestId('ai-settings')).not.toBeInTheDocument();
+    expect(screen.getByTestId('card-scan-model-section')).toBeInTheDocument();
   });
 });
 

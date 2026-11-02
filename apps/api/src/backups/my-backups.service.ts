@@ -9,14 +9,12 @@ import {
 } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
-import { STORAGE_PROVIDER, StorageProvider } from '../storage/providers';
+import { STORAGE_PROVIDER, StorageProvider } from '@marinoscar/platform-api/storage';
 import { ExportSecretsOptions } from '../secrets/dto/export-secrets.dto';
 import { selectedContentKeys } from '../secrets/export/backup-contents';
-import {
-  BackupRunnerService,
-  USER_BACKUP_KEEP_COUNT,
-  USER_SCOPE,
-} from './backup-runner.service';
+import { USER_BACKUP_KEEP_COUNT, USER_SCOPE } from './backup-runner.service';
+import { BackupArchiveService } from './backup-archive.service';
+import { BackupQueueService } from './backup-queue.service';
 import { BACKUP_DOWNLOAD_URL_TTL_SECONDS } from './backups.service';
 import {
   BACKUP_RUN_INCLUDE,
@@ -24,6 +22,7 @@ import {
   BackupRunListResponse,
   BackupRunResponse,
   BackupRunRow,
+  effectiveRunStatus,
   toBackupRunResponse,
 } from './dto/backup-responses';
 import { BackupRunListQuery } from './dto/backup-run-list-query.dto';
@@ -50,8 +49,9 @@ export interface MyBackupsConfigResponse {
  * sees, downloads or deletes their own saved backups, whatever permissions
  * they hold, and another user's run answers 404 exactly like an unknown id.
  *
- * The backup password is used only while the run builds the zip: it is
- * passed to the runner in memory and is never stored, logged or audited.
+ * The backup password is used only while the run builds the zip: it travels in the job
+ * payload as `CryptoService` ciphertext (removed when the run settles) and is never
+ * logged or audited.
  */
 @Injectable()
 export class MyBackupsService {
@@ -61,16 +61,17 @@ export class MyBackupsService {
     private readonly prisma: PrismaService,
     @Inject(STORAGE_PROVIDER)
     private readonly storageProvider: StorageProvider,
-    private readonly runner: BackupRunnerService,
+    private readonly archive: BackupArchiveService,
+    private readonly queue: BackupQueueService,
   ) {}
 
   getConfig(): MyBackupsConfigResponse {
-    return { storageConfigured: this.runner.isStorageConfigured(), keepCount: USER_BACKUP_KEEP_COUNT };
+    return { storageConfigured: this.archive.isStorageConfigured(), keepCount: USER_BACKUP_KEEP_COUNT };
   }
 
   /**
-   * Start saving a backup of the caller's data to storage. 202 with the
-   * `running` row; the work continues in the background.
+   * Queue saving a backup of the caller's data to storage. 202 with the
+   * `running` row; a worker runs the `vault.user_backup.run` job.
    *
    * @throws BadRequestException when storage is not configured.
    * @throws ConflictException when the caller already has a run in progress.
@@ -79,19 +80,18 @@ export class MyBackupsService {
     user: { id: string; email: string },
     options: ExportSecretsOptions,
   ): Promise<BackupRunResponse> {
-    if (!this.runner.isStorageConfigured()) {
+    if (!this.archive.isStorageConfigured()) {
       throw new BadRequestException({ message: USER_STORAGE_NOT_CONFIGURED_MESSAGE });
     }
 
     const { password, ...selection } = options;
-    const run = await this.runner.startUserRun(user.id, selection);
+    const run = await this.queue.queueUserRun(user.id, selection, password);
 
     await this.audit(user.id, MY_BACKUPS_AUDIT_ACTIONS.run, run.id, {
       runId: run.id,
       contents: selectedContentKeys(selection),
     });
 
-    this.runner.launchUserRun(run, { id: user.id, email: user.email }, selection, password);
     return toBackupRunResponse(run);
   }
 
@@ -129,7 +129,8 @@ export class MyBackupsService {
     const url = await this.storageProvider.getSignedDownloadUrl(run.storageKey, {
       expiresIn: BACKUP_DOWNLOAD_URL_TTL_SECONDS,
       responseContentDisposition: `attachment; filename="${fileName}"`,
-      responseContentType: 'application/zip',
+      // No response-content-type override (the platform's SignedUrlOptions has none):
+      // the archive is uploaded with Content-Type application/zip, which the response carries.
     });
 
     await this.audit(userId, MY_BACKUPS_AUDIT_ACTIONS.download, run.id, { runId: run.id });
@@ -147,7 +148,7 @@ export class MyBackupsService {
     if (!run) {
       throw new NotFoundException({ message: 'Backup not found' });
     }
-    if (run.status === 'running') {
+    if (effectiveRunStatus(run) === 'running') {
       throw new ConflictException({ message: 'A running backup cannot be deleted' });
     }
     if (run.deletedAt) {
@@ -171,6 +172,7 @@ export class MyBackupsService {
   private findOwnRun(id: string, userId: string) {
     return this.prisma.backupRun.findFirst({
       where: { id, scope: USER_SCOPE, ownerId: userId },
+      include: { job: BACKUP_RUN_INCLUDE.job },
     });
   }
 

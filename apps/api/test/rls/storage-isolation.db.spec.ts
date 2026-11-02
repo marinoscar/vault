@@ -15,8 +15,10 @@
 //     show nothing and refuse an insert;
 //   - inside `runInOrg`, an org sees exactly its own rows and cannot write
 //     another org's;
-//   - Vault's own code paths (ObjectsService, the attachment reads, the
-//     FOR UPDATE unlink transaction) work through `runInDefaultOrg`.
+//   - Vault's own domain code paths (the attachment reads, the FOR UPDATE unlink
+//     transaction) work through `runInDefaultOrg`. The storage slice's own
+//     ObjectsService is the platform's and is exercised end to end, as this role,
+//     by test/storage/storage-adoption.db.spec.ts.
 //
 // Like every `*.db.spec.ts` it is excluded from `npm test` and runs through
 // `npm run test:db`; it skips when no Postgres, or no superuser to bootstrap
@@ -29,7 +31,6 @@ import type { PrismaClient } from '@prisma/client';
 
 import { defaultOrgClient, getDefaultOrgId, runInDefaultOrg } from '../../src/prisma/default-org';
 import { runInOrg } from '@marinoscar/platform-api/core';
-import { ObjectsService } from '../../src/storage/objects/objects.service';
 import {
   findAdminCredentials,
   provisionAppRoleDatabase,
@@ -246,29 +247,6 @@ describeWithDb('tenant isolation as the application role (real Postgres)', () =>
       const viaClient = await defaultOrgClient(prisma).storageObject.count();
       expect(viaRun).toBe(defaultObjects.length);
       expect(viaClient).toBe(defaultObjects.length);
-    });
-
-    it('ObjectsService creates and reads an upload under RLS', async () => {
-      const user = await prisma.user.create({ data: { email: `rls-${randomUUID()}@example.test` } });
-      const provider = {
-        initMultipartUpload: jest.fn().mockResolvedValue({ uploadId: 'upload-1' }),
-        getBucket: jest.fn().mockReturnValue('bucket'),
-        getSignedUploadUrl: jest.fn().mockResolvedValue('https://upload.example.test/part'),
-      };
-      const config = { get: jest.fn((_key: string, fallback: unknown) => fallback) };
-      const service = new ObjectsService(prisma as never, provider as never, config as never, { emit: jest.fn() } as never);
-
-      const init = await service.initUpload(
-        { name: 'scan.pdf', size: 12 * 1024 * 1024, mimeType: 'application/pdf' } as never,
-        user.id,
-      );
-
-      const status = await service.getUploadStatus(init.objectId, user.id);
-      expect(status.objectId).toBe(init.objectId);
-      // The row belongs to the default org: invisible unscoped, visible scoped.
-      expect(await prisma.storageObject.findUnique({ where: { id: init.objectId } })).toBeNull();
-      const row = await runInDefaultOrg(prisma, (tx) => tx.storageObject.findUnique({ where: { id: init.objectId } }));
-      expect(row?.orgId).toBe(defaultOrg);
     });
 
     describe('attachments joined through storage_objects', () => {

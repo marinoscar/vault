@@ -11,6 +11,12 @@ import {
 } from '@marinoscar/platform-web/telemetry/headless';
 import { IdentityProviders } from './identity/IdentityProviders';
 import { VaultPlatformHostProvider } from './platform/platformHost';
+// The platform AI slice (E8.2, #88): the AI config every `feature: 'ai'` card and
+// `RequireAiEnabled` read, and the adapters (Vault's spinner) the AI pages take.
+import { AiWebAdaptersProvider } from '@marinoscar/platform-web/ai/headless';
+import { RequireAiEnabled } from '@marinoscar/platform-web/ai/ui/require-ai-enabled';
+import { VaultAiConfigProvider } from './platform/aiConfig';
+import { vaultAiAdapters } from './platform/aiAdapters';
 import { shellPreferencesPort } from './platform/shellPreferences';
 import { appTelemetryAdapters } from './platform/telemetryAdapters';
 import { AppTelemetryConfigProvider } from './platform/TelemetryConfigBinding';
@@ -47,7 +53,11 @@ const AppearanceSettingsPage = lazy(() => import('./pages/settings/AppearanceSet
 const MyBackupsPage = lazy(() => import('./pages/settings/MyBackupsPage'));
 const AdminSettingsHubPage = lazy(() => import('./pages/admin/AdminSettingsHubPage'));
 const GeneralSettingsPage = lazy(() => import('./pages/admin/GeneralSettingsPage'));
+// The AI card is the packaged AiConfigPage with Vault's card-scanning-model
+// section in a slot; AI models and AI usage are the packaged pages as they are.
 const AiSettingsPage = lazy(() => import('./pages/admin/AiSettingsPage'));
+const AiModelsPage = lazy(() => import('@marinoscar/platform-web/ai/ui/models-page'));
+const AiUsagePage = lazy(() => import('@marinoscar/platform-web/ai/ui/usage-page'));
 const BackupSettingsPage = lazy(() => import('./pages/admin/BackupSettingsPage'));
 // Packaged pages, read through the platform host (platform/platformHost.tsx).
 const DoctorPage = lazy(() =>
@@ -61,6 +71,20 @@ const MaintenancePage = lazy(() =>
 const TelemetrySettingsPage = lazy(() => import('@marinoscar/platform-web/telemetry/ui/settings-page'));
 const TelemetryExplorerPage = lazy(() => import('@marinoscar/platform-web/telemetry/ui/explorer-page'));
 const TelemetryDashboardPage = lazy(() => import('@marinoscar/platform-web/telemetry/ui/dashboard-page'));
+// The platform email and notifications slices' pages (E7.2); the slice is
+// configured once in platform/notifications.ts (imported by main.tsx).
+const EmailSettingsPage = lazy(() =>
+  import('@marinoscar/platform-web/email/ui').then((m) => ({ default: m.EmailSettingsPage })),
+);
+const UserNotificationsPage = lazy(() =>
+  import('@marinoscar/platform-web/notifications/ui').then((m) => ({ default: m.UserNotificationsPage })),
+);
+const PushConfigPage = lazy(() =>
+  import('@marinoscar/platform-web/notifications/ui').then((m) => ({ default: m.PushConfigPage })),
+);
+const BroadcastsPage = lazy(() =>
+  import('@marinoscar/platform-web/notifications/ui').then((m) => ({ default: m.BroadcastsPage })),
+);
 const SecretsPage = lazy(() => import('./pages/SecretsPage'));
 const CardsPage = lazy(() => import('./pages/CardsPage'));
 const ImportCardPage = lazy(() => import('./pages/ImportCardPage'));
@@ -158,6 +182,10 @@ function AppRoutes() {
                 path="/settings/secret-types/:id/edit"
                 element={<RequirePermission permission="secret_types:read" fallback={TO_SETTINGS}><EditSecretTypePage /></RequirePermission>}
               />
+              <Route
+                path="/settings/notifications"
+                element={<RequirePermission permission="user_settings:read" fallback={TO_SETTINGS}><UserNotificationsPage /></RequirePermission>}
+              />
               {/* Pre-E10.3 bookmarks: real redirects, the target route gates. */}
               <Route path="/secret-types" element={<Navigate to="/settings/secret-types" replace />} />
               <Route path="/secret-types/new" element={<Navigate to="/settings/secret-types/new" replace />} />
@@ -167,7 +195,7 @@ function AppRoutes() {
                   `anyPermission` in config/destinations.ts. */}
               <Route
                 path="/admin/settings"
-                element={<RequirePermission permissions={['system_settings:read', 'users:read']} fallback={TO_HOME}><AdminSettingsHubPage /></RequirePermission>}
+                element={<RequirePermission permissions={['system_settings:read', 'users:read', 'push:read', 'broadcasts:read', 'ai_config:read']} fallback={TO_HOME}><AdminSettingsHubPage /></RequirePermission>}
               />
               <Route
                 path="/admin/settings/general"
@@ -179,7 +207,17 @@ function AppRoutes() {
               />
               <Route
                 path="/admin/settings/ai"
-                element={<RequirePermission permission="system_settings:read" fallback={TO_HOME}><AiSettingsPage /></RequirePermission>}
+                element={<RequirePermission permission="ai_config:read" fallback={TO_HOME}><AiSettingsPage /></RequirePermission>}
+              />
+              {/* E8.2: the AI models and AI usage cards (feature 'ai'), beneath the AI
+                  card at the paths the packaged pages link to; hidden while AI is off. */}
+              <Route
+                path="/admin/settings/ai/models"
+                element={<RequirePermission permission="ai_config:read" fallback={TO_HOME}><RequireAiEnabled><AiModelsPage /></RequireAiEnabled></RequirePermission>}
+              />
+              <Route
+                path="/admin/settings/ai/usage"
+                element={<RequirePermission permission="ai_config:read" fallback={TO_HOME}><RequireAiEnabled><AiUsagePage /></RequireAiEnabled></RequirePermission>}
               />
               <Route
                 path="/admin/settings/backups"
@@ -215,6 +253,18 @@ function AppRoutes() {
                 path="/admin/settings/telemetry/dashboard"
                 element={<RequirePermission permission="telemetry:query" fallback={TO_HOME}><RequireTelemetryEnabled><TelemetryDashboardPage /></RequireTelemetryEnabled></RequirePermission>}
               />
+              <Route
+                path="/admin/settings/email"
+                element={<RequirePermission permission="system_settings:read" fallback={TO_HOME}><EmailSettingsPage /></RequirePermission>}
+              />
+              <Route
+                path="/admin/settings/push"
+                element={<RequirePermission permission="push:read" fallback={TO_HOME}><PushConfigPage /></RequirePermission>}
+              />
+              <Route
+                path="/admin/settings/broadcasts"
+                element={<RequirePermission permission="broadcasts:read" fallback={TO_HOME}><BroadcastsPage /></RequirePermission>}
+              />
               <Route path="/admin" element={<Navigate to="/admin/settings" replace />} />
               <Route path="/admin/users" element={<Navigate to="/admin/settings/users" replace />} />
               <Route path="/media" element={<MediaFoldersPage />} />
@@ -239,26 +289,31 @@ function AppRoutes() {
  * The tree, outermost first: `ShellRoot` (the Vault themes, the viewer's
  * light / dark / system choice, CssBaseline), the platform's identity
  * providers (the session over Vault's one HTTP client, the identity pages'
- * adapters, the tables' layout store), the telemetry config and adapters, the platform host the packaged pages
- * read (Vault's client, the signed-in viewer, the theme setter), and the
- * shell's preferences port (the rail's collapse). The shell itself is
+ * adapters, the tables' layout store), the AI config (`GET /api/ai/config`
+ * once signed in; the `ai` feature), the telemetry config and adapters, the platform host the packaged pages
+ * read (Vault's client, the signed-in viewer, the theme setter), the AI
+ * pages' adapters (Vault's spinner), and the shell's preferences port (the rail's collapse). The shell itself is
  * `components/common/Layout.tsx`, the layout route below.
  */
 export default function App() {
   return (
     <ShellRoot themes={VAULT_THEMES}>
       <IdentityProviders>
-        {/* ABOVE the platform host: the `telemetry` settings feature the host reads is this answer
-            (`GET /api/telemetry/config`, fetched once the session is authenticated). */}
-        <AppTelemetryConfigProvider>
-          <TelemetryWebAdaptersProvider adapters={appTelemetryAdapters}>
-            <VaultPlatformHostProvider>
-              <ShellPreferencesProvider port={shellPreferencesPort}>
-                <AppRoutes />
-              </ShellPreferencesProvider>
-            </VaultPlatformHostProvider>
-          </TelemetryWebAdaptersProvider>
-        </AppTelemetryConfigProvider>
+        <VaultAiConfigProvider>
+          {/* ABOVE the platform host: the `telemetry` settings feature the host reads is this answer
+              (`GET /api/telemetry/config`, fetched once the session is authenticated). */}
+          <AppTelemetryConfigProvider>
+            <TelemetryWebAdaptersProvider adapters={appTelemetryAdapters}>
+              <VaultPlatformHostProvider>
+                <AiWebAdaptersProvider adapters={vaultAiAdapters}>
+                  <ShellPreferencesProvider port={shellPreferencesPort}>
+                    <AppRoutes />
+                  </ShellPreferencesProvider>
+                </AiWebAdaptersProvider>
+              </VaultPlatformHostProvider>
+            </TelemetryWebAdaptersProvider>
+          </AppTelemetryConfigProvider>
+        </VaultAiConfigProvider>
       </IdentityProviders>
     </ShellRoot>
   );

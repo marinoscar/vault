@@ -1,55 +1,88 @@
 // =============================================================================
-// The telemetry assistant's AI port: a stand-in until the AI slice (issue #90)
+// The telemetry assistant's AI port (issue #90, E9.2, over the E8 AI slice)
 // =============================================================================
 //
-// PLATFORM-ADOPTION-SHIM(E8): the telemetry assistant spends the calling user's
-// own AI key through the platform AI slice (`AiService.forUser`). Vault mounts that
-// slice in E8; until it lands Vault has no `AiService`, so this
-// port answers "AI is not configured" to every assistant request. The guard
-// (`TelemetryAiEnabledGuard`) calls `assertEnabled()` first, so the assistant
-// route answers 503 `AI_NOT_CONFIGURED` (a code Vault registers) before anything
-// runs; nothing is sent to a provider and no key is touched.
+// A binding over the platform AI slice, as the telemetry slice's README asks: the
+// assistant spends the CALLING USER's own key through `AiService.forUser(userId)`,
+// which runs the gate pipeline (kill switch, provider, model, capability, limits,
+// key resolution), records one usage row per round trip and traces the call. No
+// provider SDK, no key and no prompt is touched here.
 //
-// E8 replaces this class with the binding over `AiService` / `AiConfigService`
-// (see EnterpriseAppBase `apps/api/src/platform/telemetry/telemetry-ai.adapter.ts`)
-// and deletes this file's marker. The explorer, the dashboard and everything else
-// in the slice work without it.
+// The assistant names its own provider and model (`telemetry.assistant`), and
+// passes no feature id, so the platform resolves the target itself
+// (`VaultAiTargetResolver` delegates to the platform default for a call with no
+// feature id). A user without a key gets the platform's `AI_KEY_REQUIRED`, which
+// the assistant turns into its own message.
 // =============================================================================
 
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import {
+  AiConfigService,
+  AiError,
+  AiService,
+  defineTool,
+  type AiDefinedTool,
+  type AiInputItem,
+} from '@marinoscar/platform-api/ai';
 import type {
   TelemetryAiError,
   TelemetryAiPort,
   TelemetryAiSession,
   TelemetryAiTool,
   TelemetryAiToolDefinition,
+  TelemetryAiToolLoopRequest,
+  TelemetryAiToolLoopResult,
 } from '@marinoscar/platform-api/telemetry';
 import type { z } from 'zod';
 
-const NOT_CONFIGURED = {
-  code: 'AI_NOT_CONFIGURED',
-  message: 'The telemetry assistant needs the AI platform, which is not enabled in this deployment yet.',
-} as const;
-
 @Injectable()
 export class TelemetryAiAdapter implements TelemetryAiPort {
-  forUser(_userId: string): TelemetryAiSession {
+  constructor(
+    private readonly ai: AiService,
+    private readonly config: AiConfigService,
+  ) {}
+
+  forUser(userId: string): TelemetryAiSession {
+    const client = this.ai.forUser(userId);
     return {
-      runTools: () => Promise.reject(new ServiceUnavailableException(NOT_CONFIGURED)),
+      runTools: async (
+        request: TelemetryAiToolLoopRequest,
+        options: { signal?: AbortSignal },
+      ): Promise<TelemetryAiToolLoopResult> => {
+        const result = await client.runTools(
+          {
+            provider: request.provider,
+            model: request.model,
+            instructions: request.instructions,
+            input: request.input as AiInputItem[],
+            tools: request.tools as unknown as AiDefinedTool[],
+            maxSteps: request.maxSteps,
+            toolTimeoutMs: request.toolTimeoutMs,
+            onStep: (step) => request.onStep(step),
+          },
+          { signal: options.signal },
+        );
+        return { final: result.final, steps: result.steps, stopReason: result.stopReason };
+      },
     };
   }
 
   defineTool<P extends z.ZodType, R>(definition: TelemetryAiToolDefinition<P, R>): TelemetryAiTool {
-    // Opaque to telemetry; never executed while the stand-in refuses every run.
-    return definition as unknown as TelemetryAiTool;
+    // Opaque to telemetry: handed back to `runTools` unchanged.
+    return defineTool({
+      name: definition.name,
+      description: definition.description,
+      parameters: definition.parameters,
+      execute: (args, ctx) => definition.execute(args, { signal: ctx.signal }),
+    }) as unknown as TelemetryAiTool;
   }
 
-  isAiError(_error: unknown): _error is TelemetryAiError {
-    return false;
+  isAiError(error: unknown): error is TelemetryAiError {
+    return error instanceof AiError;
   }
 
-  /** Throws the 503 `AI_NOT_CONFIGURED` until the AI slice is mounted. */
-  assertEnabled(): Promise<void> {
-    return Promise.reject(new ServiceUnavailableException(NOT_CONFIGURED));
+  /** Throws the platform's 403 `AI_DISABLED` while the kill switch is off. */
+  async assertEnabled(): Promise<void> {
+    await this.config.assertEnabled();
   }
 }
