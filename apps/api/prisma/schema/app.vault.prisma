@@ -100,6 +100,9 @@ model SecretAttachment {
   secretId        String   @map("secret_id") @db.Uuid
   secretVersionId String   @map("secret_version_id") @db.Uuid
   storageObjectId String   @map("storage_object_id") @db.Uuid
+  // The storage object's organization (E6.2): half of the composite foreign key below,
+  // so an attachment can only point at an object of its own organization.
+  orgId           String   @map("org_id") @db.Uuid
   role            String?
   label           String?
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
@@ -107,7 +110,7 @@ model SecretAttachment {
   // Relations
   secret        Secret        @relation(fields: [secretId], references: [id], onDelete: Cascade)
   secretVersion SecretVersion @relation(fields: [secretVersionId], references: [id], onDelete: Cascade)
-  storageObject StorageObject @relation(fields: [storageObjectId], references: [id], onDelete: Cascade)
+  storageObject StorageObject @relation(fields: [storageObjectId, orgId], references: [id, orgId], onDelete: Cascade)
 
   @@unique([secretVersionId, storageObjectId])
   @@unique([secretVersionId, role])
