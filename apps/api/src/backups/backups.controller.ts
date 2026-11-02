@@ -11,7 +11,6 @@ import {
   Put,
   Query,
   Res,
-  StreamableFile,
 } from '@nestjs/common';
 import {
   ApiBody,
@@ -139,8 +138,10 @@ export class BackupsController {
     // Parsed by hand so a 400 carries the specific message; never logged.
     @Body() body: unknown,
     @CurrentUser('id') userId: string,
-    @Res({ passthrough: true }) reply: FastifyReply,
-  ): Promise<StreamableFile> {
+    // NOT passthrough: the zip is written straight to the reply, so the platform
+    // `{ data }` envelope (which wraps a StreamableFile) never touches it.
+    @Res() reply: FastifyReply,
+  ): Promise<FastifyReply> {
     const result = await this.backupsService.exportNow(parseExportSystemBackupBody(body), userId);
 
     reply.header('Cache-Control', 'no-store');
@@ -149,11 +150,12 @@ export class BackupsController {
     reply.header('X-Vault-Export-Attachments', String(result.attachmentCount));
     reply.header('X-Vault-Export-Media-Files', String(result.mediaFileCount));
 
-    // StreamableFile: the raw zip, passed through TransformInterceptor unwrapped.
-    return new StreamableFile(result.stream, {
-      type: 'application/zip',
-      disposition: `attachment; filename="${result.fileName}"`,
-    });
+    reply.header('Content-Type', 'application/zip');
+    reply.header('Content-Disposition', `attachment; filename="${result.fileName}"`);
+
+    // The raw zip, streamed. The platform TransformInterceptor wraps a returned
+    // StreamableFile in `{ data }`, so the stream is sent on the reply instead.
+    return reply.send(result.stream);
   }
 
   @Get()

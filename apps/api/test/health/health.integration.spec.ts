@@ -7,6 +7,11 @@ import {
 import { resetPrismaMock } from '../mocks/prisma.mock';
 import { setupBaseMocks } from '../fixtures/mock-setup.helper';
 
+// The probes are the platform's (`PlatformHostCoreModule`), so this spec pins the
+// contract Vault's orchestrators rely on: the paths, public access, the liveness
+// and readiness bodies and the 503 on a down database. The only change from the
+// pre-platform controller is the error `code` of that 503: the platform filter's
+// status default for 503 is `ERROR` (it was `SERVICE_UNAVAILABLE`).
 describe('Health Endpoints (Integration)', () => {
   let context: TestContext;
 
@@ -72,7 +77,7 @@ describe('Health Endpoints (Integration)', () => {
 
       expect(response.body).toMatchObject({
         statusCode: 503,
-        code: 'SERVICE_UNAVAILABLE',
+        code: 'ERROR',
         timestamp: expect.any(String),
       });
     });
@@ -209,7 +214,7 @@ describe('Health Endpoints (Integration)', () => {
         .expect(503);
 
       expect(response.body.statusCode).toBe(503);
-      expect(response.body.code).toBe('SERVICE_UNAVAILABLE');
+      expect(response.body.code).toBe('ERROR');
     });
 
     it('should be accessible without authentication', async () => {
@@ -335,7 +340,7 @@ describe('Health Endpoints (Integration)', () => {
         .expect(503);
 
       expect(response.body.statusCode).toBe(503);
-      expect(response.body.code).toBe('SERVICE_UNAVAILABLE');
+      expect(response.body.code).toBe('ERROR');
     });
   });
 
@@ -364,7 +369,7 @@ describe('Health Endpoints (Integration)', () => {
 
       expect(response.body).toMatchObject({
         statusCode: 503,
-        code: 'SERVICE_UNAVAILABLE',
+        code: 'ERROR',
         message: expect.any(String),
         timestamp: expect.any(String),
         path: expect.any(String),
