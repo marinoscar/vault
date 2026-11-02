@@ -36,7 +36,7 @@ Index of every document in `docs/`, plus the "Doc map by task". Rules for assist
 | Understand the system | ARCHITECTURE.md sections 1 to 3, then the component you touch |
 | Add or change an endpoint | `apps/api/AGENTS.md`, API.md (the area's `###`), DOMAIN-REFERENCE.md; permissions: SECURITY-ARCHITECTURE.md RBAC section |
 | Work on secrets, versions or attachments | SECRETS.md (Versioning, Attachments), root invariants in AGENTS.md |
-| Work on backups or export | SECRETS.md "Backup and export", API.md backups sections; `backup-runner.service.ts` is an E5 exception ([local-exceptions](platform-adoption/local-exceptions.md)) |
+| Work on backups or export | SECRETS.md "Backup and export", API.md backups sections; backups are queue jobs since E5.2 ([local-exceptions](platform-adoption/local-exceptions.md#e52-backups-as-queue-jobs-done)) |
 | Work on card scanning | SECRETS.md (Card fields), `apps/api/src/ai/card-extract.*`; AI rules in AGENTS.md |
 | Change the database | DEVELOPMENT.md, `.claude/skills/platform-migration/SKILL.md`; installed migrations are immutable |
 | Add a settings screen | `.claude/skills/add-settings-page/SKILL.md`, specs/ux-refresh.md |

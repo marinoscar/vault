@@ -11,7 +11,7 @@ import {
   Avatar,
   Stack,
 } from '@mui/material';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '@marinoscar/platform-web/identity/headless';
 import { ImageUpload } from './ImageUpload';
 
 interface ProfileSettingsProps {

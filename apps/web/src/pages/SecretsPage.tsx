@@ -14,7 +14,7 @@ import {
   type SecretSortField,
 } from '../components/secrets/SecretsTable';
 import { useSecretTypes } from '../hooks/useSecretTypes';
-import { usePermissions } from '../hooks/usePermissions';
+import { usePermissions } from '@marinoscar/platform-web/identity/headless';
 import { dataTablePreferencesPort } from '../platform/dataTablePreferences';
 import { deleteSecret, getSecrets } from '../services/api';
 import type { SecretListItem } from '../types';

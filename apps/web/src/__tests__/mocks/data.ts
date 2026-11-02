@@ -1,4 +1,5 @@
-import { User, UserSettings, SystemSettings, AuthProvider } from '../../types';
+import type { AuthProviderInfo } from '@marinoscar/platform-web/identity/headless';
+import { User, UserSettings, SystemSettings } from '../../types';
 
 export const mockUsers: User[] = [
   {
@@ -73,7 +74,7 @@ export const mockSystemSettings: SystemSettings = {
   version: 1,
 };
 
-export const mockAuthProviders: AuthProvider[] = [
+export const mockAuthProviders: AuthProviderInfo[] = [
   {
     name: 'google',
     authUrl: '/api/auth/google',

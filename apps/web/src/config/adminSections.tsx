@@ -6,7 +6,8 @@
  * E10.2 (#93) seeded it with two cards; E10.3 (#94) split the tab-based
  * `SystemSettingsPage` into one routed page per card: the first card became
  * `General` (UI settings and feature flags, was the whole tab strip), Users
- * moved under the hub, and the rest were APPENDED. Rules (AGENTS.md, Settings
+ * moved under the hub, and the rest were APPENDED. E3.3 (#78) replaced the
+ * Users card in place with the packaged identity card (cards ship as data). Rules (AGENTS.md, Settings
  * UI Pattern):
  *
  *  - append, never insert between existing cards;
@@ -21,12 +22,16 @@
 
 import type { SettingsSectionDef } from '@marinoscar/platform-web/settings/ui';
 import { doctorSettingsPage } from '@marinoscar/platform-web/doctor/ui';
+import { identityAdminSections } from '@marinoscar/platform-web/identity/ui';
+import './settingsFeatures';
 import TuneIcon from '@mui/icons-material/TuneOutlined';
-import PeopleIcon from '@mui/icons-material/PeopleOutlined';
 import AiIcon from '@mui/icons-material/AutoAwesomeOutlined';
 import BackupIcon from '@mui/icons-material/BackupOutlined';
 import MaintenanceIcon from '@mui/icons-material/ConstructionOutlined';
 import AboutIcon from '@mui/icons-material/InfoOutlined';
+import EmailIcon from '@mui/icons-material/EmailOutlined';
+import PushIcon from '@mui/icons-material/NotificationsActiveOutlined';
+import BroadcastIcon from '@mui/icons-material/CampaignOutlined';
 
 /** The Console hub's title: the hub's heading and the compact AppBar's fallback. */
 export const ADMIN_HUB_TITLE = 'Console';
@@ -46,14 +51,13 @@ export const ADMIN_SECTIONS: SettingsSectionDef[] = [
         // system-settings.controller.ts `GET /api/system-settings`; saving needs system_settings:write.
         permission: 'system_settings:read',
       },
-      {
-        title: 'Users & allowlist',
-        description: 'Who can sign in, and their roles.',
-        Icon: PeopleIcon,
-        path: '/admin/settings/users',
-        // users.controller.ts `GET /api/users`; the allowlist half gates itself on allowlist:read.
-        permission: 'users:read',
-      },
+      // The packaged identity card (E3.3, #78), spread where Vault's own
+      // `Users & allowlist` card was: `Users & Allowlist`, `/admin/settings/users`,
+      // `users:read` (the platform's users.controller.ts `GET /api/users`; the
+      // Allowlist tab gates itself on allowlist:read inside the page). The
+      // `organizations` cards are not spread: Vault runs single-organization
+      // (they carry `feature: 'orgs'` and would never show).
+      ...identityAdminSections.access,
       {
         title: 'AI',
         description: 'Switch card scanning on, the OpenAI key, model and daily budget.',
@@ -100,6 +104,43 @@ export const ADMIN_SECTIONS: SettingsSectionDef[] = [
         // The platform about controller `GET /api/admin/about` (default permission
         // system_settings:read; deliberately no `about:read`).
         permission: 'system_settings:read',
+      },
+    ],
+  },
+  {
+    // E7.2: the platform email and notifications slices (API mounted in E7.1,
+    // #85). APPENDED as a section of its own, after Operations. Each page is
+    // the packaged one; writes are gated inside it.
+    label: 'Messaging',
+    cards: [
+      {
+        title: 'Email',
+        description: 'How Vault sends email (SMTP or SES), and a test message to prove it works.',
+        Icon: EmailIcon,
+        path: '/admin/settings/email',
+        // The platform email-settings.controller `GET /api/email-settings`
+        // (SETTINGS_PERMISSIONS.SYSTEM_SETTINGS_READ); saving and test-sending need system_settings:write.
+        permission: 'system_settings:read',
+      },
+      {
+        title: 'Web Push',
+        description: 'Generate, enable or rotate the VAPID key pair that lets Vault send browser push notifications.',
+        Icon: PushIcon,
+        path: '/admin/settings/push',
+        // The platform push-config.controller `GET /api/admin/push-config` (`push:read`, a
+        // pair of its own: rotating the keys silences every subscriber); changes need push:write.
+        permission: 'push:read',
+      },
+      {
+        title: 'Broadcasts',
+        description: 'Write an announcement and send it to every active user now or later, then watch it go out.',
+        Icon: BroadcastIcon,
+        path: '/admin/settings/broadcasts',
+        // The platform broadcasts.controller `GET /api/admin/broadcasts` admits
+        // `broadcasts:read` OR `org_broadcasts:read`; Vault runs one organization and only
+        // `admin` holds either, so the card and route name the system string. Composing,
+        // cancelling and test-sending need broadcasts:write.
+        permission: 'broadcasts:read',
       },
     ],
   },

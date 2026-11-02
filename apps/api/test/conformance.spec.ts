@@ -5,12 +5,14 @@
 // is not adopted yet is listed below with the written reason and the epic
 // child that removes the skip (platform-adoption epic #54: E3.1 = #76 host,
 // E3.2 = #77 identity, E4.1 = #79 settings, E5.1 = #81 jobs and nodes,
-// E5.3 = #83 queue rule).
+// E5.3 = #83 queue rule, E7.1 = #85 email and notifications).
 import '../src/app-registrations/registrations';
 import '@marinoscar/platform-api/ai/testing';
+import '@marinoscar/platform-api/email/testing';
 import '@marinoscar/platform-api/host/testing';
 import '@marinoscar/platform-api/identity/testing';
 import '@marinoscar/platform-api/jobs/testing';
+import '@marinoscar/platform-api/notifications/testing';
 import '@marinoscar/platform-api/settings/testing';
 
 import { Module } from '@nestjs/common';
@@ -59,10 +61,10 @@ runPlatformConformance({
     // is a credential, E4.2), every default valid against its stored schema, and
     // every org layer gated by a registered org-scope permission (E4.1, #79).
     // `maintenance`, `jobs`, `retention`, `nodes` (E5.1) plus Vault's `ui`, `features`, `ai` (the platform's, E8.1),
-    // `vaultCards`, `vaultBackups`.
+    // `vaultCards`, `vaultBackups`, plus `notifications` (E7.1).
     settings: {
       permissions: permissionRegistry.list(),
-      minSystemNamespaces: 9,
+      minSystemNamespaces: 10,
     },
 
     // Every foreign key to `User` in the composed schema is registered with a purge
@@ -79,23 +81,31 @@ runPlatformConformance({
           why: 'cleanDatabase(): TRUNCATE of every table, refused unless NODE_ENV is test.',
         },
         {
-          file: 'backups/backup-runner.service.ts',
-          why: 'pg_advisory_xact_lock for the one-active-run and per-user serialisation; takes constants and a hashed owner id.',
-        },
-        {
           file: 'secrets/secrets.service.ts',
           why: 'SELECT ... FOR UPDATE on one storage object id the caller already proved it may attach.',
         },
       ],
     },
 
+    // The email slice (E7.1, #85): the platform templates are registered, every sampled template
+    // renders a complete document and escapes markup in its data, and no email settings shape carries
+    // a secret. Vault registers no template of its own until E7.2 (#86), so there are no extra samples.
+    email: {},
+
+    // The notifications slice (E7.1, #85): the platform channels and events are registered, every
+    // event that declares `email` has a template, no `notify*` call sits inside a `$transaction`
+    // callback, and the Web Push shapes carry no secret. The after-commit allowlist is EMPTY on
+    // purpose: Vault has no argued exception.
+    notifications: { afterCommitAllowlist: [] },
+
     // The `@Cron` half of queue rule 1 (E5.1/E5.3, #81/#83): every `@Cron` body in Vault's own
     // sources only enqueues a job. The platform's crons (the three permanent exemptions, the
     // identity cleanups) ship in the package and are held by its tests. The two exemptions are
-    // recorded shims with written reasons (test/jobs/cron-source-roots.ts): the backup runner
-    // (E5.2) and the storage stale-upload sweep (E6). `minCronFiles` is exactly those two plus
-    // none: the scan must keep finding them, so an exemption cannot go stale.
-    cronEnqueueOnly: { exempt: [...CRON_EXEMPTIONS], minCronFiles: CRON_EXEMPTIONS.length },
+    // recorded shim with a written reason (test/jobs/cron-source-roots.ts): the storage
+    // stale-upload sweep (E6). The backup schedule tick (E5.2) is enqueue-only and not exempt.
+    // `minCronFiles` is the exemptions plus the backup schedule task: the scan must keep finding
+    // them, so an exemption cannot go stale and the scan cannot pass vacuously.
+    cronEnqueueOnly: { exempt: [...CRON_EXEMPTIONS], minCronFiles: CRON_EXEMPTIONS.length + 1 },
 
     // The AI slice's two source scans (E8.1, #87); the five that boot the app run in
     // `ai-conformance.spec.ts`. No provider SDK is imported anywhere Vault ships: the API, the

@@ -1,9 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { aiModule } from '../platform/ai/ai.config';
-import { CredentialsModule } from '../platform/credentials/credentials.config';
 
-import { AiConfigService } from './ai-config.service';
 import { AiStatusController } from './ai-status.controller';
 import { CardExtractController } from './card-extract.controller';
 import { CardExtractService } from './card-extract.service';
@@ -15,9 +13,8 @@ import { CardExtractService } from './card-extract.service';
  * or policy check lives here.
  */
 @Module({
-  imports: [aiModule, CredentialsModule],
+  imports: [aiModule],
   controllers: [AiStatusController, CardExtractController],
-  providers: [CardExtractService, AiConfigService],
-  exports: [AiConfigService],
+  providers: [CardExtractService],
 })
 export class AiModule {}

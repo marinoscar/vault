@@ -51,13 +51,12 @@ function makeService(opts: { storage?: boolean } = {}) {
     getSignedDownloadUrl: jest.fn(async () => 'https://storage.example.test/signed'),
     delete: jest.fn().mockResolvedValue(undefined),
   };
-  const runner = {
-    isStorageConfigured: jest.fn(() => opts.storage ?? true),
-    startUserRun: jest.fn(async (ownerId: string) => row('new-run', { ownerId, status: 'running', storageKey: 'k' })),
-    launchUserRun: jest.fn(),
+  const archive = { isStorageConfigured: jest.fn(() => opts.storage ?? true) };
+  const queue = {
+    queueUserRun: jest.fn(async (ownerId: string) => row('new-run', { ownerId, status: 'running', storageKey: 'k' })),
   };
-  const service = new MyBackupsService(prisma as never, storage as never, runner as never);
-  return { service, prisma, storage, runner };
+  const service = new MyBackupsService(prisma as never, storage as never, archive as never, queue as never);
+  return { service, prisma, storage, runner: queue };
 }
 
 let logs: jest.SpyInstance[];
@@ -126,28 +125,24 @@ describe('MyBackupsService.runNow', () => {
       "Saving to storage isn't set up. Ask an administrator, or download the backup instead.",
     );
     expect(error.getResponse().message).toBe(USER_STORAGE_NOT_CONFIGURED_MESSAGE);
-    expect(runner.startUserRun).not.toHaveBeenCalled();
+    expect(runner.queueUserRun).not.toHaveBeenCalled();
   });
 
   it('propagates the per-user 409', async () => {
     const { service, runner } = makeService();
-    runner.startUserRun.mockRejectedValue(new ConflictException({ message: 'You already have a backup running' }));
+    runner.queueUserRun.mockRejectedValue(new ConflictException({ message: 'You already have a backup running' }));
     await expect(service.runNow(A, options)).rejects.toBeInstanceOf(ConflictException);
-    expect(runner.launchUserRun).not.toHaveBeenCalled();
   });
 
-  it('hands the password to the runner in memory only: not to the row, the audit or a log', async () => {
+  it('hands the password to the queue (which encrypts it into the job payload): not to the audit, a log or the response', async () => {
     const { service, runner, prisma } = makeService();
     const response = await service.runNow(A, options);
 
-    expect(runner.startUserRun).toHaveBeenCalledWith(A.id, {
-      includeSecrets: true,
-      includeAttachments: true,
-      includeVersions: false,
-      includeMedia: true,
-    });
-    expect(JSON.stringify(runner.startUserRun.mock.calls)).not.toContain(PASSWORD);
-    expect(runner.launchUserRun.mock.calls[0][3]).toBe(PASSWORD);
+    expect(runner.queueUserRun).toHaveBeenCalledWith(
+      A.id,
+      { includeSecrets: true, includeAttachments: true, includeVersions: false, includeMedia: true },
+      PASSWORD,
+    );
     const audit = prisma.auditEvent.create.mock.calls[0][0].data;
     expect(audit).toMatchObject({ action: MY_BACKUPS_AUDIT_ACTIONS.run, meta: { contents: ['secrets', 'attachments', 'media'] } });
     expect(JSON.stringify(prisma.auditEvent.create.mock.calls)).not.toContain(PASSWORD);

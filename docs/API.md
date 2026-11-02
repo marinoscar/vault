@@ -1081,7 +1081,27 @@ The background queue and the worker-node fleet are the platform's (`@marinoscar/
 | `POST /node-credentials`, `GET /node-credentials`, `DELETE /node-credentials/:id` | `nodes:write` / `nodes:read` | Mint, list, revoke the `nod_` tokens a worker node authenticates with |
 | `/nodes/*` (register, heartbeat, claim, job renew/result/failure/secret/download-url/upload-url, telemetry) | `nodes:write` / `nodes:read` | The worker-node data plane; callers use a `nod_` token |
 
-Vault registers no node-eligible job type: every handler is server-only, so a registered node is never offered a job. The job types in the queue today are the platform's housekeeping ones (`job.history.purge`, `audit.events.purge`, `auth.token.cleanup`, `device-auth.code.cleanup`, `nodes.fleet.sweep`, `nodes.fleet.prune`, `nodes.node_events_purge`); the backup types arrive with E5.2. The `jobs`, `retention` and `nodes` namespaces of `/system-settings` carry the worker, retention and offload settings.
+Vault registers no node-eligible job type: every handler is server-only, so a registered node is never offered a job. The job types in the queue today are the platform's housekeeping ones (`job.history.purge`, `audit.events.purge`, `auth.token.cleanup`, `device-auth.code.cleanup`, `nodes.fleet.sweep`, `nodes.fleet.prune`, `nodes.node_events_purge`); the backup types are `vault.backup.run` (label "Secrets backup") and `vault.user_backup.run` ("My backup"), both server-only, one attempt, up to 30 minutes. The `jobs`, `retention` and `nodes` namespaces of `/system-settings` carry the worker, retention and offload settings.
+
+---
+
+### Email and Notifications
+
+Email and notifications are the platform's slices (`@marinoscar/platform-api/email` and `/notifications`, E7.1), mounted in `apps/api/src/platform/email/` and `apps/api/src/platform/notifications/`. The per-endpoint reference is the generated OpenAPI at `/api/docs`. **SMTP, SES and Web Push (VAPID) are configured at runtime in the admin UI and have no environment variable**; the secrets live in the credential store (purposes `smtp`, `email_ses`, `push_vapid`).
+
+| Routes | Permission | Notes |
+|---|---|---|
+| `GET /email-settings` | `system_settings:read` | The transport, sender and which secrets are set (never a secret value) |
+| `PUT /email-settings`, `POST /email-settings/test` | `system_settings:write` | Save the transport; the test send goes to the caller's own address only |
+| `GET /notifications`, `/notifications/unread-count`, `/notifications/stream` (SSE), `/notifications/events`, `/notifications/channels`, `/notifications/config` | signed-in user | The caller's own inbox and the preference catalog |
+| `POST /notifications/:id/read`, `/notifications/read-all` | signed-in user | Mark the caller's rows read |
+| `POST` / `DELETE /notifications/push/subscriptions` | signed-in user | Register or remove the caller's Web Push subscription |
+| `GET /admin/push-config` | `push:read` | Web Push configuration (public key, subject, private-key status) |
+| `PUT`, `DELETE /admin/push-config`, `POST /admin/push-config/generate`, `/rotate`, `/test` | `push:write` | Manage the VAPID key pair; the private key never leaves the credential store |
+| `GET /admin/broadcasts`, `/admin/broadcasts/audience`, `/admin/broadcasts/:id` | `broadcasts:read` or `org_broadcasts:read` | Either admits; the service scopes to the caller's organization for the org permission |
+| `POST /admin/broadcasts`, `/admin/broadcasts/test`, `/:id/cancel`, `/:id/resume`; `DELETE /admin/broadcasts/:id` | `broadcasts:write` or `org_broadcasts:write` | An admin broadcast fans out through the `admin.broadcast.start` and `admin.broadcast.chunk` jobs into every recipient's inbox (the bell) and, when chosen, email and push |
+
+`broadcasts:*` and `push:*` are system permissions held by `admin`; `org_broadcasts:*` is an organization permission held by `org_admin`. The `notifications` namespace of `/system-settings` is the deployment policy (a channel can be switched off for everyone) and the `notifications` namespace of `/user-settings` holds each user's per-channel preferences. The identity events are `user.welcome` (email), `allowlist.invitation` (email) and `security.role_changed` (email and the bell, mandatory), raised through `IDENTITY_NOTIFIER`. Event keys, channel ids and template names are persisted: never rename one. Vault's own events (secret expiry, backups, shares) arrive with E7.2 (#86); the bell, preference pages, admin pages and the push service worker are the web follow-up.
 
 ---
 
@@ -1729,9 +1749,9 @@ All fields except `password`, `includeSecrets`, `includeMedia` and `includeSyste
 
 #### POST /admin/backups/run
 
-**Requires Authentication** (`system_settings:write`) - Starts a backup now, saved to storage, using the stored schedule password and the schedule's contents. Returns `202 Accepted` with the run (`status: "running"`). The run finishes in the background; poll `GET /admin/backups`. To get a zip straight to the browser instead, use [`POST /admin/backups/export`](#post-adminbackupsexport).
+**Requires Authentication** (`system_settings:write`) - Queues a backup now (the `vault.backup.run` job), saved to storage, using the stored schedule password and the schedule's contents. Returns `202 Accepted` with the run (`status: "running"`, also while the job waits for a worker). The run finishes in the background; poll `GET /admin/backups`. To get a zip straight to the browser instead, use [`POST /admin/backups/export`](#post-adminbackupsexport).
 
-If storage or the password is not configured, the call still returns 202 and the run then fails with a clear message in `error`. If a run is already in progress, the request returns `409 Conflict`.
+If storage or the password is not configured, the call still returns 202 and the run then fails with a clear message in `error`. If a system backup is already queued or running (scheduled or manual), the request returns `409 Conflict` (`A backup is already running`) and creates nothing: the queue allows one active `vault.backup.run` job.
 
 **Audit:** `backups.run` with `{ runId }`.
 
@@ -1861,13 +1881,13 @@ Returns whether saving to storage is available, so a client can disable the opti
 
 #### POST /backups/me
 
-Starts a saved backup. Body: the same as `POST /secrets/export` (`password`, `includeSecrets`, `includeAttachments`, `includeVersions`, `includeMedia`, with the same defaults and [content rules](#backup-content-validation); `includeSystem` is a `400`). Returns `202 Accepted` with the run (`status: "running"`, `contents` already set); poll `GET /backups/me`.
+Starts a saved backup. Body: the same as `POST /secrets/export` (`password`, `includeSecrets`, `includeAttachments`, `includeVersions`, `includeMedia`, with the same defaults and [content rules](#backup-content-validation); `includeSystem` is a `400`). Returns `202 Accepted` with the run (`status: "running"`, `contents` already set); poll `GET /backups/me`. The run is the `vault.user_backup.run` job.
 
-The password is used only while the zip is built, held in memory, and never stored, logged, audited or put in an error. After a successful run the newest 10 saved backups are kept and older ones are deleted.
+The password is used only while the zip is built. It is held in the job payload only as encrypted ciphertext until the run settles (then removed), decrypted in memory, and never logged, audited or put in an error. After a successful run the newest 10 saved backups are kept and older ones are deleted.
 
 **Error Cases:**
 - `400 Bad Request` - validation failed, or storage is not configured: `Saving to storage isn't set up. Ask an administrator, or download the backup instead.`
-- `409 Conflict` - `You already have a backup running` (one running saved backup per user)
+- `409 Conflict` - `You already have a backup running` (one queued or running saved backup per user; the queue's dedup key, so the answer is the same whichever instance is asked)
 - `401 Unauthorized` / `403 Forbidden`
 
 **Audit:** `backups.user.run` with `{ runId, contents }` when started; `backups.user.run.completed` with `{ runId, status, trigger, sizeBytes, contents, counts }` when it ends.

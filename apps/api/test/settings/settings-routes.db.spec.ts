@@ -269,10 +269,13 @@ describeWithDb('platform settings routes bound by Vault (real Postgres)', () => 
     });
 
     it('a PUT without ai keeps the stored ai block (the namespace is not required on PUT)', async () => {
+      // PUT replaces the document: namespaces declared `requiredOnPut` (the platform's
+      // `notifications`, E7.1) must be sent back, as a client that GETs then PUTs does.
+      const current = await http().get('/api/system-settings').set(as('admin'));
       const res = await http()
         .put('/api/system-settings')
         .set(as('admin'))
-        .send({ ui: { allowUserThemeOverride: true }, features: { onlyFlag: true } });
+        .send({ notifications: current.body.data.notifications, ui: { allowUserThemeOverride: true }, features: { onlyFlag: true } });
 
       expect(res.status).toBe(200);
       expect(res.body.data.features).toEqual({ onlyFlag: true });

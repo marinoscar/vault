@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { render, mockUser } from '../../utils/test-utils';
+import { render, mockUser, AUTH_CONTEXT_DEFAULTS } from '../../utils/test-utils';
 import { ProfileSettings } from '../../../components/settings/ProfileSettings';
 
 // Mock the ImageUpload component
@@ -17,16 +17,16 @@ vi.mock('../../../components/settings/ImageUpload', () => ({
   ),
 }));
 
-// Mock the AuthContext - need to import original to get AuthContext
-vi.mock('../../../contexts/AuthContext', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../contexts/AuthContext')>();
+// Mock the platform's useAuth; keep the rest of the module
+vi.mock('@marinoscar/platform-web/identity/headless', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@marinoscar/platform-web/identity/headless')>();
   return {
     ...actual,
     useAuth: vi.fn(),
   };
 });
 
-import { useAuth } from '../../../contexts/AuthContext';
+import { useAuth } from '@marinoscar/platform-web/identity/headless';
 
 const mockUseAuth = vi.mocked(useAuth);
 
@@ -45,6 +45,7 @@ describe('ProfileSettings', () => {
 
     // Default mock implementation
     mockUseAuth.mockReturnValue({
+      ...AUTH_CONTEXT_DEFAULTS,
       user: mockUser,
       isLoading: false,
       isAuthenticated: true,
@@ -262,6 +263,7 @@ describe('ProfileSettings', () => {
       };
 
       mockUseAuth.mockReturnValue({
+      ...AUTH_CONTEXT_DEFAULTS,
         user: userWithImage,
         isLoading: false,
         isAuthenticated: true,
@@ -734,6 +736,7 @@ describe('ProfileSettings', () => {
       };
 
       mockUseAuth.mockReturnValue({
+      ...AUTH_CONTEXT_DEFAULTS,
         user: userWithDisplayName,
         isLoading: false,
         isAuthenticated: true,
@@ -760,6 +763,7 @@ describe('ProfileSettings', () => {
       };
 
       mockUseAuth.mockReturnValue({
+      ...AUTH_CONTEXT_DEFAULTS,
         user: userWithImage,
         isLoading: false,
         isAuthenticated: true,

@@ -28,6 +28,7 @@ import rolesSource from '../../../../api/src/common/constants/roles.constants.ts
 import settingsPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/settings/settings.permissions.js?raw';
 import usersPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/identity/users/users.permissions.js?raw';
 import allowlistPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/identity/allowlist/allowlist.permissions.js?raw';
+import notificationsPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/notifications/notifications.permissions.js?raw';
 
 const cardsOf = (sections: SettingsSectionDef[]): SettingsCardDef[] => sections.flatMap((s) => s.cards);
 const ADMIN_CARDS = cardsOf(ADMIN_SECTIONS);
@@ -40,14 +41,16 @@ const declaredIds = (source: string): string[] =>
 /**
  * Every permission string the API declares and seeds: Vault's own
  * (`VAULT_PERMISSIONS`) plus the platform `identity` (users, allowlist) and
- * `settings` slices, which `PERMISSION_OPTIONS` lists (asserted below, so a
- * slice Vault stops seeding drops its strings from this set).
+ * `settings` slices and the `notifications` slice (`broadcasts:*`, `push:*`, E7),
+ * which `PERMISSION_OPTIONS` lists (asserted below, so a slice Vault stops
+ * seeding drops its strings from this set).
  */
 const API_PERMISSIONS = new Set([
   ...declaredIds(vaultPermissionsSource),
   ...declaredIds(settingsPermissionsSource),
   ...declaredIds(usersPermissionsSource),
   ...declaredIds(allowlistPermissionsSource),
+  ...declaredIds(notificationsPermissionsSource),
 ]);
 
 /**
@@ -78,6 +81,16 @@ const CONTROLLER_MIRROR: Record<string, string | undefined> = {
   '/settings/backups': 'secrets:read',
   // secret-types.controller.ts GET /api/secret-types
   '/settings/secret-types': 'secret_types:read',
+  // E7.2, the platform email and notifications slices:
+  // email-settings.controller GET /api/email-settings (SYSTEM_SETTINGS_READ)
+  '/admin/settings/email': 'system_settings:read',
+  // push-config.controller GET /api/admin/push-config (PUSH_READ)
+  '/admin/settings/push': 'push:read',
+  // broadcasts.controller GET /api/admin/broadcasts (anyPermissions broadcasts:read | org_broadcasts:read;
+  // Vault is single-organization, so the card names the system string)
+  '/admin/settings/broadcasts': 'broadcasts:read',
+  // UserNotificationsPage reads the caller's preferences from GET /api/user-settings
+  '/settings/notifications': 'user_settings:read',
 };
 
 /** `App.tsx` routes: path -> the single `permission="..."` its RequirePermission gate names (or null). */
@@ -157,22 +170,26 @@ describe.each([
 });
 
 describe('the registries as a whole', () => {
-  it('lists the E10.3 cards in append order', () => {
+  it('lists the cards in append order (E10.3, then E7.2)', () => {
     expect(ADMIN_CARDS.map((card) => card.title)).toEqual([
       'General',
-      'Users & allowlist',
+      'Users & Allowlist',
       'AI',
       'Backups',
       'Maintenance',
       'Doctor',
       'About',
+      'Email',
+      'Web Push',
+      'Broadcasts',
     ]);
     expect(USER_CARDS.map((card) => card.title)).toEqual([
       'Profile',
       'Appearance',
-      'Access tokens',
+      'Access Tokens',
       'My backups',
       'Secret types',
+      'Notifications',
     ]);
   });
 
@@ -222,6 +239,7 @@ describe('the registries as a whole', () => {
     const slices = /slices:\s*\[([^\]]*)\]/.exec(permissionOptionsSource)?.[1] ?? '';
     expect(slices).toContain("'identity'");
     expect(slices).toContain("'settings'");
+    expect(slices).toContain("'notifications'");
     // Each file contributed (a moved dist file must fail here, not pass silently).
     expect(declaredIds(vaultPermissionsSource)).toEqual(expect.arrayContaining(['secrets:read', 'secret_types:read']));
     expect(declaredIds(settingsPermissionsSource)).toEqual(
@@ -229,6 +247,9 @@ describe('the registries as a whole', () => {
     );
     expect(declaredIds(usersPermissionsSource)).toContain('users:read');
     expect(declaredIds(allowlistPermissionsSource)).toContain('allowlist:read');
+    expect(declaredIds(notificationsPermissionsSource)).toEqual(
+      expect.arrayContaining(['broadcasts:read', 'push:read']),
+    );
     // No invented string sneaks in through a loose pattern.
     for (const id of API_PERMISSIONS) expect(id).toMatch(/^[a-z_]+:[a-z_]+$/);
   });

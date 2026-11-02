@@ -48,21 +48,28 @@ describe('/settings (per-user hub)', () => {
     renderHub('user', withPerms(mockUser, ['secrets:read', 'secret_types:read']));
 
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument();
-    expect(cardTitles()).toEqual(['Profile', 'Appearance', 'Access tokens', 'My backups', 'Secret types']);
+    expect(cardTitles()).toEqual([
+      'Profile',
+      'Appearance',
+      'Access Tokens',
+      'My backups',
+      'Secret types',
+      'Notifications',
+    ]);
   });
 
   it('hides My backups without secrets:read and Secret types without secret_types:read', () => {
     setViewportWidth(1440);
     renderHub('user', mockUser);
 
-    expect(cardTitles()).toEqual(['Profile', 'Appearance', 'Access tokens']);
+    expect(cardTitles()).toEqual(['Profile', 'Appearance', 'Access Tokens', 'Notifications']);
   });
 
-  it('always shows Access tokens (ownership-scoped, no permission)', () => {
+  it('always shows Access Tokens (ownership-scoped, no permission)', () => {
     setViewportWidth(1440);
     renderHub('user', { ...mockUser, permissions: [] });
 
-    expect(cardTitles()).toEqual(['Access tokens']);
+    expect(cardTitles()).toEqual(['Access Tokens']);
   });
 
   it('navigates to the card route', async () => {
@@ -89,19 +96,39 @@ describe('/settings (per-user hub)', () => {
 describe('/admin/settings (Console hub)', () => {
   it('shows every admin card to an admin, grouped', () => {
     setViewportWidth(1440);
-    renderHub('admin', mockAdminUser);
+    renderHub('admin', withPerms(mockAdminUser, ['push:read', 'broadcasts:read']));
 
     expect(screen.getByRole('heading', { name: 'Console' })).toBeInTheDocument();
-    expect(cardTitles()).toEqual(['General', 'Users & allowlist', 'AI', 'Backups', 'Maintenance', 'Doctor', 'About']);
+    expect(cardTitles()).toEqual([
+      'General',
+      'Users & Allowlist',
+      'AI',
+      'Backups',
+      'Maintenance',
+      'Doctor',
+      'About',
+      'Email',
+      'Web Push',
+      'Broadcasts',
+    ]);
     expect(screen.getByText('Administration')).toBeInTheDocument();
     expect(screen.getByText('Operations')).toBeInTheDocument();
+    expect(screen.getByText('Messaging')).toBeInTheDocument();
   });
 
-  it('shows only Users & allowlist to a users:read-only operator (Operations group dropped)', () => {
+  it('hides Web Push without push:read and Broadcasts without broadcasts:read', () => {
+    setViewportWidth(1440);
+    renderHub('admin', withPerms(mockAdminUser, ['push:read']));
+
+    expect(cardTitles()).toContain('Web Push');
+    expect(cardTitles()).not.toContain('Broadcasts');
+  });
+
+  it('shows only Users & Allowlist to a users:read-only operator (Operations group dropped)', () => {
     setViewportWidth(1440);
     renderHub('admin', { ...mockUser, permissions: ['users:read'] });
 
-    expect(cardTitles()).toEqual(['Users & allowlist']);
+    expect(cardTitles()).toEqual(['Users & Allowlist']);
     expect(screen.queryByText('Operations')).not.toBeInTheDocument();
   });
 
@@ -109,7 +136,7 @@ describe('/admin/settings (Console hub)', () => {
     setViewportWidth(1440);
     renderHub('admin', { ...mockUser, permissions: ['system_settings:read'] });
 
-    expect(cardTitles()).toEqual(['General', 'AI', 'Backups', 'Maintenance', 'Doctor', 'About']);
+    expect(cardTitles()).toEqual(['General', 'AI', 'Backups', 'Maintenance', 'Doctor', 'About', 'Email']);
   });
 
   it('navigates to the Backups card route', async () => {

@@ -26,6 +26,8 @@ import { LoggerModule } from './common/logger/logger.module';
 // `retention` and `nodes` system-settings namespaces, which the platform refuses
 // once `SettingsModule.forRoot()` has composed the request bodies.
 import { jobsModule, nodesModule } from './platform/jobs/jobs.config';
+import { emailModule } from './platform/email/email.config';
+import { notificationsModule, BroadcastsModule } from './platform/notifications/notifications.config';
 import { identityModule } from './platform/identity/identity.config';
 import { platformHostModule } from './platform/platform-host.module';
 import { settingsModule } from './platform/settings/settings.config';
@@ -76,6 +78,18 @@ import configuration from './config/configuration';
     // Worker nodes (E5.1): `/api/nodes/*`, `/api/admin/nodes/*`, the fleet sweep and
     // prune and the brokered-secret sweep. Needs `jobsModule` in the same app.
     nodesModule,
+    // Email (issue #85, E7.1): SES and SMTP transports, `GET|PUT /api/email-settings`,
+    // `POST /api/email-settings/test`, the template registry and layout (Vault's
+    // teal and logo) and the Doctor check. NOT global: a module that sends mail imports
+    // the same `emailModule` object. Runtime-configured: no SMTP or SES variable.
+    emailModule,
+    // Notifications (E7.1): the dispatcher (`NotificationsService`), the email, in-app
+    // (inbox and SSE) and Web Push channels, `/api/notifications/*`,
+    // `/api/admin/push-config/*`, the VAPID Doctor check and the retention jobs.
+    // GLOBAL. Events are registered by `platform/notifications/notification.manifest.ts`.
+    notificationsModule,
+    // Admin broadcasts (E7.1): `/api/admin/broadcasts/*` and the two broadcast job handlers.
+    BroadcastsModule,
     // Host core: event bus, maintenance mode (the only APP_GUARD), the
     // `{ data }` envelope, request log, exception filter, request ids and
     // /api/health. Placed where the health routes sat in the OpenAPI document.

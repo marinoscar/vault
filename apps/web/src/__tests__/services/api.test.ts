@@ -3,7 +3,10 @@ import { http, HttpResponse } from 'msw';
 import { server } from '../mocks/server';
 import { api, ApiError } from '../../services/api';
 
-describe('ApiService', () => {
+// E3.3 (#78): `api` is the platform's PlatformHttpClient configured by Vault; these
+// cases (written against Vault's former ApiService) pin that the swap kept the
+// behaviour every Vault call relies on.
+describe('api (PlatformHttpClient as Vault configures it)', () => {
   beforeEach(() => {
     api.setAccessToken(null);
   });

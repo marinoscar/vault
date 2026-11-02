@@ -8,6 +8,7 @@ import { CryptoService } from '../common/services/crypto.service';
 import { SecretsExportService } from '../secrets/export/secrets-export.service';
 import { encryptBackupPassword } from './backup-password';
 import { BACKUP_FAILURE_MESSAGES, BACKUP_SCHEDULE_ID, BackupRunnerService } from './backup-runner.service';
+import { BackupArchiveService } from './backup-archive.service';
 import type { BackupRunRow } from './dto/backup-responses';
 
 /**
@@ -168,8 +169,8 @@ function setup(schedule: Record<string, unknown>) {
     }),
     delete: jest.fn().mockResolvedValue(undefined),
   };
-  // AiConfigService: whether an AI key is stored.
-  const aiConfig = { isKeyConfigured: jest.fn(async () => true) };
+  // AiKeyPresence: whether the AI key is stored.
+  const credentials = { isConfigured: jest.fn(async () => true) };
   const systemSettings = {
     // What SystemSettingsService.getSettings() returns: already masked, but
     // still carrying apiKeyLast4, which the backup drops too.
@@ -178,9 +179,10 @@ function setup(schedule: Record<string, unknown>) {
       features: { cardScanning: true },
       ai: {
         enabled: true,
-        provider: 'openai',
-        model: 'model-x',
-        maxCallsPerUserPerDay: 20,
+        keyPolicy: 'byok_with_org_fallback',
+        providers: { openai: { enabled: true } },
+        cardExtractModel: 'model-x',
+        limits: { perUser: { requestsPerDay: 20 } },
         apiKeyConfigured: true,
         apiKeyLast4: MARKERS.apiKeyLast4,
         apiKeyUpdatedAt: '2026-01-01T00:00:00.000Z',
@@ -192,15 +194,15 @@ function setup(schedule: Record<string, unknown>) {
     })),
   };
   const exportService = new SecretsExportService(prisma as never, crypto, storage as never);
-  const runner = new BackupRunnerService(
+  const archive = new BackupArchiveService(
     prisma as never,
-    crypto,
     storage as never,
     exportService,
     systemSettings as never,
-    aiConfig as never,
+    credentials as never,
   );
-  return { runner, prisma, storage, uploads, systemSettings };
+  const runner = new BackupRunnerService(prisma as never, crypto, storage as never, archive, exportService);
+  return { runner, archive, prisma, storage, uploads, systemSettings };
 }
 
 const runRow = (): BackupRunRow => ({
@@ -320,9 +322,11 @@ describe('System backup content selection', () => {
     const settings = JSON.parse(await zip.text('system/settings.json'));
     expect(settings.ai).toEqual({
       enabled: true,
-      provider: 'openai',
-      model: 'model-x',
-      maxCallsPerUserPerDay: 20,
+      keyPolicy: 'byok_with_org_fallback',
+      cardExtractModel: 'model-x',
+      providers: { openai: true },
+      perUserRequestsPerMinute: null,
+      perUserRequestsPerDay: 20,
       apiKeyConfigured: true,
     });
 
@@ -386,7 +390,7 @@ describe('System backup content selection', () => {
       includeMedia: true,
       includeSystem: true,
     };
-    const stream = await ctx.runner.streamSystemArchive(selection, PASSWORD, NOW);
+    const stream = await ctx.archive.streamSystemArchive(selection, PASSWORD, NOW);
     const chunks: Buffer[] = [];
     for await (const c of stream) chunks.push(Buffer.from(c));
     const zip = await openUpload(Buffer.concat(chunks));
@@ -423,7 +427,7 @@ describe('System backup content selection', () => {
         attachments: [],
       },
     ]);
-    const counts = await ctx.runner.countSystemArchive(
+    const counts = await ctx.archive.countSystemArchive(
       { includeSecrets: true, includeAttachments: true, includeVersions: false, includeMedia: true, includeSystem: false },
       NOW,
     );

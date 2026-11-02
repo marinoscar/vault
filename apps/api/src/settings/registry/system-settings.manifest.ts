@@ -13,6 +13,7 @@
 // =============================================================================
 
 import { MAINTENANCE_SYSTEM_SETTINGS } from '@marinoscar/platform-api/host';
+import { NOTIFICATIONS_SYSTEM_SETTINGS } from '@marinoscar/platform-api/notifications';
 import {
   assembleSystemSettingsNamespaces,
   registerSystemSettingsNamespaces,
@@ -26,6 +27,7 @@ import {
 
 export const PLATFORM_SYSTEM_SETTINGS_NAMESPACES: readonly SystemSettingsNamespace[] = [
   MAINTENANCE_SYSTEM_SETTINGS as SystemSettingsNamespace,
+  NOTIFICATIONS_SYSTEM_SETTINGS as SystemSettingsNamespace, // E7.1: policy + org layer
 ];
 
 export function assembleVaultSystemSettingsNamespaces(): SystemSettingsNamespace[] {
