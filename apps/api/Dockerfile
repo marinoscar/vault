@@ -50,6 +50,8 @@ COPY apps/web/package.json ./apps/web/
 # them through `COPY --from=deps /app ./`, production included. A symlink to an
 # empty directory builds clean and dies at boot with ERR_MODULE_NOT_FOUND.
 COPY packages ./packages/
+# Root build helpers the package build scripts call (scripts/vault-packages/*.mjs).
+COPY scripts ./scripts/
 # Prisma schema and config are needed by `prisma generate` below. prisma.config.ts
 # requires scripts/prisma-env.js (it derives DATABASE_URL from POSTGRES_*), so
 # that one file travels with it; the rest of the scripts reach production later.
