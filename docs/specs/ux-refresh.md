@@ -173,6 +173,13 @@ Replaces the stats/quick-actions/recent mix with three urgency-first panels (eac
 
 Also a compact "Recent media" strip (`media:read`) and quick actions (New secret, Scan card, Upload) gated by `secrets:write` / `media:write`. On first run with no secrets, a single empty-state call to action.
 
+**As built (E10.6, [#97](https://github.com/marinoscar/vault/issues/97)).** `pages/HomePage.tsx` composes `components/home/`: `WelcomeHeader` (greeting, subtitle, the quick actions beside it from 600px and under it on a phone), `StatsRow` (Secrets, Cards, Need attention, Media folders, each a link), `ExpiringCardsPanel` ("Cards needing attention": `expired` and `expiring_soon` only, soonest first, at most 5 rows, `•••• 4242 · Exp MM/YY` plus `CardExpiryBadge`; a writer's row opens `/cards/:id/renew`, a reader's the detail; the header links to `/cards?filter=attention`), `RecentSecretsPanel` (5 rows: name, type, age; links to the detail), `BackupStatusPanel` (your newest saved backup with "Back up now"; for `system_settings:read` the newest scheduled run and the schedule, with failed and overdue (next run more than an hour late) stated in words and a link to the backup settings), `QuickActions` (New secret `secrets:write`; Scan a card `secrets:write` and `GET /api/ai/status` card extraction on; Back up now `secrets:read`) and `FirstRunPanel`. Settings targets live in `components/home/homeLinks.ts` (`/settings` and `/admin/settings` until E10.3 adds the backup cards).
+
+- **Independent sources.** Each panel owns one `useDashboardResource` (`hooks/useDashboardResource.ts`): all start on mount in parallel, each has its own skeleton, empty state and error with "Try again", and a disabled source (missing permission) issues no request. Expiring cards reuse `useCards`.
+- **Requests per visit** (asserted in `__tests__/pages/HomePage.test.tsx`): `GET /secrets?pageSize=5&sortBy=updatedAt` (also the Secrets count), `/secret-types` + `/secrets?typeId=<Card>&pageSize=100` + one `/secrets/:id` per card (the expiry lives only in decrypted values; no list endpoint carries it), `/backups/me?pageSize=1`, `/media/folders?pageSize=1` (count), `/ai/status` (writers only), and for administrators `/admin/backups?pageSize=1` with `/admin/backups/schedule`. The per-card fan-out is the one remaining N+1; a server-side expiry summary would remove it.
+- **Dropped:** the Secret types chip panel and the Recent media strip (the media count stays in the stats row); Upload is not a quick action.
+- **Layout.** `Container maxWidth="lg" disableGutters` (the shell's `<main>` pads); one column on a phone ordered cards, recent, backups (`display: contents` columns with `order`), two columns (7:5) from `md`. No breakpoint is read in JS.
+
 ## 10. Accessibility
 
 - WCAG 2.2 AA: contrast per section 5, visible focus ring in `primary`, target size >= 44px on the bottom bar, 24px minimum elsewhere.
@@ -203,7 +210,7 @@ All fixtures use invented data (`Person A`, `@example.test`, published test card
 | E10.3 | Settings hub: `adminSections.tsx`, `userSettingsSections.tsx`, move existing settings content into cards, redirect old routes, registry tests | E4, E10.2 |
 | E10.4 | Secrets list on datatable with card mode, URL state, version history drawer | E10.2 |
 | E10.5 (#96, done) | Cards gallery and expiry statuses; capture → crop → review → save polish for import and renew; CVV manual only | E10.2 |
-| E10.6 | Home dashboard (expiring cards, recent secrets, last backup status) | E10.2, E5 for job-based backup status |
+| E10.6 (#97, done) | Home dashboard (expiring cards, recent secrets, last backup status) | E10.2, E5 for job-based backup status |
 | E10.7 | Accessibility pass, Playwright e2e and visual baselines, docs update | E10.1 to E10.6 |
 
 E10.1 is #92 and E10.2 is #93; the other numbers are assigned as each starts.
