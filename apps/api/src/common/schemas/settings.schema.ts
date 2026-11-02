@@ -16,7 +16,12 @@ export const userSettingsSchema = z.object({
 export type UserSettingsDto = z.infer<typeof userSettingsSchema>;
 
 // Partial schema for PATCH operations
-export const userSettingsPatchSchema = userSettingsSchema.deepPartial();
+// (Zod 4 dropped `.deepPartial()`; the partials are spelled out, mirroring the
+// Zod 3 behaviour: every nested object becomes partial, record values do not.)
+export const userSettingsPatchSchema = z.object({
+  theme: userSettingsSchema.shape.theme.optional(),
+  profile: userSettingsSchema.shape.profile.partial().optional(),
+});
 
 // =============================================================================
 // System Settings Schema
@@ -58,4 +63,17 @@ export const systemSettingsSchema = z.object({
 export type SystemSettingsDto = z.infer<typeof systemSettingsSchema>;
 
 // Partial schema for PATCH operations
-export const systemSettingsPatchSchema = systemSettingsSchema.deepPartial();
+// (Zod 4 dropped `.deepPartial()`; see `userSettingsPatchSchema`.)
+export const systemSettingsPatchSchema = z.object({
+  ui: systemSettingsSchema.shape.ui.partial().optional(),
+  features: systemSettingsSchema.shape.features.optional(),
+  ai: z
+    .object({
+      enabled: aiSettingsSchema.shape.enabled.optional(),
+      provider: aiSettingsSchema.shape.provider.optional(),
+      model: aiSettingsSchema.shape.model.optional(),
+      maxCallsPerUserPerDay: aiSettingsSchema.shape.maxCallsPerUserPerDay.optional(),
+      apiKey: encryptedSecretValueSchema.partial().nullable().optional(),
+    })
+    .optional(),
+});
