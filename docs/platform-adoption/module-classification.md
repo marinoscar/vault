@@ -83,7 +83,7 @@ Baseline classification of every Vault module against EnterpriseAppBase (EAB) an
 | `AuditEvent` | noise (verify) | platform audit/host model | E3 | Also backs the AI daily budget (`ai.card.extract`) and `secrets.export`/`backups.export`; keep action names |
 | `StorageObject`, `StorageObjectChunk` | noise | storage fragment (org-owned, RLS) | E2 / E6 (done) | `org_id` backfilled; served by the platform storage slice since E6.1 |
 | `MediaFolder` | domain | app fragment | E2 / E12 | |
-| `SecretType`, `Secret`, `SecretVersion`, `SecretAttachment` | domain | app fragment | E2 / E12 | `secret_versions_current_unique` partial index goes in the raw-SQL index list; composite FKs with `org_id` if made org-owned |
+| `SecretType`, `Secret`, `SecretVersion`, `SecretAttachment` | domain | app fragment | E2 / E12 | `secret_versions_current_unique` partial index goes in the raw-SQL index list; `secret_attachments` carries `org_id` with the composite FK to `storage_objects` (E6.2) |
 | `BackupSchedule`, `BackupRun` | domain | app fragment | E2 / E5 | Active-run uniqueness moves to the job dedup index |
 | Enums `PatDurationUnit`, `DeviceCodeStatus`, `StorageObjectStatus` | noise | identity / storage fragments | E2 | |
 

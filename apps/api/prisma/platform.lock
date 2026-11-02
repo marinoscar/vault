@@ -86,6 +86,14 @@
         "CREATE INDEX \"backup_runs_job_id_idx\" ON \"backup_runs\"(\"job_id\" ASC);",
         "ALTER TABLE \"backup_runs\" ADD CONSTRAINT \"backup_runs_job_id_fkey\" FOREIGN KEY (\"job_id\") REFERENCES \"jobs\"(\"id\") ON DELETE SET NULL ON UPDATE CASCADE;"
       ]
+    },
+    {
+      "id": "vault:attachments-org-id",
+      "reason": "Column secret_attachments.org_id and the composite foreign key (storage_object_id, org_id) to storage_objects (app migration 20261103090000_attachments_composite_fk_media_rls, E6.2). The diff prints secret_attachments whole with the column, and the new foreign key, only once that migration is applied, i.e. in a dry run AFTER prisma:migrate; the pre-migration shape (no org_id, plain foreign key) stays declared by vault:domain-schema.",
+      "expectDiff": [
+        "CREATE TABLE \"secret_attachments\" ( \"id\" UUID NOT NULL, \"secret_id\" UUID NOT NULL, \"storage_object_id\" UUID NOT NULL, \"label\" TEXT, \"created_at\" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP, \"secret_version_id\" UUID NOT NULL, \"role\" TEXT, \"org_id\" UUID NOT NULL, CONSTRAINT \"secret_attachments_pkey\" PRIMARY KEY (\"id\") );",
+        "ALTER TABLE \"secret_attachments\" ADD CONSTRAINT \"secret_attachments_storage_object_id_org_id_fkey\" FOREIGN KEY (\"storage_object_id\", \"org_id\") REFERENCES \"storage_objects\"(\"id\", \"org_id\") ON DELETE CASCADE ON UPDATE CASCADE;"
+      ]
     }
   ],
   "lockVersion": 1,
@@ -336,6 +344,14 @@
     {
       "definition": "CREATE UNIQUE INDEX secret_versions_current_unique ON public.secret_versions USING btree (secret_id) WHERE (is_current = true)",
       "name": "secret_versions_current_unique"
+    }
+  ],
+  "rlsPolicies": [
+    {
+      "checkSha256": "83e7bb1689b1bd0427e7061bf085f69c35922ba56bedf6275925f52e58cb440b",
+      "name": "media_folder_files_org_isolation",
+      "table": "media_folder_files",
+      "usingSha256": "83e7bb1689b1bd0427e7061bf085f69c35922ba56bedf6275925f52e58cb440b"
     }
   ]
 }

@@ -62,8 +62,10 @@ Production is touched only after the whole procedure ran clean on a copy.
 From `apps/api`:
 
 ```bash
-npm run db:baseline -- --through 2 --allow-rls | tee baseline-dry-run.txt
+npm run db:baseline:pre-migrate | tee baseline-dry-run.txt
 ```
+
+`db:baseline:pre-migrate` is `platform db baseline --through 2 --allow-rls` (extra arguments are forwarded) run against a temporary copy of `platform.lock` without `rlsPolicies` (`scripts/baseline-pre-migrate.mjs`). The lock lists `media_folder_files_org_isolation`, which the app migration `20261103090000_attachments_composite_fk_media_rls` creates; the baseline asserts every listed policy exists, so the plain command refuses a pre-migration database (`POLICY_MISSING`, `RLS_NOT_ENABLED`). A deviation cannot declare a policy, and `db:drift` needs the listing after the migration, so the gate ignores it instead. The real lock is never opened for writing; the temporary root lives in `apps/api/.baseline-pre-migrate-*` and is removed even on a crash. Use it for **every** gate before `prisma:migrate`.
 
 The committed `platform.lock` already declares everything below, so the expected result is:
 
@@ -85,6 +87,7 @@ The 49 declared statements are Vault's `deviations` in `platform.lock`; each is 
 | `vault:storage-media-folder-id` | 3 | `storage_objects.media_folder_id` (the column, printed with the twelfth early `DROP DEFAULT`, its index and its foreign key). Removed by `add_media_folder_files` |
 | `vault:domain-schema` | 35 | every table, index and foreign key of the seven Vault tables (`secret_types`, `secrets`, `secret_versions`, `secret_attachments`, `media_folders`, `backup_schedules`, `backup_runs`) |
 | `vault:media-folder-files` | 5 | the `media_folder_files` table, appearing in a diff only **after** that migration ran |
+| `vault:attachments-org-id` | 2 | `secret_attachments` with `org_id` and its composite foreign key, appearing in a diff only **after** `20261103090000_attachments_composite_fk_media_rls` ran. That migration also adds the `media_folder_files_org_isolation` policy, listed in `rlsPolicies`: run the pre-migration gate as `npm run db:baseline:pre-migrate` (a lock copy without `rlsPolicies`), since the policy does not exist before the migration |
 
 **If the dry run reports a difference the lock does not declare** (a different count, a `BLOCKING:` line), production is not the database Vault rehearsed: stop. Regenerate the declarations from the report with the proving script, **read what it refuses**, and never declare an unexplained statement:
 
@@ -101,10 +104,10 @@ node scripts/baseline-deviations.mjs baseline-dry-run.txt --lock prisma/platform
 
 ## 5. Apply (rehearsal copy only for a first adoption)
 
-`--apply` **writes files**. Vault's directories and lock are already committed, so on the committed tree it refuses with `LOCK_NOT_EMPTY` and there is nothing to install. It is needed only to regenerate the installed directories from scratch (a fresh adoption, after `git rm` of them). When you do run it, run it on the rehearsal copy with `POSTGRES_DB` set to the copy:
+`--apply` **writes files** (through `db:baseline:pre-migrate` it rewrites the temporary lock, and on success the script writes the result back to `prisma/platform.lock` with the original `rlsPolicies` merged in again). Vault's directories and lock are already committed, so on the committed tree it refuses with `LOCK_NOT_EMPTY` and there is nothing to install. It is needed only to regenerate the installed directories from scratch (a fresh adoption, after `git rm` of them). When you do run it, run it on the rehearsal copy with `POSTGRES_DB` set to the copy:
 
 ```bash
-npm run db:baseline -- --through 2 --allow-rls --apply     # installs 38 dirs, resolves nothing, writes platform.lock, B6 verify
+npm run db:baseline:pre-migrate -- --apply     # installs 38 dirs, resolves nothing, writes platform.lock, B6 verify
 ```
 
 Expected: `B5 act: 0 to resolve, 38 to install only`, `B6 verify: ok`, `baseline applied and verified`. The installed names are `20261102120001_add_credentials` to `20261102120038_add_alerts` (the tool uses `max(now, newest + 1s)`, and Vault's newest app migration is `20261102120000`). **Commit the directories and the lock together; never edit or rename them** (the lock hashes the raw bytes, comments included). The `media_folder_files` migration must be created **after** the install, with a timestamp later than the last installed directory (`20261102130000_...`); installing after it would sort the platform copies behind it and break the `org_id` dependency (`APP_MIGRATION_OUT_OF_ORDER`).
@@ -143,7 +146,7 @@ Only when the rehearsal on a **real backup** matched section 4 and section 6.
 4. Dry run on production and compare line by line with the rehearsal's report:
 
    ```bash
-   docker compose run --rm api npm run db:baseline -- --through 2 --allow-rls | tee baseline-dry-run-prod.txt
+   docker compose run --rm api npm run db:baseline:pre-migrate | tee baseline-dry-run-prod.txt
    ```
 
    Expected: identical to section 4 (`0 blocking, 49 declared`, ..., `nothing to do`). Any difference: stop; do not migrate.

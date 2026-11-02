@@ -657,7 +657,7 @@ export class SecretsService {
 
     const source = await tx.secretAttachment.findMany({
       where: { secretVersionId: sourceVersionId },
-      select: { storageObjectId: true, role: true, label: true },
+      select: { storageObjectId: true, orgId: true, role: true, label: true },
     });
 
     if (!Array.isArray(source) || source.length === 0) {
@@ -672,6 +672,7 @@ export class SecretsService {
     // replaced. The set is a handful of rows per version, so this costs nothing.
     const rows: Array<{
       storageObjectId: string;
+      orgId: string;
       role: string | null;
       label: string | null;
     }> = exclude
@@ -687,12 +688,18 @@ export class SecretsService {
 
     await tx.secretAttachment.createMany({
       data: rows.map(
-        (a: { storageObjectId: string; role: string | null; label: string | null }) => ({
+        (a: {
+          storageObjectId: string;
+          orgId: string;
+          role: string | null;
+          label: string | null;
+        }) => ({
           secretId,
           secretVersionId: targetVersionId,
           // Same storage object: the blob is shared between versions, and the
           // refcount-aware unlink below is what keeps it alive.
           storageObjectId: a.storageObjectId,
+          orgId: a.orgId,
           role: a.role,
           label: a.label,
         }),
@@ -1352,12 +1359,14 @@ export class SecretsService {
     // holding a write transaction open across a network read is how a lock
     // pile-up starts. Failing here also means a rejected image never reaches the
     // version bump at all.
+    const replacementOrgIds = new Map<string, string>();
     for (const replacement of replacements) {
       const storageObject = await this.resolveUsableStorageObject(
         replacement.storageObjectId,
         userId,
         userPermissions,
       );
+      replacementOrgIds.set(replacement.storageObjectId, storageObject.orgId);
 
       if (this.isCardImageRole(replacement.role)) {
         await this.enforceCardImageConstraints(
@@ -1410,6 +1419,7 @@ export class SecretsService {
               secretId,
               secretVersionId: version.id,
               storageObjectId: r.storageObjectId,
+              orgId: replacementOrgIds.get(r.storageObjectId) as string,
               role: r.role ?? null,
               label: r.label ?? null,
             })),
@@ -1560,6 +1570,7 @@ export class SecretsService {
             secretId,
             secretVersionId: currentVersion.id,
             storageObjectId: dto.storageObjectId,
+            orgId: storageObject.orgId,
             role: dto.role,
             label: dto.label,
           },

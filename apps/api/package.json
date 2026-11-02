@@ -32,6 +32,7 @@
     "db:check:database": "node scripts/platform-env.js db check --database",
     "db:drift": "node scripts/platform-env.js db drift",
     "db:baseline": "node scripts/platform-env.js db baseline",
+    "db:baseline:pre-migrate": "node scripts/baseline-pre-migrate.mjs",
     "db:policies": "platform db policies",
     "db:test": "node scripts/test-db-connection.js",
     "vault:migrate-ai-key": "ts-node --project prisma/tsconfig.json --transpile-only scripts/migrate-ai-key.ts",
