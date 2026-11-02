@@ -1,5 +1,7 @@
 import pino from 'pino';
 
+import { resolveServiceName } from '../otel/telemetry-identity';
+
 export const pinoConfig: pino.LoggerOptions = {
   level: process.env.LOG_LEVEL || 'info',
   formatters: {
@@ -7,7 +9,7 @@ export const pinoConfig: pino.LoggerOptions = {
     bindings: (bindings) => ({
       pid: bindings.pid,
       host: bindings.hostname,
-      service: process.env.OTEL_SERVICE_NAME || 'vault-api',
+      service: resolveServiceName(),
     }),
   },
   timestamp: pino.stdTimeFunctions.isoTime,

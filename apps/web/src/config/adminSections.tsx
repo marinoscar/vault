@@ -24,6 +24,11 @@ import type { SettingsSectionDef } from '@marinoscar/platform-web/settings/ui';
 import { dbBackupAdminSections } from '@marinoscar/platform-web/db-backup/ui';
 import { doctorSettingsPage } from '@marinoscar/platform-web/doctor/ui';
 import { identityAdminSections } from '@marinoscar/platform-web/identity/ui';
+// Telemetry (E9.2, #90): the platform's three Observability cards, declared by the package (data
+// only). Each carries the exact permission the telemetry controllers enforce (`telemetry:read` for
+// the settings page, `telemetry:query` for the Explorer and Dashboard); the last two carry
+// `feature: 'telemetry'` (a store is deployed and collection is on).
+import { telemetryAdminCards } from '@marinoscar/platform-web/telemetry/ui';
 import './settingsFeatures';
 import TuneIcon from '@mui/icons-material/TuneOutlined';
 import AiIcon from '@mui/icons-material/AutoAwesomeOutlined';
@@ -184,5 +189,13 @@ export const ADMIN_SECTIONS: SettingsSectionDef[] = [
         permission: 'broadcasts:read',
       },
     ],
+  },
+  // E9.2 (#90). A NEW section APPENDED after Operations, so no existing card moves. `Telemetry`
+  // (`telemetry:read`) has no `feature`: it is where collection is switched on, so it must be
+  // reachable while the feature is off. The Explorer and Dashboard (`telemetry:query`) exist only
+  // while a store is deployed and collection is on. Only the admin role holds `telemetry:*`.
+  {
+    label: 'Observability',
+    cards: [...telemetryAdminCards],
   },
 ];

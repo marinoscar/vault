@@ -16,6 +16,7 @@ import '@marinoscar/platform-api/identity/testing';
 import '@marinoscar/platform-api/jobs/testing';
 import '@marinoscar/platform-api/notifications/testing';
 import '@marinoscar/platform-api/settings/testing';
+import '@marinoscar/platform-api/telemetry/testing';
 import '@marinoscar/platform-api/storage/testing';
 
 import { Module } from '@nestjs/common';
@@ -67,7 +68,7 @@ runPlatformConformance({
     // `vaultCards`, `vaultBackups`, plus `storage` (E6.1), `notifications` (E7.1) and `databaseBackup` (E9.1).
     settings: {
       permissions: permissionRegistry.list(),
-      minSystemNamespaces: 12,
+      minSystemNamespaces: 13,
     },
 
     // Every foreign key to `User` in the composed schema is registered with a purge
@@ -134,6 +135,13 @@ runPlatformConformance({
     // callback, and the Web Push shapes carry no secret. The after-commit allowlist is EMPTY on
     // purpose: Vault has no argued exception.
     notifications: { afterCommitAllowlist: [] },
+
+    // The telemetry slice (E9.2, #90): the platform's metric groups and Vault's own (`vault`) are well
+    // formed and compute against an empty schema, every `/api/admin/telemetry/*` and
+    // `/api/telemetry/*` route carries exactly the permissions its shape needs, the Doctor checks are
+    // read-only, no response carries a stored GreptimeDB password, and the module boots with telemetry
+    // off. The slice's retention cron ships in the package, outside Vault's source root.
+    telemetry: {},
 
     // The `@Cron` half of queue rule 1 (E5.1/E5.3, #81/#83): every `@Cron` body in Vault's own
     // sources only enqueues a job. The platform's crons (the three permanent exemptions, the

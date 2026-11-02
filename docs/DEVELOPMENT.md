@@ -11,6 +11,7 @@ This document provides essential information for developers working on this proj
 5. [Common Pitfalls and Solutions](#common-pitfalls-and-solutions)
 6. [Testing Guidelines](#testing-guidelines)
 7. [Debugging Tips](#debugging-tips)
+8. [Observability](#observability)
 
 ---
 
@@ -125,6 +126,17 @@ Two things to know when running the stack by hand:
 
 - The `.env` template reads `POSTGRES_USER=app`. Vault's CI and runbooks use `vault_app`; set `POSTGRES_USER=vault_app` in `infra/compose/.env` to keep it.
 - Compose files: `base.compose.yml -f dev.compose.yml -f app.build.compose.yml -f app.dev.src-mounts.compose.yml` for development; add `-f telemetry.compose.yml` for GreptimeDB and the collector.
+
+## Observability
+
+Traces, metrics and logs go through the platform's OpenTelemetry SDK (`apps/api/src/instrumentation.ts`) into GreptimeDB, and are read back in the admin telemetry page. Nothing is exported unless **both** switches are on: `OTEL_ENABLED=true` installs the SDK (the telemetry overlay sets it), and the `telemetry` system setting opens the export gate at runtime (off by default). There is no Uptrace and no `UPTRACE_DSN` any more.
+
+```bash
+cd infra/compose
+docker compose -f base.compose.yml -f dev.compose.yml -f devdb.compose.yml -f telemetry.compose.yml up
+```
+
+Sign in as an administrator, open **Admin > Telemetry** (`/admin/settings/telemetry`), turn telemetry on; the explorer, dashboard (including Vault's own `Vault activity` group) and assistant are there. GreptimeDB itself: http://localhost:14000/dashboard. Vault's metrics, the label rules and what to check: [telemetry.md](telemetry.md). Operations: [runbooks/telemetry.md](runbooks/telemetry.md).
 
 ## Working with NestJS + Fastify
 

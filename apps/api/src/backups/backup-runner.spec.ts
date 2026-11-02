@@ -198,6 +198,19 @@ describe('BackupRunnerService.execute (archive)', () => {
     expect(storage.delete).not.toHaveBeenCalled();
   });
 
+  it('records one backup metric with enum labels only after the run settles (E9.2)', async () => {
+    const ctx = setup();
+    const metrics = { backupFinished: jest.fn() };
+    (ctx.runner as unknown as { vaultMetrics: typeof metrics }).vaultMetrics = metrics;
+
+    await ctx.runner.execute(runRow());
+
+    expect(metrics.backupFinished).toHaveBeenCalledTimes(1);
+    const call = metrics.backupFinished.mock.calls[0][0];
+    expect(call).toEqual({ scope: 'system', trigger: 'manual', outcome: 'succeeded', durationMs: expect.any(Number) });
+    expect(JSON.stringify(call)).not.toContain('run-new');
+  });
+
   it('writes every entry with AES-256 (never ZipCrypto)', async () => {
     const { entries, reader } = await runAndOpen();
     expect(entries.length).toBeGreaterThanOrEqual(4);
