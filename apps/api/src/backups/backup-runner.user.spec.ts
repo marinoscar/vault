@@ -84,7 +84,7 @@ function setup(opts: { runs?: Array<Record<string, unknown>>; running?: number }
     delete: jest.fn().mockResolvedValue(undefined),
   };
   const exportService = new SecretsExportService(prisma as never, crypto, storage as never);
-  const runner = new BackupRunnerService(prisma as never, crypto, storage as never, exportService, {} as never);
+  const runner = new BackupRunnerService(prisma as never, crypto, storage as never, exportService, {} as never, {} as never);
   return { runner, prisma, storage, uploads };
 }
 

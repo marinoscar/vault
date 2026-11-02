@@ -11,6 +11,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 
+import { SystemSettingsService } from '@marinoscar/platform-api/settings';
 import { PrismaService } from '../prisma/prisma.service';
 import { CryptoService } from '../common/services/crypto.service';
 import { STORAGE_PROVIDER, StorageProvider } from '../storage/providers';
@@ -128,11 +129,21 @@ export class BackupsService {
     @Inject(STORAGE_PROVIDER)
     private readonly storageProvider: StorageProvider,
     private readonly runner: BackupRunnerService,
+    private readonly systemSettings: SystemSettingsService,
   ) {}
+
+  /**
+   * What a schedule reads as until one is saved: the constants above, with the
+   * admin-editable `vaultBackups` defaults (keep count, content flags) on top.
+   */
+  private async scheduleDefaults(): Promise<typeof DEFAULT_BACKUP_SCHEDULE> {
+    const defaults = await this.systemSettings.getNamespace('vaultBackups');
+    return { ...DEFAULT_BACKUP_SCHEDULE, ...defaults };
+  }
 
   async getSchedule(): Promise<BackupScheduleResponse> {
     const row = await this.prisma.backupSchedule.findUnique({ where: { id: BACKUP_SCHEDULE_ID } });
-    return this.toScheduleResponse(row as ScheduleRow | null);
+    return this.toScheduleResponse(row as ScheduleRow | null, await this.scheduleDefaults());
   }
 
   async updateSchedule(
@@ -197,7 +208,7 @@ export class BackupsService {
       update: data,
     });
 
-    const before: EditableSchedule = existing ?? DEFAULT_BACKUP_SCHEDULE;
+    const before: EditableSchedule = existing ?? (await this.scheduleDefaults());
     const changedFields = EDITABLE_FIELDS.filter((field) => before[field] !== next[field]);
 
     await this.audit(actorUserId, BACKUPS_AUDIT_ACTIONS.scheduleUpdate, 'backup_schedule', BACKUP_SCHEDULE_ID, {
@@ -205,7 +216,7 @@ export class BackupsService {
       passwordChanged,
     });
 
-    return this.toScheduleResponse(saved as ScheduleRow);
+    return this.toScheduleResponse(saved as ScheduleRow, await this.scheduleDefaults());
   }
 
   /**
@@ -373,8 +384,11 @@ export class BackupsService {
     return run;
   }
 
-  private toScheduleResponse(row: ScheduleRow | null): BackupScheduleResponse {
-    const source = row ?? { ...DEFAULT_BACKUP_SCHEDULE };
+  private toScheduleResponse(
+    row: ScheduleRow | null,
+    defaults: typeof DEFAULT_BACKUP_SCHEDULE,
+  ): BackupScheduleResponse {
+    const source = row ?? { ...defaults };
     return {
       enabled: source.enabled,
       frequency: source.frequency as BackupFrequency,
@@ -386,9 +400,9 @@ export class BackupsService {
       keepCount: source.keepCount,
       includeAttachments: source.includeAttachments,
       includeVersions: source.includeVersions,
-      includeSecrets: source.includeSecrets ?? DEFAULT_BACKUP_SCHEDULE.includeSecrets,
-      includeMedia: source.includeMedia ?? DEFAULT_BACKUP_SCHEDULE.includeMedia,
-      includeSystem: source.includeSystem ?? DEFAULT_BACKUP_SCHEDULE.includeSystem,
+      includeSecrets: source.includeSecrets ?? defaults.includeSecrets,
+      includeMedia: source.includeMedia ?? defaults.includeMedia,
+      includeSystem: source.includeSystem ?? defaults.includeSystem,
       passwordConfigured: !!row?.passwordEncrypted,
       passwordUpdatedAt: row?.passwordUpdatedAt ? row.passwordUpdatedAt.toISOString() : null,
       nextRunAt: row?.nextRunAt ? row.nextRunAt.toISOString() : null,
