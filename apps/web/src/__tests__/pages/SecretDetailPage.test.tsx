@@ -177,7 +177,7 @@ describe('SecretDetailPage', () => {
       const user = userEvent.setup();
       renderPage();
 
-      expect(await screen.findByText('ADA LOVELACE')).toBeInTheDocument();
+      expect(await screen.findByText('PERSON A')).toBeInTheDocument();
       expect(screen.queryByText('4242424242424242')).not.toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Copy Card Number' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Copy Cardholder Name' })).toBeInTheDocument();
