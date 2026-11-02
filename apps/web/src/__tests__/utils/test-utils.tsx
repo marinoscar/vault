@@ -1,12 +1,16 @@
 import { ReactElement, ReactNode } from 'react';
 import { render, RenderOptions, RenderResult } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { CssBaseline } from '@mui/material';
 import { vi } from 'vitest';
+import { ShellRoot } from '@marinoscar/platform-web/shell/ui';
+import { ShellPreferencesProvider } from '@marinoscar/platform-web/shell/headless';
 
-// Import AuthContext and ThemeContextProvider
+// Vault's AuthContext, re-published to the platform's identity context the
+// shell reads (the same bridge App.tsx mounts), under the Vault themes.
 import { AuthContext } from '../../contexts/AuthContext';
-import { ThemeContextProvider } from '../../contexts/ThemeContext';
+import { PlatformAuthBridge } from '../../platform/PlatformAuthBridge';
+import { shellPreferencesPort } from '../../platform/shellPreferences';
+import { VAULT_THEMES } from '../../theme';
 import type { AuthProvider as AuthProviderType } from '../../types';
 
 interface WrapperOptions {
@@ -92,7 +96,9 @@ function MockAuthProvider({
 
   return (
     <AuthContext.Provider value={contextValue}>
-      {children}
+      <PlatformAuthBridge>
+        <ShellPreferencesProvider port={shellPreferencesPort}>{children}</ShellPreferencesProvider>
+      </PlatformAuthBridge>
     </AuthContext.Provider>
   );
 }
@@ -109,8 +115,7 @@ function createWrapper(options: WrapperOptions = {}) {
   return function Wrapper({ children }: { children: ReactNode }) {
     return (
       <MemoryRouter initialEntries={[route]}>
-        <ThemeContextProvider>
-          <CssBaseline />
+        <ShellRoot themes={VAULT_THEMES}>
           <MockAuthProvider
             authenticated={authenticated}
             user={user}
@@ -119,7 +124,7 @@ function createWrapper(options: WrapperOptions = {}) {
           >
             {children}
           </MockAuthProvider>
-        </ThemeContextProvider>
+        </ShellRoot>
       </MemoryRouter>
     );
   };
