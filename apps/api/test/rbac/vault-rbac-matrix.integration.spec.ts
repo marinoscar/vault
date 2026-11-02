@@ -38,7 +38,7 @@ import { ANY_PERMISSIONS_KEY, PERMISSIONS_KEY } from '@marinoscar/platform-api/i
 import { discoverControllers } from '@marinoscar/platform-api/identity/testing';
 
 import { AppModule } from '../../src/app.module';
-import { BackupQueueService } from '../../src/backups/backup-queue.service';
+import { BackupQueueService } from '@marinoscar/vault-api/backups';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { prismaMock, resetPrismaMock } from '../mocks/prisma.mock';
 

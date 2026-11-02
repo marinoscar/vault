@@ -30,9 +30,9 @@ import { platformPermissionCatalog } from '@marinoscar/platform-api/manifest';
 import { platformSeedInputFrom, seedPlatform, type SeedPrisma } from '@marinoscar/platform-db/seed';
 
 import { AppModule } from '../../src/app.module';
-import { BACKUP_FAILURE_MESSAGES } from '../../src/backups/backup-runner.service';
-import { CARD_EXPIRY_SCAN_JOB_TYPE } from '../../src/card-expiry/card-expiry-job-types';
-import { CardExpiryScanHandler } from '../../src/card-expiry/card-expiry-scan.handler';
+import { BACKUP_FAILURE_MESSAGES } from '@marinoscar/vault-api/backups';
+import { CARD_EXPIRY_SCAN_JOB_TYPE } from '@marinoscar/vault-api/card-expiry';
+import { CardExpiryScanHandler } from '@marinoscar/vault-api/card-expiry';
 import { CryptoService } from '../../src/common/services/crypto.service';
 import { PERMISSION_OPTIONS } from '../../src/platform/permissions';
 import { DEFAULT_SYSTEM_SETTINGS } from '../../src/settings/registry/default-system-settings';

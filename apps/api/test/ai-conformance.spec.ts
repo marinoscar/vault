@@ -25,11 +25,11 @@ import '../src/app-registrations/registrations';
 import '@marinoscar/platform-api/ai/testing';
 import { runPlatformConformance } from '@marinoscar/platform-api/testing';
 
-import { API_SOURCE_ROOT } from './jobs/cron-source-roots';
+import { VAULT_SOURCE_ROOTS } from './jobs/cron-source-roots';
 import { aiConformanceFixture } from './ai-conformance/ai-fixture';
 
 runPlatformConformance({
-  sourceRoots: [API_SOURCE_ROOT],
+  sourceRoots: [...VAULT_SOURCE_ROOTS],
   suites: {
     aiKillSwitch: { fixture: aiConformanceFixture, minAiRoutes: 10, minAdminAiRoutes: 5, minAiJobTypes: 3 },
     aiRbacMatrix: { fixture: aiConformanceFixture, minRoutes: 15, minPermissionedRoutes: 10 },

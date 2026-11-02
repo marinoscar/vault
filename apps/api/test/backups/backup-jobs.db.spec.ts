@@ -41,9 +41,9 @@ import { CryptoService } from '../../src/common/services/crypto.service';
 import { PERMISSION_OPTIONS } from '../../src/platform/permissions';
 import { DEFAULT_SYSTEM_SETTINGS } from '../../src/settings/registry/default-system-settings';
 import { STORAGE_PROVIDER } from '@marinoscar/platform-api/storage';
-import { BACKUP_FAILURE_MESSAGES, BackupRunnerService } from '../../src/backups/backup-runner.service';
-import { systemBackupStorageKey } from '../../src/backups/backup-archive';
-import { BACKUP_RUN_JOB_TYPE, USER_BACKUP_RUN_JOB_TYPE } from '../../src/backups/jobs/backup-job-types';
+import { BACKUP_FAILURE_MESSAGES, BackupRunnerService } from '@marinoscar/vault-api/backups';
+import { systemBackupStorageKey } from '@marinoscar/vault-api/backups';
+import { BACKUP_RUN_JOB_TYPE, USER_BACKUP_RUN_JOB_TYPE } from '@marinoscar/vault-api/backups';
 import {
   findAdminCredentials,
   provisionAppRoleDatabase,

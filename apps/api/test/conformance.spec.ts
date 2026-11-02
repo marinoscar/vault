@@ -37,7 +37,7 @@ import { runPlatformConformance } from '@marinoscar/platform-api/testing';
 import { composedSchemaDatamodel } from '@marinoscar/platform-api/user-data';
 
 import { AppModule } from '../src/app.module';
-import { API_SOURCE_ROOT, CRON_EXEMPTIONS } from './jobs/cron-source-roots';
+import { CRON_EXEMPTIONS, VAULT_API_SOURCE_ROOT, VAULT_SOURCE_ROOTS } from './jobs/cron-source-roots';
 
 const API_DIR = join(__dirname, '..');
 const REPO_DIR = join(API_DIR, '..', '..');
@@ -50,7 +50,7 @@ const REPO_DIR = join(API_DIR, '..', '..');
 class IdentityConformanceRoot {}
 
 runPlatformConformance({
-  sourceRoots: [API_SOURCE_ROOT],
+  sourceRoots: [...VAULT_SOURCE_ROOTS],
   suites: {
     // MaintenanceGuard is the first (and only) APP_GUARD; no global JWT guard;
     // PlatformHostCoreModule is mounted once. Vault adds no global guard.
@@ -165,7 +165,10 @@ runPlatformConformance({
     // SDKs) live in the package, outside these trees. `minFiles` stops a mistyped root from passing
     // on an empty tree.
     aiNoSdkLeak: {
-      apiTrees: [{ name: 'apps/api/src', root: join(API_DIR, 'src'), minFiles: 100 }],
+      apiTrees: [
+        { name: 'apps/api/src', root: join(API_DIR, 'src'), minFiles: 100 },
+        { name: 'packages/vault-api/src', root: VAULT_API_SOURCE_ROOT, minFiles: 60 },
+      ],
       webTrees: [{ name: 'apps/web/src', root: join(REPO_DIR, 'apps', 'web', 'src'), minFiles: 50 }],
       noSdkManifests: [
         join(REPO_DIR, 'package.json'),
@@ -176,7 +179,7 @@ runPlatformConformance({
     },
     // No agent-orchestration framework anywhere; `allowedRoots` is EMPTY on purpose.
     aiOrchestrationBoundary: {
-      apiSourceRoots: [join(API_DIR, 'src')],
+      apiSourceRoots: [join(API_DIR, 'src'), VAULT_API_SOURCE_ROOT],
       webSourceRoots: [join(REPO_DIR, 'apps', 'web', 'src')],
       packageJsonPaths: [
         join(REPO_DIR, 'package.json'),

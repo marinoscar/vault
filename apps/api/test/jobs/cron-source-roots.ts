@@ -19,6 +19,15 @@ import { join } from 'node:path';
 export const API_SOURCE_ROOT = join(__dirname, '..', '..', 'src');
 
 /**
+ * The Vault domain package's source root (E12.2, #103). The domain's crons, listeners and handlers
+ * moved there, so the same scans run over it: the queue rule does not stop at the package border.
+ */
+export const VAULT_API_SOURCE_ROOT = join(__dirname, '..', '..', '..', '..', 'packages', 'vault-api', 'src');
+
+/** Every root of Vault's own source the queue-rule scans walk. */
+export const VAULT_SOURCE_ROOTS: readonly string[] = [API_SOURCE_ROOT, VAULT_API_SOURCE_ROOT];
+
+/**
  * `@Cron` files allowed to work inline. EMPTY since E6.1: the storage cleanup
  * sweep that was the last one is now the platform's enqueue-only
  * `storage.cleanup.stale-uploads` cron. The three permanent exemptions are the
