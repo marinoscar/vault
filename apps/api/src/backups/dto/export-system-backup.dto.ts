@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { z } from 'zod';
+import { typeErrors } from '../../common/schemas/zod-messages';
 
 import {
   EXPORT_PASSWORD_MAX_LENGTH,
@@ -18,7 +19,7 @@ export const EXPORT_PASSWORD_CHOICE_MESSAGES = {
 } as const;
 
 const optionalBoolean = (name: string) =>
-  z.boolean({ invalid_type_error: `${name} must be a boolean` }).optional();
+  z.boolean({ error: typeErrors({ invalid: `${name} must be a boolean` }) }).optional();
 
 /**
  * Body of `POST /api/admin/backups/export`: download a system backup now.
@@ -33,7 +34,7 @@ export const exportSystemBackupSchema = z
   .object(
     {
       password: z
-        .string({ invalid_type_error: 'Password must be a string' })
+        .string({ error: typeErrors({ invalid: 'Password must be a string' }) })
         .min(
           EXPORT_PASSWORD_MIN_LENGTH,
           `Password must be at least ${EXPORT_PASSWORD_MIN_LENGTH} characters`,
@@ -51,28 +52,27 @@ export const exportSystemBackupSchema = z
       includeSystem: optionalBoolean('includeSystem'),
     },
     {
-      required_error: 'Request body must be a JSON object',
-      invalid_type_error: 'Request body must be a JSON object',
+      error: typeErrors({ required: 'Request body must be a JSON object', invalid: 'Request body must be a JSON object' }),
     },
   )
   .superRefine((value, ctx) => {
     const scheduled = value.useScheduledPassword === true;
     if (value.password === undefined && !scheduled) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         path: ['password'],
         message: EXPORT_PASSWORD_CHOICE_MESSAGES.missing,
       });
     }
     if (value.password !== undefined && scheduled) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         path: ['useScheduledPassword'],
         message: EXPORT_PASSWORD_CHOICE_MESSAGES.both,
       });
     }
     for (const issue of contentSelectionIssues(value, 'system')) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [issue.path], message: issue.message });
+      ctx.addIssue({ code: 'custom', path: [issue.path], message: issue.message });
     }
   });
 
