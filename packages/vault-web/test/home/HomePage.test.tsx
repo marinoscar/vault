@@ -16,6 +16,7 @@ import {
   makeSchedule,
   makeSecret,
 } from './homeFixtures.js';
+import { aiConfigPayload } from '../mocks/aiConfig.js';
 
 const API = '*/api';
 
@@ -128,11 +129,7 @@ function mockApi(options: ApiOptions = {}) {
     http.get(`${API}/media/folders`, () =>
       HttpResponse.json({ data: { items: [], meta: { page: 1, pageSize: 1, totalItems: 6, totalPages: 6 } } }),
     ),
-    http.get(`${API}/ai/status`, () =>
-      HttpResponse.json({
-        data: { enabled: options.aiEnabled ?? true, features: { cardExtract: options.aiEnabled ?? true } },
-      }),
-    ),
+    http.get(`${API}/ai/config`, () => HttpResponse.json({ data: aiConfigPayload(options.aiEnabled ?? true) })),
   );
 }
 
@@ -262,7 +259,7 @@ describe('HomePage', () => {
         '/api/admin/backups': 1,
         '/api/admin/backups/schedule': 1,
         '/api/media/folders': 1,
-        '/api/ai/status': 1,
+        '/api/ai/config': 1,
       });
       // No detail request for any secret, card or not: Home decrypts nothing in the browser.
       expect(requests.some((r) => /^\/api\/secrets\/(?!cards\/summary)[^/?]+/.test(r))).toBe(false);
@@ -286,14 +283,14 @@ describe('HomePage', () => {
       expect(requests.some((r) => r.startsWith('/api/admin/'))).toBe(false);
     });
 
-    it('gives a read-only user no create or scan action and never asks for the AI status', async () => {
+    it('gives a read-only user no create or scan action and never asks for the AI config', async () => {
       mockApi();
       renderHome(READER);
       await settled();
 
       const actions = screen.getByRole('navigation', { name: 'Quick actions' });
       expect(within(actions).getAllByRole('link').map((l) => l.textContent)).toEqual(['Back up now']);
-      expect(countsByPath()['/api/ai/status']).toBeUndefined();
+      expect(countsByPath()['/api/ai/config']).toBeUndefined();
       // Expiring card rows open the detail, not the renew flow.
       expect(screen.getByRole('link', { name: /Test Visa travel/ })).toHaveAttribute('href', '/secrets/c1');
     });

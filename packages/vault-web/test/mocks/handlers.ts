@@ -191,22 +191,19 @@ export const handlers = [
     return HttpResponse.json({ message: 'Not found' }, { status: 404 });
   }),
 
-  // AI status
+  // The platform AI config (`GET /api/ai/config`), which `useAiStatus` reads to
+  // decide whether card scanning is available (`isCardScanAvailable`).
   //
-  // Present in the default handler set because any page carrying a card-import
-  // entry point calls it on mount. Tests that care about the disabled path
-  // override it with server.use(...).
-  http.get(`${API_BASE}/ai/status`, () => {
-    return HttpResponse.json({
-      data: { enabled: true, features: { cardExtract: true } },
-    });
-  }),
-
-  // The platform AI config (E8.2): VaultAiConfigProvider, RequireAiEnabled and the
-  // packaged AI pages read it. Off by default; a test that needs it on overrides it.
+  // Present in the default handler set, and satisfying the card-scan rule, because
+  // any page carrying a card-import entry point reads it on mount. Tests that care
+  // about the unavailable paths override it with server.use(...).
   http.get(`${API_BASE}/ai/config`, () => {
     return HttpResponse.json({
-      data: { enabled: false, keyPolicy: 'byok_with_org_fallback', providers: [] },
+      data: {
+        enabled: true,
+        keyPolicy: 'byok_with_org_fallback',
+        providers: [{ id: 'openai', displayName: 'OpenAI', enabled: true, hasOrgKey: true }],
+      },
     });
   }),
 

@@ -12,6 +12,7 @@ import {
   cropImageFileToBox,
   cropImageFileToCard,
 } from '../../src/cards/headless/cardImage.js';
+import { AI_CONFIG_ON_NO_KEY, aiConfigPayload } from '../mocks/aiConfig.js';
 
 const API_BASE = '*/api';
 
@@ -141,9 +142,7 @@ const EXTRACTION = {
 };
 
 function aiStatus(enabled: boolean) {
-  return http.get(`${API_BASE}/ai/status`, () =>
-    HttpResponse.json({ data: { enabled, features: { cardExtract: enabled } } }),
-  );
+  return http.get(`${API_BASE}/ai/config`, () => HttpResponse.json({ data: aiConfigPayload(enabled) }));
 }
 
 function secretTypes() {
@@ -260,9 +259,7 @@ describe('ImportCardPage — availability gating', () => {
 
   it('says AI is not set up yet when AI is on but card scanning is unavailable', async () => {
     server.use(
-      http.get(`${API_BASE}/ai/status`, () =>
-        HttpResponse.json({ data: { enabled: true, features: { cardExtract: false } } }),
-      ),
+      http.get(`${API_BASE}/ai/config`, () => HttpResponse.json({ data: AI_CONFIG_ON_NO_KEY })),
     );
     render(<ImportCardPage />);
 
@@ -299,7 +296,7 @@ describe('ImportCardPage — availability gating', () => {
 
   it('fails closed when the status call itself errors', async () => {
     server.use(
-      http.get(`${API_BASE}/ai/status`, () =>
+      http.get(`${API_BASE}/ai/config`, () =>
         HttpResponse.json({ message: 'boom' }, { status: 500 }),
       ),
     );

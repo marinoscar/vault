@@ -79,7 +79,7 @@ export default function ImportCardPage() {
   const navigate = useNavigate();
   const { hasPermission } = usePermissions();
   const {
-    status: aiStatus,
+    config: aiConfig,
     cardExtractEnabled,
     canUseAi,
     isLoading: isStatusLoading,
@@ -355,7 +355,7 @@ export default function ImportCardPage() {
     // nowhere else. Only a viewer who can open that page is offered the link.
     const reason: 'forbidden' | 'off' | 'not_set_up' = !canUseAi
       ? 'forbidden'
-      : aiStatus?.enabled === true
+      : aiConfig.enabled === true
         ? 'not_set_up'
         : 'off';
     const text = {

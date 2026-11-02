@@ -51,21 +51,6 @@ export interface VaultAiPolicy {
 export const CARD_EXTRACT_MODEL_MAX_LENGTH = 128;
 
 /**
- * Response of `GET /api/ai/status`.
- *
- * Deliberately two booleans — no model name, no key metadata, no reason. Any
- * signed-in user may read it, which is what makes "hide the scan button when
- * the feature is unavailable" implementable for a Viewer who cannot see system
- * settings at all.
- */
-export interface AiStatus {
-  enabled: boolean;
-  features: {
-    cardExtract: boolean;
-  };
-}
-
-/**
  * Error codes `POST /api/secrets/cards/extract` answers with, defined once in
  * `@marinoscar/vault-contract/errors` (`AI_ERROR_CODES`). Client code branches on
  * `code` first and falls back to `status` (see `describeCardExtractionError` in
