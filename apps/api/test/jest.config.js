@@ -4,7 +4,17 @@ module.exports = {
   rootDir: '..',
   testRegex: '.*\\.spec\\.ts$',
   transform: {
-    '^.+\\.(t|j)s$': 'ts-jest',
+    '^.+\\.ts$': [
+      'ts-jest',
+      {
+        tsconfig: '<rootDir>/tsconfig.json',
+        // TS151002: ts-jest warns that the NodeNext ("hybrid") module kind
+        // wants isolatedModules. It does not apply here: apps/api has no
+        // "type": "module", so NodeNext resolves to CommonJS. isolatedModules
+        // cannot be enabled anyway: it conflicts with emitDecoratorMetadata.
+        diagnostics: { ignoreCodes: [151002] },
+      },
+    ],
   },
   collectCoverageFrom: [
     'src/**/*.ts',
@@ -22,5 +32,7 @@ module.exports = {
   setupFilesAfterEnv: ['<rootDir>/test/setup.ts'],
   globalTeardown: '<rootDir>/test/teardown.ts',
   testTimeout: 30000,
+  // Many suites compile the whole AppModule; recycle a worker whose heap grew.
+  workerIdleMemoryLimit: '2GB',
   verbose: true,
 };
