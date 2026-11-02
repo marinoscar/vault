@@ -1,103 +1,121 @@
-import { useState, useCallback } from 'react';
-import type { SecretDetail } from '../types';
-import { getSecretTypes, getSecrets, getSecret } from '../services/api';
-import { maskCardNumber, formatExpiryForCopy } from '../utils/cardFormat';
+import { useState, useCallback, useRef } from 'react';
+import type { CardSummaryItem } from '../types';
+import { getCardSummaries } from '../services/api';
+import { formatExpiryForCopy } from '../utils/cardFormat';
 import { getCardExpiryStatus, getCardExpirySortKey, type CardExpiryStatus } from '../utils/cardExpiry';
 
 /** The system secret type that holds payment cards. */
 const CARD_TYPE_NAME = 'Card';
 
+/** The API's maximum page size for `GET /api/secrets/cards/summary`. */
+const CARD_SUMMARY_PAGE_SIZE = 100;
+
 /**
- * Upper bound on cards loaded in one go.
- *
- * Expiry status is derived client-side from decrypted values, so it cannot be
- * sorted or filtered by the API. Paginating server-side would therefore sort
- * only within a page and make "soonest first" quietly wrong across pages, and
- * would make the header counts describe a page instead of the wallet. We fetch
- * one generous page instead and report truncation honestly.
+ * Safety bound on pages fetched in one load (100 cards each). A wallet larger
+ * than this is reported as truncated rather than looping without end.
  */
-const MAX_CARDS = 100;
+const MAX_CARD_PAGES = 50;
 
 /**
  * A card flattened for display. Every field is already a rendered string, so the
- * view layer never touches raw decrypted values beyond what it shows.
+ * view layer never touches raw values beyond what it shows.
+ *
+ * Built from `GET /api/secrets/cards/summary` (#118), which decrypts server-side
+ * and returns the display fields only (last four digits, expiry, network, kind,
+ * bank, cardholder, photo presence): the full number and the CVV never reach
+ * the browser on Home or in the gallery.
  */
 export interface CardSummary {
   id: string;
   name: string;
-  description: string | null;
-  /** Issuing network, e.g. 'Visa'. Empty on cards created before the field existed. */
-  network: string;
-  /** 'Credit' / 'Debit'. Empty on older cards. */
-  kind: string;
-  cardholderName: string;
-  issuingBank: string;
-  /** Masked for display — never the full PAN. */
+  /** Last four digits, or null when the stored number is unusable. */
+  last4: string | null;
+  /** `•••• 4242`, or '' when the number is unknown. Never the full PAN. */
   maskedNumber: string;
   /** `MM/YY`, or '' when the stored expiry is unusable. */
   expiryLabel: string;
   status: CardExpiryStatus;
   /** Ascending sort key; unknown expiries sort last. */
   expirySortKey: number;
-  /** True when the card has at least one attachment (see thumbnail note below). */
-  hasAttachments: boolean;
+  /** Issuing network, e.g. 'Visa'; '' when not stored. */
+  network: string;
+  /** 'Credit' / 'Debit'; '' when not stored. */
+  kind: string;
+  /** '' when not stored. */
+  issuingBank: string;
+  /** '' when not stored. */
+  cardholderName: string;
+  /** True when the card has photos attached. */
+  hasPhotos: boolean;
   updatedAt: string;
 }
 
-/** Read a stored field as a trimmed display string; never throws. */
+/** A nullable display field as a trimmed string; '' for null or non-strings. */
 function displayString(value: unknown): string {
-  if (typeof value === 'string') return value.trim();
-  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
-  return '';
+  return typeof value === 'string' ? value.trim() : '';
 }
 
 /**
- * Flatten one decrypted card secret into its display shape.
+ * Flatten one summary row into its display shape.
  *
  * `now` is threaded through so a whole page classifies against a single instant
  * rather than drifting mid-render, and so tests stay deterministic.
  */
-export function toCardSummary(secret: SecretDetail, now: Date = new Date()): CardSummary {
-  const values = secret.values ?? {};
-  const expMonth = values.exp_month;
-  const expYear = values.exp_year;
-
+export function toCardSummary(item: CardSummaryItem, now: Date = new Date()): CardSummary {
+  const last4 = typeof item.last4 === 'string' && /^\d{4}$/.test(item.last4) ? item.last4 : null;
   return {
-    id: secret.id,
-    name: secret.name,
-    description: secret.description,
-    network: displayString(values.card_network),
-    kind: displayString(values.card_kind),
-    cardholderName: displayString(values.cardholder_name),
-    issuingBank: displayString(values.issuing_bank),
-    maskedNumber: maskCardNumber(values.number),
-    expiryLabel: formatExpiryForCopy(expMonth, expYear),
-    status: getCardExpiryStatus(expMonth, expYear, now),
-    expirySortKey: getCardExpirySortKey(expMonth, expYear),
-    hasAttachments: (secret.attachments?.length ?? 0) > 0,
-    updatedAt: secret.updatedAt,
+    id: item.id,
+    name: item.name,
+    last4,
+    maskedNumber: last4 ? `•••• ${last4}` : '',
+    expiryLabel: formatExpiryForCopy(item.expMonth, item.expYear),
+    status: getCardExpiryStatus(item.expMonth, item.expYear, now),
+    expirySortKey: getCardExpirySortKey(item.expMonth, item.expYear),
+    network: displayString(item.network),
+    kind: displayString(item.kind),
+    issuingBank: displayString(item.issuingBank),
+    cardholderName: displayString(item.cardholderName),
+    hasPhotos: item.hasPhotos === true,
+    updatedAt: item.updatedAt,
   };
+}
+
+/**
+ * What to load.
+ * - `all` (the gallery): every card, page after page until `totalPages`.
+ * - `attention` (Home): stop after the first page that ends past the
+ *   attention window. The API sorts soonest expiry first, so expired and
+ *   expiring cards are a prefix of the list and one request is the norm.
+ */
+export type CardLoadScope = 'all' | 'attention';
+
+interface FetchCardsParams {
+  now?: Date;
+  scope?: CardLoadScope;
 }
 
 interface UseCardsResult {
   cards: CardSummary[];
   /** Total cards the API reports, which may exceed what was loaded. */
   totalItems: number;
-  /** True when the API holds more cards than MAX_CARDS. */
+  /** True when a full load stopped at the page bound with cards left over. */
   isTruncated: boolean;
   isLoading: boolean;
   error: string | null;
-  fetchCards: (params?: { search?: string; now?: Date }) => Promise<void>;
+  fetchCards: (params?: FetchCardsParams) => Promise<void>;
+}
+
+/** True once a page's last row proves no later row can need attention. */
+function isPastAttentionWindow(item: CardSummaryItem, summary: CardSummary): boolean {
+  // `valid` means later than every expired/expiring card; a null year sorts
+  // last on the API, so everything after it is unknown too.
+  return summary.status === 'valid' || item.expYear === null;
 }
 
 /**
- * Load the current user's payment cards with expiry status attached.
- *
- * The list endpoint returns metadata only — a card's number and expiry live in
- * the per-secret detail response — so this necessarily fans out to one detail
- * request per card. Reads are not audited server-side, so this costs latency
- * rather than audit noise. A card whose detail fetch fails is dropped rather
- * than failing the whole view.
+ * Load the current user's payment cards with expiry status attached, from the
+ * single summary endpoint (one request per 100 cards, instead of one detail
+ * request per card).
  */
 export function useCards(): UseCardsResult {
   const [cards, setCards] = useState<CardSummary[]>([]);
@@ -105,58 +123,58 @@ export function useCards(): UseCardsResult {
   const [isTruncated, setIsTruncated] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Only the latest load may write state, so a retry never races a slow first try.
+  const loadId = useRef(0);
 
-  const fetchCards = useCallback(async (params?: { search?: string; now?: Date }) => {
+  const fetchCards = useCallback(async (params?: FetchCardsParams) => {
+    const id = ++loadId.current;
+    const scope = params?.scope ?? 'all';
+    const now = params?.now ?? new Date();
     setIsLoading(true);
     setError(null);
     try {
-      // There is no category column on SecretType, so the Card type is
-      // identified by the name of the system type.
-      const types = await getSecretTypes({ includeSystem: true });
-      const cardType = types.find((type) => type.isSystem && type.name === CARD_TYPE_NAME);
+      const loaded: CardSummary[] = [];
+      let total = 0;
+      let page = 1;
+      let totalPages = 1;
+      let stoppedEarly = false;
+      do {
+        const response = await getCardSummaries({ page, pageSize: CARD_SUMMARY_PAGE_SIZE });
+        total = response.meta.totalItems;
+        totalPages = response.meta.totalPages;
+        const summaries = response.items.map((item) => toCardSummary(item, now));
+        loaded.push(...summaries);
 
-      if (!cardType) {
-        setCards([]);
-        setTotalItems(0);
-        setIsTruncated(false);
-        return;
-      }
+        const lastItem = response.items[response.items.length - 1];
+        const lastSummary = summaries[summaries.length - 1];
+        if (scope === 'attention' && lastItem && isPastAttentionWindow(lastItem, lastSummary)) {
+          stoppedEarly = true;
+          break;
+        }
+        if (response.items.length === 0) break;
+        page += 1;
+      } while (page <= totalPages && page <= MAX_CARD_PAGES);
 
-      const response = await getSecrets({
-        typeId: cardType.id,
-        page: 1,
-        pageSize: MAX_CARDS,
-        search: params?.search || undefined,
-      });
-
-      const details = await Promise.allSettled(
-        response.items.map((item) => getSecret(item.id)),
-      );
-
-      const now = params?.now ?? new Date();
-      const summaries = details
-        .filter(
-          (result): result is PromiseFulfilledResult<SecretDetail> =>
-            result.status === 'fulfilled',
-        )
-        .map((result) => toCardSummary(result.value, now))
-        .sort((a, b) => a.expirySortKey - b.expirySortKey);
-
-      setCards(summaries);
-      setTotalItems(response.meta.totalItems);
-      setIsTruncated(response.meta.totalItems > response.items.length);
+      if (id !== loadId.current) return;
+      // The API already sorts by expiry; a stable client sort keeps "unknown
+      // last" exact for a card with a year but no usable month.
+      loaded.sort((a, b) => a.expirySortKey - b.expirySortKey);
+      setCards(loaded);
+      setTotalItems(total);
+      setIsTruncated(!stoppedEarly && scope === 'all' && loaded.length < total);
     } catch (err) {
+      if (id !== loadId.current) return;
       const message = err instanceof Error ? err.message : 'Failed to fetch cards';
       setError(message);
       setCards([]);
       setTotalItems(0);
       setIsTruncated(false);
     } finally {
-      setIsLoading(false);
+      if (id === loadId.current) setIsLoading(false);
     }
   }, []);
 
   return { cards, totalItems, isTruncated, isLoading, error, fetchCards };
 }
 
-export { MAX_CARDS, CARD_TYPE_NAME };
+export { CARD_SUMMARY_PAGE_SIZE, MAX_CARD_PAGES, CARD_TYPE_NAME };

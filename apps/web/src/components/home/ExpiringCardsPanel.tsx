@@ -9,13 +9,11 @@ import { DashboardPanel, PanelEmpty, PanelError } from './DashboardPanel';
 import { HOME_LINKS } from './homeLinks';
 
 /**
- * The last group of an already-masked number ("•••• •••• •••• 4242" becomes
- * "•••• 4242"), so a row fits a phone. Input is `maskCardNumber` output only.
+ * A row's secondary line, `•••• 4242 · Exp 12/26`. A card the summary could not
+ * read (null last4 or expiry) shows a dash in that place, never a guess.
  */
-export function shortMask(masked: string): string {
-  const groups = masked.trim().split(/\s+/).filter(Boolean);
-  if (groups.length <= 1) return masked;
-  return `•••• ${groups[groups.length - 1]}`;
+export function cardMetaLine(card: Pick<CardSummary, 'maskedNumber' | 'expiryLabel'>): string {
+  return `${card.maskedNumber || '•••• —'} · Exp ${card.expiryLabel || '—'}`;
 }
 
 /** Rows shown on Home; the rest are one click away in the filtered gallery. */
@@ -23,12 +21,16 @@ export const EXPIRING_CARDS_LIMIT = 5;
 
 interface ExpiringCardsPanelProps {
   status: Exclude<DashboardResourceStatus, 'idle'>;
-  /** Every loaded card, soonest expiry first (as `useCards` returns them). */
+  /**
+   * The loaded cards, soonest expiry first (as `useCards` returns them). Home
+   * loads with scope `attention`, so this holds every card needing attention
+   * and may stop short of the rest of the wallet.
+   */
   cards: CardSummary[];
+  /** Cards in the whole wallet (the summary's `totalItems`). */
+  totalCards: number;
   error: string | null;
   onRetry: () => void;
-  /** More cards exist than were loaded, so "none expiring" may be incomplete. */
-  isTruncated?: boolean;
   /** `secrets:write`: rows open the renew flow; otherwise the card's detail. */
   canRenew: boolean;
   phoneOrder?: number;
@@ -41,9 +43,9 @@ interface ExpiringCardsPanelProps {
 export function ExpiringCardsPanel({
   status,
   cards,
+  totalCards,
   error,
   onRetry,
-  isTruncated = false,
   canRenew,
   phoneOrder,
 }: ExpiringCardsPanelProps) {
@@ -78,10 +80,9 @@ export function ExpiringCardsPanel({
 
       {status === 'ready' && attention.length === 0 && (
         <PanelEmpty icon={<AllClearIcon color="success" />}>
-          {cards.length === 0
+          {totalCards === 0
             ? 'No cards saved yet.'
             : `No card expires in the next ${EXPIRING_SOON_DAYS} days.`}
-          {isTruncated && ' Only your first 100 cards were checked.'}
         </PanelEmpty>
       )}
 
@@ -89,9 +90,7 @@ export function ExpiringCardsPanel({
         <>
           <List disablePadding aria-label="Cards needing attention">
             {shown.map((card) => {
-              const meta = [shortMask(card.maskedNumber), card.expiryLabel && `Exp ${card.expiryLabel}`]
-                .filter(Boolean)
-                .join(' · ');
+              const meta = cardMetaLine(card);
               return (
                 <ListItem key={card.id} disablePadding>
                   <ListItemButton
@@ -102,7 +101,7 @@ export function ExpiringCardsPanel({
                     <CardIcon fontSize="small" sx={{ color: 'text.secondary', flexShrink: 0 }} />
                     <ListItemText
                       primary={card.name}
-                      secondary={meta || undefined}
+                      secondary={meta}
                       sx={{ my: 0.5, minWidth: 0 }}
                       slotProps={{
                         primary: { noWrap: true, variant: 'body2', sx: { fontWeight: 500 } },

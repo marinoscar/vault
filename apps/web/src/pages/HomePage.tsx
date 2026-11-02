@@ -47,9 +47,10 @@ const asLoaded = (status: DashboardResourceStatus): LoadedStatus => (status === 
  * with its own skeleton, empty and error state, and each hidden when the user
  * lacks the permission its endpoint enforces.
  *
- * Requests per visit: `GET /secrets` (recent), the Cards fan-out of
- * `useCards` (`/secret-types`, `/secrets?typeId`, one `/secrets/:id` per card:
- * expiry lives only in the decrypted values), `/backups/me`, `/media/folders`
+ * Requests per visit: `GET /secrets` (recent), one
+ * `/secrets/cards/summary?page=1&pageSize=100` (#118: last four digits and
+ * expiry decrypted server-side, soonest first; a second page only when more
+ * than 100 cards need attention), `/backups/me`, `/media/folders`
  * (count), `/ai/status` (writers) and, for administrators,
  * `/admin/backups` with `/admin/backups/schedule`.
  */
@@ -79,7 +80,7 @@ export default function HomePage() {
   useEffect(() => {
     if (!canReadSecrets) return;
     setCardsRequested(true);
-    void fetchCards({ now });
+    void fetchCards({ now, scope: 'attention' });
   }, [canReadSecrets, fetchCards, now]);
   const cardsStatus: LoadedStatus =
     !cardsRequested || cardsState.isLoading ? 'loading' : cardsState.error ? 'error' : 'ready';
@@ -194,9 +195,9 @@ export default function HomePage() {
                 <ExpiringCardsPanel
                   status={cardsStatus}
                   cards={cardsState.cards}
+                  totalCards={cardsState.totalItems}
                   error={cardsState.error}
-                  onRetry={() => void fetchCards({ now })}
-                  isTruncated={cardsState.isTruncated}
+                  onRetry={() => void fetchCards({ now, scope: 'attention' })}
                   canRenew={canWriteSecrets}
                   phoneOrder={1}
                 />

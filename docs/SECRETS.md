@@ -113,6 +113,10 @@ Fields marked as sensitive are masked in the UI and require a deliberate reveal 
 
 `card_network` and `card_kind` are `required: false` even though they are always shown in the UI. This is deliberate and permanent: `validateDataAgainstType` rejects unknown keys, and a secret type's fields are append-only, so a `required: true` field added after cards already exist would make every pre-existing card permanently unsaveable on its next edit (there is no way to back-fill a value into an already-encrypted, per-version blob). Do not "fix" this by making them required.
 
+#### Card summary endpoint
+
+`GET /api/secrets/cards/summary` (`secrets:read`) returns `{ id, name, last4, expMonth, expYear, network, kind, issuingBank, cardholderName, hasPhotos, updatedAt }` for each card secret in one request, decrypted server-side by `CardSummaryService` (`apps/api/src/secrets/card-summary.service.ts`). Only the last four digits of `number`, `exp_month`, `exp_year` and the non-sensitive `card_network`, `card_kind`, `issuing_bank` and `cardholder_name` are read (`hasPhotos` comes from the current version's `card_front` / `card_back` attachment rows, in the same query) from the decrypted version; the CVV, the full number and every other field are never returned or logged. The expiry reuses `normalizeExpMonth` / `normalizeExpYear`, so a two-digit year becomes `20yy` and an invalid value becomes `null`. Details: [API.md](API.md#get-secretscardssummary).
+
 ### Custom Types
 
 Users with the `secret_types:write` permission can create custom types. A custom type definition includes:
