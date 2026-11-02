@@ -36,7 +36,7 @@ import { CardExpiryScanHandler } from '../../src/card-expiry/card-expiry-scan.ha
 import { CryptoService } from '../../src/common/services/crypto.service';
 import { PERMISSION_OPTIONS } from '../../src/platform/permissions';
 import { DEFAULT_SYSTEM_SETTINGS } from '../../src/settings/registry/default-system-settings';
-import { STORAGE_PROVIDER } from '../../src/storage/providers/storage-provider.interface';
+import { STORAGE_PROVIDER } from '@marinoscar/platform-api/storage';
 import {
   findAdminCredentials,
   provisionAppRoleDatabase,
