@@ -1,23 +1,30 @@
 import {
+  Box,
+  Button,
   Card,
   CardActionArea,
   CardActions,
-  CardContent,
-  Box,
-  Button,
   Typography,
-  Stack,
 } from '@mui/material';
+import { alpha, useTheme } from '@mui/material/styles';
 import {
-  CreditCard as CreditCardIcon,
   Autorenew as RenewIcon,
+  ContactlessOutlined as ContactlessIcon,
+  PhotoCameraBackOutlined as PhotoIcon,
 } from '@mui/icons-material';
 import { CardExpiryBadge } from './CardExpiryBadge';
 import type { CardSummary } from '../../hooks/useCards';
 import { isNeedsAttention } from '../../utils/cardExpiry';
+import { CARD_ASPECT_RATIO } from '../../utils/cardImage';
 
 /**
- * One payment card, presented as a card rather than a table row.
+ * One payment card, drawn as a card (E10.5, issue #96; spec §8).
+ *
+ * The tile is a card face in the brand colour (a `primary` gradient, read from
+ * the theme so light and dark both hold their contrast) carrying the four facts
+ * a user scans a wallet for: the name they gave the card, its network, the last
+ * four digits and the expiry. Below the face sit the expiry badge and the
+ * Renew action.
  *
  * The heading is the user's own name for the card, not the network. A network
  * does not distinguish anything once a user holds several cards on it — three
@@ -28,7 +35,10 @@ import { isNeedsAttention } from '../../utils/cardExpiry';
  *
  * Only the masked number is ever rendered here — a list view must never put a
  * full PAN on screen, so this component has no access to one: `CardSummary`
- * carries the masked string and nothing else.
+ * carries the masked string and nothing else. Never the CVV either.
+ *
+ * Every tile has the same height (the face keeps the ISO card aspect ratio and
+ * the footer is one row), so the gallery reads as a uniform grid on a phone.
  */
 
 interface CardTileProps {
@@ -44,40 +54,8 @@ interface CardTileProps {
   onRenew?: (id: string) => void;
 }
 
-/**
- * Front-image thumbnail slot.
- *
- * Currently always a placeholder. Resolving a real image needs two hops —
- * attachment -> storageObject.id, then a signed-URL request per card — and the
- * generic storage download call does not exist in the API client yet, nor does
- * the attachment `role` that distinguishes front from back. Rendering a
- * deliberate placeholder keeps the layout final so wiring the real image later
- * is a drop-in change.
- */
-function CardThumbnail({ hasAttachments }: { hasAttachments: boolean }) {
-  return (
-    <Box
-      aria-hidden="true"
-      sx={{
-        width: { xs: 56, sm: 64 },
-        height: { xs: 36, sm: 40 },
-        flexShrink: 0,
-        borderRadius: 1,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        bgcolor: 'action.hover',
-        border: '1px solid',
-        borderColor: 'divider',
-        color: hasAttachments ? 'text.secondary' : 'action.disabled',
-      }}
-    >
-      <CreditCardIcon fontSize="small" />
-    </Box>
-  );
-}
-
 export function CardTile({ card, onClick, onRenew }: CardTileProps) {
+  const theme = useTheme();
   // `name` is required on a secret so it is effectively always present; the
   // network fallback only guards against a blank-name row reaching the view.
   const heading = card.name || card.network;
@@ -92,110 +70,190 @@ export function CardTile({ card, onClick, onRenew }: CardTileProps) {
     )
     .join(' · ');
   const needsAttention = isNeedsAttention(card.status);
+  const isExpired = card.status === 'expired';
+
+  // The face: the brand primary, or a muted slate once the card is dead, so an
+  // expired card recedes in the grid (the badge still says so in words). Both
+  // gradients are read from the theme; no colour is written here.
+  //
+  // Light mode: a solid deep-teal face (primary.dark -> primary.main) with
+  // white text (7.37:1 and up). Dark mode: the dark primary is a bright teal,
+  // which would glare in a dark gallery, so the face is a TONAL teal (primary
+  // at 38% -> 18% over the paper) with the body text colour (about 6:1).
+  const { palette } = theme;
+  const isDark = palette.mode === 'dark';
+  let faceBackground: string;
+  let onFace: string;
+  if (isExpired) {
+    const start = palette.grey[isDark ? 800 : 700];
+    const end = palette.grey[isDark ? 700 : 600];
+    faceBackground = `linear-gradient(135deg, ${start} 0%, ${end} 100%)`;
+    onFace = palette.getContrastText(start);
+  } else if (isDark) {
+    faceBackground = `linear-gradient(135deg, ${alpha(palette.primary.main, 0.38)} 0%, ${alpha(palette.primary.main, 0.18)} 100%), ${palette.background.paper}`;
+    onFace = palette.text.primary;
+  } else {
+    faceBackground = `linear-gradient(135deg, ${palette.primary.dark} 0%, ${palette.primary.main} 100%)`;
+    onFace = palette.primary.contrastText;
+  }
+  const onFaceMuted = alpha(onFace, 0.82);
 
   return (
     <Card
       variant="outlined"
       sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+      data-testid="card-tile"
+      data-status={card.status}
     >
       <CardActionArea
         onClick={() => onClick(card.id)}
-        sx={{ flexGrow: 1, alignItems: 'stretch' }}
+        sx={{ p: 1.5, pb: 1, alignItems: 'stretch' }}
       >
-        <CardContent sx={{ height: '100%' }}>
-          <Stack spacing={1.5} sx={{ height: '100%' }}>
-            <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
-              <CardThumbnail hasAttachments={card.hasAttachments} />
-              <Box sx={{ minWidth: 0, flexGrow: 1 }}>
-                <Typography variant="subtitle1" noWrap sx={{
-                  fontWeight: 600
-                }}>
-                  {heading}
-                </Typography>
-                {subheading && (
-                  <Typography
-                    variant="caption"
-                    noWrap
-                    sx={{
-                      color: "text.secondary",
-                      display: "block"
-                    }}>
-                    {subheading}
-                  </Typography>
-                )}
-              </Box>
-            </Box>
-
-            <Box>
+        <Box
+          sx={{
+            position: 'relative',
+            aspectRatio: String(CARD_ASPECT_RATIO),
+            borderRadius: 2,
+            p: { xs: 2, sm: 1.75, md: 2 },
+            display: 'flex',
+            flexDirection: 'column',
+            color: onFace,
+            background: faceBackground,
+            overflow: 'hidden',
+            // A soft sheen so the face reads as a card, not a coloured box.
+            '&::after': {
+              content: '""',
+              position: 'absolute',
+              right: '-20%',
+              top: '-45%',
+              width: '75%',
+              aspectRatio: '1',
+              borderRadius: '50%',
+              background: alpha(onFace, 0.08),
+              pointerEvents: 'none',
+            },
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, minWidth: 0 }}>
+            <Box sx={{ minWidth: 0, flexGrow: 1 }}>
               <Typography
-                variant="body1"
-                sx={{ fontFamily: 'monospace', letterSpacing: 1, wordBreak: 'break-all' }}
+                variant="subtitle1"
+                component="h3"
+                noWrap
+                sx={{ fontWeight: 600, lineHeight: 1.3 }}
               >
-                {card.maskedNumber || '—'}
+                {heading}
+              </Typography>
+              {subheading && (
+                <Typography
+                  variant="caption"
+                  noWrap
+                  sx={{ color: onFaceMuted, display: 'block' }}
+                >
+                  {subheading}
+                </Typography>
+              )}
+            </Box>
+            <ContactlessIcon aria-hidden="true" sx={{ color: onFaceMuted, flexShrink: 0 }} />
+          </Box>
+
+          {/* A drawn EMV chip: decorative, so the face reads as a card. */}
+          <Box
+            aria-hidden="true"
+            sx={{
+              mt: { xs: 1.5, sm: 1, md: 1.5 },
+              width: 38,
+              height: 28,
+              borderRadius: 1,
+              border: '1px solid',
+              borderColor: alpha(onFace, 0.35),
+              background: `linear-gradient(135deg, ${alpha(onFace, 0.28)}, ${alpha(onFace, 0.12)})`,
+            }}
+          />
+
+          <Typography
+            variant="body1"
+            sx={{
+              mt: 'auto',
+              mb: 1,
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+              fontSize: { xs: '1.05rem', sm: '1rem', md: '1.05rem' },
+              letterSpacing: 1.5,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {card.maskedNumber || '—'}
+          </Typography>
+
+          <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 2, minWidth: 0 }}>
+            <Box sx={{ minWidth: 0, flexGrow: 1 }}>
+              <Typography
+                variant="caption"
+                sx={{ color: onFaceMuted, display: 'block', fontSize: 10, letterSpacing: 0.6, textTransform: 'uppercase' }}
+              >
+                Cardholder
+              </Typography>
+              <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
+                {card.cardholderName || '—'}
               </Typography>
             </Box>
-
-            <Box
-              sx={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: 1,
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}
-            >
-              <Box sx={{ minWidth: 0 }}>
-                <Typography
-                  variant="caption"
-                  sx={{
-                    color: "text.secondary",
-                    display: "block"
-                  }}>
-                  Cardholder
-                </Typography>
-                <Typography variant="body2" noWrap>
-                  {card.cardholderName || '—'}
-                </Typography>
-              </Box>
-              <Box sx={{ minWidth: 0 }}>
-                <Typography
-                  variant="caption"
-                  sx={{
-                    color: "text.secondary",
-                    display: "block"
-                  }}>
-                  Expires
-                </Typography>
-                <Typography variant="body2">{card.expiryLabel || 'Unknown'}</Typography>
-              </Box>
+            <Box sx={{ flexShrink: 0, textAlign: 'right' }}>
+              <Typography
+                variant="caption"
+                sx={{ color: onFaceMuted, display: 'block', fontSize: 10, letterSpacing: 0.6, textTransform: 'uppercase' }}
+              >
+                Expires
+              </Typography>
+              <Typography variant="body2" sx={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>
+                {card.expiryLabel || 'Unknown'}
+              </Typography>
             </Box>
-
-            <Box sx={{ mt: 'auto' }}>
-              <CardExpiryBadge status={card.status} expiryLabel={card.expiryLabel} />
-            </Box>
-          </Stack>
-        </CardContent>
+          </Box>
+        </Box>
       </CardActionArea>
 
       {/* Outside the CardActionArea on purpose: a button nested inside another
           button is invalid markup and unreachable by keyboard in the order a
           user expects. */}
-      {onRenew && (
-        <CardActions sx={{ pt: 0 }}>
+      <CardActions
+        sx={{
+          px: 1.5,
+          pt: 0.5,
+          pb: 1.5,
+          mt: 'auto',
+          gap: 1,
+          justifyContent: 'space-between',
+          flexWrap: 'nowrap',
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+          <CardExpiryBadge status={card.status} expiryLabel={card.expiryLabel} />
+          {card.hasAttachments && (
+            <PhotoIcon
+              fontSize="small"
+              titleAccess="Has card photos"
+              sx={{ color: 'text.secondary' }}
+            />
+          )}
+        </Box>
+        {onRenew && (
           <Button
             size="small"
             startIcon={<RenewIcon />}
             variant={needsAttention ? 'contained' : 'text'}
-            color={card.status === 'expired' ? 'error' : 'primary'}
+            color={isExpired ? 'error' : 'primary'}
             onClick={() => onRenew(card.id)}
             // Names the card the way the user does — with several cards on one
             // network, "Renew American Express" would be ambiguous read aloud.
             aria-label={`Renew ${heading}`}
+            sx={{ flexShrink: 0, ml: 'auto' }}
           >
             Renew
           </Button>
-        </CardActions>
-      )}
+        )}
+      </CardActions>
     </Card>
   );
 }
