@@ -6,7 +6,7 @@ import { createWriteStream, existsSync, mkdirSync, readFileSync, statSync, unlin
 import { chmod, link, rename, unlink } from 'fs/promises';
 import { homedir, hostname } from 'os';
 import { dirname, resolve as resolvePath } from 'path';
-import { Readable } from 'stream';
+import { Readable, Transform } from 'stream';
 import { pipeline } from 'stream/promises';
 import type { ReadableStream as NodeWebReadableStream } from 'stream/web';
 import { exportSecretsBackup, getCurrentUser } from './api-client.js';
@@ -154,10 +154,21 @@ export interface PerformBackupInput {
   /** Already-known user email for `{user}` (otherwise fetched when needed). */
   userEmail?: string;
   progress?: (message: string) => void;
+  /**
+   * Structured progress for a live display (the TUI). Optional; when absent
+   * the download is piped exactly as before.
+   */
+  onProgress?: (event: BackupProgressEvent) => void;
   verbose?: (message: string) => void;
   /** Called after the partial file is removed on SIGINT/SIGTERM. Default: exit 130. */
   onInterrupt?: (signal: NodeJS.Signals) => void;
 }
+
+/** Phases of {@link performBackup}, for a progress display. */
+export type BackupProgressEvent =
+  | { phase: 'request' }
+  | { phase: 'download'; bytes: number; total: number | null }
+  | { phase: 'write'; bytes: number };
 
 function parseCountHeader(res: Response, name: string): number | null {
   const raw = res.headers.get(name);
@@ -258,6 +269,7 @@ export async function performBackup(input: PerformBackupInput): Promise<BackupRe
   };
 
   input.progress?.('Requesting encrypted backup from the server...');
+  input.onProgress?.({ phase: 'request' });
   const res = await exportSecretsBackup(buildExportBody(contents, password));
 
   const contentType = (res.headers.get('content-type') || '').toLowerCase();
@@ -291,11 +303,35 @@ export async function performBackup(input: PerformBackupInput): Promise<BackupRe
   try {
     const ws = createWriteStream(partial, { flags: 'w', mode: 0o600 });
     partialCreated = true;
-    await pipeline(Readable.fromWeb(res.body as unknown as NodeWebReadableStream<Uint8Array>), ws);
+    const source = Readable.fromWeb(res.body as unknown as NodeWebReadableStream<Uint8Array>);
+    const onProgress = input.onProgress;
+    if (onProgress) {
+      const lengthHeader = Number.parseInt(res.headers.get('content-length') ?? '', 10);
+      const total = Number.isFinite(lengthHeader) && lengthHeader > 0 ? lengthHeader : null;
+      let bytes = 0;
+      let lastEmit = 0;
+      onProgress({ phase: 'download', bytes: 0, total });
+      const counter = new Transform({
+        transform(chunk: Buffer, _enc, cb) {
+          bytes += chunk.length;
+          const t = Date.now();
+          if (t - lastEmit >= 100) {
+            lastEmit = t;
+            onProgress({ phase: 'download', bytes, total });
+          }
+          cb(null, chunk);
+        },
+      });
+      await pipeline(source, counter, ws);
+      onProgress({ phase: 'download', bytes, total });
+    } else {
+      await pipeline(source, ws);
+    }
     await chmod(partial, 0o600);
 
     const size = statSync(partial).size;
     if (size === 0) throw new Error('Server returned an empty backup file');
+    input.onProgress?.({ phase: 'write', bytes: size });
 
     const finalPath = await commitPartial(partial, target, overwrite);
     partialCreated = false;

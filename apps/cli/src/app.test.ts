@@ -7,7 +7,7 @@ import { configDirName, createCli, envPrefix, versionText } from '@marinoscar/pl
 import { resetCliForTests } from '@marinoscar/platform-cli/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { APP_CLI_OPTIONS, APP_VERSIONED_MANIFESTS, readVersion } from './app.js';
+import { APP_CLI_OPTIONS, APP_TUI_SCREENS, APP_VERSIONED_MANIFESTS, readVersion } from './app.js';
 import { VAULT_COMMAND_NAMES } from './vault/register.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -100,8 +100,27 @@ describe('the command surface', () => {
   });
 
   it('keeps backup prune and the saved backup config commands', () => {
-    expect(subcommands(['backup']).sort()).toEqual(['config', 'prune']);
+    expect(subcommands(['backup']).sort()).toEqual(['config', 'prune', 'schedule', 'status']);
     expect(subcommands(['backup', 'config']).sort()).toEqual(['reset', 'set', 'show', 'unset']);
+  });
+
+  it('adds backup status and backup schedule status, install and remove', () => {
+    expect(subcommands(['backup', 'schedule']).sort()).toEqual(['install', 'remove', 'status']);
+    const install = build()
+      .program.commands.find((c) => c.name() === 'backup')
+      ?.commands.find((c) => c.name() === 'schedule')
+      ?.commands.find((c) => c.name() === 'install');
+    const flags = install?.options.map((o) => o.long) ?? [];
+    for (const flag of ['--daily', '--every-hours', '--weekly', '--at', '--cron', '--yes', '--force', '--json']) {
+      expect(flags).toContain(flag);
+    }
+  });
+
+  it('gives backup a hidden --scheduled flag for the cron job', () => {
+    const backup = build().program.commands.find((c) => c.name() === 'backup');
+    const opt = backup?.options.find((o) => o.long === '--scheduled');
+    expect(opt).toBeDefined();
+    expect(opt?.hidden).toBe(true);
   });
 
   it('keeps the admin backups commands', () => {
@@ -113,7 +132,32 @@ describe('the command surface', () => {
 
   it('keeps health live and ready, and auth status and logout', () => {
     expect(subcommands(['health']).sort()).toEqual(['live', 'ready']);
-    expect(subcommands(['auth']).sort()).toEqual(['login', 'logout', 'status']);
+    expect(subcommands(['auth']).sort()).toEqual(['login', 'logout', 'status', 'token']);
+  });
+
+  it('adds auth token create, list and revoke', () => {
+    expect(subcommands(['auth', 'token']).sort()).toEqual(['create', 'list', 'revoke']);
+  });
+
+  it('registers the Backups TUI screen lazily, between Invoke (20) and Status (30)', async () => {
+    const screen = APP_TUI_SCREENS.find((s) => s.route === 'backups');
+    expect(screen).toMatchObject({ route: 'backups', order: 25 });
+    expect(screen?.component).toBeUndefined();
+    expect(typeof screen?.load).toBe('function');
+    const label = screen!.label as (ctx: { loggedIn: boolean }) => string;
+    expect(label({ loggedIn: true })).toMatch(/^Backups/);
+    expect(label({ loggedIn: false })).toMatch(/not logged in/);
+    expect(typeof (await screen!.load!())).toBe('function');
+  });
+
+  it('registers the Access token TUI screen lazily, between Status (30) and Worker node (40)', async () => {
+    const screen = APP_TUI_SCREENS.find((s) => s.route === 'token');
+    expect(APP_TUI_SCREENS.map((s) => s.route)).toEqual(['backups', 'token']);
+    expect(screen).toMatchObject({ route: 'token', order: 35 });
+    expect(screen?.component).toBeUndefined();
+    expect(typeof screen?.load).toBe('function');
+    expect(APP_CLI_OPTIONS.tuiScreens).toBe(APP_TUI_SCREENS);
+    expect(typeof (await screen!.load!())).toBe('function');
   });
 
   it('keeps the backup flags scripts rely on', () => {

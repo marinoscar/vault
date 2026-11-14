@@ -1,6 +1,6 @@
 {
   "name": "cli",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "description": "The vault command-line client, built on @marinoscar/platform-cli. Replaces tools/vaultcli and tools/app.",
   "type": "module",
@@ -30,10 +30,14 @@
     "@marinoscar/platform-cli": "0.1.0-next.21",
     "chalk": "^5.3.0",
     "commander": "^14.0.0",
+    "ink": "^7.1.1",
+    "ink-select-input": "^6.2.0",
+    "ink-text-input": "^6.0.0",
     "react": "^19.2.8"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",
+    "@types/react": "^19.2.18",
     "tsx": "^4.23.13",
     "typescript": "^5.x",
     "vitest": "^4.1.8"

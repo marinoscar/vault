@@ -36,7 +36,7 @@ Index of every document in `docs/`, plus the "Doc map by task". Rules for assist
 | [specs/README.md](specs/README.md) | Historical implementation specs 01 to 24 | |
 | [System_Specification_Document.md](System_Specification_Document.md) | Original system specification | |
 | [../infra/deploy/DEPLOY.md](../infra/deploy/DEPLOY.md) | Production VPS deployment runbook | |
-| [../apps/cli/README.md](../apps/cli/README.md) | `vault` CLI usage, install, backup and sync; migrating from `vaultcli` | |
+| [../apps/cli/README.md](../apps/cli/README.md) | `vault` CLI usage, install, backup (TUI Backups screen, `backup schedule`), long-lived tokens (`auth token`) and sync; migrating from `vaultcli` | |
 
 ## Doc map by task
 

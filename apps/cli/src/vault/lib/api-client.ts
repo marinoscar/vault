@@ -28,20 +28,22 @@ function getToken(): string {
 
 export interface ApiRequestOptions extends RequestInit {
   requireAuth?: boolean;
+  /** Send this bearer token instead of the stored one (verifying a token before relying on it). */
+  token?: string;
 }
 
 export async function apiRequest(
   path: string,
   options: ApiRequestOptions = {},
 ): Promise<Response> {
-  const { requireAuth = true, ...fetchOptions } = options;
+  const { requireAuth = true, token, ...fetchOptions } = options;
   const url = `${config.apiUrl}${path}`;
   const headers: Record<string, string> = {
     ...(fetchOptions.headers as Record<string, string>),
   };
 
   if (requireAuth) {
-    headers['Authorization'] = `Bearer ${getToken()}`;
+    headers['Authorization'] = `Bearer ${token ?? getToken()}`;
   }
 
   if (fetchOptions.body && typeof fetchOptions.body === 'string') {

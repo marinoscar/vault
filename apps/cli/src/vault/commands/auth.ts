@@ -3,7 +3,9 @@ import { UsageError } from '@marinoscar/platform-cli/commands';
 import { OutputManager, success, info, blank } from '../utils/output.js';
 import { clearToken, config, getToken } from '../utils/config.js';
 import { getCurrentUser } from '../lib/api-client.js';
+import { describeExpiry, fetchCurrentToken, type PatListItem } from '../lib/tokens.js';
 import type { OutputMode, UserInfo } from '../utils/types.js';
+import { expiryColor, registerTokenCommands } from './auth-token.js';
 
 function getOutput(cmd: Command): OutputManager {
   const root = cmd.optsWithGlobals();
@@ -41,6 +43,8 @@ export function registerAuthCommands(program: Command): void {
       );
     });
 
+  registerTokenCommands(auth);
+
   auth
     .command('status')
     .description('Show current authentication status')
@@ -57,9 +61,19 @@ export function registerAuthCommands(program: Command): void {
         }
 
         const user = await getCurrentUser();
+        // The token's own row (name, expiry). Best effort: status still works without it.
+        let token: PatListItem | undefined;
+        try {
+          token = (await fetchCurrentToken()).current;
+        } catch {
+          token = undefined;
+        }
+        const tokenInfo = token
+          ? { id: token.id, name: token.name, prefix: token.tokenPrefix, expiresAt: token.expiresAt }
+          : null;
 
         output.result(
-          { authenticated: true, ...user, server: config.serverUrl },
+          { authenticated: true, ...user, server: config.serverUrl, token: tokenInfo },
           (d) => {
             info('Authenticated');
             blank();
@@ -68,6 +82,14 @@ export function registerAuthCommands(program: Command): void {
             console.log(`  Name:   ${u.displayName ?? '-'}`);
             console.log(`  Admin:  ${u.isAdmin ? 'Yes' : 'No'}`);
             console.log(`  Server: ${u.server}`);
+            if (token) {
+              const exp = describeExpiry(token.expiresAt);
+              console.log(`  Token:  ${token.name} (${token.tokenPrefix}…)`);
+              console.log(`  Expires: ${expiryColor(exp.level)(`${token.expiresAt.slice(0, 10)} (${exp.text})`)}`);
+              if (exp.level === 'warning' || exp.level === 'expired') {
+                console.log(`  Replace it with a longer-lived one: vault auth token create --duration 12 --unit months --store --revoke-current`);
+              }
+            }
             blank();
           },
           (d) => {

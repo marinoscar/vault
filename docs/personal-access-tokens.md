@@ -8,6 +8,7 @@ This guide covers Personal Access Tokens (PATs) in Vault.
 - [Use Cases](#use-cases)
 - [Creating a Token](#creating-a-token)
 - [Using a Token](#using-a-token)
+- [From the CLI](#from-the-cli)
 - [Managing Tokens](#managing-tokens)
 - [Duration Options](#duration-options)
 - [API Reference](#api-reference)
@@ -86,6 +87,18 @@ PATs work on all authenticated API endpoints. The request is authorized using th
 
 ---
 
+## From the CLI
+
+`vault auth token create` creates a PAT from the terminal and can store it in place of the CLI's 90-day device-flow token (the `vault` TUI has the same flow on its Access token screen):
+
+```bash
+vault auth token create --duration 12 --unit months --store --revoke-current
+```
+
+Flags, `auth token list` and `auth token revoke`: [apps/cli/README.md](../apps/cli/README.md#longer-lived-tokens).
+
+---
+
 ## Managing Tokens
 
 All tokens for the current user are visible at **Settings > Personal Access Tokens**.
@@ -118,13 +131,13 @@ Choose the duration that matches how long the token needs to remain valid. Prefe
 
 ## API Reference
 
-All PAT endpoints require a valid JWT Bearer token or a PAT token.
+All PAT endpoints require a valid JWT Bearer token or a PAT token. Responses on success (other than `DELETE`) are wrapped in `{ "data": ... }`.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/api/pat` | Create a new personal access token |
 | GET | `/api/pat` | List all tokens for the current user |
-| DELETE | `/api/pat/:id` | Revoke a token by ID |
+| DELETE | `/api/pat/:id` | Revoke a token by ID (204, no body) |
 
 ### POST /api/pat
 
@@ -134,7 +147,7 @@ Create a new personal access token.
 ```json
 {
   "name": "CI Pipeline",
-  "duration": 90,
+  "durationValue": 90,
   "durationUnit": "days"
 }
 ```
@@ -144,8 +157,11 @@ Create a new personal access token.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `name` | string | Yes | Descriptive label for the token |
-| `duration` | integer | Yes | Length of validity (1-999) |
+| `durationValue` | integer | Yes | Length of validity (1-999) |
 | `durationUnit` | string | Yes | Unit of duration: `minutes`, `days`, or `months` |
+| `orgId` | UUID | No | Organization the token is bound to; must be an active membership of the caller. Default: the caller's active organization |
+
+`days` and `months` are calendar arithmetic in the caller's time zone (profile, then the `X-Time-Zone` header, then UTC); `minutes` is elapsed time.
 
 **Response (201 Created):**
 ```json
@@ -154,9 +170,10 @@ Create a new personal access token.
     "id": "uuid-1234",
     "name": "CI Pipeline",
     "token": "pat_a1b2c3d4e5f6...",
-    "prefix": "pat_a1b2",
+    "tokenPrefix": "pat_a1b2",
     "expiresAt": "2026-06-27T00:00:00.000Z",
-    "createdAt": "2026-03-29T00:00:00.000Z"
+    "createdAt": "2026-03-29T00:00:00.000Z",
+    "orgId": "uuid-org-1"
   }
 }
 ```
@@ -167,7 +184,7 @@ The `token` field is only present in this response. It is not returned by any ot
 
 ### GET /api/pat
 
-List all personal access tokens belonging to the current user.
+List all personal access tokens belonging to the current user, across all organizations, including revoked and expired ones.
 
 **Request:**
 ```http
@@ -182,16 +199,20 @@ Authorization: Bearer <token>
     {
       "id": "uuid-1234",
       "name": "CI Pipeline",
-      "prefix": "pat_a1b2",
-      "createdAt": "2026-03-29T00:00:00.000Z",
+      "tokenPrefix": "pat_a1b2",
+      "durationValue": 90,
+      "durationUnit": "days",
       "expiresAt": "2026-06-27T00:00:00.000Z",
-      "lastUsedAt": "2026-03-29T12:00:00.000Z"
+      "lastUsedAt": "2026-03-29T12:00:00.000Z",
+      "createdAt": "2026-03-29T00:00:00.000Z",
+      "revokedAt": null,
+      "orgId": "uuid-org-1"
     }
   ]
 }
 ```
 
-Expired and revoked tokens are not included in the list.
+A revoked token has a non-null `revokedAt`; an expired one has an `expiresAt` in the past. Filter on those fields (the CLI's `auth token list` hides them unless `--all`).
 
 ---
 
@@ -205,17 +226,10 @@ DELETE /api/pat/uuid-1234
 Authorization: Bearer <token>
 ```
 
-**Response (200 OK):**
-```json
-{
-  "data": {
-    "success": true
-  }
-}
-```
+**Response:** `204 No Content` (empty body).
 
 **Error Responses:**
-- **404 Not Found** - Token not found or does not belong to the current user
+- **404 Not Found** - Token not found, already revoked, or does not belong to the current user
 
 ---
 

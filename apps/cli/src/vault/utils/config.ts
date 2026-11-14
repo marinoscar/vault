@@ -11,7 +11,8 @@ import { CLI_NAME } from '@app/shared';
 // Credentials are the platform CLI's: `vault login` writes `~/.vault/config.json`
 // (`{ serverUrl, token, ... }`, mode 0600) and the environment overrides it per
 // field with `VAULT_SERVER_URL` and `VAULT_TOKEN`. This module only READS them,
-// except `clearToken`, which backs `vault auth logout`.
+// except `saveToken` (the menu and `vault auth token create --store`) and
+// `clearToken` (`vault auth logout`).
 //
 // The domain commands also keep their own files (`sync.json`, `backup.json`,
 // `backup-password`, `backup.log`) in one directory. That directory is
@@ -179,11 +180,41 @@ function writePlatformConfig(cfg: StoredPlatformConfig): string {
   return file;
 }
 
-/** Store a token (and the server it belongs to) the way `vault login --token` does. */
-export function saveToken(token: string, serverUrl: string): string {
+/**
+ * What the platform records next to the token (`expiresAt`, `tokenId`,
+ * `tokenName`), so `vault config` and the TUI Status screen can show them.
+ */
+export interface StoredTokenMeta {
+  expiresAt?: string | undefined;
+  tokenId?: string | undefined;
+  tokenName?: string | undefined;
+}
+
+/**
+ * Store a token (and the server it belongs to) the way `vault login --token` does.
+ * The previous token's metadata is always dropped; `meta` records the new token's
+ * when it is known (a token created through `POST /api/pat`).
+ */
+export function saveToken(token: string, serverUrl: string, meta: StoredTokenMeta = {}): string {
   const cfg = loadPlatformConfig();
   for (const key of ['expiresAt', 'tokenId', 'tokenName']) delete cfg[key];
-  return writePlatformConfig({ ...cfg, serverUrl, token, updatedAt: new Date().toISOString() });
+  const known = Object.fromEntries(Object.entries(meta).filter(([, v]) => typeof v === 'string' && v.length > 0));
+  return writePlatformConfig({ ...cfg, serverUrl, token, ...known, updatedAt: new Date().toISOString() });
+}
+
+/** Where the token `getToken()` returns comes from. */
+export function getTokenSource(): 'environment' | 'config' | 'legacy' | undefined {
+  if (str(process.env[vaultEnvName('TOKEN')])) return 'environment';
+  if (str(loadPlatformConfig().token)) return 'config';
+  if (str(legacyAuth().token)) return 'legacy';
+  return undefined;
+}
+
+/** The metadata stored with the config-file token (empty when the token is not from the file). */
+export function getStoredTokenMeta(): StoredTokenMeta {
+  if (getTokenSource() !== 'config') return {};
+  const cfg = loadPlatformConfig();
+  return { expiresAt: str(cfg.expiresAt), tokenId: str(cfg.tokenId), tokenName: str(cfg.tokenName) };
 }
 
 /** Remove the stored token (keeps the server URL). Backs `vault auth logout`. */
