@@ -1,6 +1,7 @@
 import { homedir } from 'os';
 import { isAbsolute, resolve as resolvePath } from 'path';
-import { Command } from 'commander';
+import { Command, Option } from 'commander';
+import { registerBackupScheduleCommands } from './backup-schedule.js';
 import chalk from 'chalk';
 import { OutputManager, keyValue, success, warn, info } from '../utils/output.js';
 import { BACKUP_FILENAME_TOKENS, DEFAULT_BACKUP_TEMPLATE, expandBackupFilename } from '../lib/backup-filename.js';
@@ -25,10 +26,11 @@ import {
   type BackupSettingKey,
   type BackupSettings,
 } from '../lib/backup-settings.js';
+import { executeBackup, recordFailure } from '../lib/backup-run.js';
+import type { RunTrigger } from '../lib/backup-status.js';
 import {
   assertAuthenticated,
   formatBytes,
-  performBackup,
   resolvePassword,
   runPrune,
   validatePassword,
@@ -38,7 +40,7 @@ import {
 import { formatAge, retentionEnabled } from '../lib/backup-retention.js';
 import type { OutputMode } from '../utils/types.js';
 
-function getOutput(cmd: Command): OutputManager {
+export function getOutput(cmd: Command): OutputManager {
   const root = cmd.optsWithGlobals();
   const mode: OutputMode = root.json ? 'json' : root.quiet ? 'quiet' : 'human';
   return new OutputManager(mode);
@@ -62,7 +64,7 @@ function fromCli<T>(cmd: Command, name: string): T | undefined {
  * Reject options typed for a subcommand that only `backup` itself accepts
  * (e.g. `backup prune --password x`), since the parent consumed them.
  */
-function assertOnlyOptions(cmd: Command, allowed: string[]): void {
+export function assertOnlyOptions(cmd: Command, allowed: string[]): void {
   let parent: Command | null = cmd.parent;
   while (parent && parent.name() !== 'backup') parent = parent.parent;
   if (!parent || parent === cmd) return;
@@ -162,7 +164,16 @@ interface RunOutput {
   prune: ReturnType<typeof pruneJson>;
 }
 
-async function runBackupCommand(cmd: Command, output: OutputManager): Promise<boolean> {
+interface PreparedRun {
+  settings: ReturnType<typeof resolveBackupSettings>['settings'];
+  contents: ReturnType<typeof effectiveContents>;
+  now: Date;
+  verbose: boolean;
+  password: () => Promise<string>;
+}
+
+/** Settings, contents and the password source for a run; fails before any prompt when something is off. */
+function prepareRun(cmd: Command, output: OutputManager): PreparedRun {
   const opts = cmd.opts();
   const flags = settingsFlags(cmd);
   const saved = loadBackupSettings();
@@ -185,44 +196,51 @@ async function runBackupCommand(cmd: Command, output: OutputManager): Promise<bo
       ),
     );
   }
-  const password = await resolvePassword(source, {
-    interactive: process.stdin.isTTY === true,
-    prompt: () => promptNewPassword(validatePassword),
-    warn: (m) => output.humanOnly(() => warn(m)),
-  });
+  const password = () =>
+    resolvePassword(source, {
+      interactive: process.stdin.isTTY === true,
+      prompt: () => promptNewPassword(validatePassword),
+      warn: (m) => output.humanOnly(() => warn(m)),
+    });
+  return { settings, contents, now, verbose, password };
+}
 
-  const result = await performBackup({
+async function runBackupCommand(cmd: Command, output: OutputManager): Promise<boolean> {
+  const opts = cmd.opts();
+  const trigger: RunTrigger = opts.scheduled === true ? 'schedule' : 'cli';
+  const startedAt = new Date();
+  let password: string;
+  let prepared: PreparedRun;
+  try {
+    prepared = prepareRun(cmd, output);
+    password = await prepared.password();
+  } catch (err) {
+    // Record why a run never started (e.g. a scheduled run without a password).
+    recordFailure(trigger, startedAt, err);
+    throw err;
+  }
+  const { settings, contents, now, verbose } = prepared;
+
+  const pruneDisabled = opts.prune === false;
+  const { result, prune } = await executeBackup({
     settings,
     contents,
     password,
     overwrite: opts.overwrite === true,
     now,
+    trigger,
+    startedAt,
+    prune: pruneDisabled ? 'skip' : opts.pruneDryRun === true ? 'dry-run' : 'auto',
     progress: (m) => output.humanOnly(() => process.stderr.write(chalk.dim(m + '\n'))),
     verbose: (m) => {
       if (verbose) output.verbose(m);
     },
     onInterrupt: (signal) => {
+      recordFailure(trigger, startedAt, new Error(`interrupted (${signal})`));
       output.fail(`Backup interrupted (${signal}); partial file removed`, 'interrupted');
       process.exit(130);
     },
   });
-
-  // Retention runs only after a successful backup and never fails the run.
-  let prune: PruneOutcome | { error: string } | null = null;
-  const pruneDisabled = opts.prune === false;
-  if (!pruneDisabled && retentionEnabled(settings)) {
-    try {
-      prune = runPrune({
-        template: settings.output,
-        keepDays: settings.keepDays,
-        keepLast: settings.keepLast,
-        protect: [result.path],
-        dryRun: opts.pruneDryRun === true,
-      });
-    } catch (err) {
-      prune = { error: err instanceof Error ? err.message : String(err) };
-    }
-  }
 
   output.result<RunOutput>(
     { backup: result, prune: pruneJson(prune) },
@@ -297,6 +315,7 @@ export function registerBackupCommands(program: Command): void {
     .option('--no-prune', 'Skip retention for this run, even if saved settings enable it')
     .option('--prune-dry-run', 'Show what retention would delete, without deleting')
     .option('--json', 'Machine-readable result')
+    .addOption(new Option('--scheduled', 'Record the run as scheduled (set by the installed cron job)').hideHelp())
     .addHelpText(
       'after',
       `
@@ -423,6 +442,8 @@ Examples:
         process.exit(1);
       }
     });
+
+  registerBackupScheduleCommands(backup);
 
   // vault backup config ...
   const cfg = backup.command('config').description('Show or change saved backup settings (backup.json)');

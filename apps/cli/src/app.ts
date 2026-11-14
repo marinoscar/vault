@@ -36,9 +36,16 @@ export const APP_UPGRADE_HINT = 'git pull && npm ci && npm run build --workspace
 
 /**
  * Vault's screens in the platform TUI (`vault` with no arguments). `load` keeps
- * ink out of every non-TUI run. `token` sits after the platform's Status (30).
+ * ink out of every non-TUI run. `backups` (one of the CLI's main uses) sits
+ * between the platform's Invoke (20) and Status (30); `token` after Status.
  */
 export const APP_TUI_SCREENS: readonly TuiScreenRegistration[] = [
+  {
+    route: 'backups',
+    order: 25,
+    label: ({ loggedIn }) => (loggedIn ? 'Backups  (run, schedule, status)' : 'Backups  (not logged in)'),
+    load: async () => (await import('./vault/tui/backups-screen.js')).BackupsScreen,
+  },
   {
     route: 'token',
     order: 35,
