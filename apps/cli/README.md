@@ -4,9 +4,10 @@ The command-line client for **Vault**: signs in with a device flow, manages secr
 
 `vault` is `createCli` of [`@marinoscar/platform-cli`](https://github.com/marinoscar/EnterpriseAppBase/tree/main/packages/platform-cli) plus Vault's own command groups. It replaces the two CLIs this repository used to carry: `vaultcli` (domain) and `app` (generic template). Coming from `vaultcli`? Read [Migrating from `vaultcli`](#migrating-from-vaultcli).
 
-- **Platform commands** (the engine's, identical across apps): `init`, `login`, `api`, `config`, `node`, `deploy`, and a terminal UI when run with no arguments in a terminal.
+- **Platform commands** (the engine's, identical across apps): `init`, `login`, `api`, `config`, `node`, `deploy`, and a terminal UI when run with no arguments in a terminal. Vault adds two screens to it: **Backups** (dashboard, run now, setup, schedule, list and clean up, server backups) and **Access token** (replace the 90-day sign-in token with a longer-lived one).
 - **Vault commands for scripts and agents**: `secrets`, `versions`, `types`, `sync`, `backup`, `admin backups`, `health`, `auth`, with `--json` / `-q` output.
-- **Terminal menu for people**: `vault menu` is the guided backup menu: sign in, set up and run password-protected backups, list and clean up old ones, print a ready-made schedule entry. See [Quick start with the menu](#quick-start-with-the-menu).
+- **Terminal UI for people**: `vault` with no arguments opens the platform TUI with the Backups and Access token screens. See [`vault` with no arguments](#vault-with-no-arguments--the-terminal-ui).
+- **Older guided menu**: `vault menu` is still available: sign in, set up and run password-protected backups, list and clean up old ones, print a ready-made schedule entry. See [Quick start with the menu](#quick-start-with-the-menu).
 - **Self-cleaning backups**: `vault backup` can save its settings once and delete old backups by age or count after each successful run. See [`backup`](#backup--password-protected-backup).
 - **Server backups for administrators**: `vault admin backups` shows and changes the server's backup schedule, starts a backup, and lists, downloads and deletes the results. See [`admin backups`](#admin-backups--server-backups).
 
@@ -52,7 +53,7 @@ node apps/cli/dist/cli.js --help  # or: npm run vault -- --help
 ### Version
 
 ```bash
-vault --version      # e.g. 2.0.0 (platform 0.1.0-next.21)
+vault --version      # e.g. 2.1.0 (platform 0.1.0-next.21)
 ```
 
 ### Environment Variables
@@ -91,7 +92,7 @@ The prefix is `VAULT_`, derived from `cliName` in `packages/shared/identity.json
 
 What stays the same: the `VAULTCLI_SERVER_URL`, `VAULTCLI_CONFIG_DIR` and `VAULTCLI_BACKUP_PASSWORD` variables are still read (the `VAULT_` names are preferred and win when both are set); scheduled jobs keep working because `auth.json`, `sync.json`, `backup.json` and `backup-password` are still found in `~/.config/vaultcli` or `$VAULTCLI_CONFIG_DIR`. Move them with `vault login` and by copying the files into `~/.vault` when convenient.
 
-What to change: crontab / launchd / Task Scheduler entries that call `vaultcli` (re-generate them from `vault menu` > Backups > Schedule, or replace the command), the install location (`vault-update` replaces `vaultcli-update`), and any script that used `vaultcli config set-url` or `auth login` non-interactively (use `VAULT_SERVER_URL` and `VAULT_TOKEN`). The old `/usr/local/bin/vaultcli` symlink is not removed for you: `rm` it after switching.
+What to change: crontab / launchd / Task Scheduler entries that call `vaultcli` (re-generate them with `vault backup schedule install`, or replace the command), the install location (`vault-update` replaces `vaultcli-update`), and any script that used `vaultcli config set-url` or `auth login` non-interactively (use `VAULT_SERVER_URL` and `VAULT_TOKEN`). The old `/usr/local/bin/vaultcli` symlink is not removed for you: `rm` it after switching.
 
 ---
 
@@ -120,13 +121,13 @@ vault secrets get "AWS Production"
 vault versions list "AWS Production"
 ```
 
-Prefer a guided menu? Run `vault menu`. It can sign you in, set up a password-protected backup with retention, run it and show how to schedule it: see [Quick start with the menu](#quick-start-with-the-menu).
+Prefer a screen to flags? Run `vault` with no arguments: the **Backups** screen sets up, runs and schedules a password-protected backup, and **Access token** replaces the 90-day sign-in token with a longer one: see [`vault` with no arguments](#vault-with-no-arguments--the-terminal-ui). The older guided menu is `vault menu`: see [Quick start with the menu](#quick-start-with-the-menu).
 
 ---
 
 ## Authentication
 
-Authentication is the platform's: `vault login` runs the **device flow** (the same one the web app approves) and stores a **personal access token** (starts with `pat_`) in `~/.vault/config.json` with mode `0600`.
+Authentication is the platform's: `vault login` runs the **device flow** (the same one the web app approves) and stores a **personal access token** (starts with `pat_`) in `~/.vault/config.json` with mode `0600`. The device-flow token lasts 90 days; replace it with a longer-lived one (below) for scheduled jobs.
 
 ### Login
 
@@ -141,9 +142,19 @@ Create a token by hand in the web app under **Settings > Personal Access Tokens*
 ### Check Status
 
 ```bash
-vault auth status          # who you are, and the server
+vault auth status          # who you are, the server and when the token expires
 vault config               # stored server URL and a masked token hint (platform command)
 ```
+
+### Longer-lived tokens
+
+The device-flow token expires after 90 days, and a scheduled backup or sync then fails with exit code 1. `vault auth token create` makes a personal access token with a lifetime you choose (1 to 999 minutes, days or months) and can store it in place of the current one:
+
+```bash
+vault auth token create --duration 12 --unit months --store --revoke-current
+```
+
+With `--store` the token goes to `~/.vault/config.json` and is not printed; without it the token is printed once (use that for CI and `VAULT_TOKEN`). `--revoke-current` revokes the old token only after the new one is stored and verified, and is refused when the token in use comes from `VAULT_TOKEN`. The same flow is the **Access token** screen of the TUI. Tokens are also managed in the web app: [personal-access-tokens](../../docs/personal-access-tokens.md).
 
 ### Logout
 
@@ -229,10 +240,27 @@ Their full reference is the platform CLI's `--help` and README (`node_modules/@m
 ### `auth` — Authentication
 
 ```bash
-vault auth status             # Show current auth state
+vault auth status             # Show current auth state, including token expiry
 vault auth logout             # Clear the stored token
+vault auth token create --duration 12 --unit months --store --revoke-current
+vault auth token list [--all]
+vault auth token revoke <id> [--yes]
 vault auth login              # Moved: tells you to run "vault login"
 ```
+
+#### `auth token create`
+
+| Flag | Description |
+|------|-------------|
+| `--duration <n>` | Lifetime, 1 to 999 (in `--unit`) |
+| `--unit <unit>` | `minutes`, `days` or `months` |
+| `--name <label>` | Token name (default `vault-cli <hostname> <date>`) |
+| `--store` | Store the new token in `~/.vault/config.json` instead of printing it |
+| `--revoke-current` | With `--store`: revoke the token in use once the new one is stored and verified. Refused when the token comes from `VAULT_TOKEN` |
+
+#### `auth token list` and `auth token revoke`
+
+`auth token list` shows your tokens and marks the one in use; `--all` includes revoked and expired ones. `auth token revoke <id>` revokes by id and refuses the token in use unless `--yes`.
 
 ---
 
@@ -375,13 +403,24 @@ vault health ready         # Is the server ready (DB connected)?
 
 ---
 
+### `vault` with no arguments — the terminal UI
+
+In a terminal, `vault` with no arguments opens the platform TUI. Vault adds two screens to its home list:
+
+| Screen | What it does |
+|--------|--------------|
+| **Backups** | A dashboard (last backup, next scheduled run, backups on disk, token expiry), recent runs and warnings, with actions: run now (with progress), set up, schedule (install, change or remove the crontab entry), list and clean up, and **server backups (admin)** when you have `system_settings:read`. The same as `vault backup status`, `backup schedule` and `admin backups`, on one screen. |
+| **Access token** | Shows when the stored token expires and replaces it with a longer-lived one (1 to 999 minutes, days or months), optionally revoking the old one after the new one is verified. The same as [`auth token create`](#longer-lived-tokens). |
+
+---
+
 ### `menu` — interactive terminal menu
 
 ```bash
 vault menu            # alias: vault interactive; needs a terminal on stdin and stdout
 ```
 
-Opens the guided backup menu (see [Quick start with the menu](#quick-start-with-the-menu)). It is not the platform's TUI, which `vault` with no arguments opens.
+Opens the older guided backup menu (see [Quick start with the menu](#quick-start-with-the-menu)), still available. It is not the platform's TUI, which `vault` with no arguments opens and which has the Backups and Access token screens above.
 
 ---
 
@@ -527,7 +566,7 @@ vault sync where
 The non-zero exit on errors makes the job alertable via standard cron mail or external monitoring.
 
 **Prerequisites:**
-- The CLI must already be authenticated. Run `vault login` once; the PAT is stored at `~/.vault/config.json` (or provide `VAULT_TOKEN`).
+- The CLI must already be authenticated. Run `vault login` once; the PAT is stored at `~/.vault/config.json` (or provide `VAULT_TOKEN`). The device-flow token lasts 90 days; for a long-running cron job replace it with [`vault auth token create`](#longer-lived-tokens).
 - If using a local build instead of the installed symlink, use absolute paths to `node` and `apps/cli/dist/cli.js`.
 
 #### Sync Caveats
@@ -546,7 +585,7 @@ Open the file with 7-Zip (Windows), Keka or The Unarchiver (macOS), or `7z x` / 
 
 Three ways to use it, from easiest to most scriptable:
 
-1. The **terminal menu** (`vault menu`): a guided setup that saves your choices, then runs, lists, cleans up and schedules backups. See [Quick start with the menu](#quick-start-with-the-menu).
+1. The **Backups screen** of the TUI (`vault`), or the older **terminal menu** (`vault menu`): a guided setup that saves your choices, then runs, lists, cleans up and schedules backups. See [`vault` with no arguments](#vault-with-no-arguments--the-terminal-ui) and [Quick start with the menu](#quick-start-with-the-menu).
 2. **Saved settings** (`vault backup config ...`): set your choices once, then `vault backup` needs no flags. See [Saved settings](#saved-settings-backupjson).
 3. **Flags** on every run, for one-off or fully scripted use.
 
@@ -576,7 +615,7 @@ The main menu has these entries besides Exit:
 | View backup settings | Shows the saved settings file, the path the next backup would be written to, the password source, the contents, time zone and retention. |
 | List backups | Lists the files that match your output template with size and age, and marks those retention would delete. |
 | Clean up old backups now | Previews what retention would delete, asks for confirmation (default No), then deletes. Needs retention to be set up first. |
-| Schedule backups | Asks for a daily time (`HH:MM`, default `02:30`) and prints the exact cron line, launchd plist or `schtasks` command for your operating system, with warnings about anything that would make a scheduled run fail. It shows the entry; **it installs nothing**. |
+| Schedule backups | Asks for a daily time (`HH:MM`, default `02:30`) and prints the exact cron line, launchd plist or `schtasks` command for your operating system, with warnings about anything that would make a scheduled run fail. It shows the entry; **the menu installs nothing**. To install the entry, use [`vault backup schedule install`](#backup-schedule--install-a-crontab-entry) or the Backups screen of the TUI. |
 
 **The "Set up backups" wizard** asks, in order:
 
@@ -608,7 +647,7 @@ vault backup config set \
   --password-file ~/.vault/backup-password \
   --keep-days 30
 vault backup          # test it
-# then schedule `vault backup --json`; see "Scheduled Backups" below
+vault backup schedule install --daily 02:30   # install the cron entry; see "Scheduled Backups" below
 ```
 
 #### Command reference
@@ -855,13 +894,54 @@ Human mode prints the path, size, secret, attachment and media file counts (from
 
 Warnings about attachments or media files that could not be exported are inside the archive (`README.txt`, `secrets.json`), not on the CLI's output: check them occasionally.
 
+#### `backup status`
+
+```bash
+vault backup status [--json]
+```
+
+How backups are doing: the last run, the schedule and next run, files on disk, retention, token expiry and warnings. Every `backup` run (manual or scheduled, success or failure) appends one JSON line (`"type":"vault.backup.run"`: time, duration, outcome, size and counts) to `<config dir>/backup.log` (mode `0600`); `status` and the Backups screen read their history from it. The archive password is never written to it.
+
+#### `backup schedule` — install a crontab entry
+
+```bash
+vault backup schedule status [--json]    # the installed entry, its next runs, anything that would make it fail
+vault backup schedule install --daily 02:30
+vault backup schedule install --every-hours 6
+vault backup schedule install --weekly sun --at 03:00
+vault backup schedule install --cron "30 2 * * *" --yes
+vault backup schedule remove [--yes]
+```
+
+`install` writes one marked block to your crontab and leaves every other line alone; running it again replaces the block. The job runs `vault backup --json --scheduled` with your [saved settings](#saved-settings-backupjson), so no token or password is written to the crontab:
+
+```cron
+# >>> vault backup (managed by vault CLI) >>>
+# Every day at 02:30 · installed 2026-11-13T10:00:00.000Z
+30 2 * * * HOME='/home/USER' PATH='...' '/usr/bin/node' '/path/to/dist/cli.js' backup --json --scheduled >> '/home/USER/.vault/backup.log' 2>&1
+# <<< vault backup <<<
+```
+
+| Option (`install`) | Description |
+|--------------------|-------------|
+| `--daily <HH:MM>` | Every day at this time (24h, local) |
+| `--every-hours <n>` | Every n hours, on the hour (1 to 23) |
+| `--weekly <day>` | Once a week (`sun`, `mon`, ... or `0` to `6`); time from `--at` |
+| `--at <HH:MM>` | Time for `--weekly` (default `02:30`) |
+| `--cron <expr>` | A 5-field cron expression |
+| `-y`, `--yes` | Do not ask for confirmation (required outside a terminal) |
+| `--force` | Install even when the preflight finds a problem that will make runs fail |
+| `--json` | Machine-readable result |
+
+Before installing, a preflight checks for things that make scheduled runs fail (no saved settings, no usable password source, a token that expires soon, `VAULT_TOKEN` set only in your shell); an error blocks the install unless `--force`. On Windows the command prints the Task Scheduler entry to create (see [Windows](#windows-task-scheduler)) instead of installing it.
+
 ---
 
 ### Scheduled Backups
 
 `backup` is built for unattended use: it never prompts when stdin is not a terminal, it exits non-zero on failure, and it never leaves a partial file behind. With [saved settings](#saved-settings-backupjson) the scheduled command is just `vault backup --json`: the template, password source and retention come from `backup.json`, so the scheduler entry stays short and the password never appears in a crontab or task definition.
 
-**Step 1: authenticate.** The CLI authenticates with the Personal Access Token stored by `vault login` in `~/.vault/config.json` (long-lived), or supplied in the job's environment as `VAULT_TOKEN`. Run `vault login` once, interactively, as the same OS user the scheduler will run as, and make sure the job can find that config: set `HOME` (`USERPROFILE` on Windows) and, if needed, `VAULT_CONFIG_DIR`. Consider creating a dedicated PAT for the job so it can be revoked on its own. If the PAT is revoked, scheduled runs fail with exit code 1.
+**Step 1: authenticate.** The CLI authenticates with the Personal Access Token stored by `vault login` in `~/.vault/config.json` (long-lived), or supplied in the job's environment as `VAULT_TOKEN`. Run `vault login` once, interactively, as the same OS user the scheduler will run as, and make sure the job can find that config: set `HOME` (`USERPROFILE` on Windows) and, if needed, `VAULT_CONFIG_DIR`. Consider creating a dedicated PAT for the job so it can be revoked on its own. If the PAT is revoked or expires (the device-flow token lasts 90 days), scheduled runs fail with exit code 1: replace it with a longer-lived one using [`vault auth token create`](#longer-lived-tokens).
 
 **Step 2: save the settings** (or use the menu's **Set up backups**). Store the password in a file readable only by the job's user, and use an **absolute** output path (or one starting with `~`), because a scheduled job runs in a different folder than your shell:
 
@@ -881,6 +961,8 @@ vault backup --prune-dry-run      # try it once by hand
 If the job needs a different config folder, the same `VAULT_CONFIG_DIR` (or `VAULTCLI_CONFIG_DIR`) must be set for the job, because `backup.json` lives there. A password stored next to the job is only as safe as that machine: anyone who can read both the backup and the password file can open the backup, so copy backups off-host where you can. To use an environment variable instead, run `vault backup config set --password-env VAULTCLI_BACKUP_PASSWORD` and set that variable in the scheduler's own environment (a crontab is often readable by more people than you expect, so prefer the file).
 
 **Step 3: schedule `vault backup --json`.** The menu's **Schedule backups** prints a ready-made entry with the correct paths for your system; the recipes below are the same idea written by hand. Replace `USER`.
+
+On Linux and macOS the quickest route is [`vault backup schedule install`](#backup-schedule--install-a-crontab-entry), which writes the crontab entry for you.
 
 #### Linux (cron)
 
@@ -1106,7 +1188,7 @@ fi
 | `~/.vault/sync.json` | Sync registry (files and directories) | `0600` |
 | `~/.vault/backup.json` | Saved `backup` settings, never the password ([details](#saved-settings-backupjson)) | `0600` |
 | `~/.vault/backup-password` | Password file created by the menu's backup setup (only if you choose that option) | `0600` |
-| `~/.vault/backup.log` | Output of a scheduled `backup` job, when the menu's schedule entry is used | |
+| `~/.vault/backup.log` | Run history, one JSON line per `backup` run (`vault.backup.run`), plus the output of a scheduled job installed by `backup schedule install` | `0600` |
 
 With `VAULT_CONFIG_DIR` (or `VAULTCLI_CONFIG_DIR`) set, the last four live in that directory instead; `config.json` is always `~/.vault/config.json`. A `sync.json`, `backup.json` or `backup-password` that exists only in `~/.config/vaultcli/` (where `vaultcli` kept them) is used there until a copy exists in the new directory.
 
