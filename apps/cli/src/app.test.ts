@@ -7,7 +7,7 @@ import { configDirName, createCli, envPrefix, versionText } from '@marinoscar/pl
 import { resetCliForTests } from '@marinoscar/platform-cli/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { APP_CLI_OPTIONS, APP_VERSIONED_MANIFESTS, readVersion } from './app.js';
+import { APP_CLI_OPTIONS, APP_TUI_SCREENS, APP_VERSIONED_MANIFESTS, readVersion } from './app.js';
 import { VAULT_COMMAND_NAMES } from './vault/register.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -113,7 +113,21 @@ describe('the command surface', () => {
 
   it('keeps health live and ready, and auth status and logout', () => {
     expect(subcommands(['health']).sort()).toEqual(['live', 'ready']);
-    expect(subcommands(['auth']).sort()).toEqual(['login', 'logout', 'status']);
+    expect(subcommands(['auth']).sort()).toEqual(['login', 'logout', 'status', 'token']);
+  });
+
+  it('adds auth token create, list and revoke', () => {
+    expect(subcommands(['auth', 'token']).sort()).toEqual(['create', 'list', 'revoke']);
+  });
+
+  it('registers the Access token TUI screen lazily, between Status (30) and Worker node (40)', async () => {
+    const [screen] = APP_TUI_SCREENS;
+    expect(APP_TUI_SCREENS).toHaveLength(1);
+    expect(screen).toMatchObject({ route: 'token', order: 35 });
+    expect(screen?.component).toBeUndefined();
+    expect(typeof screen?.load).toBe('function');
+    expect(APP_CLI_OPTIONS.tuiScreens).toBe(APP_TUI_SCREENS);
+    expect(typeof (await screen!.load!())).toBe('function');
   });
 
   it('keeps the backup flags scripts rely on', () => {
