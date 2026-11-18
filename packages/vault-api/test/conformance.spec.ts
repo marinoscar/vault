@@ -14,6 +14,7 @@ import {
   USER_BACKUP_RUN_JOB_TYPE,
 } from '../src/backups';
 import { AgentActivityController, AgentController } from '../src/agent';
+import { McpController } from '../src/mcp';
 import { CardExpiryScanHandler, CARD_EXPIRY_SCAN_JOB_TYPE } from '../src/card-expiry';
 import { CardExtractController } from '../src/ai';
 import { MediaController } from '../src/media';
@@ -71,6 +72,7 @@ const CONTROLLERS = [
   MyBackupsController,
   AgentController,
   AgentActivityController,
+  McpController,
 ];
 
 function routesOf(controller: new (...args: never[]) => unknown): string[] {

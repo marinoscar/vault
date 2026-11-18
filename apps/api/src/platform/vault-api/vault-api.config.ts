@@ -18,6 +18,7 @@
 //   VAULT_AUDIT           VaultAuditAdapter over `audit_events`
 //   VAULT_SETTINGS        VaultSettingsAdapter over SystemSettingsService
 //   VAULT_METRICS         VaultMetricsService (global)
+//   VAULT_MCP_OPTIONS     the app URL for the MCP Origin rule (platform/mcp/mcp.config.ts)
 //
 // ORDER IN AppModule: after `jobsModule`, `settingsModule`, `notificationsModule`, `storageModule`
 // and `VaultMetricsModule`, which provide what the adapters read.
@@ -45,6 +46,7 @@ import { VaultMetricsService } from '../../common/otel/vault-metrics.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { aiModule } from '../ai/ai.config';
 import { AiKeyPresence, AiKeyPresenceModule } from '../credentials/ai-key-presence.service';
+import { vaultMcpOptionsBinding } from '../mcp/mcp.config';
 import { storageModule } from '../storage/storage.config';
 import { VaultAuditAdapter } from './vault-audit.adapter';
 import { VaultJobsAdapter } from './vault-jobs.adapter';
@@ -87,5 +89,6 @@ export const vaultApiModule = VaultApiModule.forRoot({
     audit: { useExisting: VaultAuditAdapter },
     settings: { useExisting: VaultSettingsAdapter },
     metrics: { useExisting: VaultMetricsService },
+    mcp: vaultMcpOptionsBinding,
   },
 });

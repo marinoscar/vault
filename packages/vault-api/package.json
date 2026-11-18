@@ -59,6 +59,10 @@
       "types": "./dist/agent/index.d.ts",
       "default": "./dist/agent/index.js"
     },
+    "./mcp": {
+      "types": "./dist/mcp/index.d.ts",
+      "default": "./dist/mcp/index.js"
+    },
     "./testing": {
       "types": "./dist/testing/index.d.ts",
       "default": "./dist/testing/index.js"

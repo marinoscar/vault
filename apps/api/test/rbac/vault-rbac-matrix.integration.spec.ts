@@ -213,6 +213,11 @@ const ROUTES: readonly Route[] = [
   ['POST', `/api/agent/v1/credentials/${ID}/password`, 'secrets:write'],
   // E14.7: the owner's agent trail (session or PAT; an OAuth token is refused by the controller).
   ['GET', '/api/agent-activity', 'secrets:read'],
+  // E14.8: the MCP endpoint (the `mcp` OAuth protected resource). Every route needs secrets:read; the tools check
+  // secrets:read / secrets:write per call (a 403 or a step-up, never a 200), the kill switch and the rate limit after that.
+  ['POST', '/api/mcp', 'secrets:read'],
+  ['GET', '/api/mcp', 'secrets:read'],
+  ['DELETE', '/api/mcp', 'secrets:read'],
   // The platform OAuth server's authenticated routes (E14.2; the protocol routes are @Public by design
   // and held by the `oauth-server` conformance suite). The consent and grants APIs need only a session.
   ['GET', `/api/oauth/requests/${ID}`, null],
@@ -526,6 +531,7 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
         'MyBackupsController',
         'AgentController',
         'AgentActivityController',
+        'McpController',
         'OAuthConsentController',
         'OAuthGrantsController',
         'OAuthClientsAdminController',

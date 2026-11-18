@@ -6,6 +6,12 @@ import { AgentActivityController } from './agent/agent-activity.controller';
 import { AgentActivityService } from './agent/agent-activity.service';
 import { AgentNotifier } from './agent/agent-notifier.service';
 import { AgentController } from './agent/agent.controller';
+import { McpController, McpOriginGuard } from './mcp/mcp.controller';
+import { McpDispatcher } from './mcp/mcp-dispatcher';
+import { VAULT_MCP_OPTIONS } from './mcp/mcp-options';
+import { McpSecretsService } from './mcp/mcp-secrets.service';
+import { VaultMcpToolsBootstrap } from './mcp/vault-mcp-tools';
+import { McpToolRegistry } from './mcp/protocol/mcp-tool';
 import { CardExtractController } from './ai/card-extract.controller';
 import { CardExtractService } from './ai/card-extract.service';
 import { BackupArchiveService } from './backups/backup-archive.service';
@@ -97,6 +103,8 @@ export interface VaultApiBindings {
   settings: VaultPortBinding;
   /** Vault's metrics (`VAULT_METRICS`); optional. */
   metrics?: VaultPortBinding;
+  /** The MCP endpoint's settings (`VAULT_MCP_OPTIONS`: the app URL for the Origin rule, the rate limit); optional. */
+  mcp?: VaultPortBinding;
 }
 
 /** Options of {@link VaultApiModule.forRoot}. */
@@ -123,6 +131,7 @@ const TOKENS: ReadonlyArray<[keyof VaultApiBindings, symbol]> = [
   ['audit', VAULT_AUDIT],
   ['settings', VAULT_SETTINGS],
   ['metrics', VAULT_METRICS],
+  ['mcp', VAULT_MCP_OPTIONS],
 ];
 
 function toProvider(provide: symbol, binding: VaultPortBinding): Provider {
@@ -161,6 +170,7 @@ export class VaultApiModule {
         MyBackupsController,
         AgentController,
         AgentActivityController,
+        McpController,
       ],
       providers: [
         ...ports,
@@ -188,6 +198,11 @@ export class VaultApiModule {
         CardExpiryTask,
         OriginsBackfillHandler,
         OriginsBackfillBootstrap,
+        McpToolRegistry,
+        McpSecretsService,
+        McpDispatcher,
+        McpOriginGuard,
+        VaultMcpToolsBootstrap,
       ],
       exports: [
         ...TOKENS.filter(([key]) => options.bindings[key]).map(([, token]) => token),
