@@ -37,7 +37,8 @@ import {
   roleRegistry,
   userOwnedModelRegistry,
 } from '@marinoscar/platform-api/core';
-import { discoverControllers } from '@marinoscar/platform-api/identity/testing';
+import { oauthResourceRegistry, oauthScopeRegistry, OFFLINE_ACCESS_SCOPE } from '@marinoscar/platform-api/identity';
+import { discoverControllers, discoverOAuthRoutes } from '@marinoscar/platform-api/identity/testing';
 import { runPlatformConformance } from '@marinoscar/platform-api/testing';
 import { composedSchemaDatamodel } from '@marinoscar/platform-api/user-data';
 
@@ -70,15 +71,6 @@ runPlatformConformance({
       permissions: permissionRegistry.list(),
       roles: roleRegistry.list(),
       grants: catalogGrants(buildPermissionCatalog()),
-    },
-
-    // The OAuth server (E14.2, #174): registrations, confinement, narrowing, session-only and
-    // roles-only routes, the 401 challenge and the metadata documents. The secret-egress check
-    // needs a real flow against a database: test/identity/oauth/oauth-conformance.db.spec.ts runs it.
-    oauthServer: {
-      rootModule: AppModule,
-      permissions: permissionRegistry.list().map((permission) => permission.id),
-      secretEgress: { skip: 'it needs a real flow and database: test/identity/oauth/oauth-conformance.db.spec.ts runs it' },
     },
 
     // No secret-named field in any registered system or user namespace (the AI key
@@ -281,3 +273,49 @@ runPlatformConformance({
     },
   },
 });
+
+// The OAuth server (E14.2, #174): registrations, confinement, narrowing, session-only and
+// roles-only routes, the 401 challenge and the metadata documents. The secret-egress check
+// needs a real flow against a database: test/identity/oauth/oauth-conformance.db.spec.ts runs it.
+//
+// The suite runs ONCE PER protected resource, each run seeing exactly one resource and the scopes
+// it lists (plus `offline_access`), because with two resources the platform's `token-confinement`
+// check fails ("looked the token up (I/O) before refusing it on <route of the other resource>"):
+// a platform limitation, marinoscar/EnterpriseAppBase#1212. All ten checks still run in full for
+// each resource. The run's root module holds every controller except the other resource's (the
+// probe guard resolves paths through the registry it is given, so a route of a resource it does not
+// know would be probed as an ordinary route). The cross-resource refusal itself is proven with real tokens by
+// test/mcp/mcp.db.spec.ts. Once #1212 ships, go back to a single run over the live registries.
+const EXPECTED_OAUTH_RESOURCE_IDS = ['agent', 'mcp'];
+const oauthResources = oauthResourceRegistry.list();
+const oauthScopes = oauthScopeRegistry.list();
+const oauthResourceIds = oauthResources.map((resource) => resource.id).sort();
+if (JSON.stringify(oauthResourceIds) !== JSON.stringify(EXPECTED_OAUTH_RESOURCE_IDS)) {
+  throw new Error(
+    `conformance.spec.ts: expected the OAuth protected resources ${JSON.stringify(EXPECTED_OAUTH_RESOURCE_IDS)}, found ${JSON.stringify(oauthResourceIds)}. ` +
+      'Revisit the per-resource oauthServer runs (EnterpriseAppBase#1212) before adding or removing one.',
+  );
+}
+const underPrefix = (path: string, prefix: string): boolean => path === prefix || path.startsWith(`${prefix}/`);
+for (const resource of oauthResources) {
+  const otherPrefixes = oauthResources.filter((other) => other.id !== resource.id).flatMap((other) => [...other.routePrefixes]);
+  const controllers = discoverControllers(AppModule).filter(
+    (controller) => !discoverOAuthRoutes([controller]).some((route) => otherPrefixes.some((prefix) => underPrefix(route.path, prefix))),
+  );
+  @Module({ controllers })
+  class ResourceConformanceRoot {}
+  runPlatformConformance({
+    sourceRoots: [...VAULT_SOURCE_ROOTS],
+    suites: {
+      oauthServer: {
+        rootModule: ResourceConformanceRoot,
+        permissions: permissionRegistry.list().map((permission) => permission.id),
+        secretEgress: { skip: 'it needs a real flow and database: test/identity/oauth/oauth-conformance.db.spec.ts runs it' },
+        registry: {
+          resources: [resource],
+          scopes: oauthScopes.filter((scope) => resource.scopes.includes(scope.id) || scope.id === OFFLINE_ACCESS_SCOPE),
+        },
+      },
+    },
+  });
+}
