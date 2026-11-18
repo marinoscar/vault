@@ -121,7 +121,7 @@ Expected: `B5 act: 0 to resolve, 38 to install only`, `B6 verify: ok`, `baseline
 cd apps/api
 npm run prisma:migrate             # applies 0003-0040 (38) + the 3 Vault migrations (41 in all): THE real change
 npm run prisma:seed                # roles with scope, org_admin grants, permissions, system secret types
-npm run db:check                   # offline: 40 installed platform migrations equal the package
+npm run db:check                   # offline: 43 installed platform migrations equal the package
 npm run db:check:database          # ledger rows match the files (48 after the migrate: the 7 existing + 41 applied)
 npm run db:drift                   # migrations equal the composed schema; 12 raw-SQL indexes, 12 RLS policies
 npm run db:baseline                # "nothing to do"

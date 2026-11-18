@@ -232,6 +232,8 @@ const ROUTES: readonly Route[] = [
   ['PATCH', `/api/storage/objects/${ID}/metadata`, 'storage:write'],
   ['POST', '/api/storage/objects/upload/init', 'storage:write'],
   ['GET', `/api/storage/objects/${ID}/upload/status`, 'storage:write'],
+  ['POST', `/api/storage/objects/${ID}/upload/part-urls`, 'storage:write'],
+  ['PUT', `/api/storage/objects/${ID}/upload/parts/1`, 'storage:write'],
   ['POST', `/api/storage/objects/${ID}/upload/complete`, 'storage:write'],
   ['DELETE', `/api/storage/objects/${ID}/upload/abort`, 'storage:write'],
   ['POST', '/api/storage/objects', 'storage:write'],
@@ -293,6 +295,8 @@ const ROUTES: readonly Route[] = [
   ['GET', '/api/notifications/unread-count', null],
   ['POST', `/api/notifications/${ID}/read`, null],
   ['POST', '/api/notifications/read-all', null],
+  ['POST', `/api/notifications/${ID}/dismiss`, null],
+  ['POST', '/api/notifications/dismiss-all', null],
   ['POST', '/api/notifications/push/subscriptions', null],
   ['DELETE', '/api/notifications/push/subscriptions', null],
   // Web Push configuration (VAPID; system, admin only)
@@ -539,7 +543,7 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
         }
       }
 
-      const normalised = (path: string) => path.split(ID).join(':id').replace(/\/by-name\/[^/]+/, '/by-name/:name');
+      const normalised = (path: string) => path.split(ID).join(':id').replace(/\/by-name\/[^/]+/, '/by-name/:name').replace(/\/upload\/parts\/\d+$/, '/upload/parts/:partNumber');
       const declared = new Map([...ROUTES, ...STREAM_ROUTES, ...KILL_SWITCH_ROUTES].map(([m, p, perm]) => [`${m} ${normalised(p)}`, perm] as const));
 
       // Compare shapes: parameter names differ (`:folderId`), so collapse every `:param`.
