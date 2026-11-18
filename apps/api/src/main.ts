@@ -13,6 +13,7 @@ import {
 import { Logger } from '@nestjs/common';
 import fastifyCookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
+import { OAUTH_PUBLIC_CORS_PATHS } from '@marinoscar/platform-api/identity';
 import { buildCorsOptions, registerPlatformDocs } from '@marinoscar/platform-api/host';
 import { verifyEncryptionKeyAtStartup } from '@marinoscar/platform-api/core';
 import { registerRequestSpanAttributes } from '@marinoscar/platform-api/otel-core';
@@ -86,6 +87,8 @@ async function bootstrap() {
   // headers; a comma-separated list gives exactly those origins).
   app.enableCors(
     buildCorsOptions(process.env.CORS_ORIGIN, {
+      // OAuth token, register, revoke and metadata endpoints answer `*` without credentials.
+      openPaths: OAUTH_PUBLIC_CORS_PATHS,
       // Response headers a cross-origin client may read. The backup downloads
       // (POST /api/secrets/export, POST /api/admin/backups/export) report their
       // file name and counts in these.

@@ -11,10 +11,11 @@
 
 import { registerPlatformHostAppMetrics } from '@marinoscar/platform-api/host';
 import { EXPORTS_APP_METRICS } from '@marinoscar/platform-api/exports';
+import { OAUTH_APP_METRICS } from '@marinoscar/platform-api/identity';
 import { USER_DATA_APP_METRICS } from '@marinoscar/platform-api/user-data';
 
 import { VAULT_APP_METRICS } from './vault-metrics';
 
 // The platform's own metrics first, then Vault's, so a key or name clash names Vault.
 // E9.3: the exports and user-data slices' metrics, then Vault's own.
-registerPlatformHostAppMetrics(EXPORTS_APP_METRICS, USER_DATA_APP_METRICS, VAULT_APP_METRICS);
+registerPlatformHostAppMetrics(EXPORTS_APP_METRICS, USER_DATA_APP_METRICS, OAUTH_APP_METRICS, VAULT_APP_METRICS);

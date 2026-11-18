@@ -19,6 +19,8 @@ import {
   registerPlatformUserOwnedModels,
 } from '@marinoscar/platform-api/manifest';
 
+import { registerVaultAgentOAuth } from '@marinoscar/vault-api/agent';
+
 import { PERMISSION_OPTIONS } from '../platform/permissions';
 import './jobs';
 import './db-backup';
@@ -32,3 +34,5 @@ registerPlatformModelOwnership(VAULT_MODEL_OWNERSHIP);
 // E9.3: the onboarding facts and steps. After the permissions (it keeps the platform steps whose
 // permission is registered) and before anything that reads the step registry.
 registerVaultOnboarding();
+// E14.2: the agent OAuth scopes and the `agent` protected resource (the server ships off).
+registerVaultAgentOAuth();

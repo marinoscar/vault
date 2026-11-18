@@ -30,4 +30,8 @@ import { IdentityHostModule } from './identity-host.module';
 export const identityModule = IdentityModule.forRoot({
   imports: [IdentityHostModule],
   enableTestAuth: process.env.NODE_ENV !== 'production',
+  // E14.2 (#174): the OAuth 2.1 authorization and resource server. Ships OFF at runtime (the
+  // `oauthServer.enabled` system setting). Scopes and the `agent` resource are registered in
+  // `app-registrations/oauth.ts`. No suggested client hosts: an administrator adds them.
+  oauthServer: {},
 });
