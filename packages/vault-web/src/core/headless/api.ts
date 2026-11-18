@@ -190,6 +190,20 @@ export async function getSecret(id: string): Promise<SecretDetail> {
   return api.get<SecretDetail>(`/secrets/${id}`);
 }
 
+/** The current one-time code of a secret's authenticator key (`POST /secrets/:id/totp`); never the seed. */
+export interface SecretTotpCode {
+  code: string;
+  /** ISO time at which `code` stops being valid. */
+  expiresAt: string;
+  /** Seconds a code lives. */
+  period: number;
+}
+
+/** Fetch the current code on demand. Rejects with a 404 ApiError when the secret has no authenticator key. */
+export async function getSecretTotp(id: string): Promise<SecretTotpCode> {
+  return api.post<SecretTotpCode>(`/secrets/${id}/totp`);
+}
+
 export async function createSecret(data: {
   name: string;
   description?: string;

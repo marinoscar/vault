@@ -41,6 +41,7 @@ import { SecretAttachments } from '../components/SecretAttachments.js';
 import { CardImages, supportsCardImages } from '../components/CardImages.js';
 import { SecretTypeIcon } from '../components/SecretTypeIcon.js';
 import { SecretValueField } from '../components/SecretValueField.js';
+import { TotpCodeCard } from '../components/TotpCodeCard.js';
 import { SecretVersionDrawer } from '../components/SecretVersionDrawer.js';
 import { useSecretDetail } from '../../headless/useSecretDetail.js';
 import { usePermissions } from '@marinoscar/platform-web/identity/headless';
@@ -437,6 +438,10 @@ export default function SecretDetailPage() {
               <MetaRow label="Created">{new Date(secret.createdAt).toLocaleString()}</MetaRow>
               {secret.createdBy && <MetaRow label="Created by">{secret.createdBy.email}</MetaRow>}
             </Paper>
+            {supportsAgentAccess(secret.type) &&
+              typeof secret.values?.totp === 'string' &&
+              secret.values.totp !== '' &&
+              hasPermission('secrets:read') && <TotpCodeCard secretId={secret.id} />}
             {supportsAgentAccess(secret.type) && (
               <Paper variant="outlined" sx={{ borderRadius: 2, px: 2, py: 1.5, mt: 2 }}>
                 <FormControlLabel

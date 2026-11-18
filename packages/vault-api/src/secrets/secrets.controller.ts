@@ -228,6 +228,31 @@ export class SecretsController {
     return { data: result };
   }
 
+  @Post(':id/totp')
+  @HttpCode(HttpStatus.OK)
+  @Auth({ permissions: [PERMISSIONS.SECRETS_READ] })
+  @ApiOperation({
+    summary: 'Current one-time code of a Credential',
+    description:
+      'Computes the RFC 6238 code from the Credential\'s stored totp seed. Returns code, expiresAt ' +
+      'and period; the seed is never returned. 404 when the secret is not a Credential or has no ' +
+      'totp value. Responds with Cache-Control: no-store and is audited as secret.totp.read ' +
+      '(secret id only). Requires secrets:read.',
+  })
+  @ApiParam({ name: 'id', type: String, format: 'uuid', description: 'Secret ID' })
+  @ApiResponse({ status: 200, description: '{ data: { code, expiresAt, period } }' })
+  @ApiResponse({ status: 403, description: 'Access denied' })
+  @ApiResponse({ status: 404, description: 'Secret not found, not a Credential, or no totp value' })
+  async totp(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: RequestUser,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ) {
+    const result = await this.secretsService.readTotp(id, user.id, user.permissions);
+    reply.header('Cache-Control', 'no-store');
+    return { data: result };
+  }
+
   @Put(':id')
   @Auth({ permissions: [PERMISSIONS.SECRETS_WRITE] })
   @ApiOperation({

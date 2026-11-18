@@ -260,6 +260,12 @@ Agent access is a per-secret opt-in that decides whether an AI agent (an OAuth c
 | Where it shows | List and detail responses carry `agentAccess` and `agentAccessChangedAt`; the list takes `?agentAccess=fill\|none`. The web form has the switch "Allow agents to use this login" on Credential secrets, and the list shows an "Agents" chip and an Agent access filter |
 | Consumers | The agent API (E14.6) and the MCP tools (E14.8) reach only secrets with `agentAccess = fill` |
 
+## Authenticator codes (TOTP)
+
+A `Credential` may carry an optional, sensitive `totp` field (label "Authenticator key (TOTP)"; add-only, existing credentials validate unchanged, and existing deployments receive the field through `prisma/seed.ts`). It accepts an `otpauth://totp/...` URI or a bare base32 secret (spaces, hyphens and lower case tolerated) and is **normalized on save** to the canonical URI `otpauth://totp/<issuer:account>?secret=&issuer=&algorithm=&digits=&period=`. Accepted: SHA1, SHA256 or SHA512, 6 to 8 digits, a 15 to 120 second period; `hotp`, invalid base32 and out-of-range values are a `400` with a field error on `totp`. The seed is stored like every other value (inside the encrypted version) and comes back in the detail response like any sensitive field.
+
+`POST /api/secrets/:id/totp` (`secrets:read`, session or PAT; same access rule as `GET /api/secrets/:id`) computes the RFC 6238 code on the server and returns `{ code, expiresAt, period }` with `Cache-Control: no-store`; the seed is never returned. `404` when the secret is not a Credential or has no `totp` value. Audited as `secret.totp.read` with `{ secretId }` only. Code: `generateTotp` in `@marinoscar/vault-api/secrets`; parsing and the canonical form: `@marinoscar/vault-contract/secrets`. For the agent API: `SecretsService.generateTotpForSecret(secretOrId, nowMs?)` and `hasTotp(type, values)`.
+
 ## Credential origins
 
 A `Credential` is found by website through `secrets.origins` (`text[] NOT NULL DEFAULT '{}'`, GIN index `secrets_origins_gin_idx`), so a lookup never decrypts a secret.
@@ -735,6 +741,7 @@ Every secret and secret type operation is written to the `audit_events` table. T
 | `secret.rollback` | `{ fromVersion, carriedAttachments }` |
 | `secret.renew` | `{ fromVersionId, version, carriedAttachments, replacedAttachments, replacedRoles, extractionMethod }` — `extractionMethod` is `'ai_assisted'` or `'manual'`, from the request's `aiAssisted` flag |
 | `secret.agent_access.update` | `{ secretId, from, to }` (`none` \| `fill`); written only when the value changes |
+| `secret.totp.read` | `{ secretId }`; never the code or the seed |
 | `secret.attachment.unlink` | `{ attachmentId, storageObjectId, storageObjectDeleted }` |
 | `secrets.export` | `{ secretCount, attachmentCount, mediaFolderCount, mediaFileCount, includeSecrets, includeAttachments, includeVersions, includeMedia, warningCount }` — target is the exporting user; never contains the password |
 | `backups.*`, `backups.user.*` | scheduled and downloaded admin backups and users' saved backups; see [Scheduled backups (admin)](#scheduled-backups-admin) |

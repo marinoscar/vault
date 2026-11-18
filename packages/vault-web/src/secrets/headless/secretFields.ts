@@ -5,6 +5,7 @@
  * Nothing here holds a secret value beyond the call that receives it.
  */
 
+import { parseTotpSecret } from '@marinoscar/vault-contract/secrets';
 import type { FieldDefinition, SecretType } from '../../core/headless/types.js';
 import { CARD_TYPE_NAME } from '../../cards/headless/useCards.js';
 import {
@@ -33,6 +34,36 @@ function isBlank(value: unknown): boolean {
   return value === undefined || value === null || String(value).trim() === '';
 }
 
+/** The Credential field that holds the authenticator key. */
+export const TOTP_FIELD_NAME = 'totp';
+
+/** Shown under the authenticator-key field when the pasted text is not a usable key. */
+export const TOTP_FIELD_HELP =
+  "Paste the setup key or the otpauth:// link from the site's QR code setup";
+
+/**
+ * Map a failed save to per-field messages. The API answers 400 with
+ * `details.errors` entries such as `Field "totp" ...`; the totp one becomes the
+ * friendly help text, any other field's message is kept as sent. Empty when the
+ * error carries nothing field-specific.
+ */
+export function fieldErrorsFromApiError(
+  err: unknown,
+  fields: FieldDefinition[],
+): Record<string, string> {
+  const raw = (err as { details?: { errors?: unknown } } | null)?.details?.errors;
+  if (!Array.isArray(raw)) return {};
+  const out: Record<string, string> = {};
+  for (const entry of raw) {
+    const text = typeof entry === 'string' ? entry : '';
+    const match = /^Field "([^"]+)"/.exec(text);
+    const name = match?.[1];
+    if (!name || !fields.some((f) => f.name === name)) continue;
+    out[name] = name === TOTP_FIELD_NAME ? TOTP_FIELD_HELP : text;
+  }
+  return out;
+}
+
 /**
  * Validate field values against the type's field definitions, with the same
  * rules `SecretsService.validateDataAgainstType` applies on the server: a
@@ -53,7 +84,9 @@ export function validateSecretFields(
       if (field.required) errors[field.name] = `${field.label} is required`;
       continue;
     }
-    if (field.type === 'number' && Number.isNaN(Number(value))) {
+    if (field.name === TOTP_FIELD_NAME && field.sensitive) {
+      if (parseTotpSecret(String(value)) === null) errors[field.name] = TOTP_FIELD_HELP;
+    } else if (field.type === 'number' && Number.isNaN(Number(value))) {
       errors[field.name] = `${field.label} must be a number`;
     } else if (field.type === 'date' && Number.isNaN(new Date(String(value)).getTime())) {
       errors[field.name] = `${field.label} must be a valid date`;

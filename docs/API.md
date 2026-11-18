@@ -1399,6 +1399,16 @@ Allows or forbids AI agents to use a secret ([SECRETS.md](SECRETS.md#agent-acces
 - **Errors:** `400` invalid body, `403` the caller lacks access or authenticated with an OAuth (`oat_`) token (an agent cannot widen its own access), `404` unknown or foreign secret, `422 AGENT_ACCESS_UNSUPPORTED_TYPE` for a non-Credential secret set to `fill`.
 - Audited as `secret.agent_access.update` with `{ secretId, from, to }`.
 
+#### POST /secrets/:id/totp
+
+The current one-time code of a `Credential` ([SECRETS.md](SECRETS.md#authenticator-codes-totp)). Permission `secrets:read`; access follows `GET /secrets/:id`. No body.
+
+- **Response:** `200 OK` with `{ "data": { "code": "123456", "expiresAt": "<ISO>", "period": 30 } }` and `Cache-Control: no-store`. The seed is never returned.
+- **Errors:** `403` no access, `404` unknown secret, not a `Credential`, or no `totp` value.
+- Audited as `secret.totp.read` with `{ secretId }` only.
+
+Saving a `Credential` with an invalid `totp` value answers `400` (`details.errors` names the field); a valid one is stored as the canonical `otpauth://totp/...` URI.
+
 Every secret list item and detail also carries `agentAccess` (`none` default) and `agentAccessChangedAt`, and `GET /secrets` accepts `?agentAccess=fill|none`.
 
 #### POST /secrets/export

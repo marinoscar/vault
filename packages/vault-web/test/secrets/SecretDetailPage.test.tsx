@@ -110,7 +110,9 @@ const VERSIONS = [
   { id: 'v1-id', version: 1, createdAt: new Date().toISOString(), createdBy: null, isCurrent: false },
 ];
 
-function baseHandlers(detail: ReturnType<typeof secret>) {
+function baseHandlers(
+  detail: Omit<ReturnType<typeof secret>, 'values'> & { values: Record<string, unknown> },
+) {
   return [
     http.get(`${API_BASE}/secrets/${SECRET_ID}`, () => HttpResponse.json(detail)),
     http.get(`${API_BASE}/secrets/${SECRET_ID}/versions`, () => HttpResponse.json(VERSIONS)),
@@ -544,6 +546,51 @@ describe('SecretDetailPage', () => {
       expect(deleted).toHaveLength(0);
       expect(state.fetches).toBe(fetchesBefore);
       expect(screen.getByText('contract.pdf')).toBeInTheDocument();
+    });
+  });
+
+  describe('authenticator code', () => {
+    const CREDENTIAL_TYPE: SecretType = {
+      id: 'cred-type',
+      name: 'Credential',
+      description: 'A login',
+      icon: null,
+      isSystem: true,
+      allowAttachments: false,
+      createdAt: new Date().toISOString(),
+      fields: [
+        { name: 'username', label: 'Username', type: 'string', required: true, sensitive: false },
+        { name: 'totp', label: 'Authenticator key (TOTP)', type: 'string', required: false, sensitive: true },
+      ],
+    };
+    const withTotp = (totp: string) => ({
+      ...secret(CREDENTIAL_TYPE),
+      values: { username: 'person-a', totp },
+    });
+
+    it('offers the code card only when a key is stored, and fetches only on click', async () => {
+      let calls = 0;
+      server.use(
+        ...baseHandlers(withTotp('otpauth://totp/Example:a@example.test?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ')),
+        http.post(`${API_BASE}/secrets/${SECRET_ID}/totp`, () => {
+          calls += 1;
+          return HttpResponse.json({ code: '287082', expiresAt: new Date(Date.now() + 30_000).toISOString(), period: 30 });
+        }),
+      );
+      const user = userEvent.setup();
+      renderPage(READER);
+      await screen.findByText('Authenticator code');
+      expect(calls).toBe(0);
+      await user.click(screen.getByRole('button', { name: 'Show code' }));
+      expect(await screen.findByText('287 082')).toBeInTheDocument();
+      expect(calls).toBe(1);
+    });
+
+    it('omits the code card without a stored key', async () => {
+      server.use(...baseHandlers(withTotp('')));
+      renderPage(READER);
+      await screen.findByText('Username');
+      expect(screen.queryByText('Authenticator code')).not.toBeInTheDocument();
     });
   });
 });
