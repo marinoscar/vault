@@ -48,6 +48,8 @@ const PINNED_JOB_TYPES = [
   'vault.user_backup.run',
   // card expiry reminders (E7.2): the daily scan, server-only
   'vault.cards.expiry_scan',
+  // secret origins (E14.4): the one-off backfill of secrets.origins, server-only
+  'vault.secrets.origins.backfill',
   // telemetry slice (`TelemetryModule.forRoot`, E9.2): store retention (TTL) and the stack deploy; both server-only
   'telemetry.retention.apply',
   'telemetry.stack.deploy',

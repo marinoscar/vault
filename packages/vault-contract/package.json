@@ -115,5 +115,8 @@
     "typescript": "^5.x",
     "vitest": "^4.1.8",
     "zod": "^4.4.3"
+  },
+  "dependencies": {
+    "tldts": "7.5.4"
   }
 }

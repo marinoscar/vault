@@ -14,6 +14,7 @@ import {
 
 
 
+import { originsFromCredential, matchOrigin, normalizeOrigin, registrableDomainOfOrigin } from '@marinoscar/vault-contract/secrets';
 import { defaultOrgClient, runInDefaultOrg } from '../core/default-org';
 
 
@@ -104,6 +105,27 @@ export function isAgentAccessibleType(
   type: { name?: string | null; isSystem?: boolean | null } | null | undefined,
 ): boolean {
   return !!type && type.isSystem === true && type.name === 'Credential';
+}
+
+/**
+ * The origins to store for `data` of a secret of `type`: derived for a Credential (an empty array
+ * clears them), `undefined` for every other type (the column stays `{}`).
+ */
+export function computeSecretOrigins(
+  type: { name?: string | null; isSystem?: boolean | null } | null | undefined,
+  data: Record<string, unknown> | null | undefined,
+): string[] | undefined {
+  if (!isAgentAccessibleType(type)) return undefined;
+  return originsFromCredential((data ?? {}) as { url?: unknown; additional_urls?: unknown });
+}
+
+/** An agent-accessible Credential matched by origin. Non-sensitive metadata only. */
+export interface CredentialOriginMatch {
+  id: string;
+  name: string;
+  username: string | null;
+  origins: string[];
+  matchKind: 'exact' | 'site';
 }
 
 @Injectable()
@@ -602,6 +624,8 @@ export class SecretsService {
       userId: string;
       sourceVersionId?: string;
       excludeFromCarryForward?: CarryForwardExclusions;
+      /** Recomputed `secrets.origins`, written in the same transaction; omit to leave them. */
+      origins?: string[];
     },
   ): Promise<{
     id: string;
@@ -646,6 +670,10 @@ export class SecretsService {
         createdById: userId,
       },
     });
+
+    if (params.origins !== undefined) {
+      await tx.secret.update({ where: { id: secretId }, data: { origins: params.origins } });
+    }
 
     const carriedAttachments = await this.carryForwardAttachments(
       tx,
@@ -812,6 +840,8 @@ export class SecretsService {
     const plaintext = JSON.stringify(dto.data);
     const { ciphertext, iv, authTag } = this.crypto.encrypt(plaintext);
 
+    const origins = computeSecretOrigins(secretType, dto.data as Record<string, unknown>);
+
     // Create secret + first version in a transaction
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const secret = await runInDefaultOrg(this.prisma, async (tx: any) => {
@@ -821,6 +851,7 @@ export class SecretsService {
           description: dto.description,
           typeId: dto.typeId,
           createdById: userId,
+          ...(origins !== undefined && { origins }),
         },
         include: { type: true },
       });
@@ -1076,6 +1107,7 @@ export class SecretsService {
           secretId: id,
           encrypted: newEncrypted,
           userId,
+          origins: computeSecretOrigins(existingSecret.type, dto.data as Record<string, unknown>),
         });
         carriedAttachments = newVersion.carriedAttachments;
       }
@@ -1154,6 +1186,58 @@ export class SecretsService {
     });
     if (!secret || !isAgentAccessibleType(secret.type)) return null;
     return secret;
+  }
+
+  /**
+   * The caller's agent-accessible Credentials whose origins match `origin`, exact matches first.
+   *
+   * Exact: the GIN index (`origins @> ARRAY[origin]`). Site (same registrable domain): the
+   * Public Suffix List cannot be expressed in SQL, so candidates are narrowed with
+   * `EXISTS (unnest(origins) LIKE '%<registrable domain>' )` (host suffix; over-matches
+   * are removed) and verified in JS with `matchOrigin`. Nothing extra is stored and nothing is
+   * decrypted; `username` is read from no column, so it is `null` here (callers needing it
+   * use `findAgentAccessibleSecret` + decrypt). Returns `[]` for an invalid origin.
+   */
+  async findCredentialsByOrigin(userId: string, origin: string): Promise<CredentialOriginMatch[]> {
+    const want = normalizeOrigin(origin);
+    if (!want) return [];
+    const site = registrableDomainOfOrigin(want);
+    const base = {
+      createdById: userId,
+      agentAccess: 'fill' as const,
+      type: { name: 'Credential', isSystem: true },
+    };
+    const candidates = new Map<string, { id: string; name: string; origins: string[] }>();
+    const exact = await this.prisma.secret.findMany({
+      where: { ...base, origins: { has: want } },
+      select: { id: true, name: true, origins: true },
+    });
+    for (const row of exact) candidates.set(row.id, row);
+    if (site) {
+      const like = `%${site.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+      const ids = (await this.prisma.$queryRaw<{ id: string }[]>`
+        SELECT s.id FROM secrets s
+        WHERE s.created_by_id = ${userId}::uuid
+          AND s.agent_access = 'fill'
+          AND EXISTS (SELECT 1 FROM unnest(s.origins) o WHERE o LIKE ${like})`).map((r) => r.id);
+      const missing = ids.filter((id) => !candidates.has(id));
+      if (missing.length > 0) {
+        const rows = await this.prisma.secret.findMany({
+          where: { ...base, id: { in: missing } },
+          select: { id: true, name: true, origins: true },
+        });
+        for (const row of rows) candidates.set(row.id, row);
+      }
+    }
+    const out: CredentialOriginMatch[] = [];
+    for (const row of candidates.values()) {
+      const m = matchOrigin(want, row.origins);
+      if (m) out.push({ id: row.id, name: row.name, username: null, origins: row.origins, matchKind: m.matchKind });
+    }
+    return out.sort(
+      (a, b) =>
+        (a.matchKind === b.matchKind ? 0 : a.matchKind === 'exact' ? -1 : 1) || a.name.localeCompare(b.name),
+    );
   }
 
   /**
@@ -1337,7 +1421,7 @@ export class SecretsService {
     userId: string,
     userPermissions: string[],
   ) {
-    await this.getSecretWithAuthCheck(
+    const authorized = await this.getSecretWithAuthCheck(
       secretId,
       userId,
       PERMISSIONS.SECRETS_WRITE,
@@ -1363,6 +1447,10 @@ export class SecretsService {
 
     // Re-encrypt with a fresh IV
     const { ciphertext, iv, authTag } = this.crypto.encrypt(plaintext);
+    const rollbackOrigins = computeSecretOrigins(
+      authorized.type,
+      JSON.parse(plaintext) as Record<string, unknown>,
+    );
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const newVersion = await runInDefaultOrg(this.prisma, async (tx: any) =>
@@ -1374,6 +1462,7 @@ export class SecretsService {
         // that kept the current attachments would show the old card's numbers
         // beside the new card's photos.
         sourceVersionId: oldVersion.id,
+        origins: rollbackOrigins,
       }),
     );
 
@@ -1497,6 +1586,7 @@ export class SecretsService {
           secretId,
           encrypted,
           userId,
+          origins: computeSecretOrigins(secret.type, dto.data as Record<string, unknown>),
           excludeFromCarryForward: {
             roles: replacedRoles,
             storageObjectIds: replacedObjectIds,

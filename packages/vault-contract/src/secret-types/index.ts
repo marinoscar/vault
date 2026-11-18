@@ -173,6 +173,8 @@ export const SYSTEM_SECRET_TYPES: SystemSecretType[] = [
       { name: 'password', label: 'Password', type: 'string', required: true, sensitive: true },
       { name: 'url', label: 'URL', type: 'string', required: false, sensitive: false },
       { name: 'notes', label: 'Notes', type: 'string', required: false, sensitive: false },
+      // Appended (add-only rule). Separated by whitespace, commas or semicolons (the catalog has no multi-line type or help text); feeds `secrets.origins` (see originsFromCredential).
+      { name: 'additional_urls', label: 'Additional URLs (space or comma separated)', type: 'string', required: false, sensitive: false },
     ],
     allowAttachments: false,
   },
