@@ -1386,6 +1386,21 @@ Base paths: `/api/secrets` and `/api/secret-types`.
 
 The backup download, [`POST /secrets/export`](#post-secretsexport), returns a raw `application/zip` stream rather than the JSON envelope.
 
+#### PATCH /secrets/:id/agent-access
+
+Allows or forbids AI agents to use a secret ([SECRETS.md](SECRETS.md#agent-access)). Permission `secrets:write`; ownership follows `PUT /secrets/:id`.
+
+```json
+{ "agentAccess": "fill" }
+```
+
+- `agentAccess`: `none` or `fill`. Only a `Credential` secret may be `fill`; `none` is always accepted. The current value again is a no-op.
+- **Response:** `200 OK` with `{ "data": <secret detail> }` carrying `agentAccess` and `agentAccessChangedAt` (ISO string, `null` until first changed).
+- **Errors:** `400` invalid body, `403` the caller lacks access or authenticated with an OAuth (`oat_`) token (an agent cannot widen its own access), `404` unknown or foreign secret, `422 AGENT_ACCESS_UNSUPPORTED_TYPE` for a non-Credential secret set to `fill`.
+- Audited as `secret.agent_access.update` with `{ secretId, from, to }`.
+
+Every secret list item and detail also carries `agentAccess` (`none` default) and `agentAccessChangedAt`, and `GET /secrets` accepts `?agentAccess=fill|none`.
+
 #### POST /secrets/export
 
 **Requires Authentication** (`secrets:read`) - Download a password-protected backup of the secrets **you own**. The response is a streamed AES-256 encrypted zip (WinZip AE-2), not JSON. For what is inside the archive, how to open it and the password trade-offs, see [SECRETS.md § Backup and export](SECRETS.md#backup-and-export).
@@ -2076,6 +2091,7 @@ Requires `secrets:read` (scope `vault:items_read` or wider). Returns `{ "data": 
 | `CONFLICT` | 409 | Resource already exists or version mismatch |
 | `NOT_AUTHORIZED` | 403 | Email not in allowlist |
 | `VERSION_MISMATCH` | 409 | Optimistic concurrency conflict (If-Match header) |
+| `AGENT_ACCESS_UNSUPPORTED_TYPE` | 422 | Only a Credential secret can be set to agent access `fill`; this secret type cannot |
 | `AI_INVALID_IMAGE` | 400 | Card extraction body was not one or two acceptable base64 image data URLs |
 | `AI_EXTRACTION_FAILED` | 422 | Card extraction call succeeded but the model could not read the card, or its output failed schema validation |
 | `AI_RATE_LIMITED` | 429 | The platform per-user per-minute AI cap was reached |

@@ -1829,6 +1829,8 @@ Since E14.2 ([#174](https://github.com/marinoscar/vault/issues/174)) Vault mount
 | Revoke | A user removes a grant at `/settings/connected-apps`; an administrator at `/admin/settings/oauth-clients` (`DELETE /api/admin/oauth/grants/{id}`) or by deleting the client |
 | Secret egress | No token, code or client secret is logged or returned after issue; proven by `apps/api/test/identity/oauth/oauth-conformance.db.spec.ts` (auth code + PKCE flow, confinement, step-up, egress) and the conformance suite `oauth-server` |
 
+**Per-secret opt-in (E14.3, [#175](https://github.com/marinoscar/vault/issues/175)).** Scopes bound what an agent may do; the per-secret `agentAccess` flag bounds which secrets it may touch, and is the agent's least-privilege boundary. It defaults to `none` for every secret (including all pre-existing ones), only a `Credential` secret may be set to `fill`, and the agent API and MCP tools reach only secrets with `agentAccess = fill`, never the others, whatever the token's scopes. Only the owner (`secrets:write`, session credential) can change it: `PATCH /api/secrets/:id/agent-access` refuses an `oat_` token with 403, so an agent can never widen its own access. Every change is audited as `secret.agent_access.update` (`{ secretId, from, to }`). See [SECRETS.md](SECRETS.md#agent-access).
+
 `secrets:fill` (org scope, roles `org_admin`, `contributor`, `viewer`) is the permission behind `vault:items_fill`; no session-authenticated route uses it yet. Endpoints: [API.md](API.md#agent-api-oauth-protected).
 
 ---

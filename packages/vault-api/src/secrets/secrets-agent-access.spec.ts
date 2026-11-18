@@ -89,7 +89,7 @@ describe('SecretsService agent access', () => {
       expect(arg.data.agentAccessChangedAt).toBeInstanceOf(Date);
 
       const audit = (prisma.auditEvent.create as jest.Mock).mock.calls[0][0].data;
-      expect(audit.action).toBe('secrets.agent_access.update');
+      expect(audit.action).toBe('secret.agent_access.update');
       expect(audit.targetId).toBe(secretId);
       expect(audit.meta).toEqual({ secretId, from: 'none', to: 'fill' });
     });

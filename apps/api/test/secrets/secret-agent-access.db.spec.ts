@@ -140,7 +140,7 @@ describeWithDb('secret agent access (real Postgres)', () => {
     expect(row.agentAccessChangedAt).toBeInstanceOf(Date);
 
     const audit = await prisma.auditEvent.findFirstOrThrow({
-      where: { action: 'secrets.agent_access.update', targetId: secrets['Shop Login'] },
+      where: { action: 'secret.agent_access.update', targetId: secrets['Shop Login'] },
     });
     expect(audit.meta).toEqual({ secretId: secrets['Shop Login'], from: 'none', to: 'fill' });
 

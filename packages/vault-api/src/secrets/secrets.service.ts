@@ -1132,7 +1132,7 @@ export class SecretsService {
         }),
       );
 
-      await this.createAuditEvent(userId, 'secrets.agent_access.update', id, {
+      await this.createAuditEvent(userId, 'secret.agent_access.update', id, {
         secretId: id,
         from,
         to: agentAccess,

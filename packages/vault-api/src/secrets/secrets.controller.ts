@@ -254,7 +254,7 @@ export class SecretsController {
     description:
       'Sets agentAccess to none or fill. Only a Credential secret may be set to fill (422 ' +
       'AGENT_ACCESS_UNSUPPORTED_TYPE otherwise). Refused (403) for an OAuth credential: an agent ' +
-      'cannot widen its own access. Audited as secrets.agent_access.update. Requires secrets:write.',
+      'cannot widen its own access. Audited as secret.agent_access.update. Requires secrets:write.',
   })
   @ApiParam({ name: 'id', type: String, format: 'uuid', description: 'Secret ID' })
   @ApiResponse({ status: 200, description: 'Secret detail with the new agentAccess' })
