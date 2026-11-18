@@ -1,0 +1,145 @@
+import 'reflect-metadata';
+import { ForbiddenException } from '@nestjs/common';
+import { agentActivityItemSchema, agentActivityQuerySchema } from '@marinoscar/vault-contract/agent';
+
+import { AgentActivityController } from './agent-activity.controller';
+import { AgentActivityService } from './agent-activity.service';
+
+const USER = 'user-aaa';
+const SECRET = '11111111-1111-4111-8111-111111111111';
+const CANARY = 'canary-Pw-9f3k2m!x';
+
+const row = (over: Record<string, unknown> = {}) => ({
+  id: 'e1',
+  createdAt: new Date('2030-01-02T03:04:05.000Z'),
+  action: 'agent.credential.fill',
+  targetId: SECRET,
+  meta: {
+    result: 'ok', credential: 'oauth', clientId: 'client-1', grantId: 'grant-1', secretId: SECRET,
+    field: 'password', origin: 'https://shop.example.test', purpose: 'login',
+  },
+  ...over,
+});
+
+function build(rows: unknown[] = [row()]) {
+  const prisma = {
+    auditEvent: {
+      findMany: jest.fn().mockResolvedValue(rows),
+      count: jest.fn().mockResolvedValue(rows.length),
+    },
+    secret: { findMany: jest.fn().mockResolvedValue([{ id: SECRET, name: 'Shop login' }]) },
+    oAuthClient: { findMany: jest.fn().mockResolvedValue([{ id: 'client-1', name: 'Agent App A' }]) },
+  };
+  return { prisma, service: new AgentActivityService(prisma as never) };
+}
+const query = (over: Record<string, unknown> = {}) => agentActivityQuerySchema.parse(over);
+
+describe('AgentActivityService', () => {
+  it('returns only the caller\'s events, of the agent actions and the toggle, newest first', async () => {
+    const { service, prisma } = build();
+    await service.list(USER, query());
+    const args = prisma.auditEvent.findMany.mock.calls[0]![0];
+    expect(args.where.actorUserId).toBe(USER);
+    expect(args.where.action.in).toEqual([
+      'agent.credential.lookup', 'agent.credential.fill', 'agent.credential.totp',
+      'agent.credential.create', 'agent.credential.rotate', 'secret.agent_access.update',
+    ]);
+    expect(args.orderBy).toEqual([{ createdAt: 'desc' }, { id: 'desc' }]);
+    expect(prisma.auditEvent.count.mock.calls[0]![0].where.actorUserId).toBe(USER);
+    // Secret names are looked up for the caller's own secrets only.
+    expect(prisma.secret.findMany.mock.calls[0]![0].where).toMatchObject({ createdById: USER });
+  });
+
+  it('maps a row to the documented item and resolves the secret and client names', async () => {
+    const { service } = build();
+    const result = await service.list(USER, query());
+    expect(result).toEqual({
+      data: [{
+        id: 'e1', at: '2030-01-02T03:04:05.000Z', action: 'fill', result: 'ok', secretId: SECRET, secretName: 'Shop login',
+        field: 'password', origin: 'https://shop.example.test', purpose: 'login', credentialKind: 'oauth',
+        clientId: 'client-1', clientName: 'Agent App A',
+      }],
+      meta: { page: 1, pageSize: 25, total: 1 },
+    });
+    expect(agentActivityItemSchema.parse(result.data[0])).toBeTruthy();
+  });
+
+  it('maps denials with their reason, deleted secrets and unknown clients to null names, and a PAT without a client', async () => {
+    const { service, prisma } = build([
+      row({ meta: { result: 'denied:origin_mismatch', credential: 'pat', tokenId: 'pat-1', secretId: SECRET, field: 'password', origin: 'https://evil.example.test', purpose: 'login' } }),
+      row({ id: 'e2', action: 'agent.credential.lookup', meta: { result: 'ok', credential: 'oauth', clientId: 'client-9', secretId: null, origin: 'https://x.example.test', matches: 2 } }),
+    ]);
+    prisma.secret.findMany.mockResolvedValue([]);
+    const { data } = await service.list(USER, query());
+    expect(data[0]).toMatchObject({ result: 'denied', reason: 'origin_mismatch', secretName: null, credentialKind: 'pat', clientId: null, clientName: null });
+    expect(data[1]).toMatchObject({ action: 'lookup', secretId: null, secretName: null, clientId: 'client-9', clientName: null });
+  });
+
+  it('shows the toggle as agent_access with the new level in `field`', async () => {
+    const { service } = build([row({ action: 'secret.agent_access.update', meta: { secretId: SECRET, from: 'none', to: 'fill' } })]);
+    const { data } = await service.list(USER, query());
+    expect(data[0]).toMatchObject({ action: 'agent_access', result: 'ok', secretId: SECRET, field: 'fill', credentialKind: 'session', clientId: null });
+  });
+
+  it('applies the filters: action, secret, client and the date range; and paginates', async () => {
+    const { service, prisma } = build();
+    await service.list(USER, query({
+      page: '3', pageSize: '10', action: 'agent_access', secretId: SECRET, clientId: 'client-1',
+      from: '2030-01-01T00:00:00.000Z', to: '2030-02-01T00:00:00.000Z',
+    }));
+    const args = prisma.auditEvent.findMany.mock.calls[0]![0];
+    expect(args).toMatchObject({ skip: 20, take: 10 });
+    expect(args.where).toMatchObject({
+      actorUserId: USER, action: 'secret.agent_access.update', targetType: 'secret', targetId: SECRET,
+      meta: { path: ['clientId'], equals: 'client-1' },
+      createdAt: { gte: new Date('2030-01-01T00:00:00.000Z'), lte: new Date('2030-02-01T00:00:00.000Z') },
+    });
+  });
+
+  it('never returns a value: only the documented keys, whatever the stored meta holds', async () => {
+    const { service } = build([row({ meta: { ...row().meta, password: CANARY, value: CANARY, code: CANARY, seed: CANARY } })]);
+    const result = await service.list(USER, query());
+    expect(JSON.stringify(result)).not.toContain(CANARY);
+    expect(Object.keys(result.data[0]!).sort()).toEqual(
+      ['action', 'at', 'clientId', 'clientName', 'credentialKind', 'field', 'id', 'origin', 'purpose', 'result', 'secretId', 'secretName'],
+    );
+  });
+
+  it('skips a row whose action is not one of ours', async () => {
+    const { service } = build([row({ action: 'secret.update' })]);
+    expect((await service.list(USER, query())).data).toEqual([]);
+  });
+});
+
+describe('agentActivityQuerySchema', () => {
+  it('caps pageSize at 100 and defaults page 1 / 25', () => {
+    expect(query()).toMatchObject({ page: 1, pageSize: 25 });
+    expect(agentActivityQuerySchema.safeParse({ pageSize: '101' }).success).toBe(false);
+    expect(agentActivityQuerySchema.safeParse({ action: 'delete' }).success).toBe(false);
+    expect(agentActivityQuerySchema.safeParse({ from: 'yesterday' }).success).toBe(false);
+  });
+});
+
+describe('AgentActivityController', () => {
+  const user = { id: USER } as never;
+  const make = () => {
+    const service = { list: jest.fn().mockResolvedValue({ data: [], meta: { page: 1, pageSize: 25, total: 0 } }) };
+    return { service, controller: new AgentActivityController(service as unknown as AgentActivityService) };
+  };
+
+  it('refuses an OAuth access token with 403 AGENT_ACTIVITY_FORBIDDEN and never reads the trail', async () => {
+    const { controller, service } = make();
+    const oauth = { kind: 'oauth', tokenId: 't', grantId: 'g', clientId: 'c', resourceId: 'agent', scopes: [] } as never;
+    await expect(controller.list(query(), user, oauth)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(controller.list(query(), user, oauth)).rejects.toMatchObject({ response: { code: 'AGENT_ACTIVITY_FORBIDDEN' } });
+    expect(service.list).not.toHaveBeenCalled();
+  });
+
+  it('serves a session and a PAT, scoped to the caller', async () => {
+    const { controller, service } = make();
+    await controller.list(query(), user, null);
+    await controller.list(query(), user, { kind: 'pat', tokenId: 'p' } as never);
+    expect(service.list).toHaveBeenCalledTimes(2);
+    expect(service.list).toHaveBeenCalledWith(USER, expect.anything());
+  });
+});

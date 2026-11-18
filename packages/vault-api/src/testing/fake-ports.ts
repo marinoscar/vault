@@ -97,10 +97,14 @@ export class RecordingJobs {
 
 /** A dispatcher that records the events it was asked to raise. */
 export class RecordingNotify {
-  readonly sent: Array<{ event: string; target: string; data: unknown }> = [];
+  readonly sent: Array<{ event: string; target: string; data: unknown; options?: unknown }> = [];
 
   notify: VaultNotifyPort['notify'] = async (event, userId, data) => {
     this.sent.push({ event, target: userId, data });
+  };
+
+  notifyCounted: VaultNotifyPort['notifyCounted'] = async (event, userId, data, options) => {
+    this.sent.push({ event, target: userId, data, options });
   };
 
   notifyNow: VaultNotifyPort['notifyNow'] = async (event, userId, data) => {

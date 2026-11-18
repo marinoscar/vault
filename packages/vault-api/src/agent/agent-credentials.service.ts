@@ -26,6 +26,7 @@ import { matchOrigin, normalizeOrigin } from '@marinoscar/vault-contract/secrets
 
 import { VAULT_AUDIT, VAULT_SETTINGS, type VaultAuditPort, type VaultSettingsPort } from '../ports';
 import { SecretsService } from '../secrets/secrets.service';
+import { AgentNotifier } from './agent-notifier.service';
 import { AgentRateLimiter } from './agent-rate-limiter';
 import { generatePassword } from './password-generator';
 
@@ -43,6 +44,8 @@ type Bucket = 'lookup' | 'fill' | 'totp' | 'write';
 /** What an audit row records about one call. Never a value, a code or a password. */
 interface AuditContext {
   secretId?: string;
+  /** For the notifications only; never written to the audit row. */
+  secretName?: string;
   field?: string;
   origin?: string | null;
   purpose?: string;
@@ -97,6 +100,7 @@ export class AgentCredentialsService {
     private readonly limiter: AgentRateLimiter,
     @Inject(VAULT_SETTINGS) private readonly settings: VaultSettingsPort,
     @Inject(VAULT_AUDIT) private readonly audit: VaultAuditPort,
+    private readonly notifier: AgentNotifier,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -203,8 +207,37 @@ export class AgentCredentialsService {
       }
       throw error;
     }
+    // The new-app check reads the trail, so it runs BEFORE this call's own row is written.
+    const firstFill = action === AGENT_AUDIT_ACTIONS.FILL ? await this.notifier.isFirstFill(caller, action) : false;
     await this.writeAudit(caller, action, ctx, 'ok');
+    await this.notifyOwner(caller, action, ctx, firstFill);
     return result;
+  }
+
+  /**
+   * Tells the owner about a successful call. Runs after the work committed and the audit row was
+   * written, outside any transaction; the notifier never throws.
+   */
+  private async notifyOwner(caller: AgentCaller, action: AgentAuditAction, ctx: AuditContext, firstFill: boolean): Promise<void> {
+    if (!ctx.secretId || !ctx.secretName) return;
+    const facts = { secretId: ctx.secretId, secretName: ctx.secretName, origin: ctx.origin ?? null };
+    switch (action) {
+      case AGENT_AUDIT_ACTIONS.FILL:
+        if (firstFill) await this.notifier.newApp(caller, facts);
+        await this.notifier.credentialUsed(caller, 'fill', facts);
+        return;
+      case AGENT_AUDIT_ACTIONS.TOTP:
+        await this.notifier.credentialUsed(caller, 'totp', facts);
+        return;
+      case AGENT_AUDIT_ACTIONS.CREATE:
+        await this.notifier.credentialChanged(caller, 'created', facts);
+        return;
+      case AGENT_AUDIT_ACTIONS.ROTATE:
+        await this.notifier.credentialChanged(caller, 'rotated', facts);
+        return;
+      default:
+        return;
+    }
   }
 
   private requireOrigin(input: string): string {
@@ -229,6 +262,7 @@ export class AgentCredentialsService {
     ctx.secretId = id;
     const secret = await this.secrets.findAgentAccessibleSecret(caller.userId, id);
     this.secrets.assertAgentAccessible(secret);
+    ctx.secretName = (secret as { name?: string } | null)?.name;
     const origin = this.requireOrigin(rawOrigin);
     ctx.origin = origin;
     const origins: string[] = (secret as { origins?: string[] }).origins ?? [];
@@ -316,6 +350,7 @@ export class AgentCredentialsService {
         },
       });
       ctx.secretId = created.id;
+      ctx.secretName = created.name;
       ctx.extra = { generated: generated !== undefined };
       return {
         id: created.id,

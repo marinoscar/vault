@@ -44,6 +44,8 @@ export const AGENT_ERROR_CODES = {
   AGENT_CREDENTIAL_REQUIRED: 'AGENT_CREDENTIAL_REQUIRED',
   /** 429: the per-minute limit of the call's bucket was reached; see `Retry-After`. */
   RATE_LIMITED: 'RATE_LIMITED',
+  /** 403: `GET /api/agent-activity` was called with an OAuth access token; an agent cannot read its own trail. */
+  AGENT_ACTIVITY_FORBIDDEN: 'AGENT_ACTIVITY_FORBIDDEN',
 } as const;
 
 /** @stability experimental */
@@ -263,3 +265,88 @@ export const AGENT_ACCESS_SETTINGS_DEFAULTS: AgentAccessSettings = Object.freeze
   totpPerMinute: 10,
   writePerMinute: 10,
 });
+
+// -----------------------------------------------------------------------------
+// Agent activity (`GET /api/agent-activity`, E14.7)
+// -----------------------------------------------------------------------------
+
+/** The path of the owner's agent activity list (session or PAT, never an OAuth token). @stability experimental */
+export const AGENT_ACTIVITY_PATH = '/api/agent-activity' as const;
+
+/** The audit action of the per-secret agent access toggle (`secret.agent_access.update`). @stability experimental */
+export const AGENT_ACCESS_TOGGLE_AUDIT_ACTION = 'secret.agent_access.update' as const;
+
+/** The actions an activity item carries: the five agent routes and the owner's toggle. @stability experimental */
+export const agentActivityActionSchema = z.enum(['lookup', 'fill', 'totp', 'create', 'rotate', 'agent_access']);
+
+/** @stability experimental */
+export type AgentActivityAction = z.infer<typeof agentActivityActionSchema>;
+
+/** The kind of credential a call authenticated with. @stability experimental */
+export const agentActivityCredentialKindSchema = z.enum(['oauth', 'pat', 'session']);
+
+/** @stability experimental */
+export type AgentActivityCredentialKind = z.infer<typeof agentActivityCredentialKindSchema>;
+
+/** The largest `pageSize` of the activity list. @stability experimental */
+export const AGENT_ACTIVITY_MAX_PAGE_SIZE = 100;
+
+/**
+ * Query of `GET /api/agent-activity`. `action` is one of {@link agentActivityActionSchema};
+ * `from` and `to` are ISO 8601 instants (inclusive); `clientId` is the OAuth client's id as on its grants (`OAuthGrant.clientId`, not the public client_id string).
+ *
+ * @stability experimental
+ */
+export const agentActivityQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(AGENT_ACTIVITY_MAX_PAGE_SIZE).default(25),
+  action: agentActivityActionSchema.optional(),
+  secretId: z.string().uuid().optional(),
+  clientId: z.string().trim().min(1).max(512).optional(),
+  from: z.string().datetime({ offset: true }).optional(),
+  to: z.string().datetime({ offset: true }).optional(),
+});
+
+/** @stability experimental */
+export type AgentActivityQuery = z.infer<typeof agentActivityQuerySchema>;
+
+/**
+ * One event of the owner's agent trail. Never carries a value, a code, a seed or a password.
+ * `reason` is present on a denial (`origin_mismatch`, `rate_limited`, `not_found`, ...).
+ *
+ * @stability experimental
+ */
+export const agentActivityItemSchema = z.object({
+  id: z.string(),
+  /** ISO 8601. */
+  at: z.string(),
+  action: agentActivityActionSchema,
+  result: z.enum(['ok', 'denied']),
+  reason: z.string().optional(),
+  secretId: z.string().nullable(),
+  /** The secret's current name; null when it was deleted or the event names no secret. */
+  secretName: z.string().nullable(),
+  field: z.string().nullable(),
+  origin: z.string().nullable(),
+  purpose: z.string().nullable(),
+  credentialKind: agentActivityCredentialKindSchema.nullable(),
+  clientId: z.string().nullable(),
+  /** The OAuth client's registered name; null for a PAT, a session or an unknown client. */
+  clientName: z.string().nullable(),
+});
+
+/** @stability experimental */
+export type AgentActivityItem = z.infer<typeof agentActivityItemSchema>;
+
+/** Response of `GET /api/agent-activity`. @stability experimental */
+export const agentActivityResponseSchema = z.object({
+  data: z.array(agentActivityItemSchema),
+  meta: z.object({
+    page: z.number().int(),
+    pageSize: z.number().int(),
+    total: z.number().int(),
+  }),
+});
+
+/** @stability experimental */
+export type AgentActivityResponse = z.infer<typeof agentActivityResponseSchema>;

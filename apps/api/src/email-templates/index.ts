@@ -14,11 +14,14 @@
 import { registerEmailTemplates, type EmailTemplateEntry } from '@marinoscar/platform-api/email';
 
 import {
+  VAULT_AGENT_CREDENTIAL_CHANGED_TEMPLATE,
+  VAULT_AGENT_NEW_APP_TEMPLATE,
   VAULT_BACKUP_FAILED_TEMPLATE,
   VAULT_BACKUP_SUCCEEDED_TEMPLATE,
   VAULT_CARD_EXPIRING_TEMPLATE,
 } from '@marinoscar/vault-api/core';
 import { vaultBackupFailedEmail, vaultBackupSucceededEmail } from './vault-backup-result.email';
+import { vaultAgentCredentialChangedEmail, vaultAgentNewAppEmail } from './vault-agent.email';
 import { vaultCardExpiringEmail } from './vault-card-expiring.email';
 
 /** The registrant recorded for these templates in the bootstrap log. */
@@ -29,6 +32,8 @@ export const VAULT_EMAIL_TEMPLATES: readonly EmailTemplateEntry[] = [
   { name: VAULT_BACKUP_SUCCEEDED_TEMPLATE, render: vaultBackupSucceededEmail, registrant: VAULT_EMAIL_REGISTRANT },
   { name: VAULT_BACKUP_FAILED_TEMPLATE, render: vaultBackupFailedEmail, registrant: VAULT_EMAIL_REGISTRANT },
   { name: VAULT_CARD_EXPIRING_TEMPLATE, render: vaultCardExpiringEmail, registrant: VAULT_EMAIL_REGISTRANT },
+  { name: VAULT_AGENT_CREDENTIAL_CHANGED_TEMPLATE, render: vaultAgentCredentialChangedEmail, registrant: VAULT_EMAIL_REGISTRANT },
+  { name: VAULT_AGENT_NEW_APP_TEMPLATE, render: vaultAgentNewAppEmail, registrant: VAULT_EMAIL_REGISTRANT },
 ];
 
 let registered = false;
@@ -40,5 +45,5 @@ export function registerVaultEmailTemplates(): void {
   registerEmailTemplates(VAULT_EMAIL_TEMPLATES);
 }
 
-export { vaultBackupFailedEmail, vaultBackupSucceededEmail, vaultCardExpiringEmail };
+export { vaultAgentCredentialChangedEmail, vaultAgentNewAppEmail, vaultBackupFailedEmail, vaultBackupSucceededEmail, vaultCardExpiringEmail };
 export { emailBrandMark, EMAIL_LOGO_CID, EMAIL_LOGO_PATH, EMAIL_LOGO_RENDERED_SIZE } from './brand-logo';

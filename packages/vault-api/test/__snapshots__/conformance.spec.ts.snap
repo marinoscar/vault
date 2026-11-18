@@ -12,6 +12,7 @@ exports[`vault-api conformance (fake ports) exposes exactly the routes the API a
   "GET /admin/backups",
   "GET /admin/backups/:id/download",
   "GET /admin/backups/schedule",
+  "GET /agent-activity",
   "GET /agent/v1/credentials",
   "GET /agent/v1/whoami",
   "GET /backups/me",

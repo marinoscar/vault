@@ -2,7 +2,8 @@ import { ForbiddenException, HttpException, NotFoundException } from '@nestjs/co
 import { responseHeadersOf } from '@marinoscar/platform-api/core';
 import type { AuthCredentialInfo } from '@marinoscar/platform-api/identity';
 
-import { FakeSettings, InMemoryAudit } from '../testing';
+import { FakeSettings, InMemoryAudit, RecordingNotify } from '../testing';
+import { AgentNotifier } from './agent-notifier.service';
 import { SecretsService } from '../secrets/secrets.service';
 import { AgentCredentialsService, type AgentCaller } from './agent-credentials.service';
 import { InMemoryAgentRateLimiter } from './agent-rate-limiter';
@@ -39,10 +40,25 @@ function build(settings: Record<string, unknown> = { enabled: true }) {
   };
   const audit = new InMemoryAudit();
   const limiter = new InMemoryAgentRateLimiter();
+  const notify = new RecordingNotify();
+  // The new-app check reads the trail: it sees what the in-memory audit holds, like the real query.
+  const prisma = {
+    auditEvent: {
+      findFirst: jest.fn(async (args: { where: { action: string; AND: Array<{ meta: { path: string[]; equals: string } }> } }) => {
+        const [result, actor] = args.where.AND.map((c) => c.meta);
+        return audit.events.find(
+          (e) => e.action === args.where.action && (e.meta as Record<string, unknown>)[result.path[0]] === result.equals &&
+            (e.meta as Record<string, unknown>)[actor.path[0]] === actor.equals,
+        ) ?? null;
+      }),
+    },
+    oAuthClient: { findUnique: jest.fn().mockResolvedValue({ name: 'Agent App A' }) },
+  };
+  const notifier = new AgentNotifier(prisma as never, notify as never);
   const service = new AgentCredentialsService(
-    secrets as unknown as SecretsService, limiter, new FakeSettings({ agentAccess: settings }), audit,
+    secrets as unknown as SecretsService, limiter, new FakeSettings({ agentAccess: settings }), audit, notifier,
   );
-  return { service, secrets, audit, limiter };
+  return { service, secrets, audit, limiter, notify, prisma };
 }
 
 const fillBody = (over: Record<string, unknown> = {}) =>
@@ -328,5 +344,79 @@ describe('AgentCredentialsService', () => {
       denied.audit.record = jest.fn().mockRejectedValue(new Error('db down'));
       expect(await status(denied.service.fill(caller(), ID, fillBody({ origin: 'https://evil.example.test' })))).toMatchObject({ status: 403, code: 'ORIGIN_MISMATCH' });
     });
+  });
+});
+
+describe('AgentCredentialsService notifications (E14.7)', () => {
+  const events = (notify: RecordingNotify) => notify.sent.map((s) => s.event);
+
+  it('the first successful fill by an app raises new_app once, and every fill raises a counted credential_used', async () => {
+    const { service, notify } = build();
+    await service.fill(caller(), ID, fillBody());
+    expect(events(notify)).toEqual(['vault.agent_new_app', 'vault.agent_credential_used']);
+    await service.fill(caller(), ID, fillBody({ field: 'username' }));
+    expect(events(notify)).toEqual(['vault.agent_new_app', 'vault.agent_credential_used', 'vault.agent_credential_used']);
+    const used = notify.sent[1]!;
+    expect(used.target).toBe(USER);
+    expect(used.options).toMatchObject({ windowMs: 3_600_000, match: { secretId: ID, app: 'client-1' } });
+  });
+
+  it('a different app gets its own new_app; a PAT is its own app named "Personal access token"', async () => {
+    const { service, notify } = build();
+    await service.fill(caller(), ID, fillBody());
+    await service.fill(caller({ ...oauth, clientId: 'client-2', grantId: 'grant-2' } as AuthCredentialInfo), ID, fillBody());
+    await service.fill(caller(pat), ID, fillBody());
+    expect(events(notify).filter((e) => e === 'vault.agent_new_app')).toHaveLength(3);
+    expect((notify.sent.at(-2)!.data as { clientName: string }).clientName).toBe('Personal access token');
+  });
+
+  it('a denied fill (or a lookup) notifies nobody and does not make the app "seen"', async () => {
+    const { service, notify } = build();
+    await status(service.fill(caller(), ID, fillBody({ origin: 'https://evil.example.test' })));
+    await service.lookup(caller(), ORIGIN);
+    expect(notify.sent).toEqual([]);
+    await service.fill(caller(), ID, fillBody());
+    expect(events(notify)[0]).toBe('vault.agent_new_app');
+  });
+
+  it('totp raises credential_used only', async () => {
+    const { service, notify } = build();
+    await service.totp(caller(), ID, { origin: ORIGIN, purpose: 'mfa' } as never);
+    expect(events(notify)).toEqual(['vault.agent_credential_used']);
+    expect((notify.sent[0]!.data as { action: string }).action).toBe('totp');
+  });
+
+  it('create and rotate raise credential_changed with the name and origin', async () => {
+    const { service, notify } = build();
+    await service.create(caller(), { name: 'Shop', username: CANARY_USER, origin: ORIGIN, password: CANARY_PASSWORD, purpose: 'signup' } as never);
+    await service.rotate(caller(), ID, { origin: ORIGIN, generate: { length: 24, symbols: true }, purpose: 'password_change' } as never);
+    expect(notify.sent.map((s) => [s.event, (s.data as { change: string }).change])).toEqual([
+      ['vault.agent_credential_changed', 'created'],
+      ['vault.agent_credential_changed', 'rotated'],
+    ]);
+    expect(notify.sent[0]!.data).toMatchObject({ secretId: ID, secretName: 'Shop', origin: ORIGIN, clientName: 'Agent App A' });
+  });
+
+  it('no notification payload carries a value, a code or a generated password', async () => {
+    const { service, notify } = build();
+    await service.fill(caller(), ID, fillBody());
+    await service.totp(caller(), ID, { origin: ORIGIN, purpose: 'mfa' } as never);
+    await service.create(caller(), { name: 'Shop', username: CANARY_USER, origin: ORIGIN, generate: { length: 24, symbols: true }, purpose: 'signup' } as never);
+    const blob = JSON.stringify(notify.sent);
+    expect(blob).not.toContain(CANARY_PASSWORD);
+    expect(blob).not.toContain(CANARY_USER);
+    expect(blob).not.toContain('123456');
+  });
+
+  it('notifies after the work committed and the audit row was written, and a failing notifier never fails the call', async () => {
+    const { service, audit, notify, secrets } = build();
+    const order: string[] = [];
+    secrets.readCurrentValues.mockImplementation(async () => { order.push('work'); return { password: CANARY_PASSWORD }; });
+    const record = audit.record.bind(audit);
+    audit.record = async (e) => { order.push('audit'); return record(e); };
+    notify.notifyCounted = async () => { order.push('notify'); throw new Error('mail down'); };
+    notify.notify = async () => { order.push('notify'); throw new Error('mail down'); };
+    await expect(service.fill(caller(), ID, fillBody())).resolves.toEqual({ value: CANARY_PASSWORD });
+    expect(order).toEqual(['work', 'audit', 'notify', 'notify']);
   });
 });

@@ -2,6 +2,9 @@ import { DynamicModule, Module, type ModuleMetadata, type Provider, type Type } 
 
 import { AgentCredentialsService } from './agent/agent-credentials.service';
 import { AgentRateLimiter, InMemoryAgentRateLimiter } from './agent/agent-rate-limiter';
+import { AgentActivityController } from './agent/agent-activity.controller';
+import { AgentActivityService } from './agent/agent-activity.service';
+import { AgentNotifier } from './agent/agent-notifier.service';
 import { AgentController } from './agent/agent.controller';
 import { CardExtractController } from './ai/card-extract.controller';
 import { CardExtractService } from './ai/card-extract.service';
@@ -157,12 +160,15 @@ export class VaultApiModule {
         BackupsController,
         MyBackupsController,
         AgentController,
+        AgentActivityController,
       ],
       providers: [
         ...ports,
         SecretTypesService,
         SecretsService,
         AgentCredentialsService,
+        AgentActivityService,
+        AgentNotifier,
         // Single API instance today: in-process counters. Override this provider to share them.
         { provide: AgentRateLimiter, useClass: InMemoryAgentRateLimiter },
         SecretsExportService,

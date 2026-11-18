@@ -13,4 +13,4 @@ import type { NotificationsService } from '@marinoscar/platform-api/notification
 export const VAULT_NOTIFY = Symbol.for('@marinoscar/vault/VAULT_NOTIFY');
 
 /** The dispatcher methods the slices use. */
-export type VaultNotifyPort = Pick<NotificationsService, 'notify' | 'notifyNow' | 'notifyPermissionHolders'>;
+export type VaultNotifyPort = Pick<NotificationsService, 'notify' | 'notifyNow' | 'notifyPermissionHolders' | 'notifyCounted'>;

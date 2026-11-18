@@ -21,11 +21,20 @@
 export const VAULT_BACKUP_SUCCEEDED_EVENT = 'vault.backup_succeeded';
 export const VAULT_BACKUP_FAILED_EVENT = 'vault.backup_failed';
 export const VAULT_CARD_EXPIRING_EVENT = 'vault.card_expiring';
+/**
+ * Agent notifications (E14.7). The platform's event key pattern allows exactly one dot
+ * (`^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$`), hence `vault.agent_*`, not `vault.agent.*`.
+ */
+export const VAULT_AGENT_CREDENTIAL_CHANGED_EVENT = 'vault.agent_credential_changed';
+export const VAULT_AGENT_NEW_APP_EVENT = 'vault.agent_new_app';
+export const VAULT_AGENT_CREDENTIAL_USED_EVENT = 'vault.agent_credential_used';
 
 /** Email template names. PERSISTED by the registry bindings: never rename one. */
 export const VAULT_BACKUP_SUCCEEDED_TEMPLATE = 'vault-backup-succeeded';
 export const VAULT_BACKUP_FAILED_TEMPLATE = 'vault-backup-failed';
 export const VAULT_CARD_EXPIRING_TEMPLATE = 'vault-card-expiring';
+export const VAULT_AGENT_CREDENTIAL_CHANGED_TEMPLATE = 'vault-agent-credential-changed';
+export const VAULT_AGENT_NEW_APP_TEMPLATE = 'vault-agent-new-app';
 
 /** Where the bell and the email CTA go (the routes `adminSections.tsx` and `userSettingsSections.tsx` declare). */
 export const USER_BACKUPS_PATH = '/settings/backups';
@@ -109,3 +118,52 @@ export function cardExpiryPhrase(threshold: CardExpiryThreshold, expiry: string)
 }
 
 export const cardLinkFor = (secretId: string): string => `/secrets/${secretId}`;
+
+/** Where the agent notifications link: the owner's trail (`userSettingsSections.tsx`). */
+export const AGENT_ACTIVITY_SETTINGS_PATH = '/settings/agent-activity';
+
+/**
+ * The app that acted: an OAuth client's registered name, or `a personal access token` for a PAT.
+ * Never a token, a grant id or a client secret.
+ */
+export interface VaultAgentActorData {
+  /** The OAuth client's name, or `Personal access token` for a PAT. */
+  clientName: string;
+  credentialKind: 'oauth' | 'pat';
+}
+
+/** The payload of `vault.agent_credential_changed`: a login was saved or its password changed by an agent. No value, ever. */
+export interface VaultAgentCredentialChangedNotificationData extends VaultAgentActorData {
+  change: 'created' | 'rotated';
+  secretId: string;
+  secretName: string;
+  /** The website origin the agent said it acted on. */
+  origin: string | null;
+  appUrl?: string;
+}
+
+/** The payload of `vault.agent_new_app`: the first successful fill by this app. */
+export interface VaultAgentNewAppNotificationData extends VaultAgentActorData {
+  secretId: string;
+  secretName: string;
+  origin: string | null;
+  appUrl?: string;
+}
+
+/** The payload of `vault.agent_credential_used` (counted: `count` is added by the platform). */
+export interface VaultAgentCredentialUsedNotificationData extends VaultAgentActorData {
+  action: 'fill' | 'totp';
+  secretId: string;
+  secretName: string;
+  origin: string | null;
+  count?: number;
+}
+
+/** `Agent A saved the login "Login X" for https://site.example` and its rotated twin. */
+export function agentCredentialChangedPhrase(data: VaultAgentCredentialChangedNotificationData): string {
+  const verb = data.change === 'created' ? 'saved' : 'changed the password of';
+  const where = data.origin ? ` for ${data.origin}` : '';
+  return `${data.clientName} ${verb} the login ${data.secretName}${where}`;
+}
+
+export const agentSecretLinkFor = (secretId: string): string => `/secrets/${secretId}`;

@@ -260,6 +260,24 @@ Agent access is a per-secret opt-in that decides whether an AI agent (an OAuth c
 | Where it shows | List and detail responses carry `agentAccess` and `agentAccessChangedAt`; the list takes `?agentAccess=fill\|none`. The web form has the switch "Allow agents to use this login" on Credential secrets, and the list shows an "Agents" chip and an Agent access filter |
 | Consumers | The agent API (E14.6) and the MCP tools (E14.8) reach only secrets with `agentAccess = fill` |
 
+## Agent activity and notifications
+
+Every agent call is audited (`agent.credential.lookup|fill|totp|create|rotate`, plus the owner's `secret.agent_access.update`); the owner reads their own trail and is told about what matters (E14.7, [#179](https://github.com/marinoscar/vault/issues/179)).
+
+**Trail.** `GET /api/agent-activity` ([API.md](API.md#get-agent-activity)) returns the caller's own events only, newest first, filterable by action, secret, app (`clientId`) and date, paginated (max 100). The query anchors on the indexed `actor_user_id` and the action list; the secret filter uses `target_type`/`target_id`; only the app filter reads the JSON `meta`, over the caller's own rows. No new index was needed. A session or a PAT reads it; an OAuth token is refused, so an agent cannot see its own trail. The response is projected field by field: a value, code, seed or password is never in an audit row and never in the response (a db test seeds canaries and greps the response, the inbox rows and the audit rows). Revoking an app (platform Connected apps, `DELETE /api/oauth/grants/{id}`) makes its next agent call `401`; a db test proves it.
+
+**Notifications** (platform notifications slice; the platform's event key pattern allows one dot, hence `vault.agent_*`). Raised by `AgentNotifier` after the call's work committed and its audit row was written, outside any transaction; it never throws, so a mail outage cannot change a call's result. Payloads name the app (the OAuth client's registered name, or "Personal access token"), the login (the secret's name) and the website origin; never a value.
+
+| Event | Channels | When |
+|---|---|---|
+| `vault.agent_credential_changed` | email + bell, immediately | an agent created a login or rotated a password |
+| `vault.agent_new_app` | email + bell | the first successful fill by an app (an OAuth client, or a PAT) for this user; detected as "no earlier `ok` fill audit row for that client or token" |
+| `vault.agent_credential_used` | bell only | every successful fill or one-time code; a `counted` event, so uses of one login by one app within an hour fold into one bell entry with a count |
+
+All three honour the user's notification preferences per channel (none is `mandatory`). Email templates: `vault-agent-credential-changed` and `vault-agent-new-app` (`apps/api/src/email-templates/vault-agent.email.ts`), both linking to `/secrets/:id` or `/settings/agent-activity`.
+
+**Follow-up.** The issue asked for an optional daily email digest of credential use. The platform notifications slice has no digest support, so none was built (a local digest would be a second dispatcher); the counted bell entry is the substitute. A digest needs a platform seam request.
+
 ## Authenticator codes (TOTP)
 
 A `Credential` may carry an optional, sensitive `totp` field (label "Authenticator key (TOTP)"; add-only, existing credentials validate unchanged, and existing deployments receive the field through `prisma/seed.ts`). It accepts an `otpauth://totp/...` URI or a bare base32 secret (spaces, hyphens and lower case tolerated) and is **normalized on save** to the canonical URI `otpauth://totp/<issuer:account>?secret=&issuer=&algorithm=&digits=&period=`. Accepted: SHA1, SHA256 or SHA512, 6 to 8 digits, a 15 to 120 second period; `hotp`, invalid base32 and out-of-range values are a `400` with a field error on `totp`. The seed is stored like every other value (inside the encrypted version) and comes back in the detail response like any sensitive field.
