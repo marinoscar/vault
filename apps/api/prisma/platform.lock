@@ -114,6 +114,14 @@
       ],
       "id": "vault:secrets-agent-access",
       "reason": "Enum secret_agent_access and columns secrets.agent_access and secrets.agent_access_changed_at (app migration 20261118164725_add_secret_agent_access, #175). The diff prints the enum and secrets whole with the columns only once that migration is applied, i.e. in a dry run AFTER prisma:migrate; the pre-migration shape stays declared by vault:domain-schema."
+    },
+    {
+      "expectDiff": [
+        "CREATE TABLE \"secrets\" ( \"id\" UUID NOT NULL, \"name\" TEXT NOT NULL, \"description\" TEXT, \"type_id\" UUID NOT NULL, \"created_by_id\" UUID, \"created_at\" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP, \"updated_at\" TIMESTAMPTZ(6) NOT NULL, \"agent_access\" \"secret_agent_access\" NOT NULL DEFAULT 'none', \"agent_access_changed_at\" TIMESTAMPTZ(6), \"origins\" TEXT[] DEFAULT ARRAY[]::TEXT[], CONSTRAINT \"secrets_pkey\" PRIMARY KEY (\"id\") );",
+        "CREATE INDEX \"secrets_origins_gin_idx\" ON \"secrets\" USING GIN (\"origins\" array_ops ASC);"
+      ],
+      "id": "vault:secrets-origins",
+      "reason": "Column secrets.origins (text[]) and the raw-SQL partial GIN index secrets_origins_gin_idx (app migration 20261118171757_add_secret_origins, #176). The diff prints secrets whole with the column, and the index, only once that migration is applied, i.e. in a dry run AFTER prisma:migrate; the pre-migration shape stays declared by vault:domain-schema and vault:secrets-agent-access."
     }
   ],
   "lockVersion": 1,
