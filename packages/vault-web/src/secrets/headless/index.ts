@@ -5,3 +5,4 @@ export * from './secretFields.js';
 export * from './useSecretDetail.js';
 export * from './useSecretTypes.js';
 export * from './useSecrets.js';
+export * from './useTotpCode.js';

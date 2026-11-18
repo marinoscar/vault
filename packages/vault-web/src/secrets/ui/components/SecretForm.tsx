@@ -19,6 +19,7 @@ import {
   SECRET_DESCRIPTION_MAX,
   SECRET_NAME_MAX,
   cleanSecretData,
+  fieldErrorsFromApiError,
   isCardType,
   validateSecretForm,
   type SecretFormErrors,
@@ -117,6 +118,12 @@ export function SecretForm({
         data: cleanSecretData(fields, data),
       });
     } catch (err) {
+      const fieldErrors = fieldErrorsFromApiError(err, fields);
+      if (Object.keys(fieldErrors).length > 0) {
+        setErrors((e) => ({ ...e, fields: fieldErrors }));
+        setFormError('Fix the highlighted fields and try again.');
+        return;
+      }
       setFormError(err instanceof Error ? err.message : 'Failed to save secret');
     } finally {
       setSubmitting(false);

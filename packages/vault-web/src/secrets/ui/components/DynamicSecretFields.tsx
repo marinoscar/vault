@@ -19,7 +19,7 @@ import { Tooltip } from '@mui/material';
 import { visuallyHidden } from '@mui/utils';
 import type { FieldDefinition } from '../../../core/headless/types.js';
 import { useCopyToClipboard } from '../../../core/headless/useCopyToClipboard.js';
-import { formatSecretValueForCopy } from '../../headless/secretFields.js';
+import { TOTP_FIELD_NAME, formatSecretValueForCopy } from '../../headless/secretFields.js';
 
 interface DynamicSecretFieldsProps {
   fields: FieldDefinition[];
@@ -185,7 +185,10 @@ export function DynamicSecretFields({
               value={value}
               onChange={(e) => handleChange(field.name, e.target.value)}
               error={hasError}
-              helperText={errors[field.name]}
+              helperText={
+                errors[field.name] ??
+                (field.name === TOTP_FIELD_NAME ? 'Optional. The setup key or otpauth:// link from the site.' : undefined)
+              }
               slotProps={{
                 input: {
                   endAdornment: (
