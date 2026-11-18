@@ -4,7 +4,7 @@
 
 Audience: the owner, alone, in a maintenance window. Rehearse first (section 5), then run section 6.
 
-Source of truth for every command below: `apps/api/package.json` (scripts), `apps/api/scripts/*`, `infra/compose/*.compose.yml`, `infra/compose/.env.example`, the `vault deploy` engine of `@marinoscar/platform-cli` (pinned `0.1.0-next.21`; its runbook is EnterpriseAppBase `docs/runbooks/deploy-to-vps.md`) and `infra/deploy/*` (the legacy path). Anything not provable from those is marked **confirm on the rehearsal**.
+Source of truth for every command below: `apps/api/package.json` (scripts), `apps/api/scripts/*`, `infra/compose/*.compose.yml`, `infra/compose/.env.example`, the `vault deploy` engine of `@marinoscar/platform-cli` (pinned `0.1.0-next.37`; its runbook is EnterpriseAppBase `docs/runbooks/deploy-to-vps.md`) and `infra/deploy/*` (the legacy path). Anything not provable from those is marked **confirm on the rehearsal**.
 
 ## Contents
 
@@ -25,8 +25,8 @@ Source of truth for every command below: `apps/api/package.json` (scripts), `app
 | | |
 |---|---|
 | **From** | The MonoRepo-era app: installed by `infra/deploy/install-vault.sh`, updated by `update.sh`, at `/opt/infra/apps/vault/` (`.env`, `compose.yml`, `repo/`), containers `vault-api`, `vault-web`, `vault-nginx` on `127.0.0.1:8322` behind the shared `proxy-nginx`; Prisma 5; the 7 original migrations in `_prisma_migrations`; secrets encrypted under `VAULT_ENCRYPTION_KEY`; an external PostgreSQL reached as a provider admin login; object storage configured by `STORAGE_PROVIDER`/`S3_*`/`AWS_*` variables; the OpenAI key stored in `system_settings` |
-| **To** | Current `main` at one pinned commit (`$RELEASE_SHA`): the `@marinoscar/platform-*` and `@marinoscar/vault-*` packages, Prisma 7, 48 migrations (40 platform, of which 0001 and 0002 are the ones already applied, plus 8 Vault domain), organizations and row-level security (RLS), an ordinary database role, runtime-configured storage and AI, the job queue, the Doctor, deployed and updated by `vault deploy` |
-| **What changes in the data** | Platform migrations 0003 to 0040 plus three Vault migrations are applied (41 in all); a default organization and one membership per user are created; `contributor` and `viewer` roles move from `user_roles` to memberships; `storage_objects` and chunks get `org_id` (backfilled); `media_folder_id` moves into `media_folder_files`; `secret_attachments` gets `org_id`. Secret ciphertext is **not** touched |
+| **To** | Current `main` at one pinned commit (`$RELEASE_SHA`): the `@marinoscar/platform-*` and `@marinoscar/vault-*` packages, Prisma 7, 51 migrations (43 platform, of which 0001 and 0002 are the ones already applied, plus 8 Vault domain), organizations and row-level security (RLS), an ordinary database role, runtime-configured storage and AI, the job queue, the Doctor, deployed and updated by `vault deploy` |
+| **What changes in the data** | Platform migrations 0003 to 0043 plus three Vault migrations are applied (44 in all); a default organization and one membership per user are created; `contributor` and `viewer` roles move from `user_roles` to memberships; `storage_objects` and chunks get `org_id` (backfilled); `media_folder_id` moves into `media_folder_files`; `secret_attachments` gets `org_id`. Secret ciphertext is **not** touched |
 | **One-way** | 0024, 0025 and the media migration are forward-only. After `prisma:migrate` the only way back is to restore the `pg_dump` from step 6.4 (section 7), which loses every write made after the dump |
 | **Expected window** | **Unknown until you measure it.** Record the wall-clock time of every step on the rehearsal (table in section 5.3) and announce the window as the rehearsal total times roughly 2. The long parts are the image build and `prisma:migrate` (0025 backfills in one transaction) |
 
@@ -356,7 +356,7 @@ Conventions: `- [ ]` is a step you tick. Run commands as the account from sectio
   time api npm run prisma:migrate 2>&1 | tee $BACKUP_DIR/migrate-prod.txt
   ```
 
-  Expect `All migrations have been successfully applied.` (41 migrations: 0003 to 0040 as `20261102120001`..`20261102120038`, plus `20261102130000_add_media_folder_files`, `20261102140000_backup_runs_job_id`, `20261103090000_attachments_composite_fk_media_rls`). **From here the only way back is the dump.** A failure part way: do not re-run blindly; read [database-baseline §9](database-baseline.md#9-a-failed-migration-row), then section 7.
+  Expect `All migrations have been successfully applied.` (44 migrations: 0003 to 0043 as `20261102120001`..`20261102120038` and `20261118160821_notifications_state_counted`, `20261118160822_add_storage_migrations`, `20261118160823_add_oauth_server`, plus `20261102130000_add_media_folder_files`, `20261102140000_backup_runs_job_id`, `20261103090000_attachments_composite_fk_media_rls`). **From here the only way back is the dump.** A failure part way: do not re-run blindly; read [database-baseline §9](database-baseline.md#9-a-failed-migration-row), then section 7.
 
 - [ ] **6.11 Seed.** Upserts roles with scope, the `org_admin` grants and all permissions (`ai:use`, `ai_config:*`, `storage_config:*`, ...). Required before the data moves.
 
@@ -452,7 +452,7 @@ For each command: **dry run, read it, apply, dry run again** (must say nothing l
   api npm run db:baseline                   # plain (not pre-migrate): must say "nothing to do"
   ```
 
-  Expect all four exit 0, `db:check:database` reporting **48** ledger rows (7 + 41; the runbook's older "46" is stale), `db:drift` ok (the rehearsal recorded 12 raw-SQL indexes and 12 RLS policies; compare with yours), and `nothing to do`. **After `prisma:migrate` never use `--through 2` again.**
+  Expect all four exit 0, `db:check:database` reporting **51** ledger rows (7 + 44; the runbook's older "46" is stale), `db:drift` ok (the rehearsal recorded 12 raw-SQL indexes and 12 RLS policies; compare with yours), and `nothing to do`. **After `prisma:migrate` never use `--through 2` again.**
 
   Then the data check. `verify-vault-data.ts` does **not** set the RLS bypass, so as `vault_app` it reads `storage_objects` as empty and reports false failures. Run it as the **bootstrap superuser** for this one command:
 

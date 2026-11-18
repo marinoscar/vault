@@ -1,6 +1,6 @@
 # Platform adoption
 
-Vault is migrating from the very old copy of EnterpriseAppBase (EAB) it forked from onto the published `@marinoscar/platform-*` packages (pinned `0.1.0-next.21`), the same way `kvox` was. The program is epic [#54](https://github.com/marinoscar/vault/issues/54); this documentation epic is E0 ([#55](https://github.com/marinoscar/vault/issues/55)). As of E2.1 and E2.2 Vault consumes `@marinoscar/platform-db` (composed Prisma schema, the platform migration history, `platform.lock`); the other slices were adopted by E3 onwards.
+Vault is migrating from the very old copy of EnterpriseAppBase (EAB) it forked from onto the published `@marinoscar/platform-*` packages (pinned `0.1.0-next.37`), the same way `kvox` was. The program is epic [#54](https://github.com/marinoscar/vault/issues/54); this documentation epic is E0 ([#55](https://github.com/marinoscar/vault/issues/55)). As of E2.1 and E2.2 Vault consumes `@marinoscar/platform-db` (composed Prisma schema, the platform migration history, `platform.lock`); the other slices were adopted by E3 onwards.
 
 ## Program status
 
@@ -22,7 +22,13 @@ Vault is migrating from the very old copy of EnterpriseAppBase (EAB) it forked f
 | EAB commit | `59e377cbebb60e711fe4d7b0d818715f23af8a59` |
 | Vault commit | `1b2074d` (`1b2074ddce5215ad15a05ffc7ac5071505ea7dfc`) |
 | Date | 2026-11-02 |
-| Platform packages | `0.1.0-next.21` |
+| Platform packages | `0.1.0-next.21` at the baseline; `0.1.0-next.37` since [#173](https://github.com/marinoscar/vault/issues/173) (see below) |
+
+## Platform upgrades
+
+| Date | Issue | Change |
+|---|---|---|
+| 2026-11-18 | [#173](https://github.com/marinoscar/vault/issues/173) | Every `@marinoscar/platform-*` package moved from `0.1.0-next.21` to `0.1.0-next.37`. Three platform migrations installed as byte copies (0041 to 0043: `20261118160821_notifications_state_counted`, `20261118160822_add_storage_migrations`, `20261118160823_add_oauth_server`); `platform.lock` and `npm run db:check` now cover 43 platform migrations. `infra/` regenerated with `npm run platform:infra:sync` (new `infra/nginx/platform/oauth-server.conf`, not yet included by Vault). The platform OAuth 2.1 server ships in the packages but is **not mounted** ([#174](https://github.com/marinoscar/vault/issues/174)). New routes `POST /api/notifications/:id/dismiss`, `POST /api/notifications/dismiss-all` and the multipart storage upload routes are covered by the RBAC matrix. The baseline and final drift reports stay at `next.21`. |
 
 ## Regenerating the drift report
 
