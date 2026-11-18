@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import type { SecretListItem, SecretsResponse } from '../../core/headless/types.js';
+import type { SecretAgentAccess, SecretListItem, SecretsResponse } from '../../core/headless/types.js';
 import {
   getSecrets as fetchSecretsApi,
   createSecret as createSecretApi,
@@ -21,6 +21,7 @@ interface UseSecretsResult {
     search?: string;
     sortBy?: string;
     sortOrder?: string;
+    agentAccess?: SecretAgentAccess;
   }) => Promise<void>;
   createSecret: (data: Parameters<typeof createSecretApi>[0]) => Promise<void>;
   deleteSecret: (id: string) => Promise<void>;
@@ -42,6 +43,7 @@ export function useSecrets(): UseSecretsResult {
     search?: string;
     sortBy?: string;
     sortOrder?: string;
+    agentAccess?: SecretAgentAccess;
   }) => {
     setIsLoading(true);
     setError(null);

@@ -30,6 +30,8 @@ const SECRET: SecretDetail = {
   currentVersion: 3,
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-03-01T00:00:00Z',
+  agentAccess: 'none',
+  agentAccessChangedAt: null,
   values: { username: 'admin@example.test', password: 'current-pass', url: 'https://x.example.test', notes: 'new note' },
   createdBy: null,
   attachments: [],

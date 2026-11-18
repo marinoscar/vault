@@ -41,6 +41,7 @@ import type {
   MediaFile,
   MediaFilesResponse,
   AttachmentRole,
+  SecretAgentAccess,
   CardExtractionResult,
   ExtractCardRequest,
   SystemSettings,
@@ -158,6 +159,7 @@ export async function getSecrets(params?: {
   search?: string;
   sortBy?: string;
   sortOrder?: string;
+  agentAccess?: SecretAgentAccess;
 }): Promise<SecretsResponse> {
   const searchParams = new URLSearchParams();
   if (params?.page) searchParams.set('page', String(params.page));
@@ -166,6 +168,7 @@ export async function getSecrets(params?: {
   if (params?.search) searchParams.set('search', params.search);
   if (params?.sortBy) searchParams.set('sortBy', params.sortBy);
   if (params?.sortOrder) searchParams.set('sortOrder', params.sortOrder);
+  if (params?.agentAccess) searchParams.set('agentAccess', params.agentAccess);
   return api.get<SecretsResponse>(`/secrets?${searchParams}`);
 }
 
@@ -205,6 +208,14 @@ export async function updateSecret(
   },
 ): Promise<SecretDetail> {
   return api.put<SecretDetail>(`/secrets/${id}`, data);
+}
+
+/** Opens (`fill`) or closes (`none`) a Credential secret to agents; returns the updated detail. */
+export async function updateSecretAgentAccess(
+  id: string,
+  agentAccess: SecretAgentAccess,
+): Promise<SecretDetail> {
+  return api.patch<SecretDetail>(`/secrets/${id}/agent-access`, { agentAccess });
 }
 
 export async function deleteSecret(id: string): Promise<void> {

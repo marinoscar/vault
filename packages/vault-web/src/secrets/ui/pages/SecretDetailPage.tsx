@@ -12,6 +12,7 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  FormControlLabel,
   Grid,
   IconButton,
   Link,
@@ -21,6 +22,7 @@ import {
   MenuItem,
   Paper,
   Snackbar,
+  Switch,
   Tab,
   Tabs,
   Tooltip,
@@ -43,7 +45,12 @@ import { SecretVersionDrawer } from '../components/SecretVersionDrawer.js';
 import { useSecretDetail } from '../../headless/useSecretDetail.js';
 import { usePermissions } from '@marinoscar/platform-web/identity/headless';
 import { deleteSecret, unlinkSecretAttachment } from '../../../core/headless/api.js';
-import { formatRelativeTime, isCardType } from '../../headless/secretFields.js';
+import {
+  agentAccessErrorMessage,
+  formatRelativeTime,
+  isCardType,
+  supportsAgentAccess,
+} from '../../headless/secretFields.js';
 
 /**
  * Details and Attachments are parallel content of one destination, so they
@@ -81,8 +88,9 @@ export default function SecretDetailPage() {
   const { hasPermission } = usePermissions();
   const canWrite = hasPermission('secrets:write');
   const canDelete = hasPermission('secrets:delete');
-  const { secret, versions, isLoading, error, fetchSecret, fetchVersions, fetchVersion, rollback } =
+  const { secret, versions, isLoading, error, fetchSecret, fetchVersions, fetchVersion, rollback, setAgentAccess } =
     useSecretDetail();
+  const [savingAgentAccess, setSavingAgentAccess] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>('details');
   const [historyOpen, setHistoryOpen] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
@@ -129,6 +137,25 @@ export default function SecretDetailPage() {
       setDeleting(false);
     }
   }, [id, navigate]);
+
+  const toggleAgentAccess = useCallback(
+    async (enabled: boolean) => {
+      if (!id) return;
+      setSavingAgentAccess(true);
+      try {
+        await setAgentAccess(id, enabled ? 'fill' : 'none');
+        setToast({
+          severity: 'success',
+          message: enabled ? 'Agents can now use this login' : 'Agents can no longer use this login',
+        });
+      } catch (err) {
+        setToast({ severity: 'error', message: agentAccessErrorMessage(err) });
+      } finally {
+        setSavingAgentAccess(false);
+      }
+    },
+    [id, setAgentAccess],
+  );
 
   const refresh = useCallback(() => {
     if (id) fetchSecret(id);
@@ -410,6 +437,36 @@ export default function SecretDetailPage() {
               <MetaRow label="Created">{new Date(secret.createdAt).toLocaleString()}</MetaRow>
               {secret.createdBy && <MetaRow label="Created by">{secret.createdBy.email}</MetaRow>}
             </Paper>
+            {supportsAgentAccess(secret.type) && (
+              <Paper variant="outlined" sx={{ borderRadius: 2, px: 2, py: 1.5, mt: 2 }}>
+                <FormControlLabel
+                  sx={{ alignItems: 'flex-start', m: 0, gap: 1, minWidth: 0 }}
+                  control={
+                    <Switch
+                      checked={secret.agentAccess === 'fill'}
+                      onChange={(e) => void toggleAgentAccess(e.target.checked)}
+                      disabled={!canWrite || savingAgentAccess}
+                      slotProps={{ input: { 'aria-describedby': 'agent-access-help' } }}
+                    />
+                  }
+                  label={
+                    <Typography variant="body2" sx={{ fontWeight: 600, pt: 0.75 }}>
+                      Allow agents to use this login
+                    </Typography>
+                  }
+                />
+                <Typography
+                  id="agent-access-help"
+                  variant="caption"
+                  component="p"
+                  sx={{ color: 'text.secondary', mt: 0.5 }}
+                >
+                  Agents you connect (for example a browser automation assistant) can type this login
+                  into the matching website. They never see it in chat. You can turn this off at any
+                  time.
+                </Typography>
+              </Paper>
+            )}
           </Grid>
         </Grid>
       )}

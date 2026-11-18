@@ -183,3 +183,21 @@ export function formatRelativeTime(dateString: string, now: Date = new Date()): 
   if (minutes > 0) return `${minutes}m ago`;
   return 'just now';
 }
+
+/** True for the system `Credential` type, the only one that may be opened to agents. */
+export function supportsAgentAccess(type: { name: string; isSystem?: boolean } | null | undefined): boolean {
+  return !!type && type.name === 'Credential' && type.isSystem !== false;
+}
+
+/** A friendly message for a failed agent-access toggle. */
+export function agentAccessErrorMessage(err: unknown): string {
+  const code = (err as { code?: string } | null)?.code;
+  if (code === 'AGENT_ACCESS_UNSUPPORTED_TYPE') {
+    return 'Only a Credential (login) secret can be opened to agents.';
+  }
+  const status = (err as { status?: number } | null)?.status;
+  if (status === 403) {
+    return 'You cannot change agent access for this secret.';
+  }
+  return err instanceof Error ? err.message : 'Failed to update agent access';
+}

@@ -31,8 +31,8 @@ const NOTE: SecretType = {
 };
 
 const ROWS: SecretListItem[] = [
-  { id: 's1', name: 'Staging database', description: null, type: LOGIN, currentVersion: 2, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-02-01T00:00:00Z' },
-  { id: 's2', name: 'Wi-Fi guest network', description: null, type: NOTE, currentVersion: 1, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-15T00:00:00Z' },
+  { id: 's1', name: 'Staging database', description: null, type: LOGIN, currentVersion: 2, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-02-01T00:00:00Z', agentAccess: 'none', agentAccessChangedAt: null },
+  { id: 's2', name: 'Wi-Fi guest network', description: null, type: NOTE, currentVersion: 1, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-15T00:00:00Z', agentAccess: 'none', agentAccessChangedAt: null },
 ];
 
 const WRITER: MockUser = {

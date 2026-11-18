@@ -24,9 +24,9 @@ const CARD: SecretType = {
 };
 
 const ROWS: SecretListItem[] = [
-  { id: 's1', name: 'Org Alpha deploy key', description: 'CI token', type: API_KEY, currentVersion: 3, createdAt: '2026-01-10T00:00:00Z', updatedAt: '2026-02-15T08:30:00Z' },
-  { id: 's2', name: 'Staging database', description: null, type: LOGIN, currentVersion: 1, createdAt: '2026-03-01T00:00:00Z', updatedAt: '2026-03-01T09:00:00Z' },
-  { id: 's3', name: 'Test Visa 4242', description: null, type: CARD, currentVersion: 2, createdAt: '2026-03-01T00:00:00Z', updatedAt: '2026-03-02T09:00:00Z' },
+  { id: 's1', name: 'Org Alpha deploy key', description: 'CI token', type: API_KEY, currentVersion: 3, createdAt: '2026-01-10T00:00:00Z', updatedAt: '2026-02-15T08:30:00Z', agentAccess: 'none', agentAccessChangedAt: null },
+  { id: 's2', name: 'Staging database', description: null, type: LOGIN, currentVersion: 1, createdAt: '2026-03-01T00:00:00Z', updatedAt: '2026-03-01T09:00:00Z', agentAccess: 'none', agentAccessChangedAt: null },
+  { id: 's3', name: 'Test Visa 4242', description: null, type: CARD, currentVersion: 2, createdAt: '2026-03-01T00:00:00Z', updatedAt: '2026-03-02T09:00:00Z', agentAccess: 'none', agentAccessChangedAt: null },
 ];
 
 function props(overrides: Partial<SecretsTableProps> = {}): SecretsTableProps {

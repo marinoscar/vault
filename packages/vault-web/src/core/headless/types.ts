@@ -1,4 +1,6 @@
-import type { AttachmentRole } from '@marinoscar/vault-contract/secrets';
+import type { AttachmentRole, SecretAgentAccess } from '@marinoscar/vault-contract/secrets';
+
+export type { SecretAgentAccess };
 import type {
   BackupFrequency,
   BackupRunStatus,
@@ -201,6 +203,9 @@ export interface SecretListItem {
   currentVersion: number;
   createdAt: string;
   updatedAt: string;
+  /** Whether agents may use this secret (`none` by default). */
+  agentAccess: SecretAgentAccess;
+  agentAccessChangedAt: string | null;
 }
 
 /**
