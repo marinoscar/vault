@@ -17,6 +17,8 @@ Entry points (`<slice>/headless` holds hooks, calls and helpers; `<slice>/ui` ho
 - `@marinoscar/vault-web/cards/headless`, `@marinoscar/vault-web/cards/ui`: payment cards (Cards, scan import, renewal, the card-scanning model section and the AI settings page that carries it).
 - `@marinoscar/vault-web/media/headless`, `@marinoscar/vault-web/media/ui`: media folders and files.
 - `@marinoscar/vault-web/backups/headless`, `@marinoscar/vault-web/backups/ui`: scheduled (admin) and personal backups, the My backups and Backups settings pages.
+- `@marinoscar/vault-web/agent/headless`: `getAgentActivity` (the caller's agent activity, `GET /api/agent-activity`), `useAgentActivity`, the `AgentActivityItem` type (local to the package until the contract type is imported), the query and page types, `AGENT_ACTIVITY_ACTIONS`, `AGENT_ACTION_LABELS`, `agentAppLabel`. The `AgentAccessSettings` type and `AGENT_ACCESS_DEFAULTS` live in `core/headless`, not here.
+- `@marinoscar/vault-web/agent/ui`: `AgentActivityPage` (route `/settings/agent-activity`, card permission `secrets:read`), `AgentActivityTable`, `AgentAccessSettingsPage` (route `/admin/settings/agent-access`, card permission `system_settings:read`; saving needs `system_settings:write`; reads and writes the `agentAccess` system-settings namespace).
 - `@marinoscar/vault-web/home/headless`, `@marinoscar/vault-web/home/ui`: the Home dashboard.
 - `@marinoscar/vault-web/settings/ui`: Vault's General, Profile and Appearance settings card pages.
 - `@marinoscar/vault-web/brand`: `BRAND_TOKENS`, `PRODUCT_NAME`, `PRODUCT_TAGLINE`, `VAULT_THEMES`, `vaultLightTheme`, `vaultDarkTheme`, `contrastRatio`, `BrandLockup`, `VAULT_MARK_URL`.
