@@ -17,7 +17,7 @@ import {
 import { useSecretTypes } from '../../headless/useSecretTypes.js';
 import { usePermissions } from '@marinoscar/platform-web/identity/headless';
 import { deleteSecret, getSecrets } from '../../../core/headless/api.js';
-import type { SecretListItem } from '../../../core/headless/types.js';
+import type { SecretAgentAccess, SecretListItem } from '../../../core/headless/types.js';
 
 const SORT_FIELDS: readonly SecretSortField[] = ['name', 'updatedAt', 'createdAt'];
 const DEFAULT_SORT: DataTableSortState = { field: 'updatedAt', direction: 'desc' };
@@ -27,6 +27,7 @@ const DEFAULT_PAGE_SIZE = 20;
 interface ListQuery {
   search: string;
   typeId: string;
+  agentAccess: SecretAgentAccess | '';
   sort: DataTableSortState;
   /** 1-based, as the API and the URL count. */
   page: number;
@@ -41,6 +42,7 @@ function readQuery(params: URLSearchParams): ListQuery {
   return {
     search: params.get('q') ?? '',
     typeId: params.get('type') ?? '',
+    agentAccess: params.get('agent') === 'fill' || params.get('agent') === 'none' ? (params.get('agent') as SecretAgentAccess) : '',
     sort:
       sortField && (SORT_FIELDS as readonly string[]).includes(sortField)
         ? { field: sortField, direction: dir === 'asc' ? 'asc' : 'desc' }
@@ -54,6 +56,7 @@ function writeQuery(q: ListQuery): URLSearchParams {
   const params = new URLSearchParams();
   if (q.search) params.set('q', q.search);
   if (q.typeId) params.set('type', q.typeId);
+  if (q.agentAccess) params.set('agent', q.agentAccess);
   if (q.sort.field !== DEFAULT_SORT.field || q.sort.direction !== DEFAULT_SORT.direction) {
     params.set('sort', q.sort.field);
     params.set('dir', q.sort.direction);
@@ -144,6 +147,7 @@ export default function SecretsPage() {
       pageSize: query.pageSize,
       search: query.search || undefined,
       typeId: query.typeId || undefined,
+      agentAccess: query.agentAccess || undefined,
       sortBy: query.sort.field,
       sortOrder: query.sort.direction,
     })
@@ -222,7 +226,7 @@ export default function SecretsPage() {
             {loading && rows.length === 0
               ? 'Loading…'
               : `${total} ${total === 1 ? 'secret' : 'secrets'}${
-                  query.search || query.typeId ? ' match' : ''
+                  query.search || query.typeId || query.agentAccess ? ' match' : ''
                 }`}
           </Typography>
         </Box>
@@ -255,8 +259,10 @@ export default function SecretsPage() {
           onSearchChange={(search) => update({ search, page: 1 }, true)}
           typeId={query.typeId}
           onTypeChange={(typeId) => update({ typeId, page: 1 })}
+          agentAccess={query.agentAccess}
+          onAgentAccessChange={(agentAccess) => update({ agentAccess, page: 1 })}
           types={types}
-          onClearFilters={() => update({ search: '', typeId: '', page: 1 })}
+          onClearFilters={() => update({ search: '', typeId: '', agentAccess: '', page: 1 })}
           onCreate={canWrite ? createSecret : undefined}
           onOpen={openSecret}
           onEdit={canWrite ? editSecret : undefined}

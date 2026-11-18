@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import type {
+  SecretAgentAccess,
   SecretAttachment,
   SecretDetail,
   SecretVersion,
@@ -11,6 +12,7 @@ import {
   getSecretVersions as fetchVersionsApi,
   getSecretVersion as fetchVersionApi,
   rollbackSecretVersion as rollbackApi,
+  updateSecretAgentAccess as updateAgentAccessApi,
 } from '../../core/headless/api.js';
 
 /**
@@ -40,6 +42,8 @@ interface UseSecretDetailResult {
     versionId: string,
   ) => Promise<SecretVersionDetailWithAttachments>;
   rollback: (secretId: string, versionId: string) => Promise<void>;
+  /** Throws on failure (the caller shows it); does not set the hook's `error`. */
+  setAgentAccess: (id: string, agentAccess: SecretAgentAccess) => Promise<void>;
 }
 
 export function useSecretDetail(): UseSecretDetailResult {
@@ -114,8 +118,22 @@ export function useSecretDetail(): UseSecretDetailResult {
     }
   }, [fetchVersions]);
 
+  const setAgentAccess = useCallback(async (id: string, agentAccess: SecretAgentAccess) => {
+    const result = await updateAgentAccessApi(id, agentAccess);
+    // Only the agent-access fields change; keep the loaded values and attachments.
+    setSecret((prev) =>
+      prev
+        ? {
+            ...prev,
+            agentAccess: result.agentAccess ?? agentAccess,
+            agentAccessChangedAt: result.agentAccessChangedAt ?? prev.agentAccessChangedAt,
+          }
+        : result,
+    );
+  }, []);
+
   return {
     secret, versions, isLoading, error,
-    fetchSecret, updateSecret, fetchVersions, fetchVersion, rollback,
+    fetchSecret, updateSecret, fetchVersions, fetchVersion, rollback, setAgentAccess,
   };
 }

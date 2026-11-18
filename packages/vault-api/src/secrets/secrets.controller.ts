@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Patch,
   Delete,
   Param,
   Body,
@@ -24,7 +25,14 @@ import {
 import { ZodValidationPipe } from 'nestjs-zod';
 import { FastifyReply } from 'fastify';
 
-import { Auth, CurrentUser, RequestUser } from '@marinoscar/platform-api/identity';
+import {
+  Auth,
+  AuthCredential,
+  AuthCredentialInfo,
+  CurrentUser,
+  RequestUser,
+  refuseOAuthCredential,
+} from '@marinoscar/platform-api/identity';
 import { PERMISSIONS } from '../core/roles.constants';
 
 import { SecretsService } from './secrets.service';
@@ -40,6 +48,7 @@ import {
 } from './dto/export-secrets.dto';
 import { CreateSecretDto } from './dto/create-secret.dto';
 import { UpdateSecretDto } from './dto/update-secret.dto';
+import { UpdateAgentAccessDto } from './dto/update-agent-access.dto';
 import { RenewSecretDto } from './dto/renew-secret.dto';
 import {
   SecretListQueryDto,
@@ -162,6 +171,7 @@ export class SecretsController {
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
   @ApiQuery({ name: 'typeId', required: false, type: String, format: 'uuid' })
   @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiQuery({ name: 'agentAccess', required: false, enum: ['none', 'fill'] })
   @ApiQuery({ name: 'sortBy', required: false, enum: ['createdAt', 'name', 'updatedAt'] })
   @ApiQuery({ name: 'sortOrder', required: false, enum: ['asc', 'desc'] })
   @ApiResponse({ status: 200, description: 'Paginated list of secrets' })
@@ -234,6 +244,36 @@ export class SecretsController {
     @CurrentUser() user: RequestUser,
   ) {
     const result = await this.secretsService.update(id, dto, user.id, user.permissions);
+    return { data: result };
+  }
+
+  @Patch(':id/agent-access')
+  @Auth({ permissions: [PERMISSIONS.SECRETS_WRITE] })
+  @ApiOperation({
+    summary: 'Allow or forbid agents to use a secret',
+    description:
+      'Sets agentAccess to none or fill. Only a Credential secret may be set to fill (422 ' +
+      'AGENT_ACCESS_UNSUPPORTED_TYPE otherwise). Refused (403) for an OAuth credential: an agent ' +
+      'cannot widen its own access. Audited as secret.agent_access.update. Requires secrets:write.',
+  })
+  @ApiParam({ name: 'id', type: String, format: 'uuid', description: 'Secret ID' })
+  @ApiResponse({ status: 200, description: 'Secret detail with the new agentAccess' })
+  @ApiResponse({ status: 403, description: 'Access denied, or an OAuth credential' })
+  @ApiResponse({ status: 404, description: 'Secret not found' })
+  @ApiResponse({ status: 422, description: 'AGENT_ACCESS_UNSUPPORTED_TYPE' })
+  async updateAgentAccess(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateAgentAccessDto,
+    @CurrentUser() user: RequestUser,
+    @AuthCredential() credential: AuthCredentialInfo | null,
+  ) {
+    refuseOAuthCredential(credential);
+    const result = await this.secretsService.updateAgentAccess(
+      id,
+      dto.agentAccess,
+      user.id,
+      user.permissions,
+    );
     return { data: result };
   }
 

@@ -36,6 +36,8 @@ export function makeSecret(id: string, name: string, updatedMsAgo = HOUR): Secre
     currentVersion: 1,
     createdAt: ago(1000 * HOUR),
     updatedAt: ago(updatedMsAgo),
+    agentAccess: 'none',
+    agentAccessChangedAt: null,
   };
 }
 

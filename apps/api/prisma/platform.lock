@@ -7,7 +7,8 @@
     "20261102120000_add_backup_schedules",
     "20261102130000_add_media_folder_files",
     "20261102140000_backup_runs_job_id",
-    "20261103090000_attachments_composite_fk_media_rls"
+    "20261103090000_attachments_composite_fk_media_rls",
+    "20261118164725_add_secret_agent_access"
   ],
   "deviations": [
     {
@@ -104,6 +105,14 @@
       ],
       "id": "vault:attachments-org-id",
       "reason": "Column secret_attachments.org_id and the composite foreign key (storage_object_id, org_id) to storage_objects (app migration 20261103090000_attachments_composite_fk_media_rls, E6.2). The diff prints secret_attachments whole with the column, and the new foreign key, only once that migration is applied, i.e. in a dry run AFTER prisma:migrate; the pre-migration shape (no org_id, plain foreign key) stays declared by vault:domain-schema."
+    },
+    {
+      "expectDiff": [
+        "CREATE TYPE \"secret_agent_access\" AS ENUM ('none', 'fill');",
+        "CREATE TABLE \"secrets\" ( \"id\" UUID NOT NULL, \"name\" TEXT NOT NULL, \"description\" TEXT, \"type_id\" UUID NOT NULL, \"created_by_id\" UUID, \"created_at\" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP, \"updated_at\" TIMESTAMPTZ(6) NOT NULL, \"agent_access\" \"secret_agent_access\" NOT NULL DEFAULT 'none', \"agent_access_changed_at\" TIMESTAMPTZ(6), CONSTRAINT \"secrets_pkey\" PRIMARY KEY (\"id\") );"
+      ],
+      "id": "vault:secrets-agent-access",
+      "reason": "Enum secret_agent_access and columns secrets.agent_access and secrets.agent_access_changed_at (app migration 20261118164725_add_secret_agent_access, #175). The diff prints the enum and secrets whole with the columns only once that migration is applied, i.e. in a dry run AFTER prisma:migrate; the pre-migration shape stays declared by vault:domain-schema."
     }
   ],
   "lockVersion": 1,

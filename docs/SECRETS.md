@@ -11,6 +11,7 @@ This document describes the secrets management feature of the Vault application:
 - [Versioning](#versioning)
 - [Rollback](#rollback)
 - [Attachments](#attachments)
+- [Agent access](#agent-access)
 - [Backup and export](#backup-and-export)
 - [Download your data vs. the password-protected zip](#download-your-data-vs-the-password-protected-zip)
 - [Deleting your data](#deleting-your-data)
@@ -243,6 +244,21 @@ The `FOR UPDATE` lock is what makes step 3 correct under concurrency: without it
 - The attachments tab in the UI is only shown when the secret's type has `allowAttachments: true`.
 
 ---
+
+## Agent access
+
+Agent access is a per-secret opt-in that decides whether an AI agent (an OAuth client on the `agent` resource, see [SECURITY-ARCHITECTURE.md §16](SECURITY-ARCHITECTURE.md#16-oauth-server-agent-access)) may use the secret. It is a second gate on top of the OAuth scopes: a token with `vault:items_fill` still reaches only the secrets the owner opened.
+
+| Aspect | Rule |
+|---|---|
+| Values | `none` (default) or `fill`. `fill` means an agent may have the fabric type the login into a matching site; the agent never reads the value |
+| Default | `none` for every secret, including every secret that existed before the column was added (migration `20261118164725_add_secret_agent_access`). Nothing is exposed to agents until the owner turns it on |
+| Which secrets | Only the system `Credential` type may be set to `fill`; any other type answers `422 AGENT_ACCESS_UNSUPPORTED_TYPE`. Setting `none` is always allowed |
+| Storage | `secrets.agent_access` (enum `secret_agent_access`, NOT NULL, default `none`) and `secrets.agent_access_changed_at` (timestamptz, null until first changed). It is a property of the secret, not of a version: rollback, renew and update do not change it |
+| Who can change it | `PATCH /api/secrets/:id/agent-access` with `secrets:write` and the same ownership rule as `PUT /api/secrets/:id` (own secrets, or `secrets:write_any`). An OAuth (`oat_`) credential is refused with 403, so an agent can never widen its own access. Setting the current value is a no-op (no write, no audit row) |
+| Audit | `secret.agent_access.update` with `{ secretId, from, to }`; see [Audit Trail](#audit-trail) |
+| Where it shows | List and detail responses carry `agentAccess` and `agentAccessChangedAt`; the list takes `?agentAccess=fill\|none`. The web form has the switch "Allow agents to use this login" on Credential secrets, and the list shows an "Agents" chip and an Agent access filter |
+| Consumers | The agent API (E14.6) and the MCP tools (E14.8) reach only secrets with `agentAccess = fill` |
 
 ## Card expiry notifications
 
@@ -589,6 +605,7 @@ All endpoints require a valid JWT Bearer token. Ownership checks are enforced at
 | `GET` | `/secrets` | `secrets:read` | List secrets (paginated) |
 | `GET` | `/secrets/:id` | `secrets:read` | Get a secret with the decrypted current version |
 | `PUT` | `/secrets/:id` | `secrets:write` | Update a secret; creates a new version if data changed |
+| `PATCH` | `/secrets/:id/agent-access` | `secrets:write` | Allow or forbid agents to use a Credential secret (see [Agent access](#agent-access)) |
 | `DELETE` | `/secrets/:id` | `secrets:delete` | Delete a secret and all its versions |
 | `POST` | `/secrets/export` | `secrets:read` | Download a password-protected zip of your own secrets (see [Backup and export](#backup-and-export)) |
 
@@ -600,6 +617,7 @@ All endpoints require a valid JWT Bearer token. Ownership checks are enforced at
 | `pageSize` | `20` | Results per page (max 100) |
 | `typeId` | — | Filter by secret type UUID |
 | `search` | — | Case-insensitive name search |
+| `agentAccess` | — | `fill` \| `none`: only secrets with that agent access |
 | `sortBy` | `updatedAt` | `createdAt` \| `name` \| `updatedAt` |
 | `sortOrder` | `desc` | `asc` \| `desc` |
 
@@ -706,6 +724,7 @@ Every secret and secret type operation is written to the `audit_events` table. T
 | `secret.delete` | `{ name }` |
 | `secret.rollback` | `{ fromVersion, carriedAttachments }` |
 | `secret.renew` | `{ fromVersionId, version, carriedAttachments, replacedAttachments, replacedRoles, extractionMethod }` — `extractionMethod` is `'ai_assisted'` or `'manual'`, from the request's `aiAssisted` flag |
+| `secret.agent_access.update` | `{ secretId, from, to }` (`none` \| `fill`); written only when the value changes |
 | `secret.attachment.unlink` | `{ attachmentId, storageObjectId, storageObjectDeleted }` |
 | `secrets.export` | `{ secretCount, attachmentCount, mediaFolderCount, mediaFileCount, includeSecrets, includeAttachments, includeVersions, includeMedia, warningCount }` — target is the exporting user; never contains the password |
 | `backups.*`, `backups.user.*` | scheduled and downloaded admin backups and users' saved backups; see [Scheduled backups (admin)](#scheduled-backups-admin) |

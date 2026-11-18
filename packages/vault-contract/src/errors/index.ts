@@ -53,6 +53,9 @@ export const VAULT_ERROR_CODES: readonly VaultErrorCodeDef[] = Object.freeze([
   { code: 'DATABASE_SEED_REQUIRED', status: 500, description: 'Migrations ran but the seed data (roles, permissions) is missing.' },
   { code: 'ENCRYPTION_UNAVAILABLE', status: 503, description: 'VAULT_ENCRYPTION_KEY is not configured, so a secret value could not be stored.' },
 
+  // Agent access (E14.3).
+  { code: 'AGENT_ACCESS_UNSUPPORTED_TYPE', status: 422, description: 'Only a Credential secret can be opened to agents; this secret type cannot be set to fill.' },
+
   // Card scanning. The platform's own `AI_*` codes are registered by the AI slice.
   { code: AI_ERROR_CODES.NOT_CONFIGURED, status: 503, description: 'AI card scanning is not set up (provider, model or deployment key missing).' },
   { code: AI_ERROR_CODES.INVALID_IMAGE, status: 400, description: 'The images are not acceptable base64 data URLs within the size limit.' },

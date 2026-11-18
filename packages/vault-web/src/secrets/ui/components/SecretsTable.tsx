@@ -9,6 +9,7 @@ import {
   Autorenew as RenewIcon,
   KeyOutlined as EmptyIcon,
   SearchOff as NoMatchIcon,
+  SmartToyOutlined as AgentIcon,
 } from '@mui/icons-material';
 import { DataTable, QuickSearchField } from '@marinoscar/platform-web/datatable/ui';
 import type {
@@ -21,7 +22,7 @@ import type {
 } from '@marinoscar/platform-web/datatable/headless';
 import { SecretTypeIcon } from './SecretTypeIcon.js';
 import { formatRelativeTime, isCardType } from '../../headless/secretFields.js';
-import type { SecretListItem, SecretType } from '../../../core/headless/types.js';
+import type { SecretAgentAccess, SecretListItem, SecretType } from '../../../core/headless/types.js';
 
 /** The `sortBy` values `GET /api/secrets` accepts, which are also column ids. */
 export type SecretSortField = 'name' | 'updatedAt' | 'createdAt';
@@ -44,6 +45,9 @@ export interface SecretsTableProps {
   onSearchChange: (value: string) => void;
   typeId: string;
   onTypeChange: (typeId: string) => void;
+  /** The Agent access filter: `''` is any. */
+  agentAccess?: SecretAgentAccess | '';
+  onAgentAccessChange?: (value: SecretAgentAccess | '') => void;
   types: SecretType[];
   onClearFilters: () => void;
   /** Shown when the user may create (`secrets:write`). */
@@ -92,6 +96,15 @@ function TypeChip({ row }: { row: SecretListItem }) {
       size="small"
       variant="outlined"
     />
+  );
+}
+
+function AgentsChip({ row }: { row: SecretListItem }) {
+  if (row.agentAccess !== 'fill') return null;
+  return (
+    <Tooltip title="Agents may use this login">
+      <Chip icon={<AgentIcon fontSize="small" />} label="Agents" size="small" color="primary" variant="outlined" />
+    </Tooltip>
   );
 }
 
@@ -163,7 +176,12 @@ const GRID_COLUMNS: DataTableColumn<SecretListItem>[] = [
     priority: 'secondary',
     width: 160,
     value: (row) => row.type.name,
-    render: (row) => <TypeChip row={row} />,
+    render: (row) => (
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
+        <TypeChip row={row} />
+        <AgentsChip row={row} />
+      </Box>
+    ),
   },
   {
     id: 'currentVersion',
@@ -222,6 +240,7 @@ const CARD_COLUMNS: DataTableColumn<SecretListItem>[] = [
         sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, pl: 6, pt: 0.5 }}
       >
         <TypeChip row={row} />
+        <AgentsChip row={row} />
         <span>
           Updated <UpdatedLabel iso={row.updatedAt} /> · v{row.currentVersion}
         </span>
@@ -252,6 +271,8 @@ export function SecretsTable(props: SecretsTableProps) {
     onSearchChange,
     typeId,
     onTypeChange,
+    agentAccess = '',
+    onAgentAccessChange,
     types,
     onClearFilters,
     onCreate,
@@ -302,7 +323,7 @@ export function SecretsTable(props: SecretsTableProps) {
     return actions;
   }, [onOpen, onEdit, onRenewCard, onDelete]);
 
-  const hasQuery = search !== '' || typeId !== '';
+  const hasQuery = search !== '' || typeId !== '' || agentAccess !== '';
 
   const emptyState = hasQuery ? (
     <Box sx={{ py: 4, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
@@ -374,6 +395,21 @@ export function SecretsTable(props: SecretsTableProps) {
             </MenuItem>
           ))}
         </TextField>
+        {onAgentAccessChange && (
+          <TextField
+            select
+            size="small"
+            label="Agent access"
+            value={agentAccess}
+            onChange={(e) => onAgentAccessChange(e.target.value as SecretAgentAccess | '')}
+            sx={{ flex: '1 1 180px', minWidth: 0, '& .MuiInputBase-root': { minHeight: 44 } }}
+            slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
+          >
+            <MenuItem value="">Any</MenuItem>
+            <MenuItem value="fill">Allowed for agents</MenuItem>
+            <MenuItem value="none">Not allowed</MenuItem>
+          </TextField>
+        )}
       </Box>
 
       <LayoutReport.Provider value={setLayout}>
