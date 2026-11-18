@@ -8,7 +8,8 @@
     "20261102130000_add_media_folder_files",
     "20261102140000_backup_runs_job_id",
     "20261103090000_attachments_composite_fk_media_rls",
-    "20261118164725_add_secret_agent_access"
+    "20261118164725_add_secret_agent_access",
+    "20261118171757_add_secret_origins"
   ],
   "deviations": [
     {
@@ -381,6 +382,10 @@
     {
       "definition": "CREATE UNIQUE INDEX secret_versions_current_unique ON public.secret_versions USING btree (secret_id) WHERE (is_current = true)",
       "name": "secret_versions_current_unique"
+    },
+    {
+      "definition": "CREATE INDEX secrets_origins_gin_idx ON public.secrets USING gin (origins) WHERE (origins IS NOT NULL)",
+      "name": "secrets_origins_gin_idx"
     }
   ],
   "rlsPolicies": [

@@ -67,6 +67,12 @@
       "requiresHostTables": [],
       "sha256": "cabc4e9b9b4279550e619a5bbb47b41fe0d64d16be5d191d6fe8abb165e85296",
       "slice": "secrets"
+    },
+    {
+      "id": "20261118171757_add_secret_origins",
+      "requiresHostTables": [],
+      "sha256": "cd21da9f9158aa43791ab0c940783ba34af8338527a6ded5d972017ee8cda5f2",
+      "slice": "secrets"
     }
   ]
 }

@@ -79,8 +79,9 @@ describe('checkDatabaseCatalog', () => {
     expect(checkDatabaseCatalog(catalog, real)).toEqual([]);
     catalog.indexes = [];
     const problems = checkDatabaseCatalog(catalog, real);
-    expect(problems.map((p) => p.code)).toEqual(['INDEX_MISSING']);
-    expect(problems[0]?.message).toContain('secret_versions_current_unique');
+    expect(problems.map((p) => p.code)).toEqual(['INDEX_MISSING', 'INDEX_MISSING']);
+    expect(problems.map((p) => p.message).join('\n')).toContain('secret_versions_current_unique');
+    expect(problems.map((p) => p.message).join('\n')).toContain('secrets_origins_gin_idx');
   });
 
   it('is wired into checkVaultInstall with an injected catalog', async () => {
@@ -91,6 +92,6 @@ describe('checkDatabaseCatalog', () => {
     expect(ok.ok).toBe(true);
     const broken = completeCatalog(real);
     broken.indexes = [];
-    expect((await checkVaultInstall({ root, database: true, catalog: broken })).problems.map((p) => p.code)).toEqual(['INDEX_MISSING']);
+    expect((await checkVaultInstall({ root, database: true, catalog: broken })).problems.map((p) => p.code)).toEqual(['INDEX_MISSING', 'INDEX_MISSING']);
   });
 });

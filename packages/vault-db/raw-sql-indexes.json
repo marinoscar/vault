@@ -3,5 +3,10 @@
     "definition": "CREATE UNIQUE INDEX secret_versions_current_unique ON public.secret_versions USING btree (secret_id) WHERE (is_current = true)",
     "name": "secret_versions_current_unique",
     "table": "secret_versions"
+  },
+  {
+    "definition": "CREATE INDEX secrets_origins_gin_idx ON public.secrets USING gin (origins) WHERE (origins IS NOT NULL)",
+    "name": "secrets_origins_gin_idx",
+    "table": "secrets"
   }
 ]

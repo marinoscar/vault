@@ -43,7 +43,7 @@ describe('migrations/manifest.json', () => {
       expect(fragments.has(entry.slice), `${entry.id} slice ${entry.slice}`).toBe(true);
       for (const table of entry.requiresHostTables) expect(VAULT_HOST_TABLES).toContain(table);
     }
-    expect(ids).toHaveLength(9);
+    expect(ids).toHaveLength(10);
     expect(new Set(manifest.migrations.map((entry) => entry.slice))).toEqual(new Set(['secrets', 'media', 'backups']));
   });
 
@@ -76,8 +76,8 @@ describe('inventories', () => {
     expect(VAULT_EXTENSIONS).toEqual([]);
   });
 
-  it('lists the one special index of the domain by name', () => {
-    expect(VAULT_RAW_SQL_INDEXES.map((index) => index.name)).toEqual(['secret_versions_current_unique']);
+  it('lists the special indexes of the domain by name', () => {
+    expect(VAULT_RAW_SQL_INDEXES.map((index) => index.name)).toEqual(['secret_versions_current_unique', 'secrets_origins_gin_idx']);
     expect(VAULT_RAW_SQL_INDEXES[0]?.table).toBe('secret_versions');
   });
 
