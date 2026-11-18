@@ -72,6 +72,7 @@ describe('/settings (per-user hub)', () => {
       'Secret types',
       'Download your data',
       'Notifications',
+      'Agent activity',
       'Delete my data',
     ]);
   });
@@ -139,6 +140,7 @@ describe('/admin/settings (Console hub)', () => {
       'Email',
       'Web Push',
       'Broadcasts',
+      'Agent access',
     ]);
     expect(screen.getByText('Administration')).toBeInTheDocument();
     expect(screen.getByText('Operations')).toBeInTheDocument();
@@ -166,7 +168,7 @@ describe('/admin/settings (Console hub)', () => {
     renderHub('admin', { ...mockUser, permissions: ['system_settings:read'] });
 
     // AI needs ai_config:read since E8.2 (the platform AI admin controller).
-    expect(cardTitles()).toEqual(['General', 'Backups', 'Setup guide', 'Maintenance', 'Doctor', 'About', 'Email']);
+    expect(cardTitles()).toEqual(['General', 'Backups', 'Setup guide', 'Maintenance', 'Doctor', 'About', 'Email', 'Agent access']);
     // db_backup:read is a pair of its own (admin only): system_settings:read alone does not show Database Backup.
   });
 
@@ -195,6 +197,7 @@ describe('/admin/settings (Console hub)', () => {
       'Email',
       'Web Push',
       'Broadcasts',
+      'Agent access',
     ]);
   });
 

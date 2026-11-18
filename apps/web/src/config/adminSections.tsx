@@ -43,6 +43,7 @@ import BroadcastIcon from '@mui/icons-material/CampaignOutlined';
 import { setupGuideSettingsPage } from '@marinoscar/platform-web/onboarding/ui';
 import { DANGER_ZONE_GROUP_LABEL } from '@marinoscar/platform-web/user-data/headless';
 import { factoryResetSettingsPage } from '@marinoscar/platform-web/user-data/ui';
+import AgentIcon from '@mui/icons-material/SmartToyOutlined';
 import StorageIcon from '@mui/icons-material/CloudOutlined';
 
 /** The Console hub's title: the hub's heading and the compact AppBar's fallback. */
@@ -224,6 +225,22 @@ export const ADMIN_SECTIONS: SettingsSectionDef[] = [
   {
     label: 'Observability',
     cards: [...telemetryAdminCards],
+  },
+  {
+    // E14.7 (#179), APPENDED as a section of its own (the Danger Zone stays last): the agent API's
+    // kill switch and limits. A card of its own, not a block on `General`, because `General` is a
+    // routed card page and the hub pattern puts each setting surface on its own card.
+    label: 'Agents',
+    cards: [
+      {
+        title: 'Agent access',
+        description: 'The kill switch and rate limits for apps that use logins on a person\'s behalf.',
+        Icon: AgentIcon,
+        path: '/admin/settings/agent-access',
+        // GET /api/system-settings (the `agentAccess` namespace): system_settings:read; saving needs system_settings:write.
+        permission: 'system_settings:read',
+      },
+    ],
   },
   {
     // E9.3 (#91): the packaged factory reset, in a Danger Zone group KEPT LAST of the registry

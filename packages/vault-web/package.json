@@ -70,6 +70,14 @@
       "types": "./dist/home/ui/index.d.ts",
       "default": "./dist/home/ui/index.js"
     },
+    "./agent/headless": {
+      "types": "./dist/agent/headless/index.d.ts",
+      "default": "./dist/agent/headless/index.js"
+    },
+    "./agent/ui": {
+      "types": "./dist/agent/ui/index.d.ts",
+      "default": "./dist/agent/ui/index.js"
+    },
     "./settings/ui": {
       "types": "./dist/settings/ui/index.d.ts",
       "default": "./dist/settings/ui/index.js"

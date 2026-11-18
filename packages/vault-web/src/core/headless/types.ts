@@ -151,6 +151,24 @@ export interface CardExtractionResult {
   };
 }
 
+/** The `agentAccess` system settings namespace (same shape as `@marinoscar/vault-contract/agent`). */
+export interface AgentAccessSettings {
+  enabled: boolean;
+  lookupPerMinute: number;
+  fillPerMinute: number;
+  totpPerMinute: number;
+  writePerMinute: number;
+}
+
+/** What the API answers until an administrator changes it: off, with the default limits. */
+export const AGENT_ACCESS_DEFAULTS: AgentAccessSettings = {
+  enabled: false,
+  lookupPerMinute: 60,
+  fillPerMinute: 30,
+  totpPerMinute: 10,
+  writePerMinute: 10,
+};
+
 export interface SystemSettings {
   ui: {
     allowUserThemeOverride: boolean;
@@ -158,6 +176,8 @@ export interface SystemSettings {
   features: Record<string, boolean>;
   /** The platform AI policy plus `cardExtractModel`; `null` only before the first read. */
   ai: VaultAiPolicy | null;
+  /** The agent credential API's kill switch and limits (E14.6); absent from an older API. */
+  agentAccess?: AgentAccessSettings;
   updatedAt: string;
   updatedBy: { id: string; email: string } | null;
   version: number;

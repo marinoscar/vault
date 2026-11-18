@@ -62,6 +62,8 @@ const HomePage = lazy(() => import('@marinoscar/vault-web/home/ui').then((m) => 
 const UserSettingsHubPage = lazy(() => import('./pages/UserSettingsHubPage'));
 const ProfileSettingsPage = lazy(() => import('@marinoscar/vault-web/settings/ui').then((m) => ({ default: m.ProfileSettingsPage })));
 const AppearanceSettingsPage = lazy(() => import('@marinoscar/vault-web/settings/ui').then((m) => ({ default: m.AppearanceSettingsPage })));
+const AgentActivityPage = lazy(() => import('@marinoscar/vault-web/agent/ui').then((m) => ({ default: m.AgentActivityPage })));
+const AgentAccessSettingsPage = lazy(() => import('@marinoscar/vault-web/agent/ui').then((m) => ({ default: m.AgentAccessSettingsPage })));
 const MyBackupsPage = lazy(() => import('@marinoscar/vault-web/backups/ui').then((m) => ({ default: m.MyBackupsPage })));
 const AdminSettingsHubPage = lazy(() => import('./pages/admin/AdminSettingsHubPage'));
 const GeneralSettingsPage = lazy(() => import('@marinoscar/vault-web/settings/ui').then((m) => ({ default: m.GeneralSettingsPage })));
@@ -197,6 +199,11 @@ function AppRoutes() {
               <Route path="/settings/tokens" element={<UserTokensPage />} />
               {/* E14.2 (#174): the grants routes are bare @Auth() (ownership-scoped); the card hides while the server is off. */}
               <Route path="/settings/connected-apps" element={<ConnectedAppsPage />} />
+              {/* E14.7 (#179): GET /api/agent-activity is secrets:read. */}
+              <Route
+                path="/settings/agent-activity"
+                element={<RequirePermission permission="secrets:read" fallback={TO_SETTINGS}><AgentActivityPage /></RequirePermission>}
+              />
               <Route
                 path="/settings/backups"
                 element={<RequirePermission permission="secrets:read" fallback={TO_SETTINGS}><MyBackupsPage /></RequirePermission>}
@@ -247,6 +254,11 @@ function AppRoutes() {
               <Route
                 path="/admin/settings/oauth-clients"
                 element={<RequirePermission permission="oauth_clients:read" fallback={TO_HOME}><OAuthClientsPage /></RequirePermission>}
+              />
+              {/* E14.7 (#179): the agentAccess system settings, read with system_settings:read. */}
+              <Route
+                path="/admin/settings/agent-access"
+                element={<RequirePermission permission="system_settings:read" fallback={TO_HOME}><AgentAccessSettingsPage /></RequirePermission>}
               />
               <Route
                 path="/admin/settings/ai"

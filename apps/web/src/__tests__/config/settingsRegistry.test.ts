@@ -140,6 +140,10 @@ const CONTROLLER_MIRROR: Record<string, string | undefined> = {
   '/admin/settings/oauth-clients': 'oauth_clients:read',
   // OAuth grants routes are bare @Auth() (ownership-scoped); the card carries feature 'oauthServer'
   '/settings/connected-apps': undefined,
+  // E14.7 (#179): agent-activity.controller GET /api/agent-activity (secrets:read)
+  '/settings/agent-activity': 'secrets:read',
+  // system-settings.controller GET /api/system-settings (the agentAccess namespace)
+  '/admin/settings/agent-access': 'system_settings:read',
 };
 
 /**
@@ -357,6 +361,7 @@ describe('the registries as a whole', () => {
       'Telemetry',
       'Telemetry Explorer',
       'Telemetry Dashboard',
+      'Agent access',
       'Factory reset',
     ]);
     expect(USER_CARDS.map((card) => card.title)).toEqual([
@@ -369,6 +374,7 @@ describe('the registries as a whole', () => {
       'Secret types',
       'Download your data',
       'Notifications',
+      'Agent activity',
       'Delete my data',
     ]);
   });
