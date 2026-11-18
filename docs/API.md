@@ -2036,6 +2036,16 @@ All require `system_settings:read` unless noted; served by the platform (`Platfo
 
 ---
 
+### Agent API (OAuth-protected)
+
+The `agent` OAuth protected resource (E14.2, [#174](https://github.com/marinoscar/vault/issues/174)): every route under `/api/agent/v1` accepts an `oat_` OAuth access token (and the session JWT), and an `oat_` token is **refused on every other route**. Off until an administrator enables the OAuth server. Scopes and design: [SECURITY-ARCHITECTURE.md §16](SECURITY-ARCHITECTURE.md#16-oauth-server-agent-access). The OAuth endpoints themselves (`/api/oauth/*`, `/api/admin/oauth/*`) are the platform's: see the live reference at `/api/docs` and the [endpoint map](DOMAIN-REFERENCE.md#oauth-server-and-agent-api-e142-174).
+
+#### GET /agent/v1/whoami
+
+Requires `secrets:read` (scope `vault:items_read` or wider). Returns `{ "data": { "userId", "scopes", "clientId" } }`; for a session JWT `scopes` is `[]` and `clientId` is `null`.
+
+---
+
 ## HTTP Status Codes
 
 | Code | Description |

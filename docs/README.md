@@ -52,6 +52,7 @@ Index of every document in `docs/`, plus the "Doc map by task". Rules for assist
 | Change navigation, theme or the UI shell | specs/ux-refresh.md, `apps/web/AGENTS.md` |
 | Add a background job | `.claude/skills/add-job-type/SKILL.md` (from E5) |
 | Add a notification or email | `.claude/skills/add-notification/SKILL.md` (from E7) |
+| Work on agent (OAuth) access | SECURITY-ARCHITECTURE.md §16, API.md "Agent API", DOMAIN-REFERENCE.md (OAuth server and agent API); operator runbook in EnterpriseAppBase `docs/runbooks/oauth-server.md` |
 | Add a CLI command | `apps/cli/AGENTS.md`, apps/cli/README.md |
 | Run tests | TESTING.md, `apps/api/AGENTS.md`, `apps/web/AGENTS.md` |
 | Deploy | infra/deploy/DEPLOY.md, DEV-VPS-SETUP.md |

@@ -111,6 +111,16 @@ The platform settings slice serves these (E4.1); Vault's namespaces are `ui`, `f
 - `GET|POST /api/admin/factory-reset...` - Factory reset (`system:factory_reset`, Admin only); `/api/admin/orgs/{orgId}/offboarding...` (`orgs:offboard`, multi-organization mode only)
 - `GET /api/onboarding` (`user_settings:read`), `GET /api/admin/onboarding/metrics` (`system_settings:read`) - derived first-run checklists. See `docs/API.md`
 
+### OAuth server and agent API (E14.2, #174)
+Off until an administrator enables it at `/admin/settings/oauth-clients`. Served by the platform identity slice (`IdentityModule.forRoot({ oauthServer: {} })`); Vault adds only the scopes and the `agent` resource. Operator steps: the [platform runbook](https://github.com/marinoscar/EnterpriseAppBase/blob/main/docs/runbooks/oauth-server.md); design: [SECURITY-ARCHITECTURE.md §16](SECURITY-ARCHITECTURE.md#16-oauth-server-agent-access).
+- `GET /api/oauth/.well-known/authorization-server`, `GET /api/oauth/.well-known/protected-resource[/*]` - discovery metadata (public)
+- `GET /api/oauth/authorize`, `POST /api/oauth/token`, `POST /api/oauth/register`, `POST /api/oauth/revoke` - authorization code + PKCE, token, dynamic registration, revocation. `token`, `register`, `revoke` and `.well-known` answer CORS `*` (`OAUTH_PUBLIC_CORS_PATHS`)
+- `GET /api/oauth/requests/{id}`, `POST /api/oauth/requests/{id}/decision` - the consent page's data and the approve/deny decision (signed-in user)
+- `GET /api/oauth/grants`, `DELETE /api/oauth/grants/{id}` - the caller's connected apps (bare `@Auth()`, own grants only)
+- `GET|POST /api/admin/oauth/clients`, `PATCH|DELETE /api/admin/oauth/clients/{id}`, `POST .../{id}/rotate-secret`, `GET /api/admin/oauth/policy`, `GET /api/admin/oauth/refused-hosts`, `GET /api/admin/oauth/grants`, `DELETE /api/admin/oauth/grants/{id}` - client and grant administration (`oauth_clients:read` / `oauth_clients:write`, Admin only)
+- `GET /api/agent/v1/whoami` - the agent API's first route (`secrets:read`): `{ userId, scopes, clientId }`. An `oat_` token is accepted **only** under `/api/agent/v1`. See `docs/API.md`
+- Web pages: `/oauth/consent` (signed in, full screen), `/oauth/error` (public), settings cards `Connected apps` at `/settings/connected-apps` (no permission, shown only while the server is on) and `OAuth clients` at `/admin/settings/oauth-clients` (`oauth_clients:read`, the page that switches the server on)
+
 ### Health
 - `GET /api/health/live` - Liveness check
 - `GET /api/health/ready` - Readiness check (includes DB)
@@ -133,6 +143,8 @@ The platform settings slice serves these (E4.1); Vault's namespaces are `ui`, `f
 - `secrets:read/write/delete` - Secret access (own secrets)
 - `secrets:read_any/write_any/delete_any` - Secret access (all secrets, Admin only)
 - `secret_types:read/write/delete` - Secret type management (system types are always read-only regardless of permission)
+- `secrets:fill` - read one sensitive field of an agent-accessible secret through the agent API (org scope; `org_admin`, `contributor`, `viewer`, the same roles as `secrets:read`). Reached only by an OAuth token holding `vault:items_fill`
+- `oauth_clients:read/write` - OAuth client and grant administration (the platform identity slice, system scope, Admin only)
 - `system:factory_reset`, `orgs:offboard` - the platform user-data slice (E9.3), system scope, Admin only
 
 ## Database Tables
