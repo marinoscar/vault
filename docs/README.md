@@ -26,10 +26,12 @@ Index of every document in `docs/`, plus the "Doc map by task". Rules for assist
 | [runbooks/database-restore.md](runbooks/database-restore.md) | Whole-database backup and restore (`db-backup` slice): keys that must match, pre-flight, manual and automated restore, rollback, rehearsal | |
 | [runbooks/factory-reset.md](runbooks/factory-reset.md) | Delete a user's data and factory reset a deployment (back up first, verify, recover) | |
 | [runbooks/storage-config-migration.md](runbooks/storage-config-migration.md) | Move the S3 environment variables onto the runtime storage settings (`vault:migrate-storage-config`, boot-time import, cut-over, rollback) | |
-| [decisions/README.md](decisions/README.md), [decisions/0001-packages-first.md](decisions/0001-packages-first.md) | Architecture decision records; ADR-0001: domain code lives once in `@marinoscar/vault-*` | |
+| [decisions/README.md](decisions/README.md), [decisions/0001-packages-first.md](decisions/0001-packages-first.md), [decisions/0002-agent-access.md](decisions/0002-agent-access.md) | Architecture decision records; ADR-0001: domain code lives once in `@marinoscar/vault-*`; ADR-0002: agent access (REST for runtimes, no plaintext over MCP, per-secret opt-in, origin binding) | |
 | [PACKAGES.md](PACKAGES.md) | The `vault-contract` and `vault-db` packages: layout, build, tests, `vault.lock`, versioning plan | |
 | [runbooks/release-vault-packages.md](runbooks/release-vault-packages.md) | Release the `@marinoscar/vault-*` packages: changesets, the `next` dist-tag, OIDC trusted publishing, owner setup, dry run, rollback | |
 | [runbooks/vault-domain-migration.md](runbooks/vault-domain-migration.md) | Author a domain migration (`vault-db promote`), install the domain into a new host, fix a failing `vault-db check` | |
+| [runbooks/agent-access.md](runbooks/agent-access.md) | Agent access: enable the OAuth server and the kill switch, register an agent runtime, connect Claude, ChatGPT, Claude Code and MCP Inspector, open a login to agents, read activity, revoke an app, turn it off, troubleshooting | |
+| [agent-credential-api.md](agent-credential-api.md) | Guide for agent-runtime authors: OAuth flow, every `/api/agent/v1` route, origin rules, errors, rate limits, how to hold a value | |
 | [platform-adoption/drift-baseline.md](platform-adoption/drift-baseline.md) | Frozen generated drift report (start of the program) | |
 | [platform-adoption/drift-final.md](platform-adoption/drift-final.md) | Frozen drift report at close-out (E11.3) with remaining drift classified | |
 | [specs/ux-refresh.md](specs/ux-refresh.md) | UX spec for E10: destinations, shell, brand, settings hub, datatable, Home | |
@@ -52,7 +54,8 @@ Index of every document in `docs/`, plus the "Doc map by task". Rules for assist
 | Change navigation, theme or the UI shell | specs/ux-refresh.md, `apps/web/AGENTS.md` |
 | Add a background job | `.claude/skills/add-job-type/SKILL.md` (from E5) |
 | Add a notification or email | `.claude/skills/add-notification/SKILL.md` (from E7) |
-| Work on agent (OAuth) access | SECURITY-ARCHITECTURE.md §16, API.md "Agent API", DOMAIN-REFERENCE.md (OAuth server and agent API); operator runbook in EnterpriseAppBase `docs/runbooks/oauth-server.md` |
+| Work on agent (OAuth, MCP) access | decisions/0002-agent-access.md, SECURITY-ARCHITECTURE.md §16 (threat model), API.md "Agent API" and "MCP", DOMAIN-REFERENCE.md (OAuth server and agent API), SECRETS.md (Agent access) |
+| Operate agent access, connect a client, or build an agent runtime | runbooks/agent-access.md, agent-credential-api.md; platform runbook in EnterpriseAppBase `docs/runbooks/oauth-server.md` |
 | Add a CLI command | `apps/cli/AGENTS.md`, apps/cli/README.md |
 | Run tests | TESTING.md, `apps/api/AGENTS.md`, `apps/web/AGENTS.md` |
 | Deploy | infra/deploy/DEPLOY.md, DEV-VPS-SETUP.md |

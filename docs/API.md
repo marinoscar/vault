@@ -2065,6 +2065,8 @@ All require `system_settings:read` unless noted; served by the platform (`Platfo
 
 The `agent` OAuth protected resource (E14.2, [#174](https://github.com/marinoscar/vault/issues/174); credential routes E14.6, [#178](https://github.com/marinoscar/vault/issues/178)): every route under `/api/agent/v1` accepts an `oat_` OAuth access token, and an `oat_` token is **refused on every other route**. Off until an administrator enables the OAuth server. Scopes and design: [SECURITY-ARCHITECTURE.md §16](SECURITY-ARCHITECTURE.md#16-oauth-server-agent-access). The OAuth endpoints themselves (`/api/oauth/*`, `/api/admin/oauth/*`) are the platform's: see the live reference at `/api/docs` and the [endpoint map](DOMAIN-REFERENCE.md#oauth-server-and-agent-api-e142-174).
 
+Guide for runtime authors (OAuth flow, origin rules, how to hold a value): [agent-credential-api.md](agent-credential-api.md). Operator steps: [runbooks/agent-access.md](runbooks/agent-access.md). Decision: [ADR-0002](decisions/0002-agent-access.md).
+
 The wire shapes are the provider contract an agent runtime codes against: `@marinoscar/vault-contract/agent` (`@stability experimental`); the version is in the path (`/v1`).
 
 **Rules for every route**
