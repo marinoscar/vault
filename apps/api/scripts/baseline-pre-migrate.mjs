@@ -21,10 +21,18 @@
  * prisma/platform.lock is never opened for writing while the gate runs, so a
  * crash cannot leave it stripped.
  *
+ * The same copy also drops every `rawSqlIndexes` entry except
+ * `secret_versions_current_unique`: indexes created by LATER app migrations
+ * (for example `secrets_origins_gin_idx`, #176) do not exist before
+ * `prisma:migrate`, and the baseline refuses with INDEX_MISSING for each listed
+ * one. `ORIGINAL_RAW_INDEXES` must therefore list only indexes created by the
+ * seven original migrations; never add an app-migration index to it. The
+ * post-migrate `db:baseline` and `db:drift` still assert every listed index.
+ *
  * `--apply` (rehearsals only; production does not run it, the lock ships in the
  * image) rewrites the lock it was given, i.e. the temporary copy. When the run
  * succeeds and changed that copy, the new lock is written back to the real
- * prisma/platform.lock with the original `rlsPolicies` merged in again.
+ * prisma/platform.lock with the original `rlsPolicies` and the stripped `rawSqlIndexes` merged in again.
  *
  * Exit code: the command's.
  */
@@ -42,6 +50,11 @@ const realLock = JSON.parse(realLockText);
 
 const stripped = { ...realLock };
 delete stripped.rlsPolicies;
+// Raw-SQL indexes created by an app migration (anything after the seven originals) do not exist
+// before `prisma:migrate`; the baseline asserts every listed one (INDEX_MISSING), so the gate ignores them.
+const ORIGINAL_RAW_INDEXES = new Set(['secret_versions_current_unique']);
+const lateIndexes = (realLock.rawSqlIndexes ?? []).filter((i) => !ORIGINAL_RAW_INDEXES.has(i.name));
+if (realLock.rawSqlIndexes) stripped.rawSqlIndexes = realLock.rawSqlIndexes.filter((i) => ORIGINAL_RAW_INDEXES.has(i.name));
 const strippedText = JSON.stringify(stripped, null, 2) + '\n';
 
 // Inside apps/api (removed in `finally`) so `npx prisma` still resolves the hoisted node_modules.
@@ -73,7 +86,12 @@ try {
   if (code === 0 && existsSync(tmpLockPath)) {
     const after = readFileSync(tmpLockPath, 'utf8');
     if (after !== strippedText) {
-      const merged = { ...JSON.parse(after), ...(realLock.rlsPolicies ? { rlsPolicies: realLock.rlsPolicies } : {}) };
+      const parsed = JSON.parse(after);
+      const merged = {
+        ...parsed,
+        ...(realLock.rlsPolicies ? { rlsPolicies: realLock.rlsPolicies } : {}),
+        ...(lateIndexes.length ? { rawSqlIndexes: [...(parsed.rawSqlIndexes ?? []), ...lateIndexes].sort((a, b) => a.name.localeCompare(b.name)) } : {}),
+      };
       const keys = Object.keys(merged).sort();
       writeFileSync(realLockPath, JSON.stringify(Object.fromEntries(keys.map((k) => [k, merged[k]])), null, 2) + '\n');
       console.error('baseline-pre-migrate: platform.lock was rewritten by --apply; rlsPolicies merged back.');

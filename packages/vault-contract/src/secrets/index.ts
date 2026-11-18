@@ -192,3 +192,4 @@ export const attachmentResponseSchema = z.object({
 
 /** @stability experimental */
 export type AttachmentResponse = z.infer<typeof attachmentResponseSchema>;
+export * from './origins.js';

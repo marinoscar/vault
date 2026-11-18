@@ -22,6 +22,7 @@ import { SecretTypesController } from './secret-types/secret-types.controller';
 import { SecretTypesService } from './secret-types/secret-types.service';
 import { CardSummaryService } from './secrets/card-summary.service';
 import { SecretsExportService } from './secrets/export/secrets-export.service';
+import { OriginsBackfillBootstrap, OriginsBackfillHandler } from './secrets/jobs/origins-backfill.handler';
 import { SecretsController } from './secrets/secrets.controller';
 import { SecretsService } from './secrets/secrets.service';
 import {
@@ -174,6 +175,8 @@ export class VaultApiModule {
         UserBackupRunHandler,
         CardExpiryScanHandler,
         CardExpiryTask,
+        OriginsBackfillHandler,
+        OriginsBackfillBootstrap,
       ],
       exports: [
         ...TOKENS.filter(([key]) => options.bindings[key]).map(([, token]) => token),

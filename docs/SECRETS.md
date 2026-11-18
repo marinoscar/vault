@@ -260,6 +260,16 @@ Agent access is a per-secret opt-in that decides whether an AI agent (an OAuth c
 | Where it shows | List and detail responses carry `agentAccess` and `agentAccessChangedAt`; the list takes `?agentAccess=fill\|none`. The web form has the switch "Allow agents to use this login" on Credential secrets, and the list shows an "Agents" chip and an Agent access filter |
 | Consumers | The agent API (E14.6) and the MCP tools (E14.8) reach only secrets with `agentAccess = fill` |
 
+## Credential origins
+
+A `Credential` is found by website through `secrets.origins` (`text[] NOT NULL DEFAULT '{}'`, GIN index `secrets_origins_gin_idx`), so a lookup never decrypts a secret.
+
+- **Trade-off:** the origins become plaintext metadata, like the secret's `name`. Only `scheme://host[:port]` is stored, never a path, query, fragment or userinfo, and never another field of the payload.
+- **Source:** the `url` field plus each entry of `additional_urls` (separated by whitespace, commas or semicolons, `required: false`; labelled "Additional URLs (space or comma separated)" because the field catalog has no multi-line type or help text), through `originsFromCredential` of `@marinoscar/vault-contract/secrets`: lowercase, IDN as punycode, default ports dropped, `https` only (plus `http` for `localhost`, `127.0.0.1`, `[::1]`), deduplicated, sorted, at most 20.
+- **Write path:** create, update, rollback and renew recompute the column from the decrypted payload in the same transaction as the new version; removing the URLs clears it. Other secret types keep `{}`.
+- **Matching:** `matchOrigin` returns `exact` (equal origins) or `site` (same registrable domain, Public Suffix List via `tldts`, private suffixes such as `github.io` count as suffixes). `SecretsService.findCredentialsByOrigin(userId, origin)` returns the caller's `agentAccess = fill` Credentials: exact through the GIN index (`origins @> ARRAY[...]`), site candidates through a `LIKE` on the registrable domain verified in JS. Fill requires `exact` unless the owner opts a secret into site matching (a later issue).
+- **Backfill:** the server-only job `vault.secrets.origins.backfill` (batches of 200, idempotent, decrypts the current version) fills rows that predate the column. It is queued on boot until a run has recorded the audit action `vault.secrets.origins_backfilled`; the queue's dedup key collapses concurrent boots.
+
 ## Card expiry notifications
 
 A daily tick (`CardExpiryTask`, 05:37 UTC, enqueue-only) queues the server-only job `vault.cards.expiry_scan`. The job reads the current version of every Card secret, decrypts it with `VAULT_ENCRYPTION_KEY` **in memory**, keeps only `exp_month` and `exp_year` (a two-digit year is read as 20YY) and tells the owner through the `vault.card_expiring` event:
