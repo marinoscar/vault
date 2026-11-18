@@ -38,6 +38,8 @@ const TAG_GROUPS: AppOpenApiTagGroup[] = [
       { name: 'Roles', description: 'The role catalogue and the permissions each role grants.' },
       { name: 'Organizations', description: 'Organization administration for the deployment (the system view).' },
       { name: 'Organization Settings', description: 'Settings a single organization controls within the limits the deployment sets.' },
+      { name: 'OAuth server', description: 'The OAuth 2.1 authorization server: discovery metadata, authorize, token, registration, revocation, consent and the caller\'s Connected apps. Off until an administrator enables it.' },
+      { name: 'OAuth clients', description: 'OAuth server administration: registered clients, the client trust policy, refused hosts and every user\'s grants.' },
     ],
   },
   {
@@ -48,6 +50,7 @@ const TAG_GROUPS: AppOpenApiTagGroup[] = [
       { name: 'Media', description: 'Media folders and the files in them.' },
       { name: 'Backups', description: 'Encrypted secret backups: the administrator schedule and runs, and the caller\'s own "My backups". Archive passwords are write-only.' },
       { name: 'Exports', description: 'Platform data exports (`user-data` and `org-data`): sources, requests, status and signed downloads.' },
+      { name: 'Agent', description: 'The agent API (`/api/agent/v1`), the OAuth protected resource agents call with an `oat_` token scoped to `vault:items_*`. Only secrets their owner opened to agents are reachable.' },
     ],
   },
   {
