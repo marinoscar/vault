@@ -9,6 +9,7 @@ import {
   ForbiddenException,
   BadRequestException,
   ConflictException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 
 
@@ -90,6 +91,19 @@ const CARD_IMAGE_MIME_TYPES: readonly string[] = [
 interface CarryForwardExclusions {
   roles: ReadonlySet<string>;
   storageObjectIds: ReadonlySet<string>;
+}
+
+/** The shape `assertAgentAccessible` reads. */
+export interface AgentAccessCandidate {
+  agentAccess?: string | null;
+  type?: { name?: string | null; isSystem?: boolean | null } | null;
+}
+
+/** Only the `Credential` system secret type may be opened to agents. */
+export function isAgentAccessibleType(
+  type: { name?: string | null; isSystem?: boolean | null } | null | undefined,
+): boolean {
+  return !!type && type.isSystem === true && type.name === 'Credential';
 }
 
 @Injectable()
@@ -853,7 +867,7 @@ export class SecretsService {
     userId: string,
     userPermissions: string[],
   ) {
-    const { page, pageSize, typeId, search, sortBy, sortOrder } = query;
+    const { page, pageSize, typeId, search, agentAccess, sortBy, sortOrder } = query;
 
     const canReadAny = userPermissions.includes(PERMISSIONS.SECRETS_READ_ANY);
 
@@ -861,6 +875,7 @@ export class SecretsService {
     const where: any = {
       ...(canReadAny ? {} : { createdById: userId }),
       ...(typeId ? { typeId } : {}),
+      ...(agentAccess ? { agentAccess } : {}),
       ...(search
         ? { name: { contains: search, mode: 'insensitive' as const } }
         : {}),
@@ -1080,6 +1095,75 @@ export class SecretsService {
 
     // Return with decrypted current data
     return this.findOne(id, userId, userPermissions);
+  }
+
+  /**
+   * Allow (`fill`) or forbid (`none`) agents to use a secret. Authorization
+   * mirrors `update`. Only a `Credential` system type may be `fill`. Stamps
+   * `agentAccessChangedAt` when the value changes. Audits ids and values only.
+   */
+  async updateAgentAccess(
+    id: string,
+    agentAccess: 'none' | 'fill',
+    userId: string,
+    userPermissions: string[],
+  ) {
+    const existing = await this.getSecretWithAuthCheck(
+      id,
+      userId,
+      PERMISSIONS.SECRETS_WRITE,
+      userPermissions,
+    );
+
+    if (agentAccess === 'fill' && !isAgentAccessibleType(existing.type)) {
+      throw new UnprocessableEntityException({
+        code: 'AGENT_ACCESS_UNSUPPORTED_TYPE',
+        message: 'Only a Credential secret can be opened to agents',
+      });
+    }
+
+    const from = (existing as { agentAccess?: string }).agentAccess ?? 'none';
+
+    if (from !== agentAccess) {
+      await runInDefaultOrg(this.prisma, async (tx: any) =>
+        tx.secret.update({
+          where: { id },
+          data: { agentAccess, agentAccessChangedAt: new Date() },
+        }),
+      );
+
+      await this.createAuditEvent(userId, 'secrets.agent_access.update', id, {
+        secretId: id,
+        from,
+        to: agentAccess,
+      });
+    }
+
+    return this.findOne(id, userId, userPermissions);
+  }
+
+  /**
+   * The secret `id` of `userId` when agents may use it, else `null`. A missing
+   * secret, someone else's secret, `agentAccess: none` and a non-Credential type
+   * are indistinguishable, so nothing leaks. For the agent API (fill, listing).
+   */
+  async findAgentAccessibleSecret(userId: string, id: string) {
+    const secret = await this.prisma.secret.findFirst({
+      where: { id, createdById: userId, agentAccess: 'fill' },
+      include: { type: true },
+    });
+    if (!secret || !isAgentAccessibleType(secret.type)) return null;
+    return secret;
+  }
+
+  /**
+   * Throws 404 unless `secret` is open to agents (`fill` on a Credential).
+   * The same 404 as a missing secret.
+   */
+  assertAgentAccessible(secret: AgentAccessCandidate | null | undefined): void {
+    if (!secret || secret.agentAccess !== 'fill' || !isAgentAccessibleType(secret.type)) {
+      throw new NotFoundException('Secret not found');
+    }
   }
 
   /**

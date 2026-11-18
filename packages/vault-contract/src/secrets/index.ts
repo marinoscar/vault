@@ -20,6 +20,40 @@ export const attachmentRoleSchema = z.enum(['card_front', 'card_back']);
 /** @stability experimental */
 export type AttachmentRole = z.infer<typeof attachmentRoleSchema>;
 
+/**
+ * Whether agents (OAuth clients on the `agent` resource) may use a secret:
+ * `none` (default) or `fill` (an agent may have the fabric type it into a
+ * matching site, never read it). Only the `Credential` system type may be `fill`.
+ *
+ * @stability experimental
+ */
+export const secretAgentAccessSchema = z.enum(['none', 'fill']);
+
+/** @stability experimental */
+export type SecretAgentAccess = z.infer<typeof secretAgentAccessSchema>;
+
+/** Body of `PATCH /api/secrets/:id/agent-access`. @stability experimental */
+export const updateAgentAccessSchema = z.object({
+  agentAccess: secretAgentAccessSchema,
+});
+
+/** @stability experimental */
+export type UpdateAgentAccess = z.infer<typeof updateAgentAccessSchema>;
+
+/**
+ * The agent-access fields every secret list item and detail carries.
+ * `agentAccessChangedAt` is an ISO string, or null until first changed.
+ *
+ * @stability experimental
+ */
+export const secretAgentAccessFieldsSchema = z.object({
+  agentAccess: secretAgentAccessSchema,
+  agentAccessChangedAt: z.string().nullable(),
+});
+
+/** @stability experimental */
+export type SecretAgentAccessFields = z.infer<typeof secretAgentAccessFieldsSchema>;
+
 /** Body of `POST /api/secrets`. @stability experimental */
 export const createSecretSchema = z.object({
   name: z.string().min(1).max(255),
@@ -41,6 +75,7 @@ export const secretListQuerySchema = z.object({
   pageSize: z.coerce.number().int().positive().max(100).default(20),
   typeId: z.string().uuid().optional(),
   search: z.string().optional(),
+  agentAccess: secretAgentAccessSchema.optional(),
   sortBy: z.enum(['createdAt', 'name', 'updatedAt']).default('updatedAt'),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
 });

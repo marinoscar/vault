@@ -31,6 +31,7 @@ exports[`vault-api conformance (fake ports) exposes exactly the routes the API a
   "GET /secrets/cards/summary",
   "PATCH /media/folders/:folderId",
   "PATCH /media/folders/:folderId/files/:fileId",
+  "PATCH /secrets/:id/agent-access",
   "POST /admin/backups/export",
   "POST /admin/backups/run",
   "POST /backups/me",
