@@ -175,6 +175,8 @@ export const SYSTEM_SECRET_TYPES: SystemSecretType[] = [
       { name: 'notes', label: 'Notes', type: 'string', required: false, sensitive: false },
       // Appended (add-only rule). Separated by whitespace, commas or semicolons (the catalog has no multi-line type or help text); feeds `secrets.origins` (see originsFromCredential).
       { name: 'additional_urls', label: 'Additional URLs (space or comma separated)', type: 'string', required: false, sensitive: false },
+      // Appended (add-only rule). An otpauth://totp URI or a bare base32 seed; normalized to the canonical URI on save (see normalizeTotpSecret).
+      { name: 'totp', label: 'Authenticator key (TOTP)', type: 'string', required: false, sensitive: true },
     ],
     allowAttachments: false,
   },

@@ -14,7 +14,15 @@ import {
 
 
 
-import { originsFromCredential, matchOrigin, normalizeOrigin, registrableDomainOfOrigin } from '@marinoscar/vault-contract/secrets';
+import {
+  originsFromCredential,
+  matchOrigin,
+  normalizeOrigin,
+  normalizeTotpSecret,
+  parseTotpSecret,
+  registrableDomainOfOrigin,
+} from '@marinoscar/vault-contract/secrets';
+import { generateTotp, TotpCode } from './totp';
 import { defaultOrgClient, runInDefaultOrg } from '../core/default-org';
 
 
@@ -238,6 +246,33 @@ export class SecretsService {
         details: { errors },
       });
     }
+  }
+
+  /**
+   * Validate `data` against the type's fields and return it with the Credential `totp` value
+   * normalized to the canonical otpauth URI. An invalid `totp` is a 400 with a field error.
+   * Other types (and a custom type that happens to have a `totp` field) are returned unchanged.
+   */
+  private prepareData(
+    type: { name?: string | null; isSystem?: boolean | null; fields: unknown },
+    data: Record<string, unknown>,
+  ): Record<string, unknown> {
+    this.validateDataAgainstType(data, type.fields as FieldDefinition[]);
+    if (!isAgentAccessibleType(type)) return data;
+    const raw = data.totp;
+    if (typeof raw !== 'string' || raw.trim() === '') return data;
+    const canonical = normalizeTotpSecret(raw);
+    if (!canonical) {
+      throw new BadRequestException({
+        message: 'Secret data validation failed',
+        details: {
+          errors: [
+            'Field "totp" must be an otpauth://totp URI or a base32 secret (SHA1, SHA256 or SHA512; 6 to 8 digits; 15 to 120 second period)',
+          ],
+        },
+      });
+    }
+    return { ...data, totp: canonical };
   }
 
   /**
@@ -825,8 +860,7 @@ export class SecretsService {
       throw new NotFoundException('Secret type not found');
     }
 
-    const fields = secretType.fields as unknown as FieldDefinition[];
-    this.validateDataAgainstType(dto.data as Record<string, unknown>, fields);
+    const data = this.prepareData(secretType, dto.data as Record<string, unknown>);
 
     // Check name uniqueness per user
     const existing = await this.prisma.secret.findFirst({
@@ -837,10 +871,10 @@ export class SecretsService {
     }
 
     // Encrypt the data
-    const plaintext = JSON.stringify(dto.data);
+    const plaintext = JSON.stringify(data);
     const { ciphertext, iv, authTag } = this.crypto.encrypt(plaintext);
 
-    const origins = computeSecretOrigins(secretType, dto.data as Record<string, unknown>);
+    const origins = computeSecretOrigins(secretType, data);
 
     // Create secret + first version in a transaction
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -884,7 +918,7 @@ export class SecretsService {
     // Return with decrypted values attached
     return {
       ...secret,
-      values: dto.data,
+      values: data,
     };
   }
 
@@ -1077,12 +1111,12 @@ export class SecretsService {
     }
 
     let newEncrypted: { ciphertext: string; iv: string; authTag: string } | null = null;
+    let newData: Record<string, unknown> | undefined;
 
     if (dto.data !== undefined) {
-      const fields = existingSecret.type.fields as unknown as FieldDefinition[];
-      this.validateDataAgainstType(dto.data as Record<string, unknown>, fields);
+      newData = this.prepareData(existingSecret.type, dto.data as Record<string, unknown>);
 
-      const plaintext = JSON.stringify(dto.data);
+      const plaintext = JSON.stringify(newData);
       newEncrypted = this.crypto.encrypt(plaintext);
     }
 
@@ -1107,7 +1141,7 @@ export class SecretsService {
           secretId: id,
           encrypted: newEncrypted,
           userId,
-          origins: computeSecretOrigins(existingSecret.type, dto.data as Record<string, unknown>),
+          origins: computeSecretOrigins(existingSecret.type, newData),
         });
         carriedAttachments = newVersion.carriedAttachments;
       }
@@ -1172,6 +1206,60 @@ export class SecretsService {
     }
 
     return this.findOne(id, userId, userPermissions);
+  }
+
+  /**
+   * Whether `values` (the decrypted current data of a secret of `type`) carry a usable TOTP seed:
+   * a Credential with a non-empty `totp` that parses. Pure; no I/O. Callers holding only list
+   * rows cannot ask this (lists are not decrypted).
+   */
+  hasTotp(
+    type: { name?: string | null; isSystem?: boolean | null } | null | undefined,
+    values: Record<string, unknown> | null | undefined,
+  ): boolean {
+    if (!isAgentAccessibleType(type)) return false;
+    const raw = values?.totp;
+    return typeof raw === 'string' && raw.trim() !== '' && parseTotpSecret(raw) !== null;
+  }
+
+  /**
+   * The current TOTP code of a Credential, computed server-side from its stored seed. The seed
+   * is never returned. 404 (the same message as a missing secret) when the secret is missing,
+   * is not a Credential, or has no usable `totp`.
+   *
+   * No authorization and no audit: the caller has already decided the actor may use the secret
+   * (the route checks `secrets:read` and ownership; the agent API checks `agentAccess: fill`)
+   * and audits its own action. Pass the secret row (with `type`) or its id.
+   */
+  async generateTotpForSecret(
+    secretOrId: string | { id: string; type?: { name?: string | null; isSystem?: boolean | null } | null },
+    nowMs: number = Date.now(),
+  ): Promise<TotpCode> {
+    const id = typeof secretOrId === 'string' ? secretOrId : secretOrId.id;
+    const row = await this.prisma.secret.findUnique({
+      where: { id },
+      include: { type: true, versions: { where: { isCurrent: true } } },
+    });
+    const version = row?.versions?.[0];
+    if (!row || !version || !isAgentAccessibleType(row.type)) {
+      throw new NotFoundException('Secret not found');
+    }
+    const raw = this.decryptVersionData(version).totp;
+    const parsed = typeof raw === 'string' ? parseTotpSecret(raw) : null;
+    if (!parsed) throw new NotFoundException('Secret not found');
+    return generateTotp(parsed, nowMs);
+  }
+
+  /**
+   * `POST /api/secrets/:id/totp`: authorize like `findOne` (`secrets:read`, owner or
+   * `secrets:read_any`), return the current code and audit `secret.totp.read` (secret id only;
+   * never the code or the seed).
+   */
+  async readTotp(id: string, userId: string, userPermissions: string[]): Promise<TotpCode> {
+    await this.getSecretWithAuthCheck(id, userId, PERMISSIONS.SECRETS_READ, userPermissions);
+    const result = await this.generateTotpForSecret(id);
+    await this.createAuditEvent(userId, 'secret.totp.read', id, { secretId: id });
+    return result;
   }
 
   /**
@@ -1519,8 +1607,7 @@ export class SecretsService {
       userPermissions,
     );
 
-    const fields = secret.type.fields as unknown as FieldDefinition[];
-    this.validateDataAgainstType(dto.data as Record<string, unknown>, fields);
+    const renewData = this.prepareData(secret.type, dto.data as Record<string, unknown>);
 
     const replacements = dto.attachments ?? [];
 
@@ -1570,7 +1657,7 @@ export class SecretsService {
         `roles: ${[...replacedRoles].join(', ') || 'none'})`,
     );
 
-    const encrypted = this.crypto.encrypt(JSON.stringify(dto.data));
+    const encrypted = this.crypto.encrypt(JSON.stringify(renewData));
 
     let newVersion: {
       id: string;
@@ -1586,7 +1673,7 @@ export class SecretsService {
           secretId,
           encrypted,
           userId,
-          origins: computeSecretOrigins(secret.type, dto.data as Record<string, unknown>),
+          origins: computeSecretOrigins(secret.type, renewData),
           excludeFromCarryForward: {
             roles: replacedRoles,
             storageObjectIds: replacedObjectIds,

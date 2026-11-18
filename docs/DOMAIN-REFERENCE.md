@@ -72,6 +72,7 @@ The platform settings slice serves these (E4.1); Vault's namespaces are `ui`, `f
 - `GET /api/secrets/{id}/versions/{versionId}` - Get a specific version, decrypted, with that version's attachments
 - `POST /api/secrets/{id}/versions/{versionId}/rollback` - Rollback to a version (restores its attachment set)
 - `PATCH /api/secrets/{id}/agent-access` - Allow (`fill`) or forbid (`none`) agents to use a Credential secret (`secrets:write`; an `oat_` token is refused with 403; non-Credential `fill` is 422 `AGENT_ACCESS_UNSUPPORTED_TYPE`); audited `secret.agent_access.update`. `GET /api/secrets` takes `?agentAccess=fill|none`. See `docs/SECRETS.md#agent-access`
+- `POST /api/secrets/{id}/totp` - Current TOTP code of a Credential with a `totp` field (`secrets:read`; `{ code, expiresAt, period }`, `Cache-Control: no-store`, seed never returned; 404 when no `totp`); audited `secret.totp.read` (`{ secretId }`). See `docs/SECRETS.md#authenticator-codes-totp`
 - `POST /api/secrets/export` - Download a password-protected (AES-256 zip) backup of the caller's own secrets (`secrets:read`); body `{ password (6-256 chars), includeSecrets? (default true), includeAttachments? (true), includeVersions? (false), includeMedia? (false) }`; `includeSystem` is a 400; response is the raw zip (not wrapped in `{data}`; headers `X-Vault-Export-Secrets`, `-Attachments`, `-Media-Files`), audited as `secrets.export`. 400 messages for the content rules are in `docs/API.md` (Backup content validation). See `docs/SECRETS.md`
 - `POST /api/secrets/{id}/renew` - Renew with new field values, swapping only the attachment roles supplied (e.g. reissued card front/back)
 - `POST /api/secrets/{id}/attachments` - Link a storage object to the secret's current version
@@ -156,7 +157,7 @@ Off until an administrator enables it at `/admin/settings/oauth-clients`. Served
 - `user_roles` - User-to-role assignments
 - `system_settings` - Global app settings (JSONB); as of the card epic, includes an `ai` block that, since E8.1, is the platform AI policy (enabled, key policy, providers, caps) plus Vault's `cardExtractModel`. The OpenAI API key is NOT in it: it is the platform's write-only deployment key (`credentials` table, purpose `ai`, name `openai`, `SECRETS_ENCRYPTION_KEY`); the old `{ enabled, provider, model, maxCallsPerUserPerDay }` block is rewritten by `npm run vault:migrate-ai-platform`, a legacy `ai.apiKey` block by `npm run vault:migrate-ai-key`. The platform AI tables (`ai_models`, `ai_usage_events`, `ai_runs`, `user_ai_keys`) hold the catalogue, usage and runs
 - `user_settings` - Per-user settings (JSONB)
-- `audit_events` - Action audit log; also backs the AI card-extraction daily budget (counts `ai.card.extract` rows in the trailing 24h); also records `secrets.export` (backup downloads) and `secret.agent_access.update` (agent access changes) — see `docs/SECRETS.md`
+- `audit_events` - Action audit log; also backs the AI card-extraction daily budget (counts `ai.card.extract` rows in the trailing 24h); also records `secrets.export` (backup downloads) `secret.agent_access.update` (agent access changes) and `secret.totp.read` — see `docs/SECRETS.md`
 - `refresh_tokens` - JWT refresh tokens (hashed)
 - `allowed_emails` - Allowlist for access control
 - `device_codes` - Device authorization codes (RFC 8628)

@@ -4,3 +4,4 @@ export * from './export/secrets-export.types';
 export * from './secrets.controller';
 export * from './secrets.service';
 export * from './jobs';
+export * from './totp';

@@ -190,6 +190,7 @@ const ROUTES: readonly Route[] = [
   ['POST', '/api/secrets', 'secrets:write'],
   ['PUT', `/api/secrets/${ID}`, 'secrets:write'],
   ['PATCH', `/api/secrets/${ID}/agent-access`, 'secrets:write'],
+  ['POST', `/api/secrets/${ID}/totp`, 'secrets:read'],
   ['DELETE', `/api/secrets/${ID}`, 'secrets:delete'],
   ['GET', `/api/secrets/${ID}/versions`, 'secrets:read'],
   ['GET', `/api/secrets/${ID}/versions/${ID}`, 'secrets:read'],
