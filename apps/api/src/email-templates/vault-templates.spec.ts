@@ -8,8 +8,11 @@ import {
   vaultBackupFailedBrowserTemplate,
   vaultBackupSucceededBrowserTemplate,
   vaultCardExpiringBrowserTemplate,
+  vaultAgentCredentialUsedBrowserTemplate,
 } from '../notifications-registry/vault.notifications';
 import type {
+  VaultAgentCredentialChangedNotificationData,
+  VaultAgentNewAppNotificationData,
   VaultBackupNotificationData,
   VaultCardExpiringNotificationData,
 } from '@marinoscar/vault-api/core';
@@ -39,14 +42,22 @@ const expiring = (over: Partial<VaultCardExpiringNotificationData> = {}): VaultC
 });
 
 describe('Vault notification events and templates (issue #86)', () => {
-  it('registers the three events with email and browser, none mandatory, success off by default', () => {
+  it('registers the events with email and browser (the agent use event: bell only), none mandatory, success off by default', () => {
     const byKey = Object.fromEntries(VAULT_NOTIFICATIONS.map((n) => [n.event.key, n.event]));
-    expect(Object.keys(byKey)).toEqual(['vault.backup_succeeded', 'vault.backup_failed', 'vault.card_expiring']);
+    expect(Object.keys(byKey)).toEqual([
+      'vault.backup_succeeded',
+      'vault.backup_failed',
+      'vault.card_expiring',
+      'vault.agent_credential_changed',
+      'vault.agent_new_app',
+      'vault.agent_credential_used',
+    ]);
     for (const event of Object.values(byKey)) {
-      expect(event.channels).toEqual(['email', 'browser']);
+      expect(event.channels).toEqual(event.key === 'vault.agent_credential_used' ? ['browser'] : ['email', 'browser']);
       expect(event.mandatory).toBeUndefined();
       expect(findEvent(event.key)).toBeDefined();
     }
+    expect(byKey['vault.agent_credential_used'].kind).toBe('counted');
     expect(byKey['vault.backup_succeeded'].defaultEnabled).toBe(false);
     expect(byKey['vault.backup_failed'].defaultEnabled).toBe(true);
     expect(byKey['vault.card_expiring'].defaultEnabled).toBe(true);
@@ -114,6 +125,52 @@ describe('Vault notification events and templates (issue #86)', () => {
       expect(email.html).toContain('https://vault.example.test/secrets/8d1c1f0e-1111-4222-8333-444455556666');
       expect(email.html).not.toContain('<b>Mine</b>');
       expect(vaultCardExpiringBrowserTemplate(expiring()).link).toBe('/secrets/8d1c1f0e-1111-4222-8333-444455556666');
+    });
+  });
+
+  describe('agent notifications (E14.7)', () => {
+    const SECRET = '8d1c1f0e-1111-4222-8333-444455556666';
+    const changed = (
+      over: Partial<VaultAgentCredentialChangedNotificationData> = {},
+    ): VaultAgentCredentialChangedNotificationData => ({
+      change: 'created',
+      clientName: 'Agent App A',
+      credentialKind: 'oauth',
+      secretId: SECRET,
+      secretName: 'Shop login',
+      origin: 'https://shop.example.test',
+      appUrl: 'https://vault.example.test',
+      ...over,
+    });
+    const newApp = (over: Partial<VaultAgentNewAppNotificationData> = {}): VaultAgentNewAppNotificationData => ({
+      clientName: 'Agent App A',
+      credentialKind: 'oauth',
+      secretId: SECRET,
+      secretName: 'Shop login',
+      origin: 'https://shop.example.test',
+      appUrl: 'https://vault.example.test',
+      ...over,
+    });
+
+    it('credential_changed names the app, login and website and links to the secret and the trail', () => {
+      const created = renderEmailTemplate('vault-agent-credential-changed', changed());
+      expect(created.subject).toContain('Agent App A saved the login Shop login for https://shop.example.test');
+      expect(created.html).toContain(`https://vault.example.test/secrets/${SECRET}`);
+      expect(created.html).toContain('https://vault.example.test/settings/agent-activity');
+      const rotated = renderEmailTemplate('vault-agent-credential-changed', changed({ change: 'rotated' }));
+      expect(rotated.subject).toContain('changed the password of the login Shop login');
+    });
+
+    it('new_app links to the trail and escapes the names', () => {
+      const email = renderEmailTemplate('vault-agent-new-app', newApp({ clientName: '<b>App</b>' }));
+      expect(email.html).toContain('https://vault.example.test/settings/agent-activity');
+      expect(email.html).not.toContain('<b>App</b>');
+    });
+
+    it('the bell copy of the counted use event shows the folded count', () => {
+      const base = { action: 'fill' as const, clientName: 'Agent App A', credentialKind: 'oauth' as const, secretId: SECRET, secretName: 'Shop login', origin: null };
+      expect(vaultAgentCredentialUsedBrowserTemplate(base).body).toBe('Agent App A filled Shop login.');
+      expect(vaultAgentCredentialUsedBrowserTemplate({ ...base, count: 4 }).body).toBe('Agent App A filled Shop login (4 times).');
     });
   });
 });

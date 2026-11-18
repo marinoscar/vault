@@ -6,6 +6,13 @@
 //                            the holders of `system_settings:read` for a system run)
 //   vault.backup_failed      a backup run failed (same audience; static message only)
 //   vault.card_expiring      a card's expiry month is 30, 7 or 0 days away (the owner)
+//   vault.agent_credential_changed  an app saved a login or changed a password (E14.7; email + bell)
+//   vault.agent_new_app      the first successful fill by an app (email + bell)
+//   vault.agent_credential_used     a successful fill or one-time code (bell only, counted)
+//
+// The platform's event key pattern allows exactly one dot, so the agent events are
+// `vault.agent_*`. The platform has no digest support, so there is no daily email digest of
+// credential use (follow-up: docs/SECRETS.md, "Agent activity").
 //
 // The events, their bell/push renderers and the email-template bindings live here; the
 // templates are in `email-templates/`, the call sites in `backups/backup-notifier.service.ts`
@@ -26,18 +33,29 @@
 import type { BrowserNotificationContent, NotificationRegistration } from '@marinoscar/platform-api/notifications';
 
 import {
+  VAULT_AGENT_CREDENTIAL_CHANGED_EVENT,
+  VAULT_AGENT_CREDENTIAL_CHANGED_TEMPLATE,
+  VAULT_AGENT_CREDENTIAL_USED_EVENT,
+  VAULT_AGENT_NEW_APP_EVENT,
+  VAULT_AGENT_NEW_APP_TEMPLATE,
   VAULT_BACKUP_FAILED_EVENT,
   VAULT_BACKUP_FAILED_TEMPLATE,
   VAULT_BACKUP_SUCCEEDED_EVENT,
   VAULT_BACKUP_SUCCEEDED_TEMPLATE,
   VAULT_CARD_EXPIRING_EVENT,
   VAULT_CARD_EXPIRING_TEMPLATE,
+  AGENT_ACTIVITY_SETTINGS_PATH,
+  agentCredentialChangedPhrase,
+  agentSecretLinkFor,
   backupCountsSummary,
   backupLinkFor,
   backupScopeLabel,
   cardExpiryPhrase,
   cardLinkFor,
   formatBytes,
+  type VaultAgentCredentialChangedNotificationData,
+  type VaultAgentCredentialUsedNotificationData,
+  type VaultAgentNewAppNotificationData,
   type VaultBackupNotificationData,
   type VaultCardExpiringNotificationData,
 } from '@marinoscar/vault-api/core';
@@ -66,6 +84,39 @@ export function vaultCardExpiringBrowserTemplate(data: VaultCardExpiringNotifica
     title: 'A card is expiring',
     body: `${data.secretName} ${cardExpiryPhrase(data.threshold, data.expiry)}.`,
     link: cardLinkFor(data.secretId),
+  };
+}
+
+/** Bell and push copy of `vault.agent_credential_changed`: the app, the login and the website; never a value. */
+export function vaultAgentCredentialChangedBrowserTemplate(
+  data: VaultAgentCredentialChangedNotificationData,
+): BrowserNotificationContent {
+  return {
+    title: data.change === 'created' ? 'An app saved a login' : 'An app changed a password',
+    body: `${agentCredentialChangedPhrase(data)}.`,
+    link: agentSecretLinkFor(data.secretId),
+  };
+}
+
+/** Bell and push copy of `vault.agent_new_app`. */
+export function vaultAgentNewAppBrowserTemplate(data: VaultAgentNewAppNotificationData): BrowserNotificationContent {
+  return {
+    title: 'A new app used a login',
+    body: `${data.clientName} used ${data.secretName}${data.origin ? ` on ${data.origin}` : ''} for the first time.`,
+    link: AGENT_ACTIVITY_SETTINGS_PATH,
+  };
+}
+
+/** Bell and push copy of `vault.agent_credential_used` (counted: `count` grows while the row is live). */
+export function vaultAgentCredentialUsedBrowserTemplate(
+  data: VaultAgentCredentialUsedNotificationData,
+): BrowserNotificationContent {
+  const what = data.action === 'totp' ? 'read a one-time code of' : 'filled';
+  const times = data.count && data.count > 1 ? ` (${data.count} times)` : '';
+  return {
+    title: 'An app used a login',
+    body: `${data.clientName} ${what} ${data.secretName}${data.origin ? ` on ${data.origin}` : ''}${times}.`,
+    link: AGENT_ACTIVITY_SETTINGS_PATH,
   };
 }
 
@@ -105,5 +156,41 @@ export const VAULT_NOTIFICATIONS: readonly NotificationRegistration[] = [
     },
     emailTemplate: VAULT_CARD_EXPIRING_TEMPLATE,
     browserTemplate: (data: never) => vaultCardExpiringBrowserTemplate(data),
+  },
+  {
+    event: {
+      key: VAULT_AGENT_CREDENTIAL_CHANGED_EVENT,
+      label: 'An app saved or changed a login',
+      description:
+        'Sent right away when an agent app saves a new login or changes the password of one. It names the app, the login and the website, never the password.',
+      channels: ['email', 'browser'],
+      defaultEnabled: true,
+    },
+    emailTemplate: VAULT_AGENT_CREDENTIAL_CHANGED_TEMPLATE,
+    browserTemplate: (data: never) => vaultAgentCredentialChangedBrowserTemplate(data),
+  },
+  {
+    event: {
+      key: VAULT_AGENT_NEW_APP_EVENT,
+      label: 'A new app used a login',
+      description:
+        'Sent the first time an agent app (or a personal access token) fills one of your logins. Remove the app in Connected apps if you do not recognise it.',
+      channels: ['email', 'browser'],
+      defaultEnabled: true,
+    },
+    emailTemplate: VAULT_AGENT_NEW_APP_TEMPLATE,
+    browserTemplate: (data: never) => vaultAgentNewAppBrowserTemplate(data),
+  },
+  {
+    event: {
+      key: VAULT_AGENT_CREDENTIAL_USED_EVENT,
+      label: 'An app used a login',
+      description:
+        'Shown in the bell each time an agent app fills a login or reads a one-time code; uses of the same login by the same app within an hour are folded into one entry. No email.',
+      channels: ['browser'],
+      defaultEnabled: true,
+      kind: 'counted',
+    },
+    browserTemplate: (data: never) => vaultAgentCredentialUsedBrowserTemplate(data),
   },
 ];

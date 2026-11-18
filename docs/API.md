@@ -2103,6 +2103,36 @@ Scope `vault:items_write`, permission `secrets:write`. Body `{ "name", "username
 
 Scope `vault:items_write`. Body `{ "origin", "purpose", "password" | "generate" }`. Rotates by adding a version (rollback stays possible; every other field is kept) and returns `{ "data": { "id", "version", "generatedPassword"? } }`.
 
+#### GET /agent-activity
+
+The owner's trail of what agents did with their logins (E14.7, [#179](https://github.com/marinoscar/vault/issues/179)). Permission `secrets:read`; a browser session or a personal access token. An OAuth (`oat_`) token is refused (`403 AGENT_ACTIVITY_FORBIDDEN`, and the platform's route confinement answers first), so an agent cannot read its own trail. Only the **caller's own** events are returned (`audit_events.actor_user_id` = the caller), newest first. Never a value, code, seed or password.
+
+Query: `page` (1), `pageSize` (25, max 100), `action` (`lookup`, `fill`, `totp`, `create`, `rotate` or `agent_access`), `secretId` (uuid), `clientId` (the OAuth client's id as on its grants, i.e. the `clientId` of an item), `from` and `to` (ISO 8601, inclusive). Invalid values are `400`.
+
+Response (the `{ data, meta }` envelope's own `data` is the array; `meta` is `{ page, pageSize, total }`, unlike the `{ data: { items, meta } }` of the secrets list):
+
+```json
+{
+  "data": [
+    {
+      "id": "...", "at": "2030-01-02T03:04:05.000Z",
+      "action": "fill", "result": "ok",
+      "secretId": "...", "secretName": "Shop login", "field": "password",
+      "origin": "https://shop.example.test", "purpose": "login",
+      "credentialKind": "oauth", "clientId": "...", "clientName": "Agent App A"
+    }
+  ],
+  "meta": { "page": 1, "pageSize": 25, "total": 1 }
+}
+```
+
+- `result` is `ok` or `denied`; a denial carries `reason` (`origin_mismatch`, `not_found`, `rate_limited`, `disabled`, `credential_kind`, `invalid`, `conflict`, `forbidden`, `error`).
+- `secretName` is the secret's current name (`null` when deleted or when the event names no secret, e.g. a lookup). `clientName` is the OAuth client's registered name (`null` for a PAT, an unknown client or a toggle).
+- `agent_access` is the owner's switch (`secret.agent_access.update`): `credentialKind` is `session`, `clientId` is `null` and `field` carries the **new access level** (`fill` or `none`).
+- `credentialKind`: `oauth`, `pat`, `session` or `null`.
+
+Wire shapes: `agentActivityQuerySchema`, `agentActivityItemSchema`, `agentActivityResponseSchema` of `@marinoscar/vault-contract/agent`. Revoking an app is the platform's Connected apps page (`DELETE /api/oauth/grants/{id}`): the app's next agent call answers `401`.
+
 ---
 
 ## HTTP Status Codes

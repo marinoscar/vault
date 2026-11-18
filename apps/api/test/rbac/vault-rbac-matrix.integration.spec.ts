@@ -211,6 +211,8 @@ const ROUTES: readonly Route[] = [
   ['POST', `/api/agent/v1/credentials/${ID}/totp`, 'secrets:fill'],
   ['POST', '/api/agent/v1/credentials', 'secrets:write'],
   ['POST', `/api/agent/v1/credentials/${ID}/password`, 'secrets:write'],
+  // E14.7: the owner's agent trail (session or PAT; an OAuth token is refused by the controller).
+  ['GET', '/api/agent-activity', 'secrets:read'],
   // The platform OAuth server's authenticated routes (E14.2; the protocol routes are @Public by design
   // and held by the `oauth-server` conformance suite). The consent and grants APIs need only a session.
   ['GET', `/api/oauth/requests/${ID}`, null],
@@ -523,6 +525,7 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
         'BackupsController',
         'MyBackupsController',
         'AgentController',
+        'AgentActivityController',
         'OAuthConsentController',
         'OAuthGrantsController',
         'OAuthClientsAdminController',

@@ -191,6 +191,10 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}): 
     }
 
     // ---- secrets -----------------------------------------------------------
+    // E14.7: the per-user Agent activity list (empty; no page calls it unprompted).
+    if (path === '/agent-activity' && method === 'GET') {
+      return json(route, { data: [], meta: { page: 1, pageSize: 25, total: 0 } });
+    }
     if (path === '/secrets' && method === 'GET') {
       const search = (url.searchParams.get('search') ?? '').toLowerCase();
       const typeId = url.searchParams.get('typeId');

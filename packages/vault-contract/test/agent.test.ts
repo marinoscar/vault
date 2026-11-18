@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   AGENT_ACCESS_SETTINGS_DEFAULTS,
   AGENT_ERROR_CODES,
+  agentActivityQuerySchema,
+  agentActivityItemSchema,
   agentAccessSettingsSchema,
   agentCreateCredentialRequestSchema,
   agentFillRequestSchema,
@@ -64,5 +66,22 @@ describe('agent contract', () => {
     expect(byCode.get(AGENT_ERROR_CODES.AGENT_ACCESS_DISABLED)).toBe(403);
     expect(byCode.get(AGENT_ERROR_CODES.AGENT_CREDENTIAL_REQUIRED)).toBe(403);
     expect(byCode.get(AGENT_ERROR_CODES.RATE_LIMITED)).toBe(429);
+  });
+});
+
+describe('agent activity (E14.7)', () => {
+  it('defaults the query, caps pageSize at 100 and rejects unknown actions and bad dates', () => {
+    expect(agentActivityQuerySchema.parse({})).toEqual({ page: 1, pageSize: 25 });
+    expect(agentActivityQuerySchema.safeParse({ pageSize: 101 }).success).toBe(false);
+    expect(agentActivityQuerySchema.safeParse({ action: 'agent_access' }).success).toBe(true);
+    expect(agentActivityQuerySchema.safeParse({ action: 'delete' }).success).toBe(false);
+    expect(agentActivityQuerySchema.safeParse({ from: 'yesterday' }).success).toBe(false);
+  });
+
+  it('an item has no key for a value, and AGENT_ACTIVITY_FORBIDDEN is a registered 403', () => {
+    expect(Object.keys(agentActivityItemSchema.shape).sort()).toEqual(
+      ['action', 'at', 'clientId', 'clientName', 'credentialKind', 'field', 'id', 'origin', 'purpose', 'reason', 'result', 'secretId', 'secretName'],
+    );
+    expect(new Map(VAULT_ERROR_CODES.map((d) => [d.code, d.status])).get(AGENT_ERROR_CODES.AGENT_ACTIVITY_FORBIDDEN)).toBe(403);
   });
 });

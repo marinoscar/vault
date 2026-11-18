@@ -61,6 +61,7 @@ export const VAULT_ERROR_CODES: readonly VaultErrorCodeDef[] = Object.freeze([
   { code: 'AGENT_ACCESS_DISABLED', status: 403, description: 'Agent access is switched off for this deployment.' },
   { code: 'AGENT_CREDENTIAL_REQUIRED', status: 403, description: 'The agent API accepts only an OAuth access token (oat_) or a personal access token (pat_), not a browser session.' },
   { code: 'RATE_LIMITED', status: 429, description: 'The per-minute limit of an agent API call was reached; see the Retry-After header.' },
+  { code: 'AGENT_ACTIVITY_FORBIDDEN', status: 403, description: 'The agent activity list is for the owner (a browser session or a personal access token); an OAuth access token cannot read it.' },
 
   // Card scanning. The platform's own `AI_*` codes are registered by the AI slice.
   { code: AI_ERROR_CODES.NOT_CONFIGURED, status: 503, description: 'AI card scanning is not set up (provider, model or deployment key missing).' },

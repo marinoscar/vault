@@ -18,6 +18,7 @@ import PaletteIcon from '@mui/icons-material/PaletteOutlined';
 import BackupIcon from '@mui/icons-material/BackupOutlined';
 import CategoryIcon from '@mui/icons-material/CategoryOutlined';
 import NotificationsIcon from '@mui/icons-material/NotificationsOutlined';
+import AgentIcon from '@mui/icons-material/SmartToyOutlined';
 import { dataExportSettingsPage } from '@marinoscar/platform-web/exports/ui';
 import { DANGER_ZONE_GROUP_LABEL } from '@marinoscar/platform-web/user-data/headless';
 import { dangerZoneSettingsPage } from '@marinoscar/platform-web/user-data/ui';
@@ -107,6 +108,21 @@ export const USER_SETTINGS_SECTIONS: SettingsSectionDef[] = [
         // needs user_settings:write), like Profile and Appearance. The event and channel
         // registries it draws (`GET /api/notifications/events|channels`) are bare `@Auth()`.
         permission: 'user_settings:read',
+      },
+    ],
+  },
+  {
+    // E14.7 (#179), APPENDED as a section of its own (the Danger Zone stays last): the packaged
+    // `AgentActivityPage` of @marinoscar/vault-web/agent/ui.
+    label: 'Agents',
+    cards: [
+      {
+        title: 'Agent activity',
+        description: 'Which apps used or changed your logins, on which website and why.',
+        Icon: AgentIcon,
+        path: '/settings/agent-activity',
+        // GET /api/agent-activity (agent-activity.controller.ts in @marinoscar/vault-api): secrets:read.
+        permission: 'secrets:read',
       },
     ],
   },
