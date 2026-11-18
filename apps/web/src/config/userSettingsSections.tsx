@@ -59,6 +59,10 @@ export const USER_SETTINGS_SECTIONS: SettingsSectionDef[] = [
       // the caller's own checklist from `GET /api/onboarding`, which needs only
       // `user_settings:read` (every role), so the card carries no permission.
       { ...gettingStartedSettingsPage.card, Icon: gettingStartedSettingsPage.Icon },
+      // E14.2 (#174), APPENDED: the packaged `Connected apps` card (the caller's OAuth grants). No
+      // permission (the grants routes are bare `@Auth()`, ownership-scoped); `feature: 'oauthServer'`
+      // hides it while the OAuth server is off.
+      ...identityUserSettingsSections.connectedApps,
     ],
   },
   {
