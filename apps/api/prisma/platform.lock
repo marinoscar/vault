@@ -1,4 +1,14 @@
 {
+  "appMigrations": [
+    "20260403120000_add_secrets_and_versions",
+    "20260403235813_add_media_folders",
+    "20260404000000_add_secret_name_user_unique",
+    "20260727120000_version_scoped_attachments",
+    "20261102120000_add_backup_schedules",
+    "20261102130000_add_media_folder_files",
+    "20261102140000_backup_runs_job_id",
+    "20261103090000_attachments_composite_fk_media_rls"
+  ],
   "deviations": [
     {
       "expectDiff": [
@@ -337,9 +347,27 @@
       "originId": "platform:0040_add_alerts",
       "sha256": "ec4af7e5123ecd8bb6faf3505893cb2efab4d793dae84a98d8b7f26f2dff3776",
       "since": "1.0.0"
+    },
+    {
+      "localDir": "20261118160821_notifications_state_counted",
+      "originId": "platform:0041_notifications_state_counted",
+      "sha256": "c9285347971920da5310a279351d8de8acac3bba4b281e227cb025745dafc73c",
+      "since": "1.0.0"
+    },
+    {
+      "localDir": "20261118160822_add_storage_migrations",
+      "originId": "platform:0042_add_storage_migrations",
+      "sha256": "8d37841523a5b4737379df567d5ad3feb37abb0f29dcef416cd34f20167ba181",
+      "since": "1.0.0"
+    },
+    {
+      "localDir": "20261118160823_add_oauth_server",
+      "originId": "platform:0043_add_oauth_server",
+      "sha256": "cc1c32e853e0b559f27cdd2049862f3c5d7062a65506207b20fd3c24f1147d3e",
+      "since": "1.0.0"
     }
   ],
-  "platformVersion": "1.0.0",
+  "platformVersion": "0.1.0-next.37",
   "rawSqlIndexes": [
     {
       "definition": "CREATE UNIQUE INDEX secret_versions_current_unique ON public.secret_versions USING btree (secret_id) WHERE (is_current = true)",
