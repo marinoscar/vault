@@ -205,6 +205,12 @@ const ROUTES: readonly Route[] = [
   ['POST', '/api/secrets/cards/extract', 'secrets:write'],
   // The agent API root (E14.2; the `agent` OAuth protected resource)
   ['GET', '/api/agent/v1/whoami', 'secrets:read'],
+  // E14.6: the credential routes. The scopes vault:items_read / _fill / _write narrow to exactly these permissions.
+  ['GET', '/api/agent/v1/credentials', 'secrets:read'],
+  ['POST', `/api/agent/v1/credentials/${ID}/fill`, 'secrets:fill'],
+  ['POST', `/api/agent/v1/credentials/${ID}/totp`, 'secrets:fill'],
+  ['POST', '/api/agent/v1/credentials', 'secrets:write'],
+  ['POST', `/api/agent/v1/credentials/${ID}/password`, 'secrets:write'],
   // The platform OAuth server's authenticated routes (E14.2; the protocol routes are @Public by design
   // and held by the `oauth-server` conformance suite). The consent and grants APIs need only a session.
   ['GET', `/api/oauth/requests/${ID}`, null],
@@ -619,6 +625,14 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
         // settings have AI off, so the proof of access is the AI slice's own refusal.
         expect(response.status).not.toBe(401);
         if (response.status === 403) expect(response.body?.details?.reason).toBe('AI_DISABLED');
+      } else if (allowed && path.startsWith('/api/agent/v1/')) {
+        // Past authentication and permissions the agent API's own gate answers: this matrix signs in
+        // with a browser session, which the credential routes refuse (AGENT_CREDENTIAL_REQUIRED), and
+        // whoami meets the deployment kill switch (AGENT_ACCESS_DISABLED, off by default).
+        expect(response.status).not.toBe(401);
+        if (response.status === 403) {
+          expect(['AGENT_CREDENTIAL_REQUIRED', 'AGENT_ACCESS_DISABLED']).toContain(response.body?.code);
+        }
       } else if (allowed) {
         expect([401, 403]).not.toContain(response.status);
       } else {

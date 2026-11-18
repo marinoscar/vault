@@ -14,6 +14,7 @@ Entry points (every schema and constant is in a slice; the root exports only `VA
 - `@marinoscar/vault-contract/secret-types`: field definitions, create/update/query bodies, `CARD_NETWORKS`, `CARD_KINDS`, `SYSTEM_SECRET_TYPES` (the built-in types, append-only).
 - `@marinoscar/vault-contract/backups`: content-selection rules (`BACKUP_CONTENT_*`, `contentSelectionIssues`, `resolveContentSelection`), the schedule vocabulary and validators, the user export, system export and schedule schemas, the run list query, and the backups API response types.
 - `@marinoscar/vault-contract/media`: folder and file bodies and queries.
+- `@marinoscar/vault-contract/agent`: the provider contract of the agent credential API (`/api/agent/v1`, experimental): lookup, fill, totp, create and rotate request and response schemas, `agentPurposeSchema`, the generated-password options, `AGENT_ERROR_CODES` (`ORIGIN_MISMATCH`, `AGENT_ACCESS_DISABLED`, `AGENT_CREDENTIAL_REQUIRED`, `RATE_LIMITED`), `AGENT_AUDIT_ACTIONS`, `AGENT_SCOPES` and the `agentAccess` settings schema and defaults.
 - `@marinoscar/vault-contract/errors`: `VAULT_ERROR_CODES` (code, status, description), `AI_ERROR_CODES`, `isVaultErrorCode`.
 - `@marinoscar/vault-contract/common`: `typeErrors`, the Zod 4 replacement for `required_error` / `invalid_type_error`.
 

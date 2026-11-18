@@ -134,6 +134,8 @@ describeWithDb('Vault agent OAuth (real Postgres, E14.2)', () => {
     const graph = await prisma.user.findUniqueOrThrow({ where: { id: userId }, include: PRINCIPAL_USER_INCLUDE });
     session = (await app.get(AuthService).generateFullTokens(graph as never, { orgId })).accessToken;
     secrets.push(session);
+    // `whoami` answers 403 AGENT_ACCESS_DISABLED while the deployment switch is off (E14.6).
+    await app.get(SystemSettingsService).patchSettings({ agentAccess: { enabled: true } } as never, userId);
   }, 240_000);
 
   afterAll(async () => {

@@ -179,6 +179,7 @@ describeWithDb('platform settings routes bound by Vault (real Postgres)', () => 
           includeMedia: false,
           includeSystem: false,
         },
+        agentAccess: { enabled: false, lookupPerMinute: 60, fillPerMinute: 30, totpPerMinute: 10, writePerMinute: 10 },
         version: expect.any(Number),
       });
     });

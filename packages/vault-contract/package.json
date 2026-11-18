@@ -71,6 +71,16 @@
         "default": "./dist/cjs/media/index.js"
       }
     },
+    "./agent": {
+      "import": {
+        "types": "./dist/esm/agent/index.d.ts",
+        "default": "./dist/esm/agent/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/agent/index.d.ts",
+        "default": "./dist/cjs/agent/index.js"
+      }
+    },
     "./errors": {
       "import": {
         "types": "./dist/esm/errors/index.d.ts",

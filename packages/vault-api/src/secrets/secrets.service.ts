@@ -1338,6 +1338,146 @@ export class SecretsService {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Agent API support (E14.6). No authorization and no audit of the agent action: the agent
+  // service has already decided the caller may use the secret and audits its own call.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * The decrypted current values of a secret. For the agent API only, which returns ONE field of
+   * the result and never the record. 404 when the secret has no current version.
+   */
+  async readCurrentValues(secretId: string): Promise<Record<string, unknown>> {
+    const version = await this.prisma.secretVersion.findFirst({ where: { secretId, isCurrent: true } });
+    if (!version) throw new NotFoundException('Secret not found');
+    return this.decryptVersionData(version);
+  }
+
+  /**
+   * The non-sensitive facts the agent lookup adds to a match: the `username` field, whether a usable
+   * TOTP seed exists and when the secret last changed. Decrypts each current version once and
+   * returns only these three; no sensitive field leaves this method. Ids without a Credential
+   * are absent from the map.
+   */
+  async describeAgentCredentials(
+    ids: string[],
+  ): Promise<Map<string, { username: string | null; hasTotp: boolean; updatedAt: string }>> {
+    const out = new Map<string, { username: string | null; hasTotp: boolean; updatedAt: string }>();
+    if (ids.length === 0) return out;
+    const rows = await this.prisma.secret.findMany({
+      where: { id: { in: ids } },
+      include: { type: true, versions: { where: { isCurrent: true } } },
+    });
+    for (const row of rows) {
+      const version = row.versions?.[0];
+      if (!version || !isAgentAccessibleType(row.type)) continue;
+      const values = this.decryptVersionData(version);
+      out.set(row.id, {
+        username: typeof values.username === 'string' ? values.username : null,
+        hasTotp: this.hasTotp(row.type, values),
+        updatedAt: new Date(row.updatedAt).toISOString(),
+      });
+    }
+    return out;
+  }
+
+  /**
+   * Create a Credential for the agent API: owned by `userId`, opened to agents (`agentAccess: fill`,
+   * `agentAccessChangedAt` now), origins derived from `values.url`. `values` is validated against
+   * the Credential type like any create. 409 when the user already has a secret of that name.
+   * Returns ids and origins only.
+   */
+  async createAgentCredential(
+    userId: string,
+    input: { name: string; values: Record<string, unknown> },
+  ): Promise<{ id: string; name: string; origins: string[] }> {
+    const type = await this.prisma.secretType.findFirst({ where: { name: 'Credential', isSystem: true } });
+    if (!type) throw new NotFoundException('Secret type not found');
+
+    const data = this.prepareData(type, input.values);
+
+    const existing = await this.prisma.secret.findFirst({ where: { name: input.name, createdById: userId } });
+    if (existing) throw new ConflictException(`A secret named "${input.name}" already exists`);
+
+    const { ciphertext, iv, authTag } = this.crypto.encrypt(JSON.stringify(data));
+    const origins = computeSecretOrigins(type, data) ?? [];
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const secret = await runInDefaultOrg(this.prisma, async (tx: any) => {
+      const created = await tx.secret.create({
+        data: {
+          name: input.name,
+          typeId: type.id,
+          createdById: userId,
+          origins,
+          agentAccess: 'fill',
+          agentAccessChangedAt: new Date(),
+        },
+        include: { type: true },
+      });
+      await tx.secretVersion.create({
+        data: {
+          secretId: created.id,
+          version: 1,
+          encryptedData: ciphertext,
+          iv,
+          authTag,
+          isCurrent: true,
+          createdById: userId,
+        },
+      });
+      return created;
+    });
+
+    await this.createAuditEvent(userId, 'secret.create', secret.id, {
+      name: secret.name,
+      typeId: secret.typeId,
+      viaAgent: true,
+    });
+    this.vaultMetrics?.secretCreated(secretTypeKind(secret.type ?? type));
+    this.vaultMetrics?.secretVersionCreated('create');
+
+    return { id: secret.id, name: secret.name, origins };
+  }
+
+  /**
+   * Replace the `password` of a Credential with a new version (rollback stays possible), keeping every
+   * other field and recomputing the origins. Returns the new version number. The caller has proved the
+   * secret is the user's and open to agents.
+   */
+  async rotateCredentialPassword(
+    secretId: string,
+    userId: string,
+    password: string,
+  ): Promise<{ version: number }> {
+    const secret = await this.prisma.secret.findUnique({ where: { id: secretId }, include: { type: true } });
+    if (!secret || !isAgentAccessibleType(secret.type)) throw new NotFoundException('Secret not found');
+
+    const current = await this.readCurrentValues(secretId);
+    const next = this.prepareData(secret.type, { ...current, password });
+    const encrypted = this.crypto.encrypt(JSON.stringify(next));
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const created = await runInDefaultOrg(this.prisma, async (tx: any) =>
+      this.createNewVersion(tx, {
+        secretId,
+        encrypted,
+        userId,
+        origins: computeSecretOrigins(secret.type, next),
+      }),
+    );
+
+    await this.createAuditEvent(userId, 'secret.update', secretId, {
+      name: secret.name,
+      dataChanged: true,
+      viaAgent: true,
+      carriedAttachments: created.carriedAttachments,
+    });
+    this.vaultMetrics?.secretVersionCreated('update');
+
+    return { version: created.version };
+  }
+
   /**
    * Delete a secret and all its versions (cascade handles versions/attachments).
    */

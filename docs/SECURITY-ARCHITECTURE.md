@@ -1831,7 +1831,23 @@ Since E14.2 ([#174](https://github.com/marinoscar/vault/issues/174)) Vault mount
 
 **Per-secret opt-in (E14.3, [#175](https://github.com/marinoscar/vault/issues/175)).** Scopes bound what an agent may do; the per-secret `agentAccess` flag bounds which secrets it may touch, and is the agent's least-privilege boundary. It defaults to `none` for every secret (including all pre-existing ones), only a `Credential` secret may be set to `fill`, and the agent API and MCP tools reach only secrets with `agentAccess = fill`, never the others, whatever the token's scopes. Only the owner (`secrets:write`, session credential) can change it: `PATCH /api/secrets/:id/agent-access` refuses an `oat_` token with 403, so an agent can never widen its own access. Every change is audited as `secret.agent_access.update` (`{ secretId, from, to }`). See [SECRETS.md](SECRETS.md#agent-access).
 
-`secrets:fill` (org scope, roles `org_admin`, `contributor`, `viewer`) is the permission behind `vault:items_fill`; no session-authenticated route uses it yet. Endpoints: [API.md](API.md#agent-api-oauth-protected).
+`secrets:fill` (org scope, roles `org_admin`, `contributor`, `viewer`) is the permission behind `vault:items_fill`. Endpoints: [API.md](API.md#agent-api-oauth-protected).
+
+**The agent credential API (E14.6, [#178](https://github.com/marinoscar/vault/issues/178)).** `packages/vault-api/src/agent/` (`AgentCredentialsService`) gives a runtime exactly what it needs to log in without a model ever holding the secret. Controls, in the order a call meets them:
+
+| Control | Rule |
+|---|---|
+| Credential kind | `oat_` or `pat_` only; a browser session is `403 AGENT_CREDENTIAL_REQUIRED` (the web UI's routes are the session's, the agent's are its own) |
+| Kill switch | `agentAccess.enabled`, default **off**, a deployment-wide system setting (`system_settings:write`). Off means `403 AGENT_ACCESS_DISABLED` on every agent route, `whoami` included, before any secret is read |
+| Rate limit | Per (OAuth grant or PAT, user): lookup 60, fill 30, totp 10, write 10 per minute (settings `agentAccess.*PerMinute`). `429 RATE_LIMITED` with `Retry-After`. Counted before the secret is looked up, so probing for ids is limited too. Fixed window in process memory behind `AgentRateLimiter` (one API instance today; replace the provider to share state) |
+| Opt-in and ownership | The secret must be the caller's, a system `Credential` and `agentAccess = fill` (`findAgentAccessibleSecret`); anything else is one identical `404`, so existence never leaks |
+| Origin binding | The `origin` the agent says it is on must equal one of the credential's stored origins after normalization (scheme, host and port). A same-site subdomain (lookup `matchKind: site`) is shown but never fillable. A page that is not the registered site cannot obtain the credential |
+| One field per call | `fill` returns `username` or `password` in a response of its own, never the record, never both; `totp` returns the current code, never the seed. The value travels only in that response (`Cache-Control: no-store`, `Pragma: no-cache`) |
+| Generated passwords | `crypto.randomInt` over lower, upper, digit and (optionally) symbol classes with one of each guaranteed, length 12 to 128. Returned once in the create or rotate response, then only through `fill` |
+| Audit | One `audit_events` row per call, success or refusal: `agent.credential.lookup|fill|totp|create|rotate`, `result: ok | denied:<reason>`, credential kind, OAuth client and grant (or PAT id), secret id, field, origin, purpose. **Never the value, code or password.** A successful call is audited before its response is returned: if the trail cannot be written the call fails |
+| Egress | No request or response body is logged; errors carry static text. `apps/api/test/agent/agent-api.db.spec.ts` plants a canary password and checks every log and console line, audit row and refusal body |
+
+Rotation adds a version (the previous password stays available to the owner through rollback). The step-up for a missing scope is the platform's `403 insufficient_scope` challenge.
 
 ---
 
