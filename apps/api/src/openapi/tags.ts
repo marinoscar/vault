@@ -51,6 +51,7 @@ const TAG_GROUPS: AppOpenApiTagGroup[] = [
       { name: 'Backups', description: 'Encrypted secret backups: the administrator schedule and runs, and the caller\'s own "My backups". Archive passwords are write-only.' },
       { name: 'Exports', description: 'Platform data exports (`user-data` and `org-data`): sources, requests, status and signed downloads.' },
       { name: 'Agent', description: 'The agent API (`/api/agent/v1`), the OAuth protected resource agents call with an `oat_` token scoped to `vault:items_*`. Only secrets their owner opened to agents are reachable.' },
+      { name: 'MCP', description: 'The Model Context Protocol server (`/api/mcp`) for chat assistants such as Claude and ChatGPT: five tools to find, create and update secrets, none of which ever returns a secret value. OAuth scopes `vault:mcp_read` and `vault:mcp_write`.' },
     ],
   },
   {

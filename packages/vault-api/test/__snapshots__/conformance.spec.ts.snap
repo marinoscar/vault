@@ -4,6 +4,7 @@ exports[`vault-api conformance (fake ports) exposes exactly the routes the API a
 [
   "DELETE /admin/backups/:id",
   "DELETE /backups/me/:id",
+  "DELETE /mcp",
   "DELETE /media/folders/:folderId",
   "DELETE /media/folders/:folderId/files/:fileId",
   "DELETE /secret-types/:id",
@@ -18,6 +19,7 @@ exports[`vault-api conformance (fake ports) exposes exactly the routes the API a
   "GET /backups/me",
   "GET /backups/me/:id/download",
   "GET /backups/me/config",
+  "GET /mcp",
   "GET /media/folders",
   "GET /media/folders/:folderId",
   "GET /media/folders/:folderId/files",
@@ -42,6 +44,7 @@ exports[`vault-api conformance (fake ports) exposes exactly the routes the API a
   "POST /agent/v1/credentials/:id/password",
   "POST /agent/v1/credentials/:id/totp",
   "POST /backups/me",
+  "POST /mcp",
   "POST /media/folders",
   "POST /media/folders/:folderId/files",
   "POST /secret-types",

@@ -20,6 +20,7 @@ import {
 } from '@marinoscar/platform-api/manifest';
 
 import { registerVaultAgentOAuth } from '@marinoscar/vault-api/agent';
+import { registerVaultMcpOAuth } from '@marinoscar/vault-api/mcp';
 
 import { PERMISSION_OPTIONS } from '../platform/permissions';
 import './jobs';
@@ -36,3 +37,5 @@ registerPlatformModelOwnership(VAULT_MODEL_OWNERSHIP);
 registerVaultOnboarding();
 // E14.2: the agent OAuth scopes and the `agent` protected resource (the server ships off).
 registerVaultAgentOAuth();
+// E14.8: the MCP scopes and the `mcp` protected resource (`/api/mcp`; the server ships off).
+registerVaultMcpOAuth();

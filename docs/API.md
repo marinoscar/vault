@@ -2133,6 +2133,38 @@ Response (the `{ data, meta }` envelope's own `data` is the array; `meta` is `{ 
 
 Wire shapes: `agentActivityQuerySchema`, `agentActivityItemSchema`, `agentActivityResponseSchema` of `@marinoscar/vault-contract/agent`. Revoking an app is the platform's Connected apps page (`DELETE /api/oauth/grants/{id}`): the app's next agent call answers `401`.
 
+
+### MCP (Model Context Protocol)
+
+`POST /api/mcp` (E14.8, [#180](https://github.com/marinoscar/vault/issues/180)) lets chat assistants and coding agents (Claude, ChatGPT, Claude Code, the MCP Inspector) find, create and update secrets. It is the `mcp` OAuth protected resource (scopes `vault:mcp_read` and `vault:mcp_write`; an `oat_` token is accepted only under `/api/mcp`, and an `agent` token is refused there). **No tool ever returns a secret value**: [SECURITY-ARCHITECTURE.md §16](SECURITY-ARCHITECTURE.md#mcp-no-plaintext-over-the-model-context-e148-180). Reference: the live OpenAPI at `/api/docs` (tag `MCP`).
+
+- **Transport.** JSON-RPC 2.0 over Streamable HTTP, stateless: one request per `POST`, one JSON answer (`200`), `202` with no body for a notification (`notifications/initialized`). No session and no SSE stream: `GET /api/mcp` and `DELETE /api/mcp` answer `405` with `Allow: POST`. A batch (a JSON array) is `400 -32600` on every revision. The body is the JSON-RPC message itself, **not** the `{ data }` envelope.
+- **Methods.** `initialize`, `notifications/initialized`, `ping`, `tools/list`, `tools/call`; `server/discover` on 2026-07-28. Anything else is `-32601`.
+- **Protocol versions.** 2026-07-28, 2025-11-25, 2025-06-18, 2025-03-26, 2024-11-05. The revision is the `MCP-Protocol-Version` header, else the `_meta` version, else the `initialize` params, else 2025-03-26. An `initialize` asking for an unknown revision is answered with 2025-11-25; any other unsupported revision is `400` `-32022` listing the supported ones. On 2026-07-28 `MCP-Protocol-Version`, `Mcp-Method` and (for `tools/call`) `Mcp-Name` are required and must match the body (`400` `-32020`); on every revision a header that is present must match.
+- **Origin rule.** A request with an `Origin` header that is not the application's own origin (`APP_URL`) is `403`, before authentication. Hosted clients call from their servers and send no `Origin`.
+- **Credentials.** An OAuth `oat_` token for the `mcp` resource, a personal access token (`pat_`) or a session bearer; the route needs `secrets:read`. A session or PAT carries the user's own permissions; an `oat_` token only what its scopes grant.
+- **Kill switch.** The deployment setting `agentAccess.enabled` (default off, shared with the [agent API](#agent-api-oauth-protected)). While off, **every `tools/call`** answers HTTP `403` with a JSON-RPC error `-32030` whose `data.code` is `AGENT_ACCESS_DISABLED`; `initialize` and `tools/list` keep working so a client can connect and show the tools.
+- **Step-up.** A `tools/call` whose tool needs a scope the `oat_` token lacks (a read-only token calling `create_secret`) is HTTP `403` with `WWW-Authenticate: Bearer error="insufficient_scope", scope="..."` naming `vault:mcp_write`, before anything runs, so the client starts re-consent. If the user's own account lacks the permission, it is a plain `403`.
+- **Rate limit.** 60 `tools/call` per minute per OAuth grant (or PAT) and user (the `mcp` bucket of the agent rate limiter; a constant, not a setting). Over it: `429` with `Retry-After` and a JSON-RPC error `-32029` (`data.code` `RATE_LIMITED`). `initialize`, `ping` and `tools/list` are not counted.
+- **Audit.** Every `tools/call` that reaches the pipeline writes `mcp.tool.call` with `{ tool, result, credential, clientId and grantId or patId, secretId }` (`result`: `ok`, `denied:disabled`, `denied:rate_limited`, `error:<code>`). Never an argument or a value. A successful call is audited before its result is returned: if the trail cannot be written, the result is withheld.
+- **Visibility.** The tools see only the caller's own `Credential` secrets with `agentAccess = fill` (opened by their owner, [SECRETS.md](SECRETS.md#agent-access)). A closed, foreign, card or missing secret is one identical `NOT_FOUND` tool error. A secret created through MCP is visible to MCP afterwards only if it was created with `allowAgents: true`.
+
+| Tool | Scope | Effect | Arguments | Returns |
+|---|---|---|---|---|
+| `search_secrets` | `vault:mcp_read` | read | `query?`, `type?`, `origin?`, `limit?` (1..50, default 20) | `items`: id, name, type, origins, agentAccess, version, updatedAt, `fields` (non-sensitive values only) |
+| `get_secret` | `vault:mcp_read` | read | `id` | `secret`: the same plus sensitive fields as `"[hidden]"` |
+| `list_secret_types` | `vault:mcp_read` | read | none | `types`: name, description, `canOpenToAgents`, fields (name, label, type, required, sensitive). Card types are not listed |
+| `create_secret` | `vault:mcp_write` | write | `type`, `name`, `fields`, `generatePassword?` `{ length?, symbols? }`, `allowAgents?` | id, name, type, origins, agentAccess, version, and (with `generatePassword`) `passwordGenerated: true, passwordReturned: false`. A card type is refused (`TYPE_NOT_SUPPORTED`) |
+| `update_secret` | `vault:mcp_write` | write | `id`, `fields` | `id`, `version` (new), `changed`, `updatedFields`. Only the given fields change; `""` clears one; `url` and `additional_urls` are refused (`FIELD_NOT_UPDATABLE`) |
+
+Every tool declares a title, a scope, an effect and the MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) in `tools/list`; a tool without them does not register. A tool error (bad arguments, not found, conflict) is a normal result with `isError: true` and `structuredContent.code`, never a JSON-RPC error. Package: `@marinoscar/vault-api/mcp`.
+
+**Connecting a client** (high level; the administrator enables the OAuth server and `agentAccess` first, see [SECURITY-ARCHITECTURE.md §16](SECURITY-ARCHITECTURE.md#16-oauth-server-agent-access)):
+
+- **Claude and ChatGPT** (hosted): add a custom connector with the URL `https://<your-vault>/api/mcp`. The client discovers the authorization server from the `401` challenge (`/.well-known/oauth-protected-resource/api/mcp`), registers itself (client ID metadata document or dynamic registration, per the OAuth server's host allowlist), and shows the consent page: `vault:mcp_read` is pre-selected, `vault:mcp_write` is an extra tick.
+- **Claude Code:** `claude mcp add --transport http vault https://<your-vault>/api/mcp`, then `/mcp` to sign in; or pass a personal access token as `--header "Authorization: Bearer pat_..."`.
+- **MCP Inspector:** transport "Streamable HTTP", URL `https://<your-vault>/api/mcp`, then the OAuth flow of the Inspector (or an `Authorization: Bearer` header with a PAT); `tools/list`, then call each tool.
+
 ---
 
 ## HTTP Status Codes
