@@ -59,7 +59,10 @@ jobs:
 
   db-check:
     name: DB Check (migrate + seed on Postgres 16)
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest (26.04) ships a newer pg_dump/pg_restore whose dumps
+    # carry `SET transaction_timeout` (Postgres 17+), which the Postgres 16 service
+    # refuses (#171). The client must match the server's major version.
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:16-alpine
@@ -137,6 +140,13 @@ jobs:
 
       - name: Migrations equal the schema (drift)
         run: npm run db:drift --workspace=api
+
+      - name: The Postgres client matches the server (16)
+        run: |
+          pg_dump --version
+          pg_restore --version
+          pg_dump --version | grep -Eq ' 16\.' || { echo "pg_dump is not major 16 (see #171)"; exit 1; }
+          pg_restore --version | grep -Eq ' 16\.' || { echo "pg_restore is not major 16 (see #171)"; exit 1; }
 
       # Connects as vault_app, so the RLS suites (test/rls, role-attributes)
       # run against an ordinary role; the bootstrap superuser (postgres, same
