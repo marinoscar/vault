@@ -44,8 +44,34 @@ export interface MockApi {
   requests: string[];
   /** Bodies POSTed to a path, by `method path`. */
   bodies: Record<string, unknown[]>;
-  /** Live state an e2e spec can read. */
-  state: { secrets: FixtureSecret[]; backups: unknown[] };
+  /** Live state an e2e spec can read (and, for `agentActivity`, seed). */
+  state: {
+    secrets: FixtureSecret[];
+    backups: unknown[];
+    /** Rows of `GET /api/agent-activity` (E14.9); empty unless a spec adds some. */
+    agentActivity: MockAgentActivityItem[];
+    /** Per-secret `agentAccess` (`fill` once the owner opened it); absent means `none`. */
+    agentAccess: Record<string, 'none' | 'fill'>;
+    /** The `agentAccess` system-settings block once an admin saved it; absent until then. */
+    agentSettings: Record<string, unknown> | null;
+  };
+}
+
+/** One row of the Agent activity list, in the wire shape (`agentActivityItemSchema`). */
+export interface MockAgentActivityItem {
+  id: string;
+  at: string;
+  action: 'lookup' | 'fill' | 'totp' | 'create' | 'rotate' | 'agent_access';
+  result: 'ok' | 'denied';
+  reason?: string;
+  secretId: string | null;
+  secretName: string | null;
+  field: string | null;
+  origin: string | null;
+  purpose: string | null;
+  credentialKind: 'oauth' | 'pat' | 'session' | null;
+  clientId: string | null;
+  clientName: string | null;
 }
 
 const json = (route: Route, body: unknown, status = 200) =>
@@ -56,8 +82,9 @@ const page_ = (items: unknown[], pageNo = 1, pageSize = 20) => ({
   meta: { page: pageNo, pageSize, totalItems: items.length, totalPages: items.length ? 1 : 0 },
 });
 
-const listItem = (s: FixtureSecret) => ({
+const listItem = (s: FixtureSecret, agentAccess: 'none' | 'fill' = 'none') => ({
   id: s.id,
+  agentAccess,
   name: s.name,
   description: s.description,
   type: s.type,
@@ -66,8 +93,8 @@ const listItem = (s: FixtureSecret) => ({
   updatedAt: s.updatedAt,
 });
 
-const detail = (s: FixtureSecret) => ({
-  ...listItem(s),
+const detail = (s: FixtureSecret, agentAccess: 'none' | 'fill' = 'none') => ({
+  ...listItem(s, agentAccess),
   values: s.values,
   createdBy: { id: 'user-person-a', email: 'person.a@example.test' },
   attachments: [],
@@ -82,10 +109,12 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}): 
     unhandled: [],
     requests: [],
     bodies: {},
-    state: { secrets: empty ? [] : SECRETS.map((s) => ({ ...s })), backups: [] },
+    state: { secrets: empty ? [] : SECRETS.map((s) => ({ ...s })), backups: [], agentActivity: [], agentAccess: {}, agentSettings: null },
   };
   let loggedIn = signedIn;
   let nextId = 1;
+  let settingsVersion = 1;
+  const accessOf = (id: string) => api.state.agentAccess[id] ?? 'none';
 
   await page.route('**/api/**', async (route) => {
     const request = route.request();
@@ -136,15 +165,25 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}): 
         data: { theme: 'system', profile: { displayName: null, useProviderImage: true, customImageUrl: null }, updatedAt: FROZEN_NOW, version: 1 },
       });
     }
-    if (path === '/system-settings') {
+    if (path === '/system-settings' && (method === 'GET' || method === 'PATCH')) {
+      if (method === 'PATCH') {
+        // Only the `agentAccess` block is state-backed (E14.9); it is merged like the real route.
+        const patch = (request.postDataJSON() as { agentAccess?: Record<string, unknown> }) ?? {};
+        if (patch.agentAccess) {
+          api.state.agentSettings = { ...(api.state.agentSettings ?? {}), ...patch.agentAccess };
+          settingsVersion += 1;
+        }
+      }
       return json(route, {
         data: {
           ui: { allowUserThemeOverride: true },
           features: {},
           ai: { enabled: true, keyPolicy: 'byok_with_org_fallback', cardExtractModel: 'mock-vision-model' },
+          // Absent until an admin saved it, so the screens of the visual suite are unchanged.
+          ...(api.state.agentSettings ? { agentAccess: api.state.agentSettings } : {}),
           updatedAt: FROZEN_NOW,
           updatedBy: null,
-          version: 1,
+          version: settingsVersion,
         },
       });
     }
@@ -191,9 +230,25 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}): 
     }
 
     // ---- secrets -----------------------------------------------------------
-    // E14.7: the per-user Agent activity list (empty; no page calls it unprompted).
+    // E14.7: the per-user Agent activity list (empty unless a spec seeds `state.agentActivity`).
     if (path === '/agent-activity' && method === 'GET') {
-      return json(route, { data: [], meta: { page: 1, pageSize: 25, total: 0 } });
+      const pageNo = Number(url.searchParams.get('page') ?? 1);
+      const pageSize = Number(url.searchParams.get('pageSize') ?? 25);
+      const action = url.searchParams.get('action');
+      const rows = api.state.agentActivity.filter((r) => !action || r.action === action);
+      return json(route, {
+        data: rows.slice((pageNo - 1) * pageSize, pageNo * pageSize),
+        meta: { page: pageNo, pageSize, total: rows.length },
+      });
+    }
+    // E14.9: opening a Credential to agents (and closing it again), state-backed.
+    const agentAccessMatch = path.match(/^\/secrets\/([^/]+)\/agent-access$/);
+    if (agentAccessMatch && method === 'PATCH') {
+      const target = api.state.secrets.find((x) => x.id === agentAccessMatch[1]);
+      if (!target) return json(route, { message: 'Not found' }, 404);
+      const body = request.postDataJSON() as { agentAccess: 'none' | 'fill' };
+      api.state.agentAccess[target.id] = body.agentAccess;
+      return json(route, { data: { ...detail(target, accessOf(target.id)), agentAccessChangedAt: FROZEN_NOW } });
     }
     if (path === '/secrets' && method === 'GET') {
       const search = (url.searchParams.get('search') ?? '').toLowerCase();
@@ -202,7 +257,7 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}): 
       let items = [...api.state.secrets].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
       if (search) items = items.filter((s) => s.name.toLowerCase().includes(search));
       if (typeId) items = items.filter((s) => s.type.id === typeId);
-      const shown = items.slice(0, pageSize).map(listItem);
+      const shown = items.slice(0, pageSize).map((x) => listItem(x, accessOf(x.id)));
       return json(route, {
         data: { items: shown, meta: { page: 1, pageSize, totalItems: items.length, totalPages: items.length ? 1 : 0 } },
       });
@@ -221,7 +276,7 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}): 
         values: body.data,
       };
       api.state.secrets.unshift(created);
-      return json(route, { data: detail(created) }, 201);
+      return json(route, { data: detail(created, accessOf(created.id)) }, 201);
     }
     if (path === '/secrets/cards/summary') {
       const cards = empty ? [] : CARD_SUMMARIES;
@@ -233,7 +288,7 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}): 
     const secretMatch = path.match(/^\/secrets\/([^/]+)$/);
     if (secretMatch && method === 'GET') {
       const s = api.state.secrets.find((x) => x.id === secretMatch[1]);
-      return s ? json(route, { data: detail(s) }) : json(route, { message: 'Not found' }, 404);
+      return s ? json(route, { data: detail(s, accessOf(s.id)) }) : json(route, { message: 'Not found' }, 404);
     }
     const versionsMatch = path.match(/^\/secrets\/([^/]+)\/versions$/);
     if (versionsMatch) return json(route, { data: [] });

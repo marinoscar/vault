@@ -28,5 +28,7 @@ Every ADR is a file `NNNN-<slug>.md` with these sections, in this order:
 | ADR | Title | Status |
 |---|---|---|
 | [0001](0001-packages-first.md) | Packages first: domain code is written once in `@marinoscar/vault-*` and hosts only bind it | Accepted (in force for contract and db; api and web follow in E12.2 and E12.3) |
+| [0002](0002-agent-access.md) | Agent access: runtimes get one field over REST, chat assistants never get a value over MCP | Accepted |
 
 ADR-0001 belongs to epic #67 (E12, the domain packages) of the platform adoption program, epic #54.
+ADR-0002 belongs to epic #172 (E14, agent access).
