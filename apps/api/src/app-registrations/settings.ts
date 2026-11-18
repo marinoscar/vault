@@ -15,12 +15,18 @@
 //                           `npm run vault:migrate-ai-platform` (docs/runbooks/ai-platform-migration.md).
 //     vaultCards            card image size cap, expiry warning window
 //     vaultBackups          defaults for the admin backup schedule
+//     agentAccess           the agent API's kill switch (default off) and per-minute limits (E14.6)
 //   user:
 //     dataTables, navigation (the platform's); profile extension `customImageUrl`
 //
 // =============================================================================
 
 import { z } from 'zod';
+import {
+  AGENT_ACCESS_SETTINGS_DEFAULTS,
+  agentAccessSettingsSchema,
+  type AgentAccessSettings,
+} from '@marinoscar/vault-contract/agent';
 import { AI_SYSTEM_SETTINGS } from '@marinoscar/platform-api/ai';
 import {
   extendUserProfile,
@@ -156,6 +162,24 @@ export const VAULT_BACKUPS_SYSTEM_SETTINGS = {
   merge: (current, patch) => ({ ...current, ...(patch ?? {}) }),
 } satisfies SystemSettingsNamespace<'vaultBackups', VaultBackupsSettings, Partial<VaultBackupsSettings>>;
 
+// -----------------------------------------------------------------------------
+// agentAccess
+// -----------------------------------------------------------------------------
+
+export const VAULT_AGENT_ACCESS_SYSTEM_SETTINGS = {
+  key: 'agentAccess',
+  description:
+    'The agent credential API (/api/agent/v1): the deployment kill switch (off by default) and the per-minute limits of lookup, fill, totp and write calls.',
+  storedSchema: agentAccessSettingsSchema,
+  patchSchema: agentAccessSettingsSchema.partial(),
+  putSchema: agentAccessSettingsSchema.partial(),
+  wirePatchSchema: agentAccessSettingsSchema.partial(),
+  responseSchema: agentAccessSettingsSchema,
+  defaults: { ...AGENT_ACCESS_SETTINGS_DEFAULTS },
+  requiredOnPut: false,
+  merge: (current, patch) => ({ ...current, ...(patch ?? {}) }),
+} satisfies SystemSettingsNamespace<'agentAccess', AgentAccessSettings, Partial<AgentAccessSettings>>;
+
 /** Vault's system namespaces, in stored key order (after the platform's). */
 export const APP_SYSTEM_SETTINGS_NAMESPACES: readonly SystemSettingsNamespace[] = [
   VAULT_UI_SYSTEM_SETTINGS as SystemSettingsNamespace,
@@ -166,6 +190,8 @@ export const APP_SYSTEM_SETTINGS_NAMESPACES: readonly SystemSettingsNamespace[] 
   VAULT_BACKUPS_SYSTEM_SETTINGS as SystemSettingsNamespace,
   // The platform telemetry slice's policy (E9.2, #90): off and inert by default.
   TELEMETRY_SYSTEM_SETTINGS as SystemSettingsNamespace,
+  // The agent API's kill switch and limits (E14.6): appended, never inserted.
+  VAULT_AGENT_ACCESS_SYSTEM_SETTINGS as SystemSettingsNamespace,
 ];
 
 // -----------------------------------------------------------------------------
@@ -228,6 +254,7 @@ declare module '@marinoscar/platform-api/settings' {
     features: VaultFeatureFlags;
     vaultCards: VaultCardsSettings;
     vaultBackups: VaultBackupsSettings;
+    agentAccess: AgentAccessSettings;
   }
 
   interface UserProfileSettingsExtensions {

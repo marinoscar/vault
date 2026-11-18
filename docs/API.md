@@ -2063,11 +2063,45 @@ All require `system_settings:read` unless noted; served by the platform (`Platfo
 
 ### Agent API (OAuth-protected)
 
-The `agent` OAuth protected resource (E14.2, [#174](https://github.com/marinoscar/vault/issues/174)): every route under `/api/agent/v1` accepts an `oat_` OAuth access token (and the session JWT), and an `oat_` token is **refused on every other route**. Off until an administrator enables the OAuth server. Scopes and design: [SECURITY-ARCHITECTURE.md §16](SECURITY-ARCHITECTURE.md#16-oauth-server-agent-access). The OAuth endpoints themselves (`/api/oauth/*`, `/api/admin/oauth/*`) are the platform's: see the live reference at `/api/docs` and the [endpoint map](DOMAIN-REFERENCE.md#oauth-server-and-agent-api-e142-174).
+The `agent` OAuth protected resource (E14.2, [#174](https://github.com/marinoscar/vault/issues/174); credential routes E14.6, [#178](https://github.com/marinoscar/vault/issues/178)): every route under `/api/agent/v1` accepts an `oat_` OAuth access token, and an `oat_` token is **refused on every other route**. Off until an administrator enables the OAuth server. Scopes and design: [SECURITY-ARCHITECTURE.md §16](SECURITY-ARCHITECTURE.md#16-oauth-server-agent-access). The OAuth endpoints themselves (`/api/oauth/*`, `/api/admin/oauth/*`) are the platform's: see the live reference at `/api/docs` and the [endpoint map](DOMAIN-REFERENCE.md#oauth-server-and-agent-api-e142-174).
+
+The wire shapes are the provider contract an agent runtime codes against: `@marinoscar/vault-contract/agent` (`@stability experimental`); the version is in the path (`/v1`).
+
+**Rules for every route**
+
+- **Credentials:** `oat_` (OAuth, scoped) and `pat_` (personal access token). A browser session is refused with `403 AGENT_CREDENTIAL_REQUIRED` on the credential routes (`whoami` takes any credential).
+- **Kill switch:** the system setting `agentAccess.enabled` (default `false`). While off, **every** route including `whoami` answers `403 AGENT_ACCESS_DISABLED`. Set it with `PATCH /api/system-settings { "agentAccess": { "enabled": true } }` (`system_settings:write`); the General settings page has no switch for it yet.
+- **Opt-in:** only the caller's own `Credential` secrets with `agentAccess = fill` are reachable. A secret that is missing, someone else's, not opened to agents or not a Credential is `404` with one and the same body.
+- **Origin binding:** fill, totp and rotate need `origin` to equal one of the secret's origins exactly (scheme, host, port, after normalization); otherwise `403 ORIGIN_MISMATCH`. A same-site (`matchKind: site`) lookup hit is informational and never fillable.
+- **`purpose`** (`login | signup | password_change | mfa`) is required on fill, totp, create and rotate and is stored in the audit row.
+- **Headers:** `Cache-Control: no-store`, `Pragma: no-cache` on every response, errors included. Request and response bodies are never logged.
+- **Rate limits** per OAuth grant (or PAT) and user: lookup 60, fill 30, totp 10, write (create and rotate together) 10 per minute; `agentAccess.lookupPerMinute|fillPerMinute|totpPerMinute|writePerMinute` change them. Over the limit: `429 RATE_LIMITED` with `Retry-After`. The counters are in process memory (one API instance); replace `AgentRateLimiter` to share them.
+- **Audit:** every call, allowed or refused, writes `agent.credential.lookup|fill|totp|create|rotate` with `{ result: 'ok' | 'denied:<reason>', credential, clientId/grantId or tokenId, secretId, field, origin, purpose }`; never a value, code or password. The audit write precedes a successful response, so an unwritable trail fails the call.
+- **Missing scope:** `403` with `WWW-Authenticate: Bearer error="insufficient_scope"` (the platform's step-up).
 
 #### GET /agent/v1/whoami
 
-Requires `secrets:read` (scope `vault:items_read` or wider). Returns `{ "data": { "userId", "scopes", "clientId" } }`; for a session JWT `scopes` is `[]` and `clientId` is `null`.
+Requires `secrets:read` (scope `vault:items_read` or wider). Returns `{ "data": { "userId", "scopes", "clientId" } }`; for a session JWT `scopes` is `[]` and `clientId` is `null`. Subject to the kill switch.
+
+#### GET /agent/v1/credentials?origin=
+
+Scope `vault:items_read`, permission `secrets:read`. Returns `{ "data": [{ "id", "name", "username", "origins", "matchKind": "exact" | "site", "hasTotp", "updatedAt" }] }`, exact matches first. `username` is decrypted (a non-sensitive field); no sensitive field is returned. An invalid `origin` is `400`.
+
+#### POST /agent/v1/credentials/{id}/fill
+
+Scope `vault:items_fill`, permission `secrets:fill`. Body `{ "field": "username" | "password", "origin", "purpose" }` returns `{ "data": { "value" } }` for that one field. The value is for typing, not for a model.
+
+#### POST /agent/v1/credentials/{id}/totp
+
+Scope `vault:items_fill`. Body `{ "origin", "purpose" }` returns `{ "data": { "code", "expiresAt" } }`; `404` when the credential has no usable TOTP seed. The seed is never returned.
+
+#### POST /agent/v1/credentials
+
+Scope `vault:items_write`, permission `secrets:write`. Body `{ "name", "username", "origin", "additionalUrls"?, "purpose", "password" | "generate": { "length": 12..128 (24), "symbols": true } }` (exactly one of `password` and `generate`). Creates a `Credential` owned by the caller with `agentAccess = fill`. Returns `201 { "data": { "id", "name", "username", "origins", "generatedPassword"? } }`; a generated password is returned **once**, only here (a supplied one is never echoed). `409` when the caller already has a secret of that name.
+
+#### POST /agent/v1/credentials/{id}/password
+
+Scope `vault:items_write`. Body `{ "origin", "purpose", "password" | "generate" }`. Rotates by adding a version (rollback stays possible; every other field is kept) and returns `{ "data": { "id", "version", "generatedPassword"? } }`.
 
 ---
 
@@ -2101,6 +2135,10 @@ Requires `secrets:read` (scope `vault:items_read` or wider). Returns `{ "data": 
 | `CONFLICT` | 409 | Resource already exists or version mismatch |
 | `NOT_AUTHORIZED` | 403 | Email not in allowlist |
 | `VERSION_MISMATCH` | 409 | Optimistic concurrency conflict (If-Match header) |
+| `ORIGIN_MISMATCH` | 403 | Agent API: the origin is not exactly one of the credential's origins |
+| `AGENT_ACCESS_DISABLED` | 403 | Agent API: the deployment switch `agentAccess.enabled` is off |
+| `AGENT_CREDENTIAL_REQUIRED` | 403 | Agent API: the request used a browser session instead of an `oat_` or `pat_` token |
+| `RATE_LIMITED` | 429 | Agent API: a per-minute limit was reached (`Retry-After` is set) |
 | `AGENT_ACCESS_UNSUPPORTED_TYPE` | 422 | Only a Credential secret can be set to agent access `fill`; this secret type cannot |
 | `AI_INVALID_IMAGE` | 400 | Card extraction body was not one or two acceptable base64 image data URLs |
 | `AI_EXTRACTION_FAILED` | 422 | Card extraction call succeeded but the model could not read the card, or its output failed schema validation |

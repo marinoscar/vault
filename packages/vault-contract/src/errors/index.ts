@@ -56,6 +56,12 @@ export const VAULT_ERROR_CODES: readonly VaultErrorCodeDef[] = Object.freeze([
   // Agent access (E14.3).
   { code: 'AGENT_ACCESS_UNSUPPORTED_TYPE', status: 422, description: 'Only a Credential secret can be opened to agents; this secret type cannot be set to fill.' },
 
+  // Agent credential API (E14.6). Contract: `@marinoscar/vault-contract/agent`.
+  { code: 'ORIGIN_MISMATCH', status: 403, description: 'The origin sent by the agent is not exactly one of the credential origins, so nothing was filled.' },
+  { code: 'AGENT_ACCESS_DISABLED', status: 403, description: 'Agent access is switched off for this deployment.' },
+  { code: 'AGENT_CREDENTIAL_REQUIRED', status: 403, description: 'The agent API accepts only an OAuth access token (oat_) or a personal access token (pat_), not a browser session.' },
+  { code: 'RATE_LIMITED', status: 429, description: 'The per-minute limit of an agent API call was reached; see the Retry-After header.' },
+
   // Card scanning. The platform's own `AI_*` codes are registered by the AI slice.
   { code: AI_ERROR_CODES.NOT_CONFIGURED, status: 503, description: 'AI card scanning is not set up (provider, model or deployment key missing).' },
   { code: AI_ERROR_CODES.INVALID_IMAGE, status: 400, description: 'The images are not acceptable base64 data URLs within the size limit.' },

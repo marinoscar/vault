@@ -1,5 +1,7 @@
 import { DynamicModule, Module, type ModuleMetadata, type Provider, type Type } from '@nestjs/common';
 
+import { AgentCredentialsService } from './agent/agent-credentials.service';
+import { AgentRateLimiter, InMemoryAgentRateLimiter } from './agent/agent-rate-limiter';
 import { AgentController } from './agent/agent.controller';
 import { CardExtractController } from './ai/card-extract.controller';
 import { CardExtractService } from './ai/card-extract.service';
@@ -160,6 +162,9 @@ export class VaultApiModule {
         ...ports,
         SecretTypesService,
         SecretsService,
+        AgentCredentialsService,
+        // Single API instance today: in-process counters. Override this provider to share them.
+        { provide: AgentRateLimiter, useClass: InMemoryAgentRateLimiter },
         SecretsExportService,
         CardSummaryService,
         MediaService,
