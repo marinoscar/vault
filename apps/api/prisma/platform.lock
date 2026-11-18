@@ -7,7 +7,8 @@
     "20261102120000_add_backup_schedules",
     "20261102130000_add_media_folder_files",
     "20261102140000_backup_runs_job_id",
-    "20261103090000_attachments_composite_fk_media_rls"
+    "20261103090000_attachments_composite_fk_media_rls",
+    "20261118164725_add_secret_agent_access"
   ],
   "deviations": [
     {

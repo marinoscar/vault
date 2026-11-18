@@ -61,6 +61,12 @@
       ],
       "sha256": "76c26bb270f5eda05254a3a13003bff46d19bbcc687bc0b1dcaeaa8b705a4135",
       "slice": "secrets"
+    },
+    {
+      "id": "20261118164725_add_secret_agent_access",
+      "requiresHostTables": [],
+      "sha256": "cabc4e9b9b4279550e619a5bbb47b41fe0d64d16be5d191d6fe8abb165e85296",
+      "slice": "secrets"
     }
   ]
 }
