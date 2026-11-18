@@ -110,7 +110,9 @@ const VERSIONS = [
   { id: 'v1-id', version: 1, createdAt: new Date().toISOString(), createdBy: null, isCurrent: false },
 ];
 
-function baseHandlers(detail: ReturnType<typeof secret>) {
+function baseHandlers(
+  detail: Omit<ReturnType<typeof secret>, 'values'> & { values: Record<string, unknown> },
+) {
   return [
     http.get(`${API_BASE}/secrets/${SECRET_ID}`, () => HttpResponse.json(detail)),
     http.get(`${API_BASE}/secrets/${SECRET_ID}/versions`, () => HttpResponse.json(VERSIONS)),
