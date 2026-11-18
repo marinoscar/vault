@@ -53,6 +53,7 @@ type Role = 'admin' | 'contributor' | 'viewer';
 
 const SECRETS_RW = [
   'secrets:read',
+  'secrets:fill', // E14.2: the agent API's field fill; held wherever secrets:read is
   'secrets:write',
   'secrets:delete',
   'secret_types:read',
@@ -115,9 +116,12 @@ const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
     // E9.3: the user-data slice's system permissions (Admin only).
     'system:factory_reset',
     'orgs:offboard',
+    // E14.2: the OAuth server's admin permissions (system, admin only)
+    'oauth_clients:read',
+    'oauth_clients:write',
   ],
   contributor: [...SECRETS_RW, ...USER_SETTINGS, 'storage:read', 'storage:write', 'ai:use'],
-  viewer: ['secrets:read', 'secret_types:read', 'media:read', ...USER_SETTINGS, 'storage:read'],
+  viewer: ['secrets:read', 'secrets:fill', 'secret_types:read', 'media:read', ...USER_SETTINGS, 'storage:read'],
 };
 
 /** The scope of every permission the oracle mentions (org permissions come from the membership). */
@@ -156,6 +160,8 @@ const SYSTEM_PERMISSIONS = new Set([
   'db_backup:restore',
   'system:factory_reset',
   'orgs:offboard',
+  'oauth_clients:read',
+  'oauth_clients:write',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -195,6 +201,23 @@ const ROUTES: readonly Route[] = [
   ['POST', '/api/secrets/export', 'secrets:read'],
   // Also needs `ai:use` and the platform kill switch (a class guard that runs first).
   ['POST', '/api/secrets/cards/extract', 'secrets:write'],
+  // The agent API root (E14.2; the `agent` OAuth protected resource)
+  ['GET', '/api/agent/v1/whoami', 'secrets:read'],
+  // The platform OAuth server's authenticated routes (E14.2; the protocol routes are @Public by design
+  // and held by the `oauth-server` conformance suite). The consent and grants APIs need only a session.
+  ['GET', `/api/oauth/requests/${ID}`, null],
+  ['POST', `/api/oauth/requests/${ID}/decision`, null],
+  ['GET', '/api/oauth/grants', null],
+  ['DELETE', `/api/oauth/grants/${ID}`, null],
+  ['GET', '/api/admin/oauth/grants', 'oauth_clients:read'],
+  ['DELETE', `/api/admin/oauth/grants/${ID}`, 'oauth_clients:write'],
+  ['GET', '/api/admin/oauth/refused-hosts', 'oauth_clients:read'],
+  ['GET', '/api/admin/oauth/policy', 'oauth_clients:read'],
+  ['GET', '/api/admin/oauth/clients', 'oauth_clients:read'],
+  ['POST', '/api/admin/oauth/clients', 'oauth_clients:write'],
+  ['PATCH', `/api/admin/oauth/clients/${ID}`, 'oauth_clients:write'],
+  ['POST', `/api/admin/oauth/clients/${ID}/rotate-secret`, 'oauth_clients:write'],
+  ['DELETE', `/api/admin/oauth/clients/${ID}`, 'oauth_clients:write'],
   // Media
   ['POST', '/api/media/folders', 'media:write'],
   ['GET', '/api/media/folders', 'media:read'],
@@ -491,6 +514,12 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
         'MediaController',
         'BackupsController',
         'MyBackupsController',
+        'AgentController',
+        'OAuthConsentController',
+        'OAuthGrantsController',
+        'OAuthClientsAdminController',
+        'OAuthAdminHintsController',
+        'OAuthGrantsAdminController',
         'CardExtractController',
         'ObjectsController',
         'StorageStatusController',

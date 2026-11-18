@@ -72,6 +72,15 @@ runPlatformConformance({
       grants: catalogGrants(buildPermissionCatalog()),
     },
 
+    // The OAuth server (E14.2, #174): registrations, confinement, narrowing, session-only and
+    // roles-only routes, the 401 challenge and the metadata documents. The secret-egress check
+    // needs a real flow against a database: test/identity/oauth/oauth-conformance.db.spec.ts runs it.
+    oauthServer: {
+      rootModule: AppModule,
+      permissions: permissionRegistry.list().map((permission) => permission.id),
+      secretEgress: { skip: 'it needs a real flow and database: test/identity/oauth/oauth-conformance.db.spec.ts runs it' },
+    },
+
     // No secret-named field in any registered system or user namespace (the AI key
     // is a credential, E4.2), every default valid against its stored schema, and
     // every org layer gated by a registered org-scope permission (E4.1, #79).

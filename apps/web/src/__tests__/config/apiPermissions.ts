@@ -15,6 +15,8 @@ import aiPermissionsSource from '../../../../../node_modules/@marinoscar/platfor
 import telemetryPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/telemetry/telemetry.permissions.js?raw';
 import storageConfigPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/storage/config/storage-config.permissions.js?raw';
 
+// E14.2 (#174): the platform OAuth server's client permissions (Admin only).
+import oauthClientsPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/identity/oauth-server/oauth-clients.permissions.js?raw';
 
 /** The `id: '<resource>:<action>'` strings a permission declaration file declares. */
 const declaredIds = (source: string): string[] =>
@@ -39,5 +41,6 @@ export const API_PERMISSIONS = new Set([
   ...declaredIds(storageConfigPermissionsSource),
   // E9.3 (#91): `system:factory_reset` and `orgs:offboard` (the user-data slice, Admin only).
   ...declaredIds(userDataPermissionsSource),
+  ...declaredIds(oauthClientsPermissionsSource),
 ]);
 

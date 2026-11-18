@@ -20,7 +20,7 @@
  * A module constant: the provider and the pages key on its identity.
  */
 
-import { createIdentityApi } from '@marinoscar/platform-web/identity/headless';
+import { createIdentityApi, createOAuthServerApi } from '@marinoscar/platform-web/identity/headless';
 import type { IdentityWebAdapters } from '@marinoscar/platform-web/identity/headless';
 
 import { LoadingSpinner } from '@marinoscar/vault-web/core/ui';
@@ -33,4 +33,6 @@ export const vaultIdentityAdapters: IdentityWebAdapters = Object.freeze<Identity
   Spinner: LoadingSpinner,
   DataTable: LazyIdentityDataTable,
   api: createIdentityApi(vaultPlatformApi),
+  // The OAuth pages (E14.2, #174): the consent page renders outside the shell, where no host is mounted.
+  oauthApi: createOAuthServerApi(vaultPlatformApi),
 });

@@ -53,6 +53,12 @@ export const VAULT_PERMISSIONS = {
     scope: 'org',
     defaultGrants: ['org_admin', 'contributor', 'viewer'],
   },
+  SECRETS_FILL: {
+    id: 'secrets:fill',
+    description: 'Read one sensitive field of an agent-accessible secret through the agent API',
+    scope: 'org',
+    defaultGrants: ['org_admin', 'contributor', 'viewer'],
+  },
   SECRETS_WRITE: {
     id: 'secrets:write',
     description: 'Create and update own secrets',

@@ -2,14 +2,14 @@ import { Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { ShellRoot } from '@marinoscar/platform-web/shell/ui';
 // Identity is the platform's (E3.3, #78): the session provider, the route
 // guards and the identity pages come from @marinoscar/platform-web/identity.
-import { RequireAuth, RequirePermission } from '@marinoscar/platform-web/identity/headless';
+import { OAuthServerStatusProvider, RequireAuth, RequirePermission, createOAuthServerApi } from '@marinoscar/platform-web/identity/headless';
 // Telemetry (E9.2, #90): the platform's config provider and route guard, and the adapters the pages take.
 import {
   RequireTelemetryEnabled,
   TelemetryWebAdaptersProvider,
 } from '@marinoscar/platform-web/telemetry/headless';
 import { IdentityProviders } from './identity/IdentityProviders';
-import { VaultPlatformHostProvider } from './platform/platformHost';
+import { VaultPlatformHostProvider, vaultPlatformApi } from './platform/platformHost';
 // The platform AI slice (E8.2, #88): the AI config every `feature: 'ai'` card and
 // `RequireAiEnabled` read, and the adapters (Vault's spinner) the AI pages take.
 import { AiWebAdaptersProvider } from '@marinoscar/platform-web/ai/headless';
@@ -35,6 +35,20 @@ const AuthCallbackPage = lazy(() =>
 );
 const ActivateDevicePage = lazy(() =>
   import('@marinoscar/platform-web/identity/ui').then((m) => ({ default: m.ActivateDevicePage })),
+);
+// E14.2 (#174): the OAuth server's pages. Consent and error render outside the shell; Connected apps
+// and OAuth clients are settings cards.
+const OAuthConsentPage = lazy(() =>
+  import('@marinoscar/platform-web/identity/ui').then((m) => ({ default: m.OAuthConsentPage })),
+);
+const OAuthErrorPage = lazy(() =>
+  import('@marinoscar/platform-web/identity/ui').then((m) => ({ default: m.OAuthErrorPage })),
+);
+const ConnectedAppsPage = lazy(() =>
+  import('@marinoscar/platform-web/identity/ui').then((m) => ({ default: m.ConnectedAppsPage })),
+);
+const OAuthClientsPage = lazy(() =>
+  import('@marinoscar/platform-web/identity/ui').then((m) => ({ default: m.OAuthClientsPage })),
 );
 const UserTokensPage = lazy(() =>
   import('@marinoscar/platform-web/identity/ui').then((m) => ({ default: m.UserTokensPage })),
@@ -136,6 +150,9 @@ function AppRoutes() {
           {/* Public routes */}
           <Route path="/login" element={<LoginPage />} />
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
+          {/* E14.2 (#174). Where `/api/oauth/authorize` sends a person it cannot send back to the client.
+              Public: the visitor may not be signed in, and the page calls no API. */}
+          <Route path="/oauth/error" element={<OAuthErrorPage />} />
 
           {/* Test login (development only) */}
           {!import.meta.env.PROD && TestLoginPage && (
@@ -146,6 +163,8 @@ function AppRoutes() {
           <Route element={<RequireAuth loading={<LoadingSpinner fullScreen />} />}>
             {/* Device activation page - without layout for full-screen experience */}
             <Route path="/activate" element={<ActivateDevicePage />} />
+            {/* E14.2 (#174). The OAuth consent page, full screen like /activate: signed in, outside the shell. */}
+            <Route path="/oauth/consent" element={<OAuthConsentPage />} />
 
             <Route element={<Layout />}>
               <Route path="/" element={<HomePage />} />
@@ -176,6 +195,8 @@ function AppRoutes() {
               />
               {/* Ownership-scoped (the platform's pat.controller.ts, bare @Auth()): no gate. */}
               <Route path="/settings/tokens" element={<UserTokensPage />} />
+              {/* E14.2 (#174): the grants routes are bare @Auth() (ownership-scoped); the card hides while the server is off. */}
+              <Route path="/settings/connected-apps" element={<ConnectedAppsPage />} />
               <Route
                 path="/settings/backups"
                 element={<RequirePermission permission="secrets:read" fallback={TO_SETTINGS}><MyBackupsPage /></RequirePermission>}
@@ -220,6 +241,12 @@ function AppRoutes() {
               <Route
                 path="/admin/settings/users"
                 element={<RequirePermission permission="users:read" fallback={TO_HOME}><UsersPage /></RequirePermission>}
+              />
+              {/* E14.2 (#174): oauth_clients:read, the string oauth-clients-admin.controller enforces. Not
+                  feature-gated: this is where the OAuth server is switched on. */}
+              <Route
+                path="/admin/settings/oauth-clients"
+                element={<RequirePermission permission="oauth_clients:read" fallback={TO_HOME}><OAuthClientsPage /></RequirePermission>}
               />
               <Route
                 path="/admin/settings/ai"
@@ -337,10 +364,15 @@ function AppRoutes() {
  * (`navigation`) and every table's layout (`dataTables`) take the platform
  * defaults, which keep them in `/api/user-settings` through the host's client.
  */
+const vaultOAuthServerApi = createOAuthServerApi(vaultPlatformApi);
+
 export default function App() {
   return (
     <ShellRoot themes={VAULT_THEMES}>
       <IdentityProviders>
+        {/* E14.2 (#174): one probe per signed-in user of whether the OAuth server is on (the `oauthServer`
+            settings feature); above the platform host like the AI and telemetry answers. */}
+        <OAuthServerStatusProvider api={vaultOAuthServerApi}>
         <VaultAiConfigProvider>
           {/* ABOVE the platform host: the `telemetry` settings feature the host reads is this answer
               (`GET /api/telemetry/config`, fetched once the session is authenticated). */}
@@ -354,6 +386,7 @@ export default function App() {
             </TelemetryWebAdaptersProvider>
           </AppTelemetryConfigProvider>
         </VaultAiConfigProvider>
+        </OAuthServerStatusProvider>
       </IdentityProviders>
     </ShellRoot>
   );

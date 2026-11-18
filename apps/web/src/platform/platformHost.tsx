@@ -25,7 +25,7 @@ import { useCallback, useMemo } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import { PlatformHostProvider, createPlatformApiClient } from '@marinoscar/platform-web/core';
 import type { PlatformViewer, PlatformWebHost } from '@marinoscar/platform-web/core';
-import { useAuth, usePermissions } from '@marinoscar/platform-web/identity/headless';
+import { useAuth, useOAuthServerFeature, usePermissions } from '@marinoscar/platform-web/identity/headless';
 import { useOptionalShellTheme } from '@marinoscar/platform-web/shell/headless';
 import { useAiFeatures } from '@marinoscar/platform-web/ai/headless';
 import type { ShellThemeMode } from '@marinoscar/platform-web/shell/headless';
@@ -41,7 +41,11 @@ export function useVaultPlatformHost(): PlatformWebHost {
   const { hasPermission } = usePermissions();
   const setMode = useOptionalShellTheme()?.setMode;
   const aiEnabled = useAiFeatures().ai;
-  const isFeatureEnabled = useCallback((feature: string) => feature === 'ai' && aiEnabled, [aiEnabled]);
+  const oauthServer = useOAuthServerFeature();
+  const isFeatureEnabled = useCallback(
+    (feature: string) => (feature === 'ai' && aiEnabled) || (feature === 'oauthServer' && oauthServer),
+    [aiEnabled, oauthServer],
+  );
 
   const applyTheme = useCallback(
     (theme: string) => {

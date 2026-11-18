@@ -21,6 +21,7 @@ Status: experimental. Introduced in E12.2.
 | `@marinoscar/vault-api/backups` | Archive, queue, runner, schedule tick, notifier, controllers and the two job handlers |
 | `@marinoscar/vault-api/ai` | Card extraction service and controller, the AI status controller |
 | `@marinoscar/vault-api/card-expiry` | The card-expiry scan job handler and its schedule task |
+| `@marinoscar/vault-api/agent` | `registerVaultAgentOAuth()` (the OAuth scopes `vault:items_read`, `vault:items_fill`, `vault:items_write` and the `agent` protected resource at `/api/agent/v1`; the host calls it once from `app-registrations/`), the scope and resource constants and `AgentController` (`GET /api/agent/v1/whoami`, `secrets:read`, returns `{ userId, scopes, clientId }`; mounted by `VaultApiModule`) |
 | `@marinoscar/vault-api/testing` | In-memory fakes of the ports and `createFakeBindings()` |
 
 ## Install and peer dependencies

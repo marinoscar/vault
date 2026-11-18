@@ -24,6 +24,7 @@
 import { registerSettingsFeature } from '@marinoscar/platform-web/settings/headless';
 import { useTelemetryFeatures } from '@marinoscar/platform-web/telemetry/headless';
 import { useAiFeatures } from '@marinoscar/platform-web/ai/headless';
+import { useOAuthServerFeature } from '@marinoscar/platform-web/identity/headless';
 
 declare module '@marinoscar/platform-web/settings/headless' {
   interface SettingsFeatureRegistry {
@@ -35,3 +36,6 @@ declare module '@marinoscar/platform-web/settings/headless' {
 registerSettingsFeature('ai', () => useAiFeatures().ai);
 // `telemetry` (E9.2, #90): see the header; the provider is platform/TelemetryConfigBinding.tsx.
 registerSettingsFeature('telemetry', () => useTelemetryFeatures().telemetry);
+// `oauthServer` (E14.2, #174): the platform declares the key in `SettingsFeatureRegistry`; the answer is the
+// one probe `OAuthServerStatusProvider` (`App.tsx`) makes per signed-in user (200 on, 404 off).
+registerSettingsFeature('oauthServer', useOAuthServerFeature);

@@ -1814,6 +1814,25 @@ apps/web/src/
 
 ---
 
+## 16. OAuth server (agent access)
+
+Since E14.2 ([#174](https://github.com/marinoscar/vault/issues/174)) Vault mounts the platform's OAuth 2.1 authorization and resource server (`IdentityModule.forRoot({ oauthServer: {} })` in `apps/api/src/platform/identity/identity.config.ts`) so a third-party agent can act for a signed-in user. Vault registers only the scopes and the resource (`packages/vault-api/src/agent/agent-oauth.ts`). The full threat model is tracked in [#181](https://github.com/marinoscar/vault/issues/181); operator steps are in the [platform runbook](https://github.com/marinoscar/EnterpriseAppBase/blob/main/docs/runbooks/oauth-server.md).
+
+| Aspect | Rule |
+|---|---|
+| Default | **Off.** An administrator enables it at `/admin/settings/oauth-clients` (`oauth_clients:write`); while off, the `Connected apps` card is hidden and no client can complete a flow |
+| Credential kind | `oat_` access token (and `ort_` refresh token, issued with `offline_access`). Distinct from the session JWT, the `pat_` personal access token and the device token. The JWT remains the only credential the app's own routes accept for the web UI |
+| Scopes | `vault:items_read` (`secrets:read`, default), `vault:items_fill` (`secrets:read` + `secrets:fill`), `vault:items_write` (`secrets:read` + `secrets:write`), plus `offline_access`. A scope **narrows**: the token carries the intersection of the scope's permissions and what the user's role already grants, never more |
+| Route confinement | The `agent` protected resource has the single prefix `/api/agent/v1`. An `oat_` token is refused everywhere else (`/api/secrets`, `/api/admin`, `/api/backups`, ...). A route needing more than the token's scopes answers `insufficient_scope` so the client can step up |
+| Consent | `/oauth/consent` (signed in, full screen) shows the client and the scopes before any code is issued; clients are CIMD, dynamic or pre-registered and subject to the admin host allowlist |
+| Refresh | Refresh tokens rotate on use; replaying a used one is detected and revokes the grant (platform behaviour) |
+| Revoke | A user removes a grant at `/settings/connected-apps`; an administrator at `/admin/settings/oauth-clients` (`DELETE /api/admin/oauth/grants/{id}`) or by deleting the client |
+| Secret egress | No token, code or client secret is logged or returned after issue; proven by `apps/api/test/identity/oauth/oauth-conformance.db.spec.ts` (auth code + PKCE flow, confinement, step-up, egress) and the conformance suite `oauth-server` |
+
+`secrets:fill` (org scope, roles `org_admin`, `contributor`, `viewer`) is the permission behind `vault:items_fill`; no session-authenticated route uses it yet. Endpoints: [API.md](API.md#agent-api-oauth-protected).
+
+---
+
 ## Conclusion
 
 This security architecture provides defense-in-depth through multiple layers:

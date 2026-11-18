@@ -134,6 +134,10 @@ export const ADMIN_SECTIONS: SettingsSectionDef[] = [
       // platform adds the `admin` block of `GET /api/onboarding` for (its default `adminPermission`;
       // no `onboarding:read` exists) and what gates `GET /api/admin/onboarding/metrics`.
       { ...setupGuideSettingsPage.card, Icon: setupGuideSettingsPage.Icon },
+      // E14.2 (#174), APPENDED: the packaged `OAuth clients` card. `oauth_clients:read` is the string the
+      // platform's oauth-clients-admin.controller enforces (Admin only); no `feature`, because this is
+      // where the OAuth server is switched on. Its route is in `App.tsx`.
+      ...identityAdminSections.oauthClients,
     ],
   },
   {

@@ -124,6 +124,12 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}): 
       return route.fulfill({ status: 204 });
     }
 
+    // The OAuth server ships off: the web app's status probe gets the platform's
+    // 404 ("not enabled"), so the Connected apps card stays hidden.
+    if (path === '/oauth/.well-known/authorization-server' && method === 'GET') {
+      return json(route, { statusCode: 404, message: 'OAuth server is not enabled' }, 404);
+    }
+
     // ---- settings, AI, notifications, onboarding ---------------------------
     if (path === '/user-settings') {
       return json(route, {

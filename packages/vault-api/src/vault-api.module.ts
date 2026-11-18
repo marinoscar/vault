@@ -1,5 +1,6 @@
 import { DynamicModule, Module, type ModuleMetadata, type Provider, type Type } from '@nestjs/common';
 
+import { AgentController } from './agent/agent.controller';
 import { CardExtractController } from './ai/card-extract.controller';
 import { CardExtractService } from './ai/card-extract.service';
 import { BackupArchiveService } from './backups/backup-archive.service';
@@ -152,6 +153,7 @@ export class VaultApiModule {
         CardExtractController,
         BackupsController,
         MyBackupsController,
+        AgentController,
       ],
       providers: [
         ...ports,

@@ -39,6 +39,10 @@ import telemetryPermissionsSource from '../../../../../node_modules/@marinoscar/
 import storageConfigPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/storage/config/storage-config.permissions.js?raw';
 import storageConfigControllerSource from '../../../../../node_modules/@marinoscar/platform-api/dist/storage/config/storage-config.controller.js?raw';
 
+// E14.2 (#174): the platform OAuth server's client permissions (Admin only).
+import oauthClientsPermissionsSource from '../../../../../node_modules/@marinoscar/platform-api/dist/identity/oauth-server/oauth-clients.permissions.js?raw';
+import oauthClientsControllerSource from '../../../../../node_modules/@marinoscar/platform-api/dist/identity/oauth-server/clients/oauth-clients-admin.controller.js?raw';
+
 const cardsOf = (sections: SettingsSectionDef[]): SettingsCardDef[] => sections.flatMap((s) => s.cards);
 const ADMIN_CARDS = cardsOf(ADMIN_SECTIONS);
 const USER_CARDS = cardsOf(USER_SETTINGS_SECTIONS);
@@ -66,6 +70,7 @@ const API_PERMISSIONS = new Set([
   ...declaredIds(storageConfigPermissionsSource),
   // E9.3 (#91): `system:factory_reset` and `orgs:offboard` (the user-data slice, Admin only).
   ...declaredIds(userDataPermissionsSource),
+  ...declaredIds(oauthClientsPermissionsSource),
 ]);
 
 /**
@@ -131,13 +136,17 @@ const CONTROLLER_MIRROR: Record<string, string | undefined> = {
   '/settings/data-export': undefined,
   // UserDataController: `user_settings:write` (every role)
   '/settings/danger-zone': undefined,
+  // E14.2 (#174): oauth-clients-admin.controller GET /api/admin/oauth/clients (oauth_clients:read, Admin only)
+  '/admin/settings/oauth-clients': 'oauth_clients:read',
+  // OAuth grants routes are bare @Auth() (ownership-scoped); the card carries feature 'oauthServer'
+  '/settings/connected-apps': undefined,
 };
 
 /**
  * Admin cards whose permission is held ONLY by the Admin system role, which also holds every permission of the
  * Console hub gate: they are reachable through it without being named in it.
  */
-const ADMIN_ONLY_CARD_PERMISSIONS = new Set(['system:factory_reset']);
+const ADMIN_ONLY_CARD_PERMISSIONS = new Set(['system:factory_reset', 'oauth_clients:read']);
 
 /**
  * Cards that sit BENEATH another card's route rather than directly under the
@@ -271,11 +280,11 @@ describe('the AI cards (E8.2, the platform AI slice)', () => {
 describe('the Storage card (E6.1 web follow-up, the platform storage slice)', () => {
   const card = ADMIN_CARDS.find((c) => c.path === '/admin/settings/storage');
 
-  it('is an Administration card appended after AI usage (only the E9.3 Setup guide follows), gated on storage_config:read with no feature', () => {
+  it('is an Administration card appended after AI usage (the E9.3 Setup guide and the E14.2 OAuth clients follow), gated on storage_config:read with no feature', () => {
     const administration = ADMIN_SECTIONS.find((s) => s.label === 'Administration')!;
     const titles = administration.cards.map((c) => c.title);
     expect(administration.cards[titles.indexOf('Storage')]).toBe(card);
-    expect(titles.slice(titles.indexOf('Storage'))).toEqual(['Storage', 'Setup guide']);
+    expect(titles.slice(titles.indexOf('Storage'))).toEqual(['Storage', 'Setup guide', 'OAuth clients']);
     expect(card?.title).toBe('Storage');
     expect(card?.permission).toBe('storage_config:read');
     expect(card?.feature).toBeUndefined();
@@ -301,6 +310,31 @@ describe('the Storage card (E6.1 web follow-up, the platform storage slice)', ()
   });
 });
 
+describe('the OAuth cards (E14.2, #174)', () => {
+  const clients = ADMIN_CARDS.find((c) => c.path === '/admin/settings/oauth-clients');
+  const connected = USER_CARDS.find((c) => c.path === '/settings/connected-apps');
+
+  it('gates OAuth clients on oauth_clients:read with no feature, the string the controller enforces', () => {
+    expect(clients?.permission).toBe('oauth_clients:read');
+    expect(clients?.feature).toBeUndefined();
+    expect(declaredIds(oauthClientsPermissionsSource)).toEqual(
+      expect.arrayContaining(['oauth_clients:read', 'oauth_clients:write']),
+    );
+    expect(oauthClientsControllerSource).toContain('OAUTH_CLIENTS_READ');
+  });
+
+  it('declares Connected apps with no permission and feature oauthServer', () => {
+    expect(connected?.permission).toBeUndefined();
+    expect(connected?.feature).toBe('oauthServer');
+  });
+
+  it('mounts the status probe and the consent and error routes', () => {
+    expect(appSource).toContain('<OAuthServerStatusProvider api={vaultOAuthServerApi}>');
+    expect(appSource).toContain('<Route path="/oauth/error" element={<OAuthErrorPage />} />');
+    expect(appSource).toContain('<Route path="/oauth/consent" element={<OAuthConsentPage />} />');
+  });
+});
+
 describe('the registries as a whole', () => {
   it('lists the cards in append order (E10.3, then E7.2, E8.2, E6.1 Storage, E9.1 to E9.3)', () => {
     expect(ADMIN_CARDS.map((card) => card.title)).toEqual([
@@ -312,6 +346,7 @@ describe('the registries as a whole', () => {
       'AI usage',
       'Storage',
       'Setup guide',
+      'OAuth clients',
       'Maintenance',
       'Doctor',
       'About',
@@ -329,6 +364,7 @@ describe('the registries as a whole', () => {
       'Appearance',
       'Access Tokens',
       'Getting started',
+      'Connected apps',
       'My backups',
       'Secret types',
       'Download your data',

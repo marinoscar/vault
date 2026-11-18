@@ -113,7 +113,7 @@ export const DESTINATION_ROUTES: Readonly<Record<DestinationKey, readonly string
 
 /**
  * Routes deliberately owned by NO destination: reached from outside the
- * signed-in shell (sign-in, the OAuth callback, the full-screen device
- * activation, the dev-only test login). No row lights up there, by design.
+ * signed-in shell (sign-in, the sign-in callback, the OAuth consent and error pages, the full-screen device
+ * activation, the dev-only test login) . No row lights up there, by design.
  */
-export const UNOWNED_ROUTES: readonly string[] = ['/login', '/auth/callback', '/activate', '/testing/login'];
+export const UNOWNED_ROUTES: readonly string[] = ['/login', '/auth/callback', '/activate', '/oauth/consent', '/oauth/error', '/testing/login'];
