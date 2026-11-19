@@ -16,13 +16,13 @@ import { z } from 'zod';
 
 import { CARD_KINDS, CARD_NETWORKS } from '@marinoscar/vault-contract/secret-types';
 import {
-  CardCropBox,
   EXTRACTED_FIELD_NAMES,
   ExtractedFieldName,
   RawCardConfidence,
   RawCardFields,
   RawExtraction,
 } from './card-extraction.types';
+import { repairBox } from './scan/crop-box';
 
 /** The schema name sent to the provider. */
 export const CARD_EXTRACT_SCHEMA_NAME = 'card_extraction';
@@ -153,27 +153,6 @@ const clamp01 = (v: number): number => (Number.isFinite(v) ? Math.min(1, Math.ma
 function cleanString(value: string | null | undefined, max: number): string | null {
   const trimmed = (value ?? '').trim();
   return trimmed.length === 0 ? null : trimmed.slice(0, max);
-}
-
-/**
- * A card-locating box, repaired: coordinates clamped into [0,1], width/height
- * into [0.05,1], quarter turns wrapped into 0-3. Not-a-number degrades the
- * field to a harmless default. A bad box never costs the user their field data.
- */
-function repairBox(
-  box: CardExtractionModelOutput['front_box'],
-): CardCropBox | null {
-  if (!box) return null;
-  return {
-    x: clamp01(box.x),
-    y: clamp01(box.y),
-    width: Number.isFinite(box.width) ? Math.min(1, Math.max(0.05, box.width)) : 1,
-    height: Number.isFinite(box.height) ? Math.min(1, Math.max(0.05, box.height)) : 1,
-    quarterTurns: Number.isFinite(box.quarter_turns)
-      ? ((Math.round(box.quarter_turns) % 4) + 4) % 4
-      : 0,
-    confidence: clamp01(box.confidence),
-  };
 }
 
 /**
