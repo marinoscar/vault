@@ -117,9 +117,16 @@ function sensitiveValuesOf(field: TypeField, value: unknown): string[] {
   return isSensitive(field) ? [asText(value)] : [];
 }
 
-/** Card types are never handled through MCP: no creation, no listing. */
-export function isCardLikeType(type: { name: string; isSystem?: boolean; fields: unknown }): boolean {
-  if (type.isSystem && type.name.toLowerCase() === 'card') return true;
+/** The system types MCP never handles (ADR-0004 adds the identity documents to the card). */
+const MCP_EXCLUDED_SYSTEM_TYPES: readonly string[] = ['card', 'passport', 'id document'];
+
+/**
+ * Types never handled through MCP: no creation, no listing, and a get or update answers as for a
+ * missing secret. The system types `Card`, `Passport` and `ID Document`, and any type with a
+ * cvv-like field.
+ */
+export function isMcpExcludedType(type: { name: string; isSystem?: boolean; fields: unknown }): boolean {
+  if (type.isSystem && MCP_EXCLUDED_SYSTEM_TYPES.includes(type.name.toLowerCase())) return true;
   return fieldsOf(type).some((f) => /^(cvv|cvc|security_code(_\d+)?)$/i.test(f.name));
 }
 
@@ -229,7 +236,7 @@ export class McpSecretsService {
     const items: McpSecretView[] = [];
     const sensitive: string[] = [];
     for (const row of rows) {
-      if (isCardLikeType(row.type)) continue;
+      if (isMcpExcludedType(row.type)) continue;
       const values = await this.secrets.readCurrentValues(row.id);
       const built = this.buildView(row, values, 'search');
       items.push(built.view);
@@ -252,15 +259,15 @@ export class McpSecretsService {
       where: { id, createdById: userId, agentAccess: 'fill', type: { name: 'Credential', isSystem: true } },
       include: { type: true, versions: { where: { isCurrent: true }, select: { version: true } } },
     });
-    if (!row || isCardLikeType(row.type)) throw new NotFoundException('Secret not found');
+    if (!row || isMcpExcludedType(row.type)) throw new NotFoundException('Secret not found');
     return row;
   }
 
-  /** The types a model may use: names and field definitions. Card types are not listed. */
+  /** The types a model may use: names and field definitions. Card and identity-document types are not listed. */
   async listTypes(): Promise<Array<Record<string, unknown>>> {
     const types: TypeRow[] = await this.prisma.secretType.findMany({ orderBy: { name: 'asc' } });
     return types
-      .filter((t) => !isCardLikeType(t))
+      .filter((t) => !isMcpExcludedType(t))
       .map((t) => ({
         name: t.name,
         description: t.description ?? null,
@@ -293,8 +300,11 @@ export class McpSecretsService {
       where: { name: { equals: input.type.trim(), mode: 'insensitive' } },
     });
     if (!type) throw new McpToolError(`There is no secret type "${input.type}". Use list_secret_types to see the names.`, 'TYPE_NOT_FOUND');
-    if (isCardLikeType(type)) {
-      throw new McpToolError('Card data is never handled through this connection. The user adds cards in Vault.', 'TYPE_NOT_SUPPORTED');
+    if (isMcpExcludedType(type)) {
+      throw new McpToolError(
+        'Card and identity-document data is never handled through this connection. The user adds them in Vault.',
+        'TYPE_NOT_SUPPORTED',
+      );
     }
     const isCredential = type.isSystem === true && type.name === 'Credential';
     if (input.allowAgents && !isCredential) {

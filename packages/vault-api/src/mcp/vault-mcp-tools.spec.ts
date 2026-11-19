@@ -290,3 +290,54 @@ describe('keyvalue fields (issue #206): a sensitive entry\'s value never leaves'
     }
   });
 });
+
+describe('identity documents (issue #209): Passport and ID Document are never handled through MCP', () => {
+  const PASSPORT_NUMBER = 'X1234567';
+
+  function withDocuments() {
+    const s = setup();
+    // agentAccess 'fill' is impossible through the API (422); the rows prove the MCP lookup refuses them anyway.
+    const passport = s.h.add({
+      userId: 'user-aaa', type: 'Passport', name: 'Passport A', agentAccess: 'fill',
+      values: { surname: 'PERSON', given_names: 'A', passport_number: PASSPORT_NUMBER, expiry_date: '2031-01-01', issuing_country: 'UTO' },
+    });
+    const idDocument = s.h.add({
+      userId: 'user-aaa', type: 'ID Document', name: 'License A', agentAccess: 'fill',
+      values: { document_kind: 'Driver License', holder_name: 'Person A', document_number: 'D0000001' },
+    });
+    return { ...s, passport, idDocument };
+  }
+
+  it('lists neither type in list_secret_types', async () => {
+    const { call } = withDocuments();
+    const names = (await call('list_secret_types', {})).data.types.map((t: { name: string }) => t.name);
+    expect(names).toContain('Credential');
+    expect(names).not.toContain('Passport');
+    expect(names).not.toContain('ID Document');
+  });
+
+  it('refuses create_secret with either type, whatever the case', async () => {
+    const { call } = withDocuments();
+    for (const type of ['Passport', 'ID Document', 'id document']) {
+      const { result } = await call('create_secret', { type, name: 'Doc', fields: { surname: 'PERSON' } });
+      expect(result!.structuredContent.code).toBe('TYPE_NOT_SUPPORTED');
+    }
+  });
+
+  it('answers get_secret, update_secret and search_secrets as for a card: not found, nothing echoed', async () => {
+    const { call, card, passport, idDocument, bodies } = withDocuments();
+    const messages = new Set<string>();
+    for (const id of [card.id, passport.id, idDocument.id]) {
+      const { result } = await call('get_secret', { id });
+      expect(result!.structuredContent.code).toBe('NOT_FOUND');
+      messages.add(result!.content[0]!.text);
+      expect((await call('update_secret', { id, fields: { notes: 'x' } })).result!.isError).toBe(true);
+    }
+    expect(messages.size).toBe(1);
+    const names = (await call('search_secrets', { limit: 50 })).data.items.map((i: { name: string }) => i.name);
+    expect(names).toEqual(['Shop']);
+    const all = bodies.join('\n');
+    expect(all).not.toContain(PASSPORT_NUMBER);
+    expect(all).not.toContain('D0000001');
+  });
+});

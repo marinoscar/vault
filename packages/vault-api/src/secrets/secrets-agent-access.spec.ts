@@ -18,7 +18,7 @@ import {
 import { auditOverPrisma } from '../testing';
 import { secretListQuerySchema, updateAgentAccessSchema } from '@marinoscar/vault-contract/secrets';
 import { VAULT_ERROR_CODES } from '@marinoscar/vault-contract/errors';
-import { SecretsService } from './secrets.service';
+import { SecretsService, isAgentAccessibleType, isAgentOpenableType } from './secrets.service';
 import { SecretsController } from './secrets.controller';
 
 const userId = 'user-aaa';
@@ -28,6 +28,8 @@ const apiKeyType = { id: 't2', name: 'API Key', isSystem: true, fields: [] };
 const customType = { id: 't3', name: 'Credential', isSystem: false, fields: [] };
 const cardType = { id: 't4', name: 'Card', isSystem: true, fields: [] };
 const identityType = { id: 't5', name: 'Identity', isSystem: true, fields: [] };
+const passportType = { id: 't6', name: 'Passport', isSystem: true, fields: [] };
+const idDocumentType = { id: 't7', name: 'ID Document', isSystem: true, fields: [] };
 
 const secretRow = (over: Record<string, unknown> = {}) => ({
   id: secretId,
@@ -118,6 +120,23 @@ describe('SecretsService agent access', () => {
       expect(err.getResponse().code).toBe('AGENT_ACCESS_UNSUPPORTED_TYPE');
       expect(prisma.secret.update).not.toHaveBeenCalled();
     });
+
+    it.each([passportType, idDocumentType])(
+      'answers 422 when setting fill on the identity document %p, even from the owner\'s session (ADR-0004)',
+      async (type) => {
+        expect(isAgentAccessibleType(type)).toBe(false);
+        expect(isAgentOpenableType(type)).toBe(false);
+        prisma.secret.findUnique.mockResolvedValue(secretRow({ type }) as any);
+        for (const ownerSession of [false, true]) {
+          const err = await service
+            .updateAgentAccess(secretId, 'fill', userId, write, undefined, ownerSession)
+            .catch((e) => e);
+          expect(err).toBeInstanceOf(UnprocessableEntityException);
+          expect(err.getResponse().code).toBe('AGENT_ACCESS_UNSUPPORTED_TYPE');
+        }
+        expect(prisma.secret.update).not.toHaveBeenCalled();
+      },
+    );
 
     it.each([cardType, identityType])('opens a system %p only with the owner\'s browser session (ADR-0003)', async (type) => {
       prisma.secret.findUnique.mockResolvedValue(secretRow({ type }) as any);

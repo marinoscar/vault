@@ -75,6 +75,8 @@ describe('secretTypeKind', () => {
     expect(secretTypeKind({ isSystem: true, name: 'Credential' })).toBe('credential');
     expect(secretTypeKind({ isSystem: true, name: 'API Key' })).toBe('api_key');
     expect(secretTypeKind({ isSystem: true, name: 'Card' })).toBe('card');
+    expect(secretTypeKind({ isSystem: true, name: 'Passport' })).toBe('passport');
+    expect(secretTypeKind({ isSystem: true, name: 'ID Document' })).toBe('id_document');
   });
 
   it('never returns the name of a custom type, whatever it says', () => {
