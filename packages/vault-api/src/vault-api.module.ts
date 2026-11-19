@@ -38,11 +38,14 @@ import { MyBackupsController } from './backups/my-backups.controller';
 import { MyBackupsService } from './backups/my-backups.service';
 import { CardExpiryScanHandler } from './card-expiry/card-expiry-scan.handler';
 import { CardExpiryTask } from './card-expiry/card-expiry.task';
+import { DocumentExpiryScanHandler } from './document-expiry/document-expiry-scan.handler';
+import { DocumentExpiryTask } from './document-expiry/document-expiry.task';
 import { MediaController } from './media/media.controller';
 import { MediaService } from './media/media.service';
 import { SecretTypesController } from './secret-types/secret-types.controller';
 import { SecretTypesService } from './secret-types/secret-types.service';
 import { CardSummaryService } from './secrets/card-summary.service';
+import { DocumentSummaryService } from './secrets/document-summary.service';
 import { SecretsExportService } from './secrets/export/secrets-export.service';
 import { OriginsBackfillBootstrap, OriginsBackfillHandler } from './secrets/jobs/origins-backfill.handler';
 import { SecretsController } from './secrets/secrets.controller';
@@ -215,6 +218,7 @@ export class VaultApiModule {
         { provide: AgentRateLimiter, useClass: InMemoryAgentRateLimiter },
         SecretsExportService,
         CardSummaryService,
+        DocumentSummaryService,
         MediaService,
         CardExtractService,
         // The scan-profile registry with the built-in profiles (the card), and its runner (#204).
@@ -231,6 +235,8 @@ export class VaultApiModule {
         UserBackupRunHandler,
         CardExpiryScanHandler,
         CardExpiryTask,
+        DocumentExpiryScanHandler,
+        DocumentExpiryTask,
         OriginsBackfillHandler,
         OriginsBackfillBootstrap,
         McpToolRegistry,

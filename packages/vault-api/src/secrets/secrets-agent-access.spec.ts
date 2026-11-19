@@ -246,7 +246,7 @@ describe('SecretsService agent access', () => {
 describe('SecretsController agent-access route', () => {
   const user = { id: userId, permissions: [PERMISSIONS.SECRETS_WRITE] } as any;
   const svc = { updateAgentAccess: jest.fn().mockResolvedValue({ id: secretId, agentAccess: 'fill' }) };
-  const controller = new SecretsController(svc as any, {} as any, {} as any);
+  const controller = new SecretsController(svc as any, {} as any, {} as any, {} as any);
 
   beforeEach(() => svc.updateAgentAccess.mockClear());
 
