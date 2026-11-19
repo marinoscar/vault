@@ -22,6 +22,7 @@ import {
   CARD_GRANTS,
   CARD_GRANT_REQUESTS,
   MEDIA_FOLDERS,
+  DETAIL_ONLY_SECRETS,
   SECRETS,
   SECRET_TYPES,
   makeUser,
@@ -298,7 +299,9 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}): 
     }
     const secretMatch = path.match(/^\/secrets\/([^/]+)$/);
     if (secretMatch && method === 'GET') {
-      const s = api.state.secrets.find((x) => x.id === secretMatch[1]);
+      const s =
+        api.state.secrets.find((x) => x.id === secretMatch[1]) ??
+        DETAIL_ONLY_SECRETS.find((x) => x.id === secretMatch[1]);
       return s ? json(route, { data: detail(s, accessOf(s.id)) }) : json(route, { message: 'Not found' }, 404);
     }
     const versionsMatch = path.match(/^\/secrets\/([^/]+)\/versions$/);
