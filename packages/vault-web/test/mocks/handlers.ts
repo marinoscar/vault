@@ -288,6 +288,25 @@ export const handlers = [
     });
   }),
 
+  // Document scan (IDOC-7): a default answer with nothing read; tests override it.
+  http.post(`${API_BASE}/secrets/documents/extract`, async ({ request }) => {
+    const body = (await request.json()) as { documentType: 'passport' | 'id_document'; images: Record<string, string> };
+    return HttpResponse.json({
+      data: {
+        documentType: body.documentType,
+        fields: {},
+        confidence: {},
+        documentKind: body.documentType === 'id_document' ? { value: null, confidence: 0 } : null,
+        attributes: [],
+        checks: [],
+        warnings: [],
+        crops: Object.fromEntries(Object.keys(body.images).map((slot) => [slot, null])),
+        model: null,
+        partial: true,
+      },
+    });
+  }),
+
   http.post(`${API_BASE}/auth/device/authorize`, async ({ request }) => {
     const body = (await request.json()) as { userCode: string; approve: boolean };
 
