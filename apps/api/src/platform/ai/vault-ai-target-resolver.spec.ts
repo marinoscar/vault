@@ -1,6 +1,8 @@
 import type { DefaultAiTargetResolver } from '@marinoscar/platform-api/ai';
 import type { SystemSettingsService } from '@marinoscar/platform-api/settings';
 
+import { DocumentExtractService } from '@marinoscar/vault-api/ai';
+
 import { VaultAiTargetResolver } from './vault-ai-target-resolver';
 
 describe('VaultAiTargetResolver', () => {
@@ -44,5 +46,56 @@ describe('VaultAiTargetResolver', () => {
     await expect(resolve('playground')).resolves.toBe(fallbackTarget);
     await expect(resolve(undefined)).resolves.toBe(fallbackTarget);
     expect(fallback.resolve).toHaveBeenCalledTimes(2);
+  });
+
+  it('runs a scan feature on the provider stored beside its model (openai-compatible, #213)', async () => {
+    policy = {
+      cardExtractModel: 'vision-model-a',
+      documentExtractModel: 'local-vision-model',
+      documentExtractProvider: 'openai-compatible',
+    };
+    await expect(resolve('document_extract')).resolves.toEqual({
+      provider: 'openai-compatible',
+      model: 'local-vision-model',
+    });
+    await expect(resolve('card_extract')).resolves.toEqual({ provider: 'openai', model: 'vision-model-a' });
+
+    policy = { cardExtractModel: 'local-vision-model', cardExtractProvider: 'openai-compatible' };
+    await expect(resolve('document_extract')).resolves.toEqual({
+      provider: 'openai-compatible',
+      model: 'local-vision-model',
+    });
+  });
+
+  it('routes POST /api/secrets/documents/extract to the selected openai-compatible model (no network)', async () => {
+    policy = {
+      cardExtractModel: 'vision-model-a',
+      documentExtractModel: 'local-vision-model',
+      documentExtractProvider: 'openai-compatible',
+    };
+    // A fake AiService: `forUser` hands the call to the target resolver exactly as the platform's
+    // gate pipeline does (feature and any pinned model), records the target and answers nothing.
+    const targets: unknown[] = [];
+    const ai = {
+      forUser: (userId: string, opts: { feature?: string }) => ({
+        respondStructured: async (req: { model?: string }) => {
+          targets.push(await resolver.resolve({ userId, feature: opts.feature, requested: { model: req.model } }));
+          throw new Error('no provider in this test');
+        },
+      }),
+    };
+    const service = new DocumentExtractService(ai as never);
+    const image = `data:image/png;base64,${Buffer.from('PLACEHOLDER-IMAGE').toString('base64')}`;
+    const user = {
+      id: 'user-a',
+      email: 'person.a@example.test',
+      roles: ['contributor'],
+      permissions: ['secrets:write', 'ai:use'],
+      isActive: true,
+      activeOrgId: 'org-alpha',
+    };
+
+    await expect(service.extract({ documentType: 'id_document', images: { front: image } }, user as never)).rejects.toBeDefined();
+    expect(targets).toEqual([{ provider: 'openai-compatible', model: 'local-vision-model' }]);
   });
 });

@@ -234,15 +234,70 @@ export const DEFAULT_CARD_EXTRACT_MODEL = 'gpt-4o-mini';
  */
 export const vaultAiExtensionSchema = z.object({
   cardExtractModel: z.string().trim().min(1).max(128),
+  /** The provider of `cardExtractModel` (#213); unset means `openai`, the provider of every row before it. */
+  cardExtractProvider: z.string().trim().min(1).max(64).optional(),
   /** The model `document_extract` runs on (#210); unset means `cardExtractModel`. */
   documentExtractModel: z.string().trim().min(1).max(128).optional(),
+  /** The provider of `documentExtractModel` (#213); unset means `openai`. */
+  documentExtractProvider: z.string().trim().min(1).max(64).optional(),
 });
 export type VaultAiExtensionValue = z.infer<typeof vaultAiExtensionSchema>;
+
+/**
+ * A patch of the extension: every field optional, and the two document fields also accept `null`,
+ * which CLEARS them ("Same as card scanning", #213). A patch that sets a model without its provider
+ * clears the stored provider, so a choice never keeps the provider of an earlier one.
+ */
+export const vaultAiExtensionPatchSchema = z.object({
+  cardExtractModel: vaultAiExtensionSchema.shape.cardExtractModel.optional(),
+  cardExtractProvider: z.string().trim().min(1).max(64).nullable().optional(),
+  documentExtractModel: z.string().trim().min(1).max(128).nullable().optional(),
+  documentExtractProvider: z.string().trim().min(1).max(64).nullable().optional(),
+});
+export type VaultAiExtensionPatch = z.infer<typeof vaultAiExtensionPatchSchema>;
+
+/** The extension's fields of `current` with `patch` applied (see {@link vaultAiExtensionPatchSchema}). */
+export function mergeVaultAiExtension(
+  current: Record<string, unknown>,
+  patch: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  const next = { ...current };
+  if (!patch) return next;
+  const pairs = [
+    ['cardExtractModel', 'cardExtractProvider'],
+    ['documentExtractModel', 'documentExtractProvider'],
+  ] as const;
+  for (const [modelKey, providerKey] of pairs) {
+    if (patch[modelKey] === null) {
+      delete next[modelKey];
+      delete next[providerKey];
+      continue;
+    }
+    if (patch[modelKey] !== undefined) {
+      next[modelKey] = patch[modelKey];
+      if (patch[providerKey] === undefined) delete next[providerKey];
+    }
+    if (patch[providerKey] === null) delete next[providerKey];
+    else if (patch[providerKey] !== undefined) next[providerKey] = patch[providerKey];
+  }
+  return next;
+}
+
+const EXTENSION_FIELDS = Object.keys(vaultAiExtensionSchema.shape);
 
 export const VAULT_AI_SETTINGS_EXTENSION: SystemSettingsNamespaceExtension = {
   key: 'ai',
   storedSchema: vaultAiExtensionSchema,
+  patchSchema: vaultAiExtensionPatchSchema,
+  wirePatchSchema: vaultAiExtensionPatchSchema,
   defaults: { cardExtractModel: DEFAULT_CARD_EXTRACT_MODEL },
+  // The platform's merge for its own fields, then the extension's fields with `null` clearing.
+  merge: (current, patch, baseMerge) => {
+    const merged = (baseMerge(current, patch) ?? {}) as Record<string, unknown>;
+    const ownCurrent = Object.fromEntries(EXTENSION_FIELDS.filter((k) => k in current).map((k) => [k, current[k]]));
+    const base = Object.fromEntries(Object.entries(merged).filter(([k]) => !EXTENSION_FIELDS.includes(k)));
+    return { ...base, ...mergeVaultAiExtension(ownCurrent, patch) };
+  },
 };
 
 /**
