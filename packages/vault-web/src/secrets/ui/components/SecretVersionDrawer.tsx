@@ -31,7 +31,7 @@ import {
   Restore as RestoreIcon,
   DragHandle as SameIcon,
 } from '@mui/icons-material';
-import { CardImages, supportsCardImages } from './CardImages.js';
+import { DocumentImages, documentImagesTypeName, supportsDocumentImages } from './DocumentImages.js';
 import { MASK } from './SecretValueField.js';
 import { diffSecretValues, type FieldChange } from '../../headless/secretFields.js';
 import type { SecretVersionDetailWithAttachments } from '../../headless/useSecretDetail.js';
@@ -356,14 +356,15 @@ export function SecretVersionDrawer({
 
                 {/* Deliberately the version's OWN attachments: viewing v1 of a
                     renewed card shows v1's photo. Read-only: history is immutable. */}
-                {supportsCardImages(secret.type, detail.attachments ?? []) && (
+                {supportsDocumentImages(secret.type, detail.attachments ?? []) && (
                   <>
                     <Divider />
-                    <CardImages
+                    <DocumentImages
                       secretId={secret.id}
                       attachments={detail.attachments ?? []}
+                      type={secret.type}
                       readOnly
-                      title={`Card Images (v${detail.version})`}
+                      title={`${documentImagesTypeName(secret.type, detail.attachments ?? [])} Images (v${detail.version})`}
                     />
                   </>
                 )}

@@ -11,11 +11,13 @@ import { z } from 'zod';
 /**
  * Role of an attachment within its secret version. Omitted means a generic
  * attachment (stored as NULL), of which a version may have many. A
- * role-bearing attachment is unique per version.
+ * role-bearing attachment is unique per version. Which roles a secret type
+ * accepts is {@link imageSlotsFor}: `card_front`/`card_back` for Card,
+ * `data_page`/`back` for Passport, `front`/`back` for ID Document.
  *
  * @stability experimental
  */
-export const attachmentRoleSchema = z.enum(['card_front', 'card_back']);
+export const attachmentRoleSchema = z.enum(['card_front', 'card_back', 'data_page', 'front', 'back']);
 
 /** @stability experimental */
 export type AttachmentRole = z.infer<typeof attachmentRoleSchema>;
@@ -204,5 +206,6 @@ export const attachmentResponseSchema = z.object({
 
 /** @stability experimental */
 export type AttachmentResponse = z.infer<typeof attachmentResponseSchema>;
+export * from './image-slots.js';
 export * from './origins.js';
 export * from './totp.js';

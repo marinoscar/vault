@@ -12,6 +12,7 @@ import {
   ExportVersionRow,
   SecretsExportService,
 } from './secrets-export.service';
+import { renderSecretsHtml } from './secrets-export-html.renderer';
 import { TestCrypto, auditOverPrisma } from '../../testing';
 
 const PASSWORD = 'correct horse battery staple';
@@ -257,6 +258,55 @@ describe('buildExportPlan', () => {
     const { manifest } = buildExportPlan(rows, input());
     expect(manifest.secrets[1].current?.attachments[0].file).toBeNull();
     expect(manifest.warnings).toHaveLength(1);
+  });
+
+  describe('document image order and titles', () => {
+    const att = (id: string, role: string | null, second: number, name: string) => ({
+      id,
+      secretVersionId: 'b-v1',
+      storageObjectId: `obj-${id}`,
+      role,
+      label: null,
+      createdAt: new Date(Date.UTC(2026, 0, 2, 0, 0, second)),
+      storageObject: storageObject(`obj-${id}`, { name }),
+    });
+
+    it('keeps a card front first, then the back, then generic files', () => {
+      const rows = baseRows();
+      rows[1].attachments = [
+        att('generic', null, 1, 'terms.pdf'),
+        att('back', 'card_back', 2, 'back.jpg'),
+        att('front', 'card_front', 3, 'front.jpg'),
+      ];
+      const { manifest } = buildExportPlan(rows, input());
+      expect(manifest.secrets[1].current?.attachments.map((a) => a.role)).toEqual(['card_front', 'card_back', null]);
+
+      const html = renderSecretsHtml(manifest);
+      expect(html).toContain('Card front - front.jpg');
+      expect(html).toContain('Card back - back.jpg');
+      expect(html.indexOf('Card front - front.jpg')).toBeLessThan(html.indexOf('Card back - back.jpg'));
+    });
+
+    it('exports a passport data page first, titled from its slot label', () => {
+      const rows = baseRows();
+      rows[1] = {
+        ...rows[1],
+        name: 'Passport of Person A',
+        type: { id: 'type-passport', name: 'Passport', fields: [] },
+        attachments: [
+          att('other', 'back', 1, 'other.jpg'),
+          att('generic', null, 2, 'visa.pdf'),
+          att('data', 'data_page', 3, 'data.jpg'),
+        ],
+      };
+      const { manifest } = buildExportPlan(rows, input());
+      expect(manifest.secrets[1].current?.attachments.map((a) => a.role)).toEqual(['data_page', 'back', null]);
+
+      const html = renderSecretsHtml(manifest);
+      expect(html).toContain('Passport data page - data.jpg');
+      expect(html).toContain('Passport other page - other.jpg');
+      expect(html.indexOf('Passport data page')).toBeLessThan(html.indexOf('Passport other page'));
+    });
   });
 
   it('ignores attachments when includeAttachments is false', () => {

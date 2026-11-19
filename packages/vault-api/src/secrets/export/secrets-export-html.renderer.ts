@@ -1,4 +1,5 @@
 import { isBrowserRenderableImage } from './attachment-file-name';
+import { imageSlotTitle } from './document-image-slots';
 import {
   ExportAttachmentEntry,
   ExportFieldDefinition,
@@ -163,26 +164,26 @@ function renderFieldRow(label: string, value: unknown): string {
   return `<tr><th scope="row">${escapeHtml(label)}</th><td>${formatFieldCell(value)}</td></tr>`;
 }
 
-function attachmentTitle(attachment: ExportAttachmentEntry): string {
+function attachmentTitle(typeName: string, attachment: ExportAttachmentEntry): string {
   const parts: string[] = [];
+  const slotTitle = imageSlotTitle(typeName, attachment.role);
   if (attachment.label) {
     parts.push(attachment.label);
-  } else if (attachment.role === 'card_front') {
-    parts.push('Card front');
-  } else if (attachment.role === 'card_back') {
-    parts.push('Card back');
+  } else if (slotTitle) {
+    // "Card front", "Passport data page": from DOCUMENT_IMAGE_SLOTS.
+    parts.push(slotTitle);
   }
   parts.push(attachment.originalName || 'file');
   return parts.join(' - ');
 }
 
-function renderAttachments(attachments: ExportAttachmentEntry[]): string {
+function renderAttachments(typeName: string, attachments: ExportAttachmentEntry[]): string {
   if (attachments.length === 0) {
     return '';
   }
 
   const items = attachments.map((attachment) => {
-    const title = escapeHtml(attachmentTitle(attachment));
+    const title = escapeHtml(attachmentTitle(typeName, attachment));
     const detail = `<span class="meta">${escapeHtml(attachment.mimeType)}, ${escapeHtml(
       formatBytes(attachment.size),
     )}</span>`;
@@ -202,10 +203,10 @@ function renderAttachments(attachments: ExportAttachmentEntry[]): string {
 }
 
 function renderVersionBody(
-  fields: ExportFieldDefinition[],
+  type: ExportSecretEntry['type'],
   version: ExportVersionEntry,
 ): string {
-  return renderFieldTable(fields, version.data) + renderAttachments(version.attachments);
+  return renderFieldTable(type.fields, version.data) + renderAttachments(type.name, version.attachments);
 }
 
 function renderOldVersions(secret: ExportSecretEntry): string {
@@ -229,7 +230,7 @@ function renderOldVersions(secret: ExportSecretEntry): string {
     (version) =>
       `<div class="version"><h3>Version ${escapeHtml(version.versionNumber)}</h3>` +
       `<div class="meta">Created ${escapeHtml(version.createdAt)}</div>` +
-      renderVersionBody(secret.type.fields, version) +
+      renderVersionBody(secret.type, version) +
       '</div>',
   );
 
@@ -249,7 +250,7 @@ function renderSecret(secret: ExportSecretEntry, index: number): string {
     ? `<p class="description">${escapeHtml(secret.description)}</p>`
     : '';
   const body = current
-    ? renderVersionBody(secret.type.fields, current)
+    ? renderVersionBody(secret.type, current)
     : '<p class="empty">This secret has no stored values.</p>';
 
   return (
