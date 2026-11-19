@@ -15,14 +15,17 @@ Status: complete for the eight app-owned migrations that existed when E12.1 land
 ## Install and peer dependencies
 
 ```bash
-npm install --save-dev @marinoscar/vault-db@next
+npm install --save-dev @marinoscar/vault-db@next prisma@^7.8.0
+npx vault-db --help
 ```
+
+Published to npm under the `next` dist-tag until 1.0, with a provenance attestation; the install, the dist-tag policy and the current publication status are in [docs/PACKAGES.md](../../docs/PACKAGES.md#installing-from-npm).
 
 | Package | Range | Needed by |
 |---|---|---|
 | `prisma` | `^7.8.0` | `bin` (required) |
 
-`commander` is a dependency (the command line). `check --database` also needs `pg`, resolved at run time from the app (any app that talks to PostgreSQL through Prisma's `pg` adapter has it); it is not declared as a peer because the offline commands never use it. The per-slice data is `packages/vault-slice-peers.json`.
+`commander` is a dependency (the command line). `check --database` also needs `pg`, resolved at run time from the app (any app that talks to PostgreSQL through Prisma's `pg` adapter has it); it is not declared as a peer because the offline commands never use it.
 
 ## Quick start
 

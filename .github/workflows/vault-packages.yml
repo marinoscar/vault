@@ -68,6 +68,21 @@ jobs:
           node --input-type=module -e "await import('@marinoscar/vault-contract/backups')"
           node packages/vault-db/bin/vault-db.js --help
 
+  package-scripts:
+    name: Package script tests
+    # Unit tests of the pack check's rules (allow-list, exports walk, vault-db
+    # and vault-contract requirements, absolute-path and card-number scans).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      # Node built-ins only: no install needed.
+      - run: npm run test:package-scripts
+
   package-docs:
     name: Package docs
     runs-on: ubuntu-latest
