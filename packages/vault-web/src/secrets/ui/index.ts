@@ -2,6 +2,7 @@
 
 export * from './components/CardImages.js';
 export * from './components/CountryField.js';
+export * from './components/DocumentImages.js';
 export * from './components/DynamicSecretFields.js';
 export * from './components/FieldDefinitionBuilder.js';
 export * from './components/FieldOptionsEditor.js';

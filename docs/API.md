@@ -1543,14 +1543,15 @@ A flag left out takes its default (`includeSecrets` and `includeAttachments` tru
 | `data` | object | Yes | Full field set for the type, validated exactly as `PUT /secrets/:id` validates `data` |
 | `attachments` | array | No | Up to 20 entries. An entry with a `role` replaces the existing attachment of that role; without a `role` it is an addition |
 | `attachments[].storageObjectId` | string (UUID) | Yes | Must already exist and be owned by the caller (or caller holds `secrets:write_any`) |
-| `attachments[].role` | `"card_front"` \| `"card_back"` | No | Omit for a generic (non-card-face) attachment |
+| `attachments[].role` | `"card_front"` \| `"card_back"` \| `"data_page"` \| `"front"` \| `"back"` | No | Omit for a generic attachment; must be an image slot of the secret's type |
 | `attachments[].label` | string | No | Max 255 characters |
 | `aiAssisted` | boolean | No | Audit-only flag; recorded as `secret.renew`'s `extractionMethod` (`ai_assisted` vs `manual`). No effect on validation or storage |
 
 **Response:** `201 Created` — the full secret detail (same shape as `GET /secrets/:id`), reflecting the new current version.
 
 **Error Cases:**
-- `400 Bad Request` — data failed type validation; duplicate `role` or `storageObjectId` within `attachments`; the secret's type does not allow attachments but `attachments` was non-empty; a `card_front`/`card_back` image failed the card image MIME/size check (see [SECRETS.md § Roles](SECRETS.md#roles-card_front-and-card_back))
+- `400 Bad Request` — data failed type validation; duplicate `role` or `storageObjectId` within `attachments`; the secret's type does not allow attachments but `attachments` was non-empty; a document image (`card_front`, `card_back`, `data_page`, `front`, `back`) failed the image MIME/size/signature check (see [SECRETS.md § Roles](SECRETS.md#roles-document-image-slots))
+- `422 ATTACHMENT_ROLE_NOT_ALLOWED` — an entry's `role` is not an image slot of the secret's type
 - `403 Forbidden` — caller lacks access to the secret or to one of the referenced storage objects
 - `404 Not Found` — secret or a referenced storage object does not exist
 - `409 Conflict` — a concurrent renewal already claimed the same attachment role on the new version
@@ -1561,13 +1562,13 @@ A flag left out takes its default (`includeSecrets` and `includeAttachments` tru
 
 **Requires Authentication** (`secrets:read` for `GET`, `secrets:write` for `POST`/`DELETE`).
 
-- `POST /secrets/:id/attachments` — link a storage object to the secret's **current** version. Body: `{ "storageObjectId": "uuid", "role": "card_front", "label": "optional" }` (`role` and `label` optional). `role`, if present, must be `card_front` or `card_back` — these are the only roles the API defines today.
+- `POST /secrets/:id/attachments` — link a storage object to the secret's **current** version. Body: `{ "storageObjectId": "uuid", "role": "card_front", "label": "optional" }` (`role` and `label` optional). `role`, if present, must be one of the image slots of the secret's type (Card: `card_front`, `card_back`; Passport: `data_page`, `back`; ID Document: `front`, `back`; a custom type: none), otherwise `422 ATTACHMENT_ROLE_NOT_ALLOWED` ([SECRETS.md § Roles](SECRETS.md#roles-document-image-slots)).
 - `GET /secrets/:id/attachments` — list attachments. Query parameters:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|--------------|
 | `versionId` | string (UUID) | No | Read a specific historical version's attachments instead of the current version's |
-| `role` | `"card_front"` \| `"card_back"` | No | Filter to one card face |
+| `role` | `"card_front"` \| `"card_back"` \| `"data_page"` \| `"front"` \| `"back"` | No | Filter to one document image |
 
 - `DELETE /secrets/:id/attachments/:attachmentId` — unlink. The underlying storage object (and its blob) is deleted only if no other attachment row — on any version, of any secret — still references it; otherwise only the link is removed. Returns `204 No Content`.
 
@@ -1597,7 +1598,8 @@ A flag left out takes its default (`includeSecrets` and `includeAttachments` tru
 `storageObject.size` is a string — it is a BigInt column and is stringified before serialization.
 
 **Error Cases:**
-- `400 Bad Request` — the secret's type does not allow attachments
+- `400 Bad Request` — the secret's type does not allow attachments, or a document image failed the image MIME/size/signature check
+- `422 ATTACHMENT_ROLE_NOT_ALLOWED` — the `role` is not an image slot of the secret's type
 - `403 Forbidden` — caller does not own the secret or the referenced storage object
 - `404 Not Found` — secret, version, storage object, or attachment not found
 - `409 Conflict` — the same file is already linked to this version, or this version already has an attachment with the given role
@@ -2251,6 +2253,7 @@ Every tool declares a title, a scope, an effect and the MCP annotations (`readOn
 | `AGENT_CREDENTIAL_REQUIRED` | 403 | Agent API: the request used a browser session instead of an `oat_` or `pat_` token |
 | `RATE_LIMITED` | 429 | Agent API: a per-minute limit was reached (`Retry-After` is set) |
 | `AGENT_ACCESS_UNSUPPORTED_TYPE` | 422 | Only a Credential secret can be set to agent access `fill`; this secret type cannot |
+| `ATTACHMENT_ROLE_NOT_ALLOWED` | 422 | The attachment `role` is not an image slot of the secret's type (Card: `card_front`, `card_back`; Passport: `data_page`, `back`; ID Document: `front`, `back`; custom types: none) |
 | `AI_INVALID_IMAGE` | 400 | Card extraction body was not one or two acceptable base64 image data URLs |
 | `AI_EXTRACTION_FAILED` | 422 | Card extraction call succeeded but the model could not read the card, or its output failed schema validation |
 | `AI_RATE_LIMITED` | 429 | The platform per-user per-minute AI cap was reached |

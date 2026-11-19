@@ -584,7 +584,8 @@ describe('SecretsService', () => {
   // ============================================================================
 
   describe('linkAttachment', () => {
-    const attachType = { ...mockSecretType, allowAttachments: true };
+    // A system Card: its image slots are card_front and card_back (#208).
+    const attachType = { ...mockSecretType, name: 'Card', isSystem: true, allowAttachments: true };
     const attachSecret = { ...mockSecret, type: attachType };
     const writePerms = [PERMISSIONS.SECRETS_WRITE];
 
@@ -1467,6 +1468,143 @@ describe('SecretsService', () => {
   });
 
   // ============================================================================
+  // document image roles and slots (#208)
+  // ============================================================================
+
+  describe('document image roles', () => {
+    const writePerms = [PERMISSIONS.SECRETS_WRITE];
+    // Built here: the Passport system type itself arrives with IDOC-6.
+    const passportType = { ...mockSecretType, id: 'type-passport', name: 'Passport', isSystem: true, allowAttachments: true };
+    const cardType = { ...mockSecretType, id: 'type-card', name: 'Card', isSystem: true, allowAttachments: true };
+    const customType = { ...mockSecretType, id: 'type-custom', name: 'Library card', isSystem: false, allowAttachments: true };
+
+    function onType(type: Record<string, unknown>) {
+      mockPrisma.secret.findUnique.mockResolvedValue({ ...mockSecret, typeId: type.id, type } as any);
+    }
+
+    function link(role?: string) {
+      return service.linkAttachment(
+        secretId,
+        (role ? { storageObjectId, role } : { storageObjectId }) as any,
+        userId,
+        writePerms,
+      );
+    }
+
+    async function rejection(promise: Promise<unknown>): Promise<any> {
+      try {
+        await promise;
+      } catch (err) {
+        return err;
+      }
+      throw new Error('expected a rejection');
+    }
+
+    beforeEach(() => {
+      mockPrisma.storageObject.findUnique.mockResolvedValue(mockStorageObject as any);
+      mockPrisma.secretVersion.findFirst.mockResolvedValue({ id: versionId } as any);
+      mockPrisma.secretAttachment.create.mockResolvedValue({ ...mockAttachment, role: 'data_page' } as any);
+    });
+
+    it('links data_page on a Passport', async () => {
+      onType(passportType);
+      await expect(link('data_page')).resolves.toBeDefined();
+      const call = (mockPrisma.secretAttachment.create as jest.Mock).mock.calls[0][0];
+      expect(call.data.role).toBe('data_page');
+      // The image gate ran: the stored bytes were read back for the signature.
+      expect(mockStorage.download).toHaveBeenCalled();
+    });
+
+    it.each([
+      ['card_front on a Passport', passportType, 'card_front'],
+      ['front on a Card', cardType, 'front'],
+      ['data_page on a Card', cardType, 'data_page'],
+      ['a role on a custom type', customType, 'front'],
+      ['card_front on a custom type', customType, 'card_front'],
+    ])('refuses %s with 422 ATTACHMENT_ROLE_NOT_ALLOWED', async (_name, type, role) => {
+      onType(type);
+      const err = await rejection(link(role));
+      expect(err.getStatus()).toBe(422);
+      expect(err.getResponse()).toEqual(expect.objectContaining({ code: 'ATTACHMENT_ROLE_NOT_ALLOWED' }));
+      expect(mockPrisma.secretAttachment.create).not.toHaveBeenCalled();
+      expect(mockStorage.download).not.toHaveBeenCalled();
+    });
+
+    it('links a role-less file on a custom type as a generic attachment', async () => {
+      onType(customType);
+      mockPrisma.secretAttachment.create.mockResolvedValue({ ...mockAttachment, role: null } as any);
+      await expect(link()).resolves.toBeDefined();
+      const call = (mockPrisma.secretAttachment.create as jest.Mock).mock.calls[0][0];
+      expect(call.data.role).toBeUndefined();
+      expect(mockStorage.download).not.toHaveBeenCalled();
+    });
+
+    it('refuses an oversize passport image like a card image', async () => {
+      onType(passportType);
+      mockPrisma.storageObject.findUnique.mockResolvedValue({ ...mockStorageObject, size: BigInt(6 * 1024 * 1024) } as any);
+      const err = await rejection(link('data_page'));
+      expect(err).toBeInstanceOf(BadRequestException);
+      expect(err.message).toMatch(/bytes or smaller/);
+    });
+
+    it('refuses a wrong-MIME passport image like a card image', async () => {
+      onType(passportType);
+      mockPrisma.storageObject.findUnique.mockResolvedValue({ ...mockStorageObject, mimeType: 'application/pdf' } as any);
+      const err = await rejection(link('data_page'));
+      expect(err).toBeInstanceOf(BadRequestException);
+      expect(err.message).toMatch(/must be one of image\/jpeg/);
+    });
+
+    it('refuses a passport image whose bytes are not an image', async () => {
+      onType(passportType);
+      mockStorage.download.mockImplementation(async () => imageBlob(MAGIC.pdf));
+      const err = await rejection(link('data_page'));
+      expect(err).toBeInstanceOf(BadRequestException);
+      expect(err.message).toMatch(/do not match any accepted image format/);
+    });
+
+    it('answers a duplicate role per version with a 409 naming the slot', async () => {
+      onType(passportType);
+      mockPrisma.secretAttachment.create.mockRejectedValue(
+        Object.assign(new Error('Unique constraint failed'), {
+          code: 'P2002',
+          meta: { target: ['secret_version_id', 'role'] },
+        }),
+      );
+      const err = await rejection(link('data_page'));
+      expect(err).toBeInstanceOf(ConflictException);
+      expect(err.message).toBe('This passport already has a data page image for the current version');
+    });
+
+    it('keeps the card wording for a duplicate card face', async () => {
+      onType(cardType);
+      mockPrisma.secretAttachment.create.mockRejectedValue(
+        Object.assign(new Error('Unique constraint failed'), {
+          code: 'P2002',
+          meta: { target: ['secret_version_id', 'role'] },
+        }),
+      );
+      const err = await rejection(link('card_back'));
+      expect(err.message).toBe('This card already has a back image for the current version');
+    });
+
+    it('refuses a renewal replacement whose role is not a slot of the type', async () => {
+      onType(cardType);
+      const err = await rejection(
+        service.renew(
+          secretId,
+          { data: { username: 'u', password: 'p' }, attachments: [{ storageObjectId, role: 'data_page' }] } as any,
+          userId,
+          writePerms,
+        ),
+      );
+      expect(err.getStatus()).toBe(422);
+      expect(err.getResponse()).toEqual(expect.objectContaining({ code: 'ATTACHMENT_ROLE_NOT_ALLOWED' }));
+      expect(mockStorage.download).not.toHaveBeenCalled();
+    });
+  });
+
+  // ============================================================================
   // update
   // ============================================================================
 
@@ -1666,6 +1804,7 @@ describe('SecretsService', () => {
       ...mockSecretType,
       id: cardTypeId,
       name: 'Card',
+      isSystem: true,
       fields: [
         { name: 'number', label: 'Number', type: 'string', required: true, sensitive: true },
         { name: 'holder', label: 'Holder', type: 'string', required: true, sensitive: false },

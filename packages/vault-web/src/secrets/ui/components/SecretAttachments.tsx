@@ -24,9 +24,9 @@ import type { SecretAttachment } from '../../../core/headless/types.js';
 
 interface SecretAttachmentsProps {
   /**
-   * All of the secret's attachments. Role-bearing ones (card faces) are
-   * filtered out here rather than by the caller — they render as images in
-   * `CardImages`, and listing them again as generic files would show the same
+   * All of the secret's attachments. Role-bearing ones (card faces, passport
+   * pages, ID document faces) are filtered out here rather than by the caller
+   * — they render as images in `DocumentImages`, and listing them again as generic files would show the same
    * upload twice with a delete button that silently removes a card photo.
    */
   attachments: SecretAttachment[];
