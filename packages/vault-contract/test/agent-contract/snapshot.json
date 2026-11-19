@@ -1,5 +1,5 @@
 {
-  "version": "1.2",
+  "version": "1.3",
   "schemas": {
     "agentAccessSettingsSchema": {
       "role": "both",
@@ -1161,7 +1161,8 @@
                 "login",
                 "signup",
                 "password_change",
-                "mfa"
+                "mfa",
+                "save_login"
               ]
             }
           }
@@ -1358,7 +1359,8 @@
                 "login",
                 "signup",
                 "password_change",
-                "mfa"
+                "mfa",
+                "save_login"
               ]
             }
           }
@@ -1908,7 +1910,8 @@
           "login",
           "signup",
           "password_change",
-          "mfa"
+          "mfa",
+          "save_login"
         ]
       }
     },
@@ -1969,7 +1972,8 @@
                 "login",
                 "signup",
                 "password_change",
-                "mfa"
+                "mfa",
+                "save_login"
               ]
             }
           }
@@ -2043,7 +2047,8 @@
                 "login",
                 "signup",
                 "password_change",
-                "mfa"
+                "mfa",
+                "save_login"
               ]
             }
           }
@@ -3025,6 +3030,7 @@
     "AGENT_CONTRACT_FEATURES": {
       "LOGINS": "logins",
       "TOTP": "totp",
+      "SAVE_LOGIN": "save_login",
       "CARDS": "cards",
       "IDENTITY": "identity"
     },

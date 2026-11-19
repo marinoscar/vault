@@ -184,6 +184,16 @@ describe('AgentCredentialsService', () => {
       expect((await status(service.create(caller(), body({ password: 'x' })))).status).toBe(409);
     });
 
+    it('records the purpose save_login in the audit row and creates the credential through the agent-opened create path', async () => {
+      const { service, secrets, audit } = build();
+      await service.create(caller(), body({ password: CANARY_PASSWORD, purpose: 'save_login' }));
+      // createAgentCredential always opens the secret to agents (agentAccess 'fill'; pinned in secrets-agent-api.spec).
+      expect(secrets.createAgentCredential).toHaveBeenCalledTimes(1);
+      expect(audit.events[0]).toMatchObject({ action: 'agent.credential.create', targetType: 'secret', targetId: ID });
+      expect(audit.events[0]!.meta).toMatchObject({ result: 'ok', generated: false, purpose: 'save_login' });
+      expect(JSON.stringify(audit.events)).not.toContain(CANARY_PASSWORD);
+    });
+
     it('audits the new secret id and that it was generated, not the password', async () => {
       const { service, audit } = build();
       await service.create(caller(), body({ generate: {} }));

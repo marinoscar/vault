@@ -74,17 +74,17 @@ describe('agent contract snapshot (the promise, enforced)', () => {
       fields: {
         field: { required: true, nullable: false, shape: { type: 'enum', values: ['username', 'password'] } },
         origin: { required: true, nullable: false, shape: { type: 'primitive', name: 'string' } },
-        purpose: { required: true, nullable: false, shape: { type: 'enum', values: ['login', 'signup', 'password_change', 'mfa'] } },
+        purpose: { required: true, nullable: false, shape: { type: 'enum', values: ['login', 'signup', 'password_change', 'mfa', 'save_login'] } },
       },
     });
   });
 
   it('the changelog lists every contract version, newest first, each marked additive or breaking', () => {
     const entries = parseChangelog(GUIDE);
-    expect(entries.map((e) => e.version)).toEqual(['1.2', '1.1', '1.0']);
+    expect(entries.map((e) => e.version)).toEqual(['1.3', '1.2', '1.1', '1.0']);
     expect(entries.every((e) => e.kind === 'additive')).toBe(true);
-    expect(entries[0]!.body).toMatch(/whoami/);
-    expect(entries[1]!.body).toMatch(/cards/i);
+    expect(entries[0]!.body).toMatch(/save_login/);
+    expect(entries[2]!.body).toMatch(/cards/i);
   });
 });
 
@@ -97,7 +97,7 @@ describe('agent contract classifier: additive passes, breaking fails (demonstrat
     ],
     ['a new scope', variant({ AGENT_SCOPES: { ...agent.AGENT_SCOPES, NOTES_READ: 'vault:notes_read' } })],
     ['a new error code', variant({ AGENT_ERROR_CODES: { ...agent.AGENT_ERROR_CODES, NOTE_ACCESS_DISABLED: 'NOTE_ACCESS_DISABLED' } })],
-    ['a new enum value in a request', variant({ agentPurposeSchema: z.enum(['login', 'signup', 'password_change', 'mfa', 'recovery']) })],
+    ['a new enum value in a request', variant({ agentPurposeSchema: z.enum(['login', 'signup', 'password_change', 'mfa', 'save_login', 'recovery']) })],
     ['a new feature id', variant({ AGENT_CONTRACT_FEATURES: { ...agent.AGENT_CONTRACT_FEATURES, NOTES: 'notes' } })],
   ];
 
@@ -161,7 +161,7 @@ describe('agent contract classifier: additive passes, breaking fails (demonstrat
 
   it('a breaking change passes only with a new path version, a new major and an ACCEPT_BREAKING changelog entry', () => {
     const base = { agentPurposeSchema: z.enum(['login', 'signup', 'password_change']) };
-    const v2Entry = '## 8. Changes\n\n### 2.0 (breaking) ACCEPT_BREAKING\n\n- `mfa` purpose removed.\n\n### 1.2 (additive)\n\n- whoami contract.\n';
+    const v2Entry = '## 8. Changes\n\n### 2.0 (breaking) ACCEPT_BREAKING\n\n- `mfa` purpose removed.\n\n### 1.3 (additive)\n\n- save_login purpose.\n';
 
     // Changelog says so, but the path is still v1: refused (a breaking change is /api/agent/v2).
     const sameRoute = checkAgentContract(snapshot, variant({ ...base, AGENT_CONTRACT_VERSION: '2.0' }), v2Entry);
@@ -187,11 +187,11 @@ describe('agent contract classifier: additive passes, breaking fails (demonstrat
 
   it('an additive change with a version the changelog does not list fails until the entry is written', () => {
     const changed = variant({
-      AGENT_CONTRACT_VERSION: '1.3',
+      AGENT_CONTRACT_VERSION: '1.4',
       agentFillRequestSchema: agent.agentFillRequestSchema.extend({ hint: z.string().optional() }),
     });
-    expect(checkAgentContract(snapshot, changed, GUIDE).problems.join('\n')).toMatch(/no entry for contract 1\.3/);
-    const withEntry = GUIDE.replace('### 1.2 (additive)', '### 1.3 (additive)\n\n- fill takes an optional hint.\n\n### 1.2 (additive)');
+    expect(checkAgentContract(snapshot, changed, GUIDE).problems.join('\n')).toMatch(/no entry for contract 1\.4/);
+    const withEntry = GUIDE.replace('### 1.3 (additive)', '### 1.4 (additive)\n\n- fill takes an optional hint.\n\n### 1.3 (additive)');
     expect(checkAgentContract(snapshot, changed, withEntry).problems).toEqual([]);
   });
 });

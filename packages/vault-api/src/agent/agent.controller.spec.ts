@@ -29,7 +29,7 @@ describe('AgentNoStoreInterceptor', () => {
 });
 
 describe('AgentController', () => {
-  const contract = { version: AGENT_CONTRACT_VERSION, features: ['logins', 'totp'] };
+  const contract = { version: AGENT_CONTRACT_VERSION, features: ['logins', 'totp', 'save_login'] };
 
   it('whoami honours the kill switch and returns the caller, scopes, client and contract block', async () => {
     const service = { contractInfo: jest.fn().mockResolvedValue(contract) };
@@ -61,10 +61,10 @@ describe('AgentController', () => {
       assertEnabled: jest.fn(async () => { throw new Error('AGENT_ACCESS_DISABLED'); }),
     };
     const service = new AgentCredentialsService({} as never, pipeline as never, {} as never);
-    await expect(service.contractInfo()).resolves.toEqual({ version: AGENT_CONTRACT_VERSION, features: ['logins', 'totp', 'identity'] });
+    await expect(service.contractInfo()).resolves.toEqual({ version: AGENT_CONTRACT_VERSION, features: ['logins', 'totp', 'save_login', 'identity'] });
     settings.cards.enabled = true;
     await expect(service.contractInfo()).resolves.toEqual({
-      version: AGENT_CONTRACT_VERSION, features: ['logins', 'totp', 'cards', 'identity'],
+      version: AGENT_CONTRACT_VERSION, features: ['logins', 'totp', 'save_login', 'cards', 'identity'],
     });
     settings.enabled = false;
     await expect(service.contractInfo()).rejects.toThrow('AGENT_ACCESS_DISABLED');
