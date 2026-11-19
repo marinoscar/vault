@@ -19,12 +19,16 @@ import {
   SECRET_DESCRIPTION_MAX,
   SECRET_NAME_MAX,
   cleanSecretData,
+  documentScanPath,
+  documentScanTypeParam,
   fieldErrorsFromApiError,
   isCardType,
+  keyValueSuggestionsFor,
   validateSecretForm,
   type SecretFormErrors,
 } from '../../headless/secretFields.js';
 import type { SecretType } from '../../../core/headless/types.js';
+import { useAiStatus } from '../../../core/headless/useAiStatus.js';
 
 export interface SecretFormValues {
   name: string;
@@ -53,7 +57,10 @@ const NO_ERRORS: SecretFormErrors = { fields: {} };
  * The create/edit form: name, description, type (create only; a secret's type
  * never changes) and the type's own fields, validated with the same rules the
  * API applies before anything is sent. Picking the Card type points to the
- * Cards scan flow, which also captures the card photos.
+ * Cards scan flow, which also captures the card photos; picking Passport or ID
+ * Document points to the document scan once it is available
+ * (`documentScanEnabled`). An ID Document's `attributes` editor is offered the
+ * catalog's standard keys of the chosen kind.
  */
 export function SecretForm({
   mode,
@@ -73,8 +80,12 @@ export function SecretForm({
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  const { documentScanEnabled } = useAiStatus();
+
   const type = types.find((t) => t.id === typeId) ?? null;
   const fields = type?.fields ?? [];
+  const scanType = documentScanTypeParam(type);
+  const suggestions = keyValueSuggestionsFor(type, data);
 
   const changeType = (next: string) => {
     setTypeId(next);
@@ -174,6 +185,16 @@ export function SecretForm({
           </Alert>
         )}
 
+        {mode === 'create' && documentScanEnabled && scanType !== null && (
+          <Alert severity="info" variant="outlined">
+            Have the document at hand?{' '}
+            <Link component={RouterLink} to={documentScanPath(scanType)}>
+              Scan it instead
+            </Link>{' '}
+            to fill these fields from photos and keep the photos with the document.
+          </Alert>
+        )}
+
         <TextField
           label="Name"
           fullWidth
@@ -218,6 +239,7 @@ export function SecretForm({
               data={data}
               onChange={changeData}
               errors={errors.fields}
+              keyValueSuggestions={suggestions}
             />
           </>
         )}

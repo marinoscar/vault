@@ -1,5 +1,9 @@
 import { z } from 'zod';
 
+import { ID_DOCUMENT_KINDS } from './id-documents.js';
+
+export * from './id-documents.js';
+
 /**
  * Secret types: the field definitions, the create/update/query schemas and the
  * built-in (system) type definitions. Plain data and Zod: no database access.
@@ -403,6 +407,50 @@ export const SYSTEM_SECRET_TYPES: SystemSecretType[] = [
     fields: [
       { name: 'title', label: 'Title', type: 'string', required: true, sensitive: false },
       { name: 'notes', label: 'Notes', type: 'string', required: false, sensitive: false },
+    ],
+    allowAttachments: true,
+  },
+  {
+    // ADR-0004: a passport, with the data page and back as image slots. Never released to agents or MCP.
+    name: 'Passport',
+    description: 'Passport details and data page photo',
+    icon: 'TravelExplore',
+    fields: [
+      { name: 'surname', label: 'Surname', type: 'string', required: true, sensitive: false },
+      { name: 'given_names', label: 'Given Names', type: 'string', required: false, sensitive: false },
+      { name: 'passport_number', label: 'Passport Number', type: 'string', required: true, sensitive: true, mask: 'last4' },
+      { name: 'passport_type', label: 'Type', type: 'string', required: false, sensitive: false },
+      { name: 'issuing_country', label: 'Issuing Country', type: 'string', required: false, sensitive: false, format: 'country' },
+      { name: 'nationality', label: 'Nationality', type: 'string', required: false, sensitive: false, format: 'country' },
+      { name: 'date_of_birth', label: 'Date of Birth', type: 'date', required: false, sensitive: true },
+      { name: 'place_of_birth', label: 'Place of Birth', type: 'string', required: false, sensitive: false },
+      { name: 'sex', label: 'Sex', type: 'select', required: false, sensitive: false, options: ['M', 'F', 'X'] },
+      { name: 'issue_date', label: 'Date of Issue', type: 'date', required: false, sensitive: false },
+      { name: 'expiry_date', label: 'Date of Expiry', type: 'date', required: true, sensitive: false },
+      { name: 'issuing_authority', label: 'Authority', type: 'string', required: false, sensitive: false },
+      { name: 'personal_number', label: 'Personal Number', type: 'string', required: false, sensitive: true },
+      { name: 'mrz', label: 'Machine Readable Zone', type: 'string', required: false, sensitive: true, format: 'multiline' },
+      { name: 'notes', label: 'Notes', type: 'string', required: false, sensitive: false, format: 'multiline' },
+    ],
+    allowAttachments: true,
+  },
+  {
+    // ADR-0004: every other identity document; `document_kind` picks a kind of ID_DOCUMENT_KIND_CATALOG and
+    // `attributes` holds its kind-specific details. Never released to agents or MCP.
+    name: 'ID Document',
+    description: 'Driver license, ID card, Green Card, Global Entry, Social Security, insurance and other ID documents',
+    icon: 'AssignmentInd',
+    fields: [
+      { name: 'document_kind', label: 'Document Kind', type: 'select', required: true, sensitive: false, options: [...ID_DOCUMENT_KINDS] },
+      { name: 'holder_name', label: 'Holder Name', type: 'string', required: true, sensitive: false },
+      { name: 'document_number', label: 'Document Number', type: 'string', required: false, sensitive: true, mask: 'last4' },
+      { name: 'issuing_country', label: 'Issuing Country', type: 'string', required: false, sensitive: false, format: 'country' },
+      { name: 'issuing_authority', label: 'Issuing Authority / State', type: 'string', required: false, sensitive: false },
+      { name: 'date_of_birth', label: 'Date of Birth', type: 'date', required: false, sensitive: true },
+      { name: 'issue_date', label: 'Issue Date', type: 'date', required: false, sensitive: false },
+      { name: 'expiry_date', label: 'Expiry Date', type: 'date', required: false, sensitive: false },
+      { name: 'attributes', label: 'Details', type: 'keyvalue', required: false, sensitive: false },
+      { name: 'notes', label: 'Notes', type: 'string', required: false, sensitive: false, format: 'multiline' },
     ],
     allowAttachments: true,
   },

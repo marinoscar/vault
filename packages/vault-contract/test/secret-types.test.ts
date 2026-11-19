@@ -12,7 +12,7 @@ import {
 } from '../src/secret-types/index.js';
 
 describe('system secret types', () => {
-  it('names the six built-in types once each', () => {
+  it('names the built-in types once each', () => {
     const names = SYSTEM_SECRET_TYPES.map((type) => type.name);
     expect(new Set(names).size).toBe(names.length);
     expect(names).toEqual(expect.arrayContaining(['Credential', 'API Key', 'Card']));

@@ -26,7 +26,7 @@ export interface KeyValueFieldEditorProps {
   value: KeyValueEntry[];
   onChange: (value: KeyValueEntry[]) => void;
   /** Entries offered as "Add: <label>" chips; one already present is not offered. */
-  suggestions?: KeyValueSuggestion[];
+  suggestions?: readonly KeyValueSuggestion[];
   disabled?: boolean;
   /** A message for the whole field (shown under the rows). */
   error?: string;

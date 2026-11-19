@@ -31,8 +31,11 @@ interface DynamicSecretFieldsProps {
   onChange: (data: Record<string, unknown>) => void;
   readOnly?: boolean;
   errors?: Record<string, string>;
-  /** "Add: <label>" suggestions of a `keyvalue` field, by field name. */
-  keyValueSuggestions?: Record<string, KeyValueSuggestion[]>;
+  /**
+   * Suggested entries per `keyvalue` field name (`keyValueSuggestionsFor`): the
+   * "Add: <label>" chips of that field's key/value editor.
+   */
+  keyValueSuggestions?: Readonly<Record<string, readonly KeyValueSuggestion[]>>;
 }
 
 /** A multi-line input: `format: 'multiline'`, or the legacy `notes` and `content` names. */

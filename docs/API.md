@@ -2204,8 +2204,8 @@ Wire shapes: `agentActivityQuerySchema`, `agentActivityItemSchema`, `agentActivi
 |---|---|---|---|---|
 | `search_secrets` | `vault:mcp_read` | read | `query?`, `type?`, `origin?`, `limit?` (1..50, default 20) | `items`: id, name, type, origins, agentAccess, version, updatedAt, `fields` (non-sensitive values only) |
 | `get_secret` | `vault:mcp_read` | read | `id` | `secret`: the same plus sensitive fields as `"[hidden]"` |
-| `list_secret_types` | `vault:mcp_read` | read | none | `types`: name, description, `canOpenToAgents`, fields (name, label, type, required, sensitive). Card types are not listed |
-| `create_secret` | `vault:mcp_write` | write | `type`, `name`, `fields`, `generatePassword?` `{ length?, symbols? }`, `allowAgents?` | id, name, type, origins, agentAccess, version, and (with `generatePassword`) `passwordGenerated: true, passwordReturned: false`. A card type is refused (`TYPE_NOT_SUPPORTED`) |
+| `list_secret_types` | `vault:mcp_read` | read | none | `types`: name, description, `canOpenToAgents`, fields (name, label, type, required, sensitive). Card, Passport and ID Document types are not listed |
+| `create_secret` | `vault:mcp_write` | write | `type`, `name`, `fields`, `generatePassword?` `{ length?, symbols? }`, `allowAgents?` | id, name, type, origins, agentAccess, version, and (with `generatePassword`) `passwordGenerated: true, passwordReturned: false`. A card, Passport or ID Document type is refused (`TYPE_NOT_SUPPORTED`) |
 | `update_secret` | `vault:mcp_write` | write | `id`, `fields` | `id`, `version` (new), `changed`, `updatedFields`. Only the given fields change; `""` clears one; `url` and `additional_urls` are refused (`FIELD_NOT_UPDATABLE`) |
 
 Every tool declares a title, a scope, an effect and the MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) in `tools/list`; a tool without them does not register. A tool error (bad arguments, not found, conflict) is a normal result with `isError: true` and `structuredContent.code`, never a JSON-RPC error. Package: `@marinoscar/vault-api/mcp`.

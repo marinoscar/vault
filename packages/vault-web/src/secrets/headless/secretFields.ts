@@ -7,7 +7,9 @@
 
 import { parseTotpSecret } from '@marinoscar/vault-contract/secrets';
 import { isCountryCode } from '@marinoscar/vault-contract/common';
+import { standardAttributeKeysFor } from '@marinoscar/vault-contract/secret-types';
 import type { FieldDefinition, KeyValueEntry, SecretType } from '../../core/headless/types.js';
+import type { KeyValueSuggestion } from './keyValue.js';
 import { CARD_TYPE_NAME } from '../../cards/headless/useCards.js';
 import {
   formatCardNumberForCopy,
@@ -35,6 +37,48 @@ export const SECRET_REVEAL_TIMEOUT_MS = 30_000;
 /** True for the system Card type, whose secrets also live in the Cards flows. */
 export function isCardType(type: Pick<SecretType, 'isSystem' | 'name'> | null | undefined): boolean {
   return Boolean(type?.isSystem && type.name === CARD_TYPE_NAME);
+}
+
+/** The system type of a passport (ADR-0004). */
+export const PASSPORT_TYPE_NAME = 'Passport';
+
+/** The system type of every other identity document (ADR-0004). */
+export const ID_DOCUMENT_TYPE_NAME = 'ID Document';
+
+/** The `type` query value of the document scan page (`/documents/scan?type=`). */
+export type DocumentScanTypeParam = 'passport' | 'id_document';
+
+/**
+ * The document scan `type` of a system Passport or ID Document type; `null` for
+ * every other type (the Card has its own scan flow in Cards).
+ */
+export function documentScanTypeParam(
+  type: Pick<SecretType, 'isSystem' | 'name'> | null | undefined,
+): DocumentScanTypeParam | null {
+  if (!type?.isSystem) return null;
+  if (type.name === PASSPORT_TYPE_NAME) return 'passport';
+  if (type.name === ID_DOCUMENT_TYPE_NAME) return 'id_document';
+  return null;
+}
+
+/** The route of the document scan page for `param`. */
+export function documentScanPath(param: DocumentScanTypeParam): string {
+  return `/documents/scan?type=${param}`;
+}
+
+/**
+ * The suggested entries of each `keyvalue` field of `type`, keyed by field
+ * name: for the system ID Document, the catalog's standard keys of the chosen
+ * `document_kind` for `attributes` (none until a kind is chosen). Empty for
+ * every other type.
+ */
+export function keyValueSuggestionsFor(
+  type: Pick<SecretType, 'isSystem' | 'name'> | null | undefined,
+  data: Record<string, unknown>,
+): Record<string, readonly KeyValueSuggestion[]> {
+  if (!type?.isSystem || type.name !== ID_DOCUMENT_TYPE_NAME) return {};
+  const keys = standardAttributeKeysFor(data.document_kind);
+  return keys.length > 0 ? { attributes: keys } : {};
 }
 
 function isBlank(value: unknown): boolean {

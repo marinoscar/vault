@@ -8,7 +8,17 @@
 // =============================================================================
 
 /** System secret types; every other type is `custom`. */
-export const SECRET_TYPE_KINDS = ['credential', 'api_key', 'card', 'token', 'note', 'document', 'custom'] as const;
+export const SECRET_TYPE_KINDS = [
+  'credential',
+  'api_key',
+  'card',
+  'token',
+  'note',
+  'document',
+  'custom',
+  'passport',
+  'id_document',
+] as const;
 export type SecretTypeKind = (typeof SECRET_TYPE_KINDS)[number];
 
 /** Why a secret version was minted. */
