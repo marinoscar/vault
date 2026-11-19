@@ -30,6 +30,8 @@
     "test:packages": "npm run test:run -w @marinoscar/vault-contract -w @marinoscar/vault-db -w @marinoscar/vault-api -w @marinoscar/vault-web",
     "check:package-docs": "node scripts/vault-packages/check-package-docs.mjs",
     "check:package-pack": "node scripts/vault-packages/check-package-pack.mjs",
+    "test:package-scripts": "node --test \"scripts/vault-packages/test/*.test.mjs\"",
+    "smoke:packages": "node scripts/vault-packages/smoke-install.mjs",
     "changeset": "changeset",
     "version-packages": "changeset version && npm install --package-lock-only",
     "release": "npm run build:packages && changeset publish"

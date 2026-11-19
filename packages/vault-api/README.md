@@ -28,13 +28,15 @@ Status: experimental. Introduced in E12.2.
 ## Install and peer dependencies
 
 ```bash
-npm install @marinoscar/vault-api@next
+npm install @marinoscar/vault-api@next @marinoscar/vault-contract@next
 ```
+
+Published to npm under the `next` dist-tag until 1.0, with a provenance attestation; the install, the dist-tag policy and the current publication status are in [docs/PACKAGES.md](../../docs/PACKAGES.md#installing-from-npm). npm 7 or later installs the peers below by itself; list them in the host's `package.json` to choose their versions (the host normally has them already). The package is CommonJS; an ESM host imports it as usual.
 
 | Package | Range | Needed by |
 |---|---|---|
-| `@marinoscar/platform-api`, `@marinoscar/platform-contract` | `0.1.0-next.21` | decorators, guards and types (`@Auth`, `AiEnabledGuard`, `JobHandler`), `runInOrg` |
-| `@marinoscar/vault-contract` | `0.1.0-next.0` | wire schemas, error codes, system secret types |
+| `@marinoscar/platform-api`, `@marinoscar/platform-contract` | the exact version in `peerDependencies` (the platform release the package is built against) | decorators, guards and types (`@Auth`, `AiEnabledGuard`, `JobHandler`), `runInOrg` |
+| `@marinoscar/vault-contract` | `>=0.0.0-0 \|\| >=0.1.0-0` (install the same version as `vault-api`) | wire schemas, error codes, system secret types |
 | `@nestjs/common`, `@nestjs/core`, `@nestjs/platform-fastify`, `@nestjs/schedule`, `@nestjs/swagger` | `^11` | the Nest providers and controllers |
 | `@prisma/client`, `@prisma/client-runtime-utils` | `^7.8.0` | the host's generated client (the package types against it) |
 | `nestjs-zod`, `zod`, `fastify`, `reflect-metadata`, `rxjs` | see `package.json` | DTOs and request types |
