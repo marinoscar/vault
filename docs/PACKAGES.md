@@ -11,6 +11,7 @@ Vault's domain code is written once, in packages, and the apps are hosts ([ADR-0
 - [Database: fragments, migrations and the lock](#database-fragments-migrations-and-the-lock)
 - [Adding to a package](#adding-to-a-package)
 - [CI](#ci)
+- [Installing from npm](#installing-from-npm)
 - [Versioning plan](#versioning-plan)
 
 ## The packages
@@ -163,10 +164,44 @@ Procedure to change the domain schema: [runbooks/vault-domain-migration.md](runb
 
 ## CI
 
-`.github/workflows/vault-packages.yml` (on every package, script or changeset change) builds the packages, runs `check:package-pack` (what npm would publish against each manifest), smoke-imports the entry points, runs `check:package-docs` (the README standard: required sections, `Status:` line, every entry point named, links resolve) and fails a package change without a changeset. `.github/workflows/ci.yml` builds the packages after `npm ci` in every job that imports them (order: contract, db, `prisma generate`, api; `npm run build:packages` does all four), and has a `Packages` job that generates the Prisma client, typechecks and tests the three packages, and runs the real-Postgres `vault-db` test against a service container. `db-check` and `baseline-rehearsal` run `db:check` (both locks) and `db:drift` as before.
+`.github/workflows/vault-packages.yml` (on every package, script or changeset change) builds the packages, runs `check:package-pack` (what npm would publish against each manifest, below), runs `test:package-scripts` (the unit tests of these scripts), smoke-imports the entry points, runs `check:package-docs` (the README standard: required sections, `Status:` line, every entry point named, links resolve) and fails a package change without a changeset. `.github/workflows/ci.yml` builds the packages after `npm ci` in every job that imports them (order: contract, db, `prisma generate`, api; `npm run build:packages` does all four), and has a `Packages` job that generates the Prisma client, typechecks and tests the three packages, and runs the real-Postgres `vault-db` test against a service container. `db-check` and `baseline-rehearsal` run `db:check` (both locks) and `db:drift` as before.
+
+`check:package-pack` (`scripts/vault-packages/check-package-pack.mjs`, rules in `tarball-rules.mjs`) asks `npm pack --dry-run` for each tarball and fails on:
+
+- a file off the allow-list: only `package.json`, `README.md`, `LICENSE`, `CHANGELOG.md` and compiled output under `dist/` (`.js` and `.d.ts`, plus the `dist/cjs` and `dist/esm` `package.json` stubs), and for `vault-db` `bin/vault-db.js`, `schema/*.prisma`, `migrations/` and the three index lists. Never a source map, a test, a fixture or `__tests__` folder, `src/` or `.env`; a media file only when an `exports` entry publishes it (the `vault-web` brand mark);
+- an `exports` target (every condition: `import`, `require`, `types`, `default`), `main`, `types` or `bin` target missing from the tarball;
+- `vault-contract` without both `dist/cjs` and `dist/esm` and their `{"type": ...}` stubs; `vault-db` without `schema/`, `migrations/manifest.json` and every migration it lists, `raw-sql-indexes.json`, `extensions.json`, `schema-objects.json` or `bin/vault-db.js`;
+- a packed text file that embeds the absolute path of the checkout, or holds a Luhn-valid card number that is not a published test number (the placeholders rule in `AGENTS.md`).
+
+`.github/workflows/vault-packages-smoke.yml` runs the clean-install smoke test, `npm run smoke:packages` (`scripts/vault-packages/smoke-install.mjs`): in an empty folder outside the workspace it installs the four packages with every peer they declare, resolves every `exports` subpath, requires and imports `@marinoscar/vault-contract/agent` (`agentFillRequestSchema`, `AGENT_SCOPES`) and every contract subpath, runs `npx vault-db --help`, and typechecks an import of every published subpath under `moduleResolution` `node16` and `bundler`. On a pull request that touches a package it installs this checkout's tarballs (`--pack`); after a successful **Vault release** run, weekly and by hand it installs from npm at `next` (`--registry`), and skips with a notice while the packages are not on npm. Locally, after `npm run build:packages`:
+
+```bash
+npm run smoke:packages -- --pack                      # this checkout
+npm run smoke:packages -- --tarballs vault-tarballs   # the dry run's artifact
+npm run smoke:packages -- --registry --tag next       # what npm serves
+```
+
+## Installing from npm
+
+The packages are published to public npm under the **`next`** dist-tag, all four at the same version. Install them at that tag; npm 7 or later also installs the peers each package declares (the package READMEs list them, "Install and peer dependencies"):
+
+```bash
+npm install @marinoscar/vault-contract@next zod@^4.4.3
+npm install --save-dev @marinoscar/vault-db@next prisma@^7.8.0
+npm install @marinoscar/vault-api@next @marinoscar/vault-contract@next
+npm install @marinoscar/vault-web@next @marinoscar/vault-contract@next
+```
+
+Install every Vault package you use at the same version (`npm view @marinoscar/vault-contract dist-tags` shows what `next` points at). A consumer that only types against the agent contract needs `vault-contract` alone.
+
+**Dist-tag policy.** Every release is a pre-release, `0.1.0-next.<n>`, on `next`, until 1.0. No release is published to `latest`: the release workflow refuses it while `.changeset/pre.json` exists. `latest` points at the deprecated `0.0.0-bootstrap` name reservation (an empty package), so always install with `@next` or an exact version; a bare `npm install @marinoscar/vault-contract` installs the placeholder and prints its deprecation notice. A pre-1.0 release may change an API; read the package `CHANGELOG.md` before moving to a newer `next`, and pin the exact version in a production app. Leaving pre mode for a stable `latest` is an owner decision ([runbook](runbooks/release-vault-packages.md#leaving-pre-mode)).
+
+**Provenance.** Each version is published from `.github/workflows/vault-release.yml` with OIDC trusted publishing and a provenance attestation; no npm token exists. The npm package page shows it under "Provenance" (the source commit and the workflow run that built it). To verify after an install, run `npm audit signatures` in the consuming project; `npm view @marinoscar/vault-contract@next dist.attestations` prints the attestation URL.
+
+**Status.** The publishing pipeline, the tarball checks and the smoke test are in place (#192). The packages appear on npm once the repository owner completes the one-time bootstrap: reserve the four names, attach the trusted publisher, set `NPM_PUBLISH_ENABLED=true` ([runbook, owner prerequisites](runbooks/release-vault-packages.md#owner-prerequisites-once)). Until then `npm view @marinoscar/vault-contract` answers `E404`, the release workflow does a dry run, and the registry smoke test skips.
 
 ## Versioning plan
 
-All Vault packages are versioned together at `0.1.0-next.<n>`, starting at `0.1.0-next.0`. The apps pin the exact version, which npm resolves to the workspace while the version matches. Nothing is published yet.
+All Vault packages are versioned together at `0.1.0-next.<n>`, starting at `0.1.0-next.0`. The apps pin the exact version, which npm resolves to the workspace while the version matches. Other apps install them from npm ([Installing from npm](#installing-from-npm)).
 
 Releases are Changesets in pre mode (`.changeset/`, the `fixed` glob `@marinoscar/vault-*`): `vault-release.yml` opens the `vault-release/version` pull request from pending changesets, and merging it runs a gate, then either publishes to npm under the `next` dist-tag (OIDC trusted publishing, provenance, no token; only when `NPM_PUBLISH_ENABLED` is `true`) or does a dry run that uploads the tarballs. The scripts under `scripts/vault-packages/` iterate over the packages present, so `vault-api` and `vault-web` join when their folders exist. Add a changeset (`npx changeset`) with every package change. Procedure, owner setup and rollback: [runbooks/release-vault-packages.md](runbooks/release-vault-packages.md).

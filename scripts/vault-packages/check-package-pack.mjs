@@ -17,59 +17,40 @@
 //              url and directory; a semver version; `files` names dist,
 //              README.md, CHANGELOG.md and LICENSE; "./package.json" exported.
 //   present    the tarball holds package.json, README.md, LICENSE and every file
-//              an `exports`, `main`, `module`, `types` or `bin` entry points at.
-//   only       the tarball holds nothing a `files` entry does not name, and no
-//              src/, test/, tsconfig*, vitest config, tsbuildinfo, .env or
-//              node_modules.
+//              an `exports` (every condition: import, require, types, default),
+//              `main`, `module`, `types` or `bin` entry points at.
+//   only       the tarball holds nothing a `files` entry does not name.
+//   allow-list, per package, content
+//              the pre-publish rules of tarball-rules.mjs (#192): only compiled
+//              output and the known extras, no source maps, tests, fixtures,
+//              .env or unexported media; the vault-contract dist stubs; the
+//              vault-db schema, migrations and lists; no leaked absolute path
+//              and no real-looking card number in any packed text file.
 //
 // Usage: node scripts/vault-packages/check-package-pack.mjs [--root <dir>] [--list]
 // Exit: 0 clean, 1 violations, 2 usage error. Node built-ins and npm only.
 // =============================================================================
 
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { listPackages } from './list-packages.mjs';
+import {
+  checkAllowList,
+  checkContents,
+  checkPackageContents,
+  checkPromised,
+  exportTargets,
+  promisedFiles,
+} from './tarball-rules.mjs';
 
 export const REPOSITORY_URL = 'git+https://github.com/marinoscar/vault.git';
 export const REQUIRED_FILES = Object.freeze(['package.json', 'README.md', 'LICENSE']);
 export const REQUIRED_FILES_ENTRIES = Object.freeze(['dist', 'README.md', 'CHANGELOG.md', 'LICENSE']);
 
-const FORBIDDEN = [
-  /^src\//,
-  /^test\//,
-  /^node_modules\//,
-  /^tsconfig[^/]*\.json$/,
-  /^vitest\.config\./,
-  /\.tsbuildinfo$/,
-  /^\.env/,
-  /\.test\.[cm]?[jt]sx?$/,
-  /\.spec\.[cm]?[jt]sx?$/,
-];
-
-const stripDot = (p) => p.replace(/^\.\//, '');
-
-/** Every file path an `exports` value (string, conditions or nested) points at. */
-export function exportTargets(value) {
-  if (typeof value === 'string') return [stripDot(value)];
-  if (value && typeof value === 'object') return Object.values(value).flatMap(exportTargets);
-  return [];
-}
-
-/** The files a manifest promises: exports, main, module, types and bin targets. */
-export function promisedFiles(manifest) {
-  const out = new Set();
-  for (const field of ['main', 'module', 'types']) {
-    if (typeof manifest[field] === 'string') out.add(stripDot(manifest[field]));
-  }
-  const bin = manifest.bin;
-  if (typeof bin === 'string') out.add(stripDot(bin));
-  else if (bin) for (const target of Object.values(bin)) out.add(stripDot(target));
-  for (const target of exportTargets(manifest.exports ?? {})) out.add(target);
-  return [...out];
-}
+export { exportTargets, promisedFiles };
 
 /** Manifest problems of one package (no tarball needed). */
 export function checkManifest(dir, manifest) {
@@ -91,20 +72,40 @@ export function checkManifest(dir, manifest) {
   return problems;
 }
 
-/** Checks a tarball's file list (paths relative to the package) against the manifest. */
-export function checkTarball(manifest, files) {
+/**
+ * Checks a tarball's file list (paths relative to the package) against the
+ * manifest and the pre-publish rules. `dir` is the package folder name;
+ * `read(path)` returns a packed file's text (omit it to skip the content rules).
+ */
+export function checkTarball(manifest, files, { dir = manifest.name?.replace(/^@marinoscar\//, ''), read, forbiddenPaths = [] } = {}) {
   const problems = [];
   const have = new Set(files);
-  for (const file of [...REQUIRED_FILES, ...promisedFiles(manifest)]) {
-    if (!have.has(file)) problems.push(`tarball is missing '${file}'${file.startsWith('dist/') ? ' (run the build first)' : ''}`);
+  for (const file of REQUIRED_FILES) {
+    if (!have.has(file)) problems.push(`tarball is missing '${file}'`);
   }
+  problems.push(...checkPromised(manifest, files));
   const allowedTop = new Set(['package.json', ...(manifest.files ?? [])]);
   for (const file of files) {
     const top = file.split('/')[0];
     if (!allowedTop.has(top) && !allowedTop.has(file)) problems.push(`tarball holds '${file}', which no 'files' entry names`);
-    else if (FORBIDDEN.some((pattern) => pattern.test(file))) problems.push(`tarball holds '${file}', which must never be published`);
   }
-  return problems;
+  problems.push(...checkAllowList(dir, manifest, files));
+  if (read) {
+    problems.push(...checkPackageContents(dir, files, read));
+    problems.push(...checkContents(files, read, { forbiddenPaths }));
+  }
+  return [...new Set(problems)];
+}
+
+/** Reads a packed file's text from the package folder (npm packs it from there). */
+export function readFrom(packageDir) {
+  return (file) => {
+    try {
+      return readFileSync(join(packageDir, file), 'utf8');
+    } catch {
+      return null;
+    }
+  };
 }
 
 /** Runs `npm pack --dry-run --json` in a package folder; returns the file paths. */
@@ -136,7 +137,7 @@ export function checkPackages({ root, packFiles = npmPackFiles }) {
       add(err.message);
       continue;
     }
-    for (const problem of checkTarball(manifest, files)) add(problem);
+    for (const problem of checkTarball(manifest, files, { dir, read: readFrom(folder), forbiddenPaths: [resolve(root)] })) add(problem);
   }
   return violations;
 }

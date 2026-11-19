@@ -21,8 +21,10 @@ Entry points (every schema and constant is in a slice; the root exports only `VA
 ## Install and peer dependencies
 
 ```bash
-npm install @marinoscar/vault-contract@next
+npm install @marinoscar/vault-contract@next zod@^4.4.3
 ```
+
+Published to npm under the `next` dist-tag until 1.0, with a provenance attestation; the install, the dist-tag policy and the current publication status are in [docs/PACKAGES.md](../../docs/PACKAGES.md#installing-from-npm). The package works from CommonJS (`require`) and ESM (`import`), and its types resolve under `moduleResolution` `node16`, `nodenext` and `bundler`.
 
 The package never bundles Zod, because a second copy breaks `instanceof ZodError` checks:
 

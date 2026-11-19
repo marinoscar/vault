@@ -1,0 +1,98 @@
+name: Vault packages smoke
+
+# Clean-install smoke test of the @marinoscar/vault-* packages
+# (scripts/vault-packages/smoke-install.mjs): in an empty folder outside the
+# workspace, install the four packages and every peer they declare, then
+# resolve every exports subpath, require and import vault-contract (including
+# `/agent`), run `vault-db --help`, and typecheck an import of every published
+# subpath under moduleResolution node16 and bundler.
+#
+#   pull_request (package changes)  -> tarballs: packs this checkout and installs
+#                                      the tarballs, so a broken package fails
+#                                      before it is released.
+#   after "Vault release" succeeds,
+#   weekly, and by hand             -> registry: installs from npm at `next`.
+#                                      Until the packages exist on npm (owner
+#                                      bootstrap, docs/runbooks/release-vault-packages.md)
+#                                      the job is SKIPPED with a notice; it never
+#                                      reports a pass it did not run.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/vault-*/**'
+      - 'scripts/vault-packages/**'
+      - 'tsconfig.base.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/vault-packages-smoke.yml'
+  workflow_run:
+    workflows: ['Vault release']
+    types: [completed]
+    branches: [main]
+  schedule:
+    # Mondays 05:17 UTC.
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'registry (npm at the tag) or tarballs (pack this ref)'
+        type: choice
+        options: [registry, tarballs]
+        default: registry
+      tag:
+        description: 'dist-tag for registry mode'
+        default: next
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  tarballs:
+    name: Smoke install (tarballs)
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'tarballs')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - run: npm run build:packages
+
+      # Packs each package (npm pack -w) into a temp folder outside the
+      # checkout and installs the tarballs there with their peers.
+      - run: npm run smoke:packages -- --pack
+
+  registry:
+    name: Smoke install (npm registry)
+    # After a release run only when it succeeded (a dry run also succeeds; the
+    # script then tests whatever `next` holds, or skips if nothing is published).
+    if: >-
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+      (github.event_name == 'workflow_dispatch' && inputs.mode == 'registry')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      # No `npm ci`: the script needs only the package list of this checkout
+      # (Node built-ins) and installs from the registry in a temp folder.
+      - name: Install from npm and smoke-test
+        id: smoke
+        env:
+          TAG: ${{ inputs.tag || 'next' }}
+        run: npm run smoke:packages -- --registry --tag "$TAG"
