@@ -104,7 +104,7 @@ describe('packages first: apps/web is a host', () => {
   });
 
   it('routes to the domain pages from the package', () => {
-    for (const page of ['HomePage', 'SecretsPage', 'SecretDetailPage', 'CardsPage', 'ImportCardPage', 'MediaFoldersPage', 'MyBackupsPage', 'SecretTypesPage']) {
+    for (const page of ['HomePage', 'SecretsPage', 'SecretDetailPage', 'CardsPage', 'ImportCardPage', 'DocumentScanPage', 'MediaFoldersPage', 'MyBackupsPage', 'SecretTypesPage']) {
       expect(appSource).toMatch(
         new RegExp(`const ${page} = lazy\\(\\(\\) => import\\('@marinoscar/vault-web/[a-z]+/ui'\\)`),
       );

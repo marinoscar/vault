@@ -34,8 +34,15 @@ async function fetchSystemBackupStatus(): Promise<SystemBackupStatus> {
 
 /** "Scan a card" needs the AI status, so only a user who may write asks for it. */
 function QuickActionsWithScan({ canBackUp }: { canBackUp: boolean }) {
-  const { cardExtractEnabled, isLoading } = useAiStatus();
-  return <QuickActions canCreateSecret canScanCard={!isLoading && cardExtractEnabled} canBackUp={canBackUp} />;
+  const { cardExtractEnabled, documentScanEnabled, isLoading } = useAiStatus();
+  return (
+    <QuickActions
+      canCreateSecret
+      canScanCard={!isLoading && cardExtractEnabled}
+      canScanDocument={!isLoading && documentScanEnabled}
+      canBackUp={canBackUp}
+    />
+  );
 }
 
 type LoadedStatus = Exclude<DashboardResourceStatus, 'idle'>;

@@ -115,6 +115,7 @@ const SecretsPage = lazy(() => import('@marinoscar/vault-web/secrets/ui').then((
 const CardsPage = lazy(() => import('@marinoscar/vault-web/cards/ui').then((m) => ({ default: m.CardsPage })));
 const ImportCardPage = lazy(() => import('@marinoscar/vault-web/cards/ui').then((m) => ({ default: m.ImportCardPage })));
 const RenewCardPage = lazy(() => import('@marinoscar/vault-web/cards/ui').then((m) => ({ default: m.RenewCardPage })));
+const DocumentScanPage = lazy(() => import('@marinoscar/vault-web/documents/ui').then((m) => ({ default: m.DocumentScanPage })));
 const CreateSecretPage = lazy(() => import('@marinoscar/vault-web/secrets/ui').then((m) => ({ default: m.CreateSecretPage })));
 const SecretDetailPage = lazy(() => import('@marinoscar/vault-web/secrets/ui').then((m) => ({ default: m.SecretDetailPage })));
 const EditSecretPage = lazy(() => import('@marinoscar/vault-web/secrets/ui').then((m) => ({ default: m.EditSecretPage })));
@@ -176,6 +177,8 @@ function AppRoutes() {
               {/* Renewal is NOT gated on AI availability — the wizard runs as
                   a manual edit-and-version when no OpenAI key is configured. */}
               <Route path="/cards/:id/renew" element={<RenewCardPage />} />
+              {/* "Scan an ID" (Passport, ID Document); gated on AI inside the page. */}
+              <Route path="/documents/scan" element={<DocumentScanPage />} />
               <Route path="/secrets" element={<SecretsPage />} />
               <Route path="/secrets/new" element={<CreateSecretPage />} />
               <Route path="/secrets/:id" element={<SecretDetailPage />} />

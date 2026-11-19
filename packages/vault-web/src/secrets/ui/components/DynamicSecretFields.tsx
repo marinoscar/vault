@@ -36,6 +36,8 @@ interface DynamicSecretFieldsProps {
    * "Add: <label>" chips of that field's key/value editor.
    */
   keyValueSuggestions?: Readonly<Record<string, readonly KeyValueSuggestion[]>>;
+  /** Entry keys to mark for checking per `keyvalue` field name (a scan's low-confidence reads). */
+  keyValueFlags?: Readonly<Record<string, ReadonlySet<string>>>;
 }
 
 /** A multi-line input: `format: 'multiline'`, or the legacy `notes` and `content` names. */
@@ -122,6 +124,7 @@ export function DynamicSecretFields({
   readOnly = false,
   errors = {},
   keyValueSuggestions = {},
+  keyValueFlags = {},
 }: DynamicSecretFieldsProps) {
   const [visibleFields, setVisibleFields] = useState<Set<string>>(new Set());
 
@@ -242,6 +245,7 @@ export function DynamicSecretFields({
               value={toKeyValueEntries(rawValue)}
               onChange={(entries) => handleChange(field.name, entries)}
               suggestions={keyValueSuggestions[field.name]}
+              flaggedKeys={keyValueFlags[field.name]}
               error={errors[field.name]}
             />
           );

@@ -18,6 +18,7 @@ import { ApiError } from '@marinoscar/platform-web/core';
 import type { PlatformHttpBlobWithHeaders, PlatformHttpRequestOptions } from '@marinoscar/platform-web/core';
 
 import { api } from './http.js';
+import type { ExtractDocumentRequest, ExtractDocumentResponse } from '@marinoscar/vault-contract/secrets';
 
 export { ApiError, api };
 
@@ -83,6 +84,17 @@ export async function extractCardFromImages(
   images: ExtractCardRequest,
 ): Promise<CardExtractionResult> {
   return api.post<CardExtractionResult>('/secrets/cards/extract', images);
+}
+
+/**
+ * Read a passport or ID document from its FULL photos: `POST
+ * /api/secrets/documents/extract`. Candidate values only; nothing is
+ * persisted. The images go to the configured AI provider.
+ */
+export async function extractDocument(
+  request: ExtractDocumentRequest,
+): Promise<ExtractDocumentResponse> {
+  return api.post<ExtractDocumentResponse>('/secrets/documents/extract', request);
 }
 
 // System Settings API

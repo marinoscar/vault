@@ -62,6 +62,14 @@
       "types": "./dist/backups/ui/index.d.ts",
       "default": "./dist/backups/ui/index.js"
     },
+    "./documents/headless": {
+      "types": "./dist/documents/headless/index.d.ts",
+      "default": "./dist/documents/headless/index.js"
+    },
+    "./documents/ui": {
+      "types": "./dist/documents/ui/index.d.ts",
+      "default": "./dist/documents/ui/index.js"
+    },
     "./home/headless": {
       "types": "./dist/home/headless/index.d.ts",
       "default": "./dist/home/headless/index.js"
