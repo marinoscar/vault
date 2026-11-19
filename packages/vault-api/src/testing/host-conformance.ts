@@ -1,5 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
 
+import { AGENT_RELEASE_PORT, type AgentReleasePort } from '../agent/agent-release.service';
 import { VAULT_RESERVED_NAMES, findVaultNameCollisions, type VaultHostNames } from '../core/names';
 
 // =============================================================================
@@ -9,7 +10,8 @@ import { VAULT_RESERVED_NAMES, findVaultNameCollisions, type VaultHostNames } fr
 // What a host that mounts `VaultApiModule.forRoot` runs against ITS OWN bindings, its own database
 // and its own identity, over HTTP: a login is created, versioned and rolled back, a document gets
 // an attachment, another user cannot see either, the login is opened to agents and an agent looks it
-// up and fills it through `/api/agent/v1`. It is built from the second-host fixture's smoke suite
+// up and fills it through `/api/agent/v1` (and, with `inProcessAgent`, through the in-process
+// `AGENT_RELEASE_PORT`, the way an embedding host calls it without OAuth). It is built from the second-host fixture's smoke suite
 // (`tests/second-host/`), which runs it in CI against a real PostgreSQL.
 //
 // It registers one `describe` block; call it at the top level of a spec file, with getters for what
@@ -45,6 +47,26 @@ export interface VaultHostConformanceTestApi {
   expect: (value: unknown) => any;
 }
 
+/** One row of the host's audit trail, as {@link VaultHostInProcessAgentOptions.readAuditEvents} returns it. */
+export interface VaultHostAuditEvent {
+  action: string;
+  /** The row's `meta` JSON. */
+  meta: unknown;
+}
+
+/**
+ * The in-process agent check of {@link runVaultHostConformance}: the host resolves
+ * `AGENT_RELEASE_PORT` from its own container and calls the agent rules without HTTP or OAuth.
+ *
+ * @stability experimental
+ */
+export interface VaultHostInProcessAgentOptions {
+  /** The label the host calls the port with: audited, rate-limited on and shown to the owner. Default `Host conformance`. */
+  clientLabel?: string;
+  /** The rows of the host's audit trail; when given, the kit checks the call was audited as `credential: 'embedded'` with the label. */
+  readAuditEvents?: () => Promise<VaultHostAuditEvent[]>;
+}
+
 /** A minimal OpenAPI document: the paths with their operation ids and tags. */
 export interface VaultHostOpenApiDocument {
   paths: Record<string, Record<string, { operationId?: string; tags?: string[] } | unknown>>;
@@ -74,6 +96,12 @@ export interface VaultHostConformanceOptions {
   hostNames?: () => VaultHostNames;
   /** The host's OpenAPI document (`SwaggerModule.createDocument`), checked when given. */
   openApiDocument?: () => VaultHostOpenApiDocument;
+  /**
+   * Also drive the agent rules in process through `AGENT_RELEASE_PORT` (lookup, one-field fill,
+   * origin binding, the identical refusal for an item not opened to agents), after the HTTP agent
+   * checks. Off when absent.
+   */
+  inProcessAgent?: VaultHostInProcessAgentOptions;
   /** The global prefix. Default `/api`. */
   apiPrefix?: string;
   /** The website origin of the test login. Default `https://shop.example.test`. */
@@ -115,6 +143,23 @@ function defaultTestApi(): VaultHostConformanceTestApi {
   }
   return { describe: g.describe, it: g.it, expect: g.expect };
 }
+
+/** The status and body of a Nest `HttpException` a port call threw (anything else is rethrown). */
+async function refusal(promise: Promise<unknown>): Promise<{ status: number; body: unknown }> {
+  try {
+    await promise;
+  } catch (error) {
+    const http = error as { getStatus?: () => number; getResponse?: () => unknown };
+    if (typeof http?.getStatus === 'function' && typeof http.getResponse === 'function') {
+      return { status: http.getStatus(), body: http.getResponse() };
+    }
+    throw error;
+  }
+  return { status: 0, body: 'no refusal' };
+}
+
+/** An id no item has. */
+const UNKNOWN_ID = '00000000-0000-4000-8000-00000000c0de';
 
 /** The fixed values of the smoke run. Invented placeholders only. */
 const LOGIN = { username: 'person-a@example.test', password: 'HostConformance-Pw-1', rotated: 'HostConformance-Pw-2' };
@@ -285,6 +330,46 @@ export function runVaultHostConformance(options: VaultHostConformanceOptions): v
       const res = await call('GET', `/agent/v1/credentials?origin=${encodeURIComponent(origin)}`, options.owner().session);
       expect(res.status).toBe(403);
     });
+
+    if (options.inProcessAgent) {
+      const inProcess = options.inProcessAgent;
+      const clientLabel = inProcess.clientLabel ?? 'Host conformance';
+      const port = () => options.app().get<symbol, AgentReleasePort>(AGENT_RELEASE_PORT, { strict: false });
+      const as = () => ({ userId: options.owner().id, clientLabel });
+
+      it('looks the login up in process (AGENT_RELEASE_PORT) without a sensitive value', async () => {
+        const found = await port().lookup({ ...as(), origin });
+        expect(found.map((c) => [c.id, c.username])).toEqual([[state.loginId, LOGIN.username]]);
+        expect(JSON.stringify(found)).not.toContain(LOGIN.password);
+      });
+
+      it('fills one field in process, for the exact origin only', async () => {
+        expect(await port().fill({ ...as(), secretId: state.loginId, field: 'password', origin, purpose: 'login' })).toEqual({ value: LOGIN.password });
+        const elsewhere = await refusal(port().fill({ ...as(), secretId: state.loginId, field: 'password', origin: 'https://elsewhere.example.test', purpose: 'login' }));
+        expect(elsewhere.status).toBe(403);
+        expect((elsewhere.body as { code?: string }).code).toBe('ORIGIN_MISMATCH');
+        expect(JSON.stringify(elsewhere.body)).not.toContain(LOGIN.password);
+      });
+
+      it('refuses an item not opened to agents exactly as an id that does not exist', async () => {
+        const unopened = await refusal(port().fill({ ...as(), secretId: state.documentId, field: 'username', origin, purpose: 'login' }));
+        const unknown = await refusal(port().fill({ ...as(), secretId: UNKNOWN_ID, field: 'username', origin, purpose: 'login' }));
+        expect(unopened.status).toBe(404);
+        expect(unopened).toEqual(unknown);
+      });
+
+      if (inProcess.readAuditEvents) {
+        it('audits the in-process fill as embedded, under the host label', async () => {
+          const rows = await inProcess.readAuditEvents!();
+          const fills = rows
+            .filter((row) => row.action === 'agent.credential.fill')
+            .map((row) => (row.meta ?? {}) as Record<string, unknown>)
+            .filter((meta) => meta.credential === 'embedded');
+          expect(fills.some((meta) => meta.clientLabel === clientLabel && meta.result === 'ok')).toBe(true);
+          expect(JSON.stringify(rows)).not.toContain(LOGIN.password);
+        });
+      }
+    }
 
     if (options.readAuditActions) {
       it('audits the run under the reserved action names', async () => {
