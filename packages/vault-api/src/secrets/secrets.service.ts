@@ -14,6 +14,7 @@ import {
 
 
 
+import { isCountryCode } from '@marinoscar/vault-contract/common';
 import { keyValueValueSchema } from '@marinoscar/vault-contract/secret-types';
 import {
   originsFromCredential,
@@ -101,6 +102,24 @@ const CARD_IMAGE_MIME_TYPES: readonly string[] = [
 interface CarryForwardExclusions {
   roles: ReadonlySet<string>;
   storageObjectIds: ReadonlySet<string>;
+}
+
+/**
+ * `data` with every `format: 'country'` string value trimmed and upper-cased
+ * (`usa` is stored as `USA`). Runs after validation; other values are untouched.
+ */
+function normalizeCountryFields(
+  data: Record<string, unknown>,
+  fields: FieldDefinition[],
+): Record<string, unknown> {
+  let out = data;
+  for (const field of fields) {
+    const value = data[field.name];
+    if (field.type !== 'string' || field.format !== 'country' || typeof value !== 'string') continue;
+    const code = value.trim().toUpperCase();
+    if (code !== value) out = { ...out, [field.name]: code };
+  }
+  return out;
 }
 
 /** JSON with object keys sorted, so two equal values serialize the same whatever their key order. */
@@ -252,6 +271,9 @@ export class SecretsService {
       if (field.type === 'string') {
         if (typeof value !== 'string') {
           errors.push(`Field "${key}" must be a string`);
+        } else if (field.format === 'country' && value.trim() !== '' && !isCountryCode(value.trim().toUpperCase())) {
+          // Never echo the value: name the field only.
+          errors.push(`Field "${key}" must be an ISO 3166-1 alpha-3 country code`);
         }
         // `format: 'multiline'` and `mask` are display only.
       } else if (field.type === 'keyvalue') {
@@ -309,6 +331,7 @@ export class SecretsService {
     data: Record<string, unknown>,
   ): Record<string, unknown> {
     this.validateDataAgainstType(data, type.fields as FieldDefinition[]);
+    data = normalizeCountryFields(data, type.fields as FieldDefinition[]);
     if (!isAgentAccessibleType(type)) return data;
     const raw = data.totp;
     if (typeof raw !== 'string' || raw.trim() === '') return data;

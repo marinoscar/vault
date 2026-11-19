@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { isCountryCode } from '../src/common/index.js';
+
 import {
   FIELD_FORMATS,
   FIELD_MASKS,
@@ -131,5 +133,13 @@ describe('keyvalue values', () => {
   it('rejects a value that is not a list', () => {
     expect(keyValueValueSchema.safeParse({ member_number: 'x' }).success).toBe(false);
     expect(keyValueValueSchema.safeParse('member_number=x').success).toBe(false);
+  });
+});
+
+describe('country codes for format: country', () => {
+  it('knows ISO alpha-3 codes and the UTO specimen state, not ZZZ', () => {
+    expect(isCountryCode('UTO')).toBe(true);
+    expect(isCountryCode('USA')).toBe(true);
+    expect(isCountryCode('ZZZ')).toBe(false);
   });
 });

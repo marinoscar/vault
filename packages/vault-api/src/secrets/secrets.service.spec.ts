@@ -2856,6 +2856,62 @@ describe('SecretsService', () => {
   });
 
   // ============================================================================
+  // format: 'country' fields (issue #206)
+  // ============================================================================
+
+  describe('country fields', () => {
+    const ownerPerms = [PERMISSIONS.SECRETS_WRITE];
+    // A test-only type definition built here, not a seeded system type.
+    const countryType = {
+      ...mockSecretType,
+      name: 'Country Test Type',
+      fields: [
+        { name: 'issuing_country', label: 'Issuing Country', type: 'string', required: false, sensitive: false, format: 'country' },
+        { name: 'notes', label: 'Notes', type: 'string', required: false, sensitive: false, format: 'multiline' },
+      ],
+    };
+
+    beforeEach(() => {
+      mockPrisma.secretType.findUnique.mockResolvedValue(countryType as any);
+      mockPrisma.secret.create.mockResolvedValue(mockSecret as any);
+      mockPrisma.secretVersion.create.mockResolvedValue(mockVersion as any);
+      mockPrisma.auditEvent.create.mockResolvedValue({} as any);
+    });
+
+    const create = (data: Record<string, unknown>) =>
+      service.create({ name: 'C', typeId, data } as unknown as CreateSecretDto, userId, ownerPerms);
+
+    it('stores a lower-case code upper-cased', async () => {
+      await create({ issuing_country: ' usa ', notes: 'line 1\nline 2' });
+      expect(mockCrypto.encrypt).toHaveBeenCalledWith(
+        JSON.stringify({ issuing_country: 'USA', notes: 'line 1\nline 2' }),
+      );
+    });
+
+    it('accepts the UTO specimen state and an empty value', async () => {
+      await expect(create({ issuing_country: 'UTO' })).resolves.toBeDefined();
+      await expect(create({ issuing_country: '' })).resolves.toBeDefined();
+    });
+
+    it('answers 400 for an unknown code, naming the field, never the value', async () => {
+      let caught: BadRequestException | undefined;
+      try {
+        await create({ issuing_country: 'ZZZ' });
+      } catch (err) {
+        caught = err as BadRequestException;
+      }
+      expect(caught).toBeInstanceOf(BadRequestException);
+      const errors = (caught!.getResponse() as { details: { errors: string[] } }).details.errors;
+      expect(errors).toEqual(['Field "issuing_country" must be an ISO 3166-1 alpha-3 country code']);
+      expect(mockCrypto.encrypt).not.toHaveBeenCalled();
+    });
+
+    it('rejects an alpha-2 code', async () => {
+      await expect(create({ issuing_country: 'US' })).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  // ============================================================================
   // findVersions
   // ============================================================================
 
