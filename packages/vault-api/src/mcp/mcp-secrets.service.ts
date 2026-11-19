@@ -8,7 +8,8 @@
 //   1. RESULTS ARE BUILT FROM AN ALLOW-LIST. A view carries the id, name, type, origins, agent access,
 //      timestamps and the values of fields the type marks NOT sensitive (and a name deny-list on top:
 //      `password`, `totp`, `key`, `number`, `cvv`, ... are sensitive whatever a custom type says).
-//      A sensitive field is the string "[hidden]" or absent. Attachments and card types never appear.
+//      A sensitive field is the string "[hidden]" or absent. A `keyvalue` value reads as `label: value`
+//      lines, a sensitive entry as `label: [withheld]`. Attachments and card types never appear.
 //   2. EVERY SENSITIVE VALUE SEEN IS REPORTED (`sensitive`), and the dispatcher withholds a result in
 //      which one appears (fail closed).
 //
@@ -68,6 +69,54 @@ function isSensitive(field: TypeField): boolean {
   return field.sensitive === true || SENSITIVE_NAME.test(field.name);
 }
 
+/** What a sensitive `keyvalue` entry reads as: the label stays, the value never appears. @stability experimental */
+export const WITHHELD = '[withheld]';
+
+/** One entry of a `keyvalue` value as stored (read defensively: the row is untyped JSON). */
+interface KeyValueRow {
+  key?: unknown;
+  label?: unknown;
+  value?: unknown;
+  sensitive?: unknown;
+}
+
+function keyValueRows(value: unknown): KeyValueRow[] {
+  return Array.isArray(value) ? value.filter((e): e is KeyValueRow => !!e && typeof e === 'object') : [];
+}
+
+/** A `keyvalue` entry is sensitive when its own flag says so, its key is on the deny-list, or its field is sensitive. */
+function isSensitiveEntry(field: TypeField, entry: KeyValueRow): boolean {
+  return isSensitive(field) || entry.sensitive === true || (typeof entry.key === 'string' && SENSITIVE_NAME.test(entry.key));
+}
+
+/**
+ * The text a field value reads as. A `keyvalue` value is `label: value` lines, with every sensitive
+ * entry as `label: [withheld]`: its value never appears.
+ */
+function fieldText(field: TypeField, value: unknown): string {
+  if (field.type !== 'keyvalue') return asText(value);
+  return keyValueRows(value)
+    .map((entry) => {
+      const label = typeof entry.label === 'string' && entry.label !== '' ? entry.label : asText(entry.key ?? '');
+      return `${label}: ${isSensitiveEntry(field, entry) ? WITHHELD : asText(entry.value ?? '')}`;
+    })
+    .join('\n');
+}
+
+/**
+ * Every sensitive value `value` of `field` carries, for the fail-closed guard: the whole value of a
+ * sensitive field (each entry's value for a `keyvalue` one) and the value of each sensitive entry.
+ */
+function sensitiveValuesOf(field: TypeField, value: unknown): string[] {
+  if (!present(value)) return [];
+  if (field.type === 'keyvalue') {
+    return keyValueRows(value)
+      .filter((entry) => isSensitiveEntry(field, entry) && present(entry.value))
+      .map((entry) => asText(entry.value));
+  }
+  return isSensitive(field) ? [asText(value)] : [];
+}
+
 /** Card types are never handled through MCP: no creation, no listing. */
 export function isCardLikeType(type: { name: string; isSystem?: boolean; fields: unknown }): boolean {
   if (type.isSystem && type.name.toLowerCase() === 'card') return true;
@@ -125,11 +174,11 @@ export class McpSecretsService {
     for (const def of fieldsOf(row.type)) {
       const value = values[def.name];
       if (!present(value)) continue;
+      sensitive.push(...sensitiveValuesOf(def, value));
       if (isSensitive(def)) {
-        sensitive.push(asText(value));
         if (mode === 'detail') fields[def.name] = HIDDEN;
       } else {
-        fields[def.name] = asText(value);
+        fields[def.name] = fieldText(def, value);
       }
     }
     return {
@@ -272,7 +321,7 @@ export class McpSecretsService {
 
     // Every sensitive value this call handles: the ones the model sent and the one Vault generated.
     const sensitive: string[] = [];
-    for (const def of fieldsOf(type)) if (isSensitive(def) && present(data[def.name])) sensitive.push(asText(data[def.name]));
+    for (const def of fieldsOf(type)) sensitive.push(...sensitiveValuesOf(def, data[def.name]));
 
     let created: { id: string; name: string; origins?: string[] };
     if (isCredential && input.allowAgents) {
@@ -327,9 +376,7 @@ export class McpSecretsService {
 
     const sensitive: string[] = [];
     for (const def of fieldsOf(row.type)) {
-      if (!isSensitive(def)) continue;
-      if (present(current[def.name])) sensitive.push(asText(current[def.name]));
-      if (present(merged[def.name])) sensitive.push(asText(merged[def.name]));
+      sensitive.push(...sensitiveValuesOf(def, current[def.name]), ...sensitiveValuesOf(def, merged[def.name]));
     }
 
     const same = Object.keys(merged).length === Object.keys(current).length && Object.keys(merged).every((k) => merged[k] === current[k]);
