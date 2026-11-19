@@ -24,6 +24,11 @@ export interface VaultWebConfig {
    * two raw `fetch` calls that stream a file (attachment upload and download).
    */
   apiBaseUrl?: string;
+  /**
+   * The product name the pages show in their copy ("How you appear in Host Beta"). Default
+   * `Vault`. The brand subpath (`/brand`) is Vault's own and is not read by the slices.
+   */
+  productName?: string;
 }
 
 /** Thrown when a slice calls the API before the host configured the package. */
@@ -34,17 +39,28 @@ export class VaultWebNotConfiguredError extends Error {
   }
 }
 
-let config: { http: PlatformHttpClient; apiBaseUrl: string } | null = null;
+let config: { http: PlatformHttpClient; apiBaseUrl: string; productName: string } | null = null;
 
 /** Hands the package its transport. Call once, at start-up; a later call replaces it. */
 export function configureVaultWeb(options: VaultWebConfig): void {
-  config = { http: options.http, apiBaseUrl: options.apiBaseUrl ?? '/api' };
+  config = { http: options.http, apiBaseUrl: options.apiBaseUrl ?? '/api', productName: options.productName ?? DEFAULT_PRODUCT_NAME };
 }
 
 /** The configured client. Throws {@link VaultWebNotConfiguredError} before {@link configureVaultWeb}. */
 export function getVaultHttp(): PlatformHttpClient {
   if (!config) throw new VaultWebNotConfiguredError();
   return config.http;
+}
+
+/** The product name when the host configured none. */
+export const DEFAULT_PRODUCT_NAME = 'Vault';
+
+/**
+ * The product name the copy shows (`Vault` by default). Unlike the transport, it never throws: a
+ * page rendered before {@link configureVaultWeb} (a test, a story) reads the default.
+ */
+export function getVaultProductName(): string {
+  return config?.productName ?? DEFAULT_PRODUCT_NAME;
 }
 
 /** The configured API base URL (`/api` by default). */

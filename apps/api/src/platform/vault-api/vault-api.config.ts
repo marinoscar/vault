@@ -19,6 +19,7 @@
 //   VAULT_SETTINGS        VaultSettingsAdapter over SystemSettingsService
 //   VAULT_METRICS         VaultMetricsService (global)
 //   VAULT_MCP_OPTIONS     the app URL for the MCP Origin rule (platform/mcp/mcp.config.ts)
+//   VAULT_HOST            APP_URL, read on every use (the notification links); the package reads no env
 //
 // ORDER IN AppModule: after `jobsModule`, `settingsModule`, `notificationsModule`, `storageModule`
 // and `VaultMetricsModule`, which provide what the adapters read.
@@ -34,6 +35,7 @@ import type {
   VaultAiKeyPresencePort,
   VaultAiPort,
   VaultCryptoPort,
+  VaultHostConfig,
   VaultNotifyPort,
   VaultObjectsPort,
   VaultObjectStorePort,
@@ -66,6 +68,16 @@ export type VaultPortBindingsCheck = [
   Satisfies<AiKeyPresence, VaultAiKeyPresencePort>,
 ];
 
+/**
+ * `VAULT_HOST`: `APP_URL`, read when a notification is built (as the slices read it before #194),
+ * so a change of the variable in a test or a restart-free reconfiguration behaves as it always did.
+ */
+const vaultHostConfig: VaultHostConfig = {
+  get appUrl() {
+    return process.env.APP_URL || null;
+  },
+};
+
 /** The adapters that have no platform class of their own. */
 @Module({
   imports: [CommonModule, StorageProvidersModule],
@@ -90,5 +102,6 @@ export const vaultApiModule = VaultApiModule.forRoot({
     settings: { useExisting: VaultSettingsAdapter },
     metrics: { useExisting: VaultMetricsService },
     mcp: vaultMcpOptionsBinding,
+    host: { useValue: vaultHostConfig },
   },
 });

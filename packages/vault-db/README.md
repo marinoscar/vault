@@ -43,7 +43,7 @@ DATABASE_URL=postgres://... npx vault-db check --database
 | Command | Options |
 |---|---|
 | `vault-db sync` | `--root <dir>` the app folder that holds `prisma/` (default: the current directory); `--fragments <dir>` and `--migrations <dir>` the package folders to install from (default: the package's `schema/` and `migrations/`); `--names original\|stable\|after-host` (`after-host` is deprecated); `--dry-run` |
-| `vault-db check` | `--root <dir>`; `--database` also checks the database named by `DATABASE_URL` |
+| `vault-db check` | `--root <dir>`; `--database` also checks the database named by `DATABASE_URL` (the command reads it; the library's `checkVaultInstall` takes `databaseUrl` and reads no environment variable) |
 | `vault-db promote <localDir>` | `--id <slug>` (required), `--slice <slice>` (required), `--root <dir>` |
 
 Exit codes: 0 ok, 1 a failed check or a refusal (a host model is missing, an installed migration differs from the package, a lock entry disagrees), 2 a usage error or a missing `DATABASE_URL`.

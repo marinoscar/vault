@@ -1,5 +1,6 @@
 import { ProfileSettings } from '../components/ProfileSettings.js';
 import { UserSettingsSection } from '../components/UserSettingsSection.js';
+import { getVaultProductName } from '../../../core/headless/http.js';
 
 /**
  * The `Profile` card of `/settings` (`/settings/profile`, E10.3 #94): the
@@ -8,7 +9,7 @@ import { UserSettingsSection } from '../components/UserSettingsSection.js';
  */
 export default function ProfileSettingsPage() {
   return (
-    <UserSettingsSection title="Profile" description="How you appear in Vault">
+    <UserSettingsSection title="Profile" description={`How you appear in ${getVaultProductName()}`}>
       {({ settings, isSaving, run, updateProfile }) => (
         <ProfileSettings
           profile={settings.profile}
