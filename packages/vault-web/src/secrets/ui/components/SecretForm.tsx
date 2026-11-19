@@ -239,7 +239,7 @@ export function SecretForm({
               data={data}
               onChange={changeData}
               errors={errors.fields}
-              suggestions={suggestions}
+              keyValueSuggestions={suggestions}
             />
           </>
         )}
