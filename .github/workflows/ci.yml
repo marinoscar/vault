@@ -229,7 +229,7 @@ jobs:
       # `db:baseline:pre-migrate` runs the same command against a temporary copy of the
       # lock without `rlsPolicies` (scripts/baseline-pre-migrate.mjs); the real lock is
       # never touched. db:drift below still checks the policy on the migrated database.
-      # Either final line means 0 unmatched and 0 to resolve. platform-db 0.1.0-next.37's
+      # Either final line means 0 unmatched and 0 to resolve. platform-db 0.1.0-next.37 to next.39's
       # baseline never prints "nothing to do" once platform.lock carries `appMigrations`
       # (written by `platform db sync`): marinoscar/EnterpriseAppBase#1202. Back to the
       # plain "nothing to do" grep once that fix is released.
