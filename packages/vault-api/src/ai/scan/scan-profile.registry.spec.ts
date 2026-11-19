@@ -46,7 +46,8 @@ describe('ScanProfileRegistry', () => {
 
   it('the built-in registry holds the card profile under the card_extract feature', () => {
     const registry = createScanProfileRegistry();
-    expect(registry.list().map((p) => p.id)).toEqual([CARD_SCAN_PROFILE_ID]);
+    // The passport and ID document profiles (#210) follow the card.
+    expect(registry.list().map((p) => p.id)).toEqual([CARD_SCAN_PROFILE_ID, 'passport', 'id_document']);
     const card = registry.get(CARD_SCAN_PROFILE_ID);
     expect(card.aiFeature).toBe(CARD_EXTRACT_FEATURE);
     expect(card.imageSlots.map((s) => [s.key, s.required])).toEqual([

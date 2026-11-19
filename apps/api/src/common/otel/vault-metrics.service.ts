@@ -20,6 +20,7 @@ import type {
   BackupOutcome,
   BackupScope,
   BackupTrigger,
+  DocumentExtractionType,
   SecretTypeKind,
   SecretVersionSource,
 } from '@marinoscar/vault-api/core';
@@ -47,6 +48,10 @@ export class VaultMetricsService implements VaultMetricsPort {
 
   cardExtracted(outcome: string): void {
     this.metrics.add('vaultCardExtractions', 1, { outcome });
+  }
+
+  documentExtracted(documentType: DocumentExtractionType, outcome: string): void {
+    this.metrics.add('vaultDocumentExtractions', 1, { document_type: documentType, outcome });
   }
 }
 

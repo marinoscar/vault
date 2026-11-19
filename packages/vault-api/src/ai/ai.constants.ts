@@ -16,10 +16,14 @@ export const CARD_EXTRACT_FEATURE = 'card_extract';
 export const AI_PROVIDER_ID = 'openai';
 
 /**
- * Longest base64 data URL accepted for one card photo (about 4.5 MB of image);
- * two must fit in the 16 MiB Fastify `bodyLimit` set in `main.ts`.
+ * Longest base64 data URL accepted for one scanned photo (about 4.5 MB of image);
+ * two must fit in the 16 MiB Fastify `bodyLimit` set in `main.ts`. Defined once in the
+ * contract so the card and document scan bodies share one value.
  */
-export const MAX_IMAGE_DATA_URL_LENGTH = 6_000_000;
+export { MAX_IMAGE_DATA_URL_LENGTH } from '@marinoscar/vault-contract/secrets';
+
+/** The registered AI feature id of document scanning (passport, ID document); permanent, usage rows carry it. */
+export const DOCUMENT_EXTRACT_FEATURE = 'document_extract';
 
 /** Backstop for a wedged provider connection. */
 export const OPENAI_REQUEST_TIMEOUT_MS = 90_000;

@@ -7,6 +7,8 @@
 // list is exported as `other`, never as itself.
 // =============================================================================
 
+import { SCANNABLE_DOCUMENT_TYPES } from '@marinoscar/vault-contract/secrets';
+
 /** System secret types; every other type is `custom`. */
 export const SECRET_TYPE_KINDS = [
   'credential',
@@ -42,6 +44,10 @@ export const CARD_EXTRACTION_OUTCOMES = [
   'quota_exceeded',
   'upstream_error',
 ] as const;
+
+/** The document types a document scan reads (the `document_type` label of `app.vault.documents.extractions`). */
+export const DOCUMENT_EXTRACTION_TYPES = SCANNABLE_DOCUMENT_TYPES;
+export type DocumentExtractionType = (typeof DOCUMENT_EXTRACTION_TYPES)[number];
 
 /** The metric label of a secret type: the system type's kind, or `custom`. */
 export function secretTypeKind(type: { isSystem: boolean; name: string } | null | undefined): SecretTypeKind {

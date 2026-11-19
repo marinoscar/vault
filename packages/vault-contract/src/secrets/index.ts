@@ -206,6 +206,7 @@ export const attachmentResponseSchema = z.object({
 
 /** @stability experimental */
 export type AttachmentResponse = z.infer<typeof attachmentResponseSchema>;
+export * from './document-scan.js';
 export * from './image-slots.js';
 export * from './origins.js';
 export * from './totp.js';

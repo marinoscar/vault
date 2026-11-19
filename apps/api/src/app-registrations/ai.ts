@@ -8,7 +8,8 @@
 // `GET /api/ai/features`.
 //
 //   id             call site                                  needs
-//   card_extract   POST /api/secrets/cards/extract            responses + image input
+//   card_extract      POST /api/secrets/cards/extract         responses + image input
+//   document_extract  POST /api/secrets/documents/extract     responses + image input (passport, ID document; #210)
 //
 // ⚠ A FEATURE ID IS PERMANENT: usage rows carry it. It is lower snake case (the
 // platform's `AI_FEATURE_ID_PATTERN` refuses a hyphen or a dot), which is why it
@@ -23,6 +24,13 @@ import { registerAiFeature } from '@marinoscar/platform-api/ai';
 registerAiFeature({
   id: 'card_extract',
   label: 'Card scanning',
+  group: 'vault',
+  needs: ['responses', 'structured_output', 'vision_input'],
+});
+
+registerAiFeature({
+  id: 'document_extract',
+  label: 'Document scanning',
   group: 'vault',
   needs: ['responses', 'structured_output', 'vision_input'],
 });

@@ -95,7 +95,7 @@ export class DocumentScanService {
       this.record(profile, 'succeeded');
       return normalized;
     } catch (error) {
-      const mapped = this.mapError(error);
+      const mapped = this.mapError(error, profile);
       this.record(profile, extractionOutcome(mapped.code));
       throw mapped;
     }
@@ -110,7 +110,7 @@ export class DocumentScanService {
    * handles). Never a 401/403 (the web reads a 401 as an expired session), and
    * never an upstream body: it can echo fragments of the images.
    */
-  private mapError(error: unknown): AiException {
+  private mapError(error: unknown, profile: ScanProfile<unknown, unknown>): AiException {
     if (error instanceof AiException) return error;
 
     if (AiError.isAiError(error)) {
@@ -121,7 +121,7 @@ export class DocumentScanService {
         case 'AI_MODEL_NOT_ENABLED':
         case 'AI_MODEL_NOT_REACHABLE':
         case 'AI_CAPABILITY_UNSUPPORTED':
-          this.logger.warn(`Card extraction unavailable: ${error.code}`);
+          this.logger.warn(`${scanName(profile)} unavailable: ${error.code}`);
           return aiNotConfigured();
         case 'AI_RATE_LIMITED': {
           const retryAfterSeconds = error.retryAfterMs
@@ -151,6 +151,11 @@ export class DocumentScanService {
     this.logger.error(`Unexpected AI failure: ${(error as Error)?.name}`);
     return aiUpstreamUnavailable();
   }
+}
+
+/** The name of a scan in log lines (the card keeps its historical wording). */
+function scanName(profile: ScanProfile<unknown, unknown>): string {
+  return profile.id === 'card' ? 'Card extraction' : `Document scan (${profile.id})`;
 }
 
 /** The metric outcome for a mapped failure code (`AI_ERROR_CODES`); anything unlisted is `failed`. */

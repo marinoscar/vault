@@ -1,4 +1,11 @@
-import type { BackupOutcome, BackupScope, BackupTrigger, SecretTypeKind, SecretVersionSource } from '../core/metric-labels';
+import type {
+  BackupOutcome,
+  BackupScope,
+  BackupTrigger,
+  DocumentExtractionType,
+  SecretTypeKind,
+  SecretVersionSource,
+} from '../core/metric-labels';
 
 /**
  * VAULT_METRICS: Vault's `app.vault.*` instruments. Optional: a slice emits through `?.` so a host
@@ -24,4 +31,6 @@ export interface VaultMetricsPort {
   backupFinished(run: { scope: BackupScope; trigger: BackupTrigger; outcome: BackupOutcome; durationMs: number }): void;
   /** A card scan ended, by outcome. */
   cardExtracted(outcome: string): void;
+  /** An identity-document scan ended, by document type and outcome (the card's outcome labels). */
+  documentExtracted(documentType: DocumentExtractionType, outcome: string): void;
 }

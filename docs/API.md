@@ -1614,7 +1614,7 @@ Since E8.1 ([#87](https://github.com/marinoscar/vault/issues/87)) card scanning 
 - `/api/admin/ai/*` (`ai_config:read` / `ai_config:write`, **not** behind the kill switch): the deployment policy (the `ai` system-settings namespace), the deployment provider key (write-only, stored at credential `('ai', 'openai')`, where Vault's key has been since E4.2), the model catalogue (`ai_models`: enable a model, run the key test), usage. `/api/admin/ai/org-*` are the organization's own (`org_ai_config:*`).
 - `/api/ai/*` consumer routes (`AiEnabledGuard` + `ai:use`): responses, runs, features, usage, own keys. Vault's UI uses none of them yet.
 
-The feature id is `card_extract` (lower snake case: the platform refuses a hyphen). Admin walkthrough: [runbooks/ai-platform-migration.md](runbooks/ai-platform-migration.md).
+The feature ids are `card_extract` and `document_extract` (passport and ID document scanning, #210; lower snake case: the platform refuses a hyphen). Admin walkthrough: [runbooks/ai-platform-migration.md](runbooks/ai-platform-migration.md).
 
 ---
 
@@ -1726,6 +1726,65 @@ A `429`/`502` may include a `Retry-After` header (seconds). **Limits replace the
 
 ---
 
+#### POST /secrets/documents/extract
+
+**Requires Authentication** (`secrets:write` **and** `ai:use`), and the platform kill switch, exactly as `POST /secrets/cards/extract` (#210, IDOC-7). Extracts candidate Passport or ID Document values from full, uncropped photos. **Persists nothing**: the platform writes one `ai_usage_events` row under the feature `document_extract` (tokens, model, latency, never the input). The model is `ai.documentExtractModel`, falling back to `ai.cardExtractModel`. Wire schemas: `extractDocumentRequestSchema` and `extractDocumentResponseSchema` of `@marinoscar/vault-contract/secrets`.
+
+**Request Body:**
+```json
+{
+  "documentType": "passport",
+  "images": {
+    "data_page": "data:image/jpeg;base64,/9j/4AAQSkZJRg...",
+    "back": "data:image/jpeg;base64,/9j/4AAQSkZJRg..."
+  }
+}
+```
+
+`documentType` is `passport` or `id_document`. A passport needs `images.data_page` and takes no `front`; an ID document needs `images.front` and takes no `data_page`; `back` is optional for both. Each image is a JPEG, PNG or WebP base64 data URL of at most `MAX_IMAGE_DATA_URL_LENGTH` (6,000,000) characters.
+
+**Response** (an ID document):
+```json
+{
+  "data": {
+    "documentType": "id_document",
+    "fields": {
+      "holder_name": "Person A",
+      "document_number": "D0000000",
+      "issuing_country": "UTO",
+      "issuing_authority": "Utopia DMV",
+      "date_of_birth": null,
+      "issue_date": "2024-01-15",
+      "expiry_date": "2032-01-15"
+    },
+    "confidence": { "holder_name": 0.95, "document_number": 0.9, "issuing_country": 0.9, "issuing_authority": 0.9, "date_of_birth": 0, "issue_date": 0.9, "expiry_date": 0.9 },
+    "documentKind": { "value": "Driver License", "confidence": 0.95 },
+    "attributes": [
+      { "key": "license_class", "label": "Class", "value": "C", "sensitive": false, "confidence": 0.9 }
+    ],
+    "checks": [],
+    "warnings": ["Glare over the lower right corner"],
+    "crops": {
+      "front": { "x": 0.1, "y": 0.2, "width": 0.8, "height": 0.55, "quarterTurns": 0, "confidence": 0.9 },
+      "back": null
+    },
+    "model": "gpt-4o-mini",
+    "partial": false
+  }
+}
+```
+
+- `fields`: the typed fields of the target type, never `attributes` or `notes`. A passport returns `surname`, `given_names`, `passport_number`, `passport_type`, `issuing_country`, `nationality`, `date_of_birth`, `place_of_birth`, `sex`, `issue_date`, `expiry_date`, `issuing_authority`, `personal_number` and `mrz` (the joined MRZ lines). Dates are `YYYY-MM-DD`; countries ICAO alpha-3.
+- `documentKind`: one of `ID_DOCUMENT_KINDS` or `null` (ID document only; `null` for a passport).
+- `attributes`: ID document only (`[]` for a passport), keyed snake_case, `sensitive` from the kind catalog.
+- `checks`: one entry per check that ran (`mrz`, `ssn`, `vin`), `failed` naming fields. See [SECRETS.md § Document scanning](SECRETS.md#document-scanning).
+- `crops`: one box per slot of the type (`data_page`/`back` or `front`/`back`), `null` for an image that was not sent or showed no document.
+- `partial`: `true` when every typed field is `null`.
+
+**Error Cases:** as for `POST /secrets/cards/extract` (same table, same `Retry-After`): `400 AI_INVALID_IMAGE` also covers an unknown `documentType` and a missing or misplaced image slot (the message names the field paths, never the bytes); `422 AI_EXTRACTION_FAILED` when the model could not read the document.
+
+---
+
 ### System Settings `ai` namespace
 
 `GET|PUT|PATCH /system-settings` carry an `ai` object that is the **platform AI policy** extended with one Vault field:
@@ -1738,6 +1797,7 @@ A `429`/`502` may include a `Retry-After` header (seconds). **Limits replace the
 | `limits.perUser.requestsPerMinute` / `requestsPerDay`, `limits.perOrg.*` | Caps; absent = unlimited |
 | `defaults`, `hostedTools`, `logPromptContent`, `usageRetentionDays`, `deploymentKeyServesOrgs` | Platform policy (see the platform AI README) |
 | **`cardExtractModel`** | Vault's field: the model the `card_extract` feature runs on (1-128 characters, default `gpt-4o-mini`); replaces `ai.model` |
+| **`documentExtractModel`** | Vault's field (optional, #210): the model the `document_extract` feature runs on; unset means `cardExtractModel` |
 
 **There is no key in this block and no `apiKeyConfigured` / `apiKeyLast4` projection any more.** `ai.apiKey` in a `PATCH` is ignored (stored nowhere). Set the key through `PUT /admin/ai/config` / the Admin AI page; read whether one is stored from `GET /ai/config` (`providers[].hasOrgKey`). The old fields `provider`, `model` and `maxCallsPerUserPerDay` are rewritten by `npm run vault:migrate-ai-platform` ([runbook](runbooks/ai-platform-migration.md)); until it runs, the platform reads a legacy block as "no provider switched on" (card scanning answers `503 AI_NOT_CONFIGURED`, nothing errors). The `ai` namespace is **not required on `PUT`**.
 
