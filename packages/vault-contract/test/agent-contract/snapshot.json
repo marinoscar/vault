@@ -1,0 +1,3047 @@
+{
+  "version": "1.2",
+  "schemas": {
+    "agentAccessSettingsSchema": {
+      "role": "both",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "enabled": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "boolean"
+            }
+          },
+          "lookupPerMinute": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "number"
+            }
+          },
+          "fillPerMinute": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "number"
+            }
+          },
+          "totpPerMinute": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "number"
+            }
+          },
+          "writePerMinute": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "number"
+            }
+          },
+          "cards": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "object",
+              "fields": {
+                "enabled": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "boolean"
+                  }
+                },
+                "fillPerMinute": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "number"
+                  }
+                },
+                "releasesPerCardPerDay": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "number"
+                  }
+                }
+              }
+            }
+          },
+          "identity": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "object",
+              "fields": {
+                "enabled": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "boolean"
+                  }
+                },
+                "fillPerMinute": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "number"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "agentActivityActionSchema": {
+      "role": "response",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "enum",
+        "values": [
+          "lookup",
+          "fill",
+          "totp",
+          "create",
+          "rotate",
+          "agent_access",
+          "card_lookup",
+          "card_fill",
+          "card_grant_request",
+          "identity_lookup",
+          "identity_fill",
+          "card_grant"
+        ]
+      }
+    },
+    "agentActivityCredentialKindSchema": {
+      "role": "response",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "enum",
+        "values": [
+          "oauth",
+          "pat",
+          "session",
+          "embedded"
+        ]
+      }
+    },
+    "agentActivityItemSchema": {
+      "role": "response",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "id": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "at": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "action": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "enum",
+              "values": [
+                "lookup",
+                "fill",
+                "totp",
+                "create",
+                "rotate",
+                "agent_access",
+                "card_lookup",
+                "card_fill",
+                "card_grant_request",
+                "identity_lookup",
+                "identity_fill",
+                "card_grant"
+              ]
+            }
+          },
+          "result": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "enum",
+              "values": [
+                "ok",
+                "denied"
+              ]
+            }
+          },
+          "reason": {
+            "required": false,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "secretId": {
+            "required": true,
+            "nullable": true,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "secretName": {
+            "required": true,
+            "nullable": true,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "field": {
+            "required": true,
+            "nullable": true,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "origin": {
+            "required": true,
+            "nullable": true,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "purpose": {
+            "required": true,
+            "nullable": true,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "credentialKind": {
+            "required": true,
+            "nullable": true,
+            "shape": {
+              "type": "enum",
+              "values": [
+                "oauth",
+                "pat",
+                "session",
+                "embedded"
+              ]
+            }
+          },
+          "clientId": {
+            "required": true,
+            "nullable": true,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "clientName": {
+            "required": true,
+            "nullable": true,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "amount": {
+            "required": false,
+            "nullable": true,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "currency": {
+            "required": false,
+            "nullable": true,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          }
+        }
+      }
+    },
+    "agentActivityQuerySchema": {
+      "role": "request",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "page": {
+            "required": false,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "number"
+            }
+          },
+          "pageSize": {
+            "required": false,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "number"
+            }
+          },
+          "action": {
+            "required": false,
+            "nullable": false,
+            "shape": {
+              "type": "enum",
+              "values": [
+                "lookup",
+                "fill",
+                "totp",
+                "create",
+                "rotate",
+                "agent_access",
+                "card_lookup",
+                "card_fill",
+                "card_grant_request",
+                "identity_lookup",
+                "identity_fill",
+                "card_grant"
+              ]
+            }
+          },
+          "secretId": {
+            "required": false,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "clientId": {
+            "required": false,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "from": {
+            "required": false,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "to": {
+            "required": false,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          }
+        }
+      }
+    },
+    "agentActivityResponseSchema": {
+      "role": "response",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "data": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "array",
+              "element": {
+                "type": "object",
+                "fields": {
+                  "id": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "at": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "action": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "enum",
+                      "values": [
+                        "lookup",
+                        "fill",
+                        "totp",
+                        "create",
+                        "rotate",
+                        "agent_access",
+                        "card_lookup",
+                        "card_fill",
+                        "card_grant_request",
+                        "identity_lookup",
+                        "identity_fill",
+                        "card_grant"
+                      ]
+                    }
+                  },
+                  "result": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "enum",
+                      "values": [
+                        "ok",
+                        "denied"
+                      ]
+                    }
+                  },
+                  "reason": {
+                    "required": false,
+                    "nullable": false,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "secretId": {
+                    "required": true,
+                    "nullable": true,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "secretName": {
+                    "required": true,
+                    "nullable": true,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "field": {
+                    "required": true,
+                    "nullable": true,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "origin": {
+                    "required": true,
+                    "nullable": true,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "purpose": {
+                    "required": true,
+                    "nullable": true,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "credentialKind": {
+                    "required": true,
+                    "nullable": true,
+                    "shape": {
+                      "type": "enum",
+                      "values": [
+                        "oauth",
+                        "pat",
+                        "session",
+                        "embedded"
+                      ]
+                    }
+                  },
+                  "clientId": {
+                    "required": true,
+                    "nullable": true,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "clientName": {
+                    "required": true,
+                    "nullable": true,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "amount": {
+                    "required": false,
+                    "nullable": true,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "currency": {
+                    "required": false,
+                    "nullable": true,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "meta": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "object",
+              "fields": {
+                "page": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "number"
+                  }
+                },
+                "pageSize": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "number"
+                  }
+                },
+                "total": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "number"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "agentAmountSchema": {
+      "role": "request",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "primitive",
+        "name": "number"
+      }
+    },
+    "agentCardAccessSettingsSchema": {
+      "role": "both",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "enabled": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "boolean"
+            }
+          },
+          "fillPerMinute": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "number"
+            }
+          },
+          "releasesPerCardPerDay": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "number"
+            }
+          }
+        }
+      }
+    },
+    "agentCardFillFieldSchema": {
+      "role": "request",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "enum",
+        "values": [
+          "number",
+          "expMonth",
+          "expYear",
+          "holderName",
+          "securityCode",
+          "postalCode"
+        ]
+      }
+    },
+    "agentCardFillRequestSchema": {
+      "role": "request",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "field": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "enum",
+              "values": [
+                "number",
+                "expMonth",
+                "expYear",
+                "holderName",
+                "securityCode",
+                "postalCode"
+              ]
+            }
+          },
+          "origin": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "frameOrigin": {
+            "required": false,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "amount": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "number"
+            }
+          },
+          "currency": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "purpose": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "enum",
+              "values": [
+                "purchase"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "agentCardGrantRequestCreateSchema": {
+      "role": "request",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "origin": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "amount": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "number"
+            }
+          },
+          "currency": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "reason": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          }
+        }
+      }
+    },
+    "agentCardGrantRequestResponseSchema": {
+      "role": "response",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "data": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "object",
+              "fields": {
+                "id": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "string"
+                  }
+                },
+                "status": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "enum",
+                    "values": [
+                      "pending",
+                      "approved",
+                      "declined"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "agentCardGrantSummarySchema": {
+      "role": "response",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "maxAmount": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "number"
+            }
+          },
+          "currency": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "includesSecurityCode": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "boolean"
+            }
+          },
+          "expiresAt": {
+            "required": true,
+            "nullable": true,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          }
+        }
+      }
+    },
+    "agentCardsLookupQuerySchema": {
+      "role": "request",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "origin": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          }
+        }
+      }
+    },
+    "agentCardsLookupResponseSchema": {
+      "role": "response",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "data": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "array",
+              "element": {
+                "type": "object",
+                "fields": {
+                  "id": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "name": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "brand": {
+                    "required": true,
+                    "nullable": true,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "last4": {
+                    "required": true,
+                    "nullable": true,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "expMonth": {
+                    "required": true,
+                    "nullable": true,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "expYear": {
+                    "required": true,
+                    "nullable": true,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "grant": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "object",
+                      "fields": {
+                        "maxAmount": {
+                          "required": true,
+                          "nullable": false,
+                          "shape": {
+                            "type": "primitive",
+                            "name": "number"
+                          }
+                        },
+                        "currency": {
+                          "required": true,
+                          "nullable": false,
+                          "shape": {
+                            "type": "primitive",
+                            "name": "string"
+                          }
+                        },
+                        "includesSecurityCode": {
+                          "required": true,
+                          "nullable": false,
+                          "shape": {
+                            "type": "primitive",
+                            "name": "boolean"
+                          }
+                        },
+                        "expiresAt": {
+                          "required": true,
+                          "nullable": true,
+                          "shape": {
+                            "type": "primitive",
+                            "name": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "agentCardSummarySchema": {
+      "role": "response",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "id": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "name": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "brand": {
+            "required": true,
+            "nullable": true,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "last4": {
+            "required": true,
+            "nullable": true,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "expMonth": {
+            "required": true,
+            "nullable": true,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "expYear": {
+            "required": true,
+            "nullable": true,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "grant": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "object",
+              "fields": {
+                "maxAmount": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "number"
+                  }
+                },
+                "currency": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "string"
+                  }
+                },
+                "includesSecurityCode": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "boolean"
+                  }
+                },
+                "expiresAt": {
+                  "required": true,
+                  "nullable": true,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "agentContractInfoSchema": {
+      "role": "response",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "version": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "features": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "array",
+              "element": {
+                "type": "primitive",
+                "name": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "agentCreateCredentialRequestSchema": {
+      "role": "request",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "name": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "username": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "origin": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "additionalUrls": {
+            "required": false,
+            "nullable": false,
+            "shape": {
+              "type": "array",
+              "element": {
+                "type": "primitive",
+                "name": "string"
+              }
+            }
+          },
+          "password": {
+            "required": false,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "generate": {
+            "required": false,
+            "nullable": false,
+            "shape": {
+              "type": "object",
+              "fields": {
+                "length": {
+                  "required": false,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "number"
+                  }
+                },
+                "symbols": {
+                  "required": false,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "boolean"
+                  }
+                }
+              }
+            }
+          },
+          "purpose": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "enum",
+              "values": [
+                "login",
+                "signup",
+                "password_change",
+                "mfa"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "agentCreateCredentialResponseSchema": {
+      "role": "response",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "data": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "object",
+              "fields": {
+                "id": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "string"
+                  }
+                },
+                "name": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "string"
+                  }
+                },
+                "username": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "string"
+                  }
+                },
+                "origins": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "array",
+                    "element": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  }
+                },
+                "generatedPassword": {
+                  "required": false,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "agentCredentialSummarySchema": {
+      "role": "response",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "id": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "name": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "username": {
+            "required": true,
+            "nullable": true,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "origins": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "array",
+              "element": {
+                "type": "primitive",
+                "name": "string"
+              }
+            }
+          },
+          "matchKind": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "enum",
+              "values": [
+                "exact",
+                "site"
+              ]
+            }
+          },
+          "hasTotp": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "boolean"
+            }
+          },
+          "updatedAt": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          }
+        }
+      }
+    },
+    "agentCurrencySchema": {
+      "role": "request",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "primitive",
+        "name": "string"
+      }
+    },
+    "agentFillFieldSchema": {
+      "role": "request",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "enum",
+        "values": [
+          "username",
+          "password"
+        ]
+      }
+    },
+    "agentFillRequestSchema": {
+      "role": "request",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "field": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "enum",
+              "values": [
+                "username",
+                "password"
+              ]
+            }
+          },
+          "origin": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "purpose": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "enum",
+              "values": [
+                "login",
+                "signup",
+                "password_change",
+                "mfa"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "agentFillResponseSchema": {
+      "role": "response",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "data": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "object",
+              "fields": {
+                "value": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "agentGeneratePasswordSchema": {
+      "role": "request",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "length": {
+            "required": false,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "number"
+            }
+          },
+          "symbols": {
+            "required": false,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "agentIdentityAccessSettingsSchema": {
+      "role": "both",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "enabled": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "boolean"
+            }
+          },
+          "fillPerMinute": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "number"
+            }
+          }
+        }
+      }
+    },
+    "agentIdentityFieldSchema": {
+      "role": "request",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "enum",
+        "values": [
+          "full_name",
+          "date_of_birth",
+          "id_type",
+          "id_number",
+          "id_issuing_country",
+          "address_line1",
+          "address_line2",
+          "city",
+          "region",
+          "postal_code",
+          "country",
+          "phone",
+          "email"
+        ]
+      }
+    },
+    "agentIdentityFieldSummarySchema": {
+      "role": "response",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "field": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "enum",
+              "values": [
+                "full_name",
+                "date_of_birth",
+                "id_type",
+                "id_number",
+                "id_issuing_country",
+                "address_line1",
+                "address_line2",
+                "city",
+                "region",
+                "postal_code",
+                "country",
+                "phone",
+                "email"
+              ]
+            }
+          },
+          "label": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "sensitive": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "boolean"
+            }
+          },
+          "fillable": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "agentIdentityFillRequestSchema": {
+      "role": "request",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "field": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "enum",
+              "values": [
+                "full_name",
+                "date_of_birth",
+                "id_type",
+                "id_number",
+                "id_issuing_country",
+                "address_line1",
+                "address_line2",
+                "city",
+                "region",
+                "postal_code",
+                "country",
+                "phone",
+                "email"
+              ]
+            }
+          },
+          "origin": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "purpose": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "enum",
+              "values": [
+                "form"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "agentIdentityLookupQuerySchema": {
+      "role": "request",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "origin": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          }
+        }
+      }
+    },
+    "agentIdentityLookupResponseSchema": {
+      "role": "response",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "data": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "array",
+              "element": {
+                "type": "object",
+                "fields": {
+                  "id": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "name": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "originAllowed": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "boolean"
+                    }
+                  },
+                  "fields": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "array",
+                      "element": {
+                        "type": "object",
+                        "fields": {
+                          "field": {
+                            "required": true,
+                            "nullable": false,
+                            "shape": {
+                              "type": "enum",
+                              "values": [
+                                "full_name",
+                                "date_of_birth",
+                                "id_type",
+                                "id_number",
+                                "id_issuing_country",
+                                "address_line1",
+                                "address_line2",
+                                "city",
+                                "region",
+                                "postal_code",
+                                "country",
+                                "phone",
+                                "email"
+                              ]
+                            }
+                          },
+                          "label": {
+                            "required": true,
+                            "nullable": false,
+                            "shape": {
+                              "type": "primitive",
+                              "name": "string"
+                            }
+                          },
+                          "sensitive": {
+                            "required": true,
+                            "nullable": false,
+                            "shape": {
+                              "type": "primitive",
+                              "name": "boolean"
+                            }
+                          },
+                          "fillable": {
+                            "required": true,
+                            "nullable": false,
+                            "shape": {
+                              "type": "primitive",
+                              "name": "boolean"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "agentIdentitySummarySchema": {
+      "role": "response",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "id": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "name": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "originAllowed": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "boolean"
+            }
+          },
+          "fields": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "array",
+              "element": {
+                "type": "object",
+                "fields": {
+                  "field": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "enum",
+                      "values": [
+                        "full_name",
+                        "date_of_birth",
+                        "id_type",
+                        "id_number",
+                        "id_issuing_country",
+                        "address_line1",
+                        "address_line2",
+                        "city",
+                        "region",
+                        "postal_code",
+                        "country",
+                        "phone",
+                        "email"
+                      ]
+                    }
+                  },
+                  "label": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "sensitive": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "boolean"
+                    }
+                  },
+                  "fillable": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "agentLookupQuerySchema": {
+      "role": "request",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "origin": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          }
+        }
+      }
+    },
+    "agentLookupResponseSchema": {
+      "role": "response",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "data": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "array",
+              "element": {
+                "type": "object",
+                "fields": {
+                  "id": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "name": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "username": {
+                    "required": true,
+                    "nullable": true,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "origins": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "array",
+                      "element": {
+                        "type": "primitive",
+                        "name": "string"
+                      }
+                    }
+                  },
+                  "matchKind": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "enum",
+                      "values": [
+                        "exact",
+                        "site"
+                      ]
+                    }
+                  },
+                  "hasTotp": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "boolean"
+                    }
+                  },
+                  "updatedAt": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "agentOriginSchema": {
+      "role": "request",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "primitive",
+        "name": "string"
+      }
+    },
+    "agentPurposeSchema": {
+      "role": "request",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "enum",
+        "values": [
+          "login",
+          "signup",
+          "password_change",
+          "mfa"
+        ]
+      }
+    },
+    "agentRotatePasswordRequestSchema": {
+      "role": "request",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "origin": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "password": {
+            "required": false,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "generate": {
+            "required": false,
+            "nullable": false,
+            "shape": {
+              "type": "object",
+              "fields": {
+                "length": {
+                  "required": false,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "number"
+                  }
+                },
+                "symbols": {
+                  "required": false,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "boolean"
+                  }
+                }
+              }
+            }
+          },
+          "purpose": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "enum",
+              "values": [
+                "login",
+                "signup",
+                "password_change",
+                "mfa"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "agentRotatePasswordResponseSchema": {
+      "role": "response",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "data": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "object",
+              "fields": {
+                "id": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "string"
+                  }
+                },
+                "version": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "number"
+                  }
+                },
+                "generatedPassword": {
+                  "required": false,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "agentTotpRequestSchema": {
+      "role": "request",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "origin": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "purpose": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "enum",
+              "values": [
+                "login",
+                "signup",
+                "password_change",
+                "mfa"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "agentTotpResponseSchema": {
+      "role": "response",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "data": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "object",
+              "fields": {
+                "code": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "string"
+                  }
+                },
+                "expiresAt": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "agentValueResponseSchema": {
+      "role": "response",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "data": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "object",
+              "fields": {
+                "value": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "agentWhoamiResponseSchema": {
+      "role": "response",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "data": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "object",
+              "fields": {
+                "userId": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "string"
+                  }
+                },
+                "scopes": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "array",
+                    "element": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  }
+                },
+                "clientId": {
+                  "required": true,
+                  "nullable": true,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "string"
+                  }
+                },
+                "contract": {
+                  "required": false,
+                  "nullable": false,
+                  "shape": {
+                    "type": "object",
+                    "fields": {
+                      "version": {
+                        "required": true,
+                        "nullable": false,
+                        "shape": {
+                          "type": "primitive",
+                          "name": "string"
+                        }
+                      },
+                      "features": {
+                        "required": true,
+                        "nullable": false,
+                        "shape": {
+                          "type": "array",
+                          "element": {
+                            "type": "primitive",
+                            "name": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "cardGrantListResponseSchema": {
+      "role": "response",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "data": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "array",
+              "element": {
+                "type": "object",
+                "fields": {
+                  "id": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "secretId": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "merchantOrigin": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "merchantSite": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "frameOrigins": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "array",
+                      "element": {
+                        "type": "primitive",
+                        "name": "string"
+                      }
+                    }
+                  },
+                  "maxAmount": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "number"
+                    }
+                  },
+                  "currency": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "periodLimit": {
+                    "required": true,
+                    "nullable": true,
+                    "shape": {
+                      "type": "object",
+                      "fields": {
+                        "period": {
+                          "required": true,
+                          "nullable": false,
+                          "shape": {
+                            "type": "enum",
+                            "values": [
+                              "day",
+                              "month"
+                            ]
+                          }
+                        },
+                        "maxReleases": {
+                          "required": true,
+                          "nullable": true,
+                          "shape": {
+                            "type": "primitive",
+                            "name": "number"
+                          }
+                        },
+                        "maxAmount": {
+                          "required": true,
+                          "nullable": true,
+                          "shape": {
+                            "type": "primitive",
+                            "name": "number"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "expiresAt": {
+                    "required": true,
+                    "nullable": true,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "includeSecurityCode": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "boolean"
+                    }
+                  },
+                  "status": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "enum",
+                      "values": [
+                        "active",
+                        "expired",
+                        "revoked"
+                      ]
+                    }
+                  },
+                  "createdAt": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "revokedAt": {
+                    "required": true,
+                    "nullable": true,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "usage": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "object",
+                      "fields": {
+                        "periodReleases": {
+                          "required": true,
+                          "nullable": false,
+                          "shape": {
+                            "type": "primitive",
+                            "name": "number"
+                          }
+                        },
+                        "periodAmount": {
+                          "required": true,
+                          "nullable": false,
+                          "shape": {
+                            "type": "primitive",
+                            "name": "number"
+                          }
+                        },
+                        "totalReleases": {
+                          "required": true,
+                          "nullable": false,
+                          "shape": {
+                            "type": "primitive",
+                            "name": "number"
+                          }
+                        },
+                        "lastReleasedAt": {
+                          "required": true,
+                          "nullable": true,
+                          "shape": {
+                            "type": "primitive",
+                            "name": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "cardGrantPeriodLimitSchema": {
+      "role": "request",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "period": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "enum",
+              "values": [
+                "day",
+                "month"
+              ]
+            }
+          },
+          "maxReleases": {
+            "required": false,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "number"
+            }
+          },
+          "maxAmount": {
+            "required": false,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "number"
+            }
+          }
+        }
+      }
+    },
+    "cardGrantRequestListQuerySchema": {
+      "role": "request",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "status": {
+            "required": false,
+            "nullable": false,
+            "shape": {
+              "type": "enum",
+              "values": [
+                "pending",
+                "approved",
+                "declined"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "cardGrantRequestListResponseSchema": {
+      "role": "response",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "data": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "array",
+              "element": {
+                "type": "object",
+                "fields": {
+                  "id": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "secretId": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "origin": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "merchantSite": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "amount": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "number"
+                    }
+                  },
+                  "currency": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "reason": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "status": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "enum",
+                      "values": [
+                        "pending",
+                        "approved",
+                        "declined"
+                      ]
+                    }
+                  },
+                  "clientName": {
+                    "required": true,
+                    "nullable": true,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "createdAt": {
+                    "required": true,
+                    "nullable": false,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "decidedAt": {
+                    "required": true,
+                    "nullable": true,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "grantId": {
+                    "required": true,
+                    "nullable": true,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "cardGrantRequestSchema": {
+      "role": "response",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "id": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "secretId": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "origin": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "merchantSite": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "amount": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "number"
+            }
+          },
+          "currency": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "reason": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "status": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "enum",
+              "values": [
+                "pending",
+                "approved",
+                "declined"
+              ]
+            }
+          },
+          "clientName": {
+            "required": true,
+            "nullable": true,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "createdAt": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "decidedAt": {
+            "required": true,
+            "nullable": true,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "grantId": {
+            "required": true,
+            "nullable": true,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          }
+        }
+      }
+    },
+    "cardGrantRequestStatusSchema": {
+      "role": "response",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "enum",
+        "values": [
+          "pending",
+          "approved",
+          "declined"
+        ]
+      }
+    },
+    "cardGrantSchema": {
+      "role": "response",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "id": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "secretId": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "merchantOrigin": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "merchantSite": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "frameOrigins": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "array",
+              "element": {
+                "type": "primitive",
+                "name": "string"
+              }
+            }
+          },
+          "maxAmount": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "number"
+            }
+          },
+          "currency": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "periodLimit": {
+            "required": true,
+            "nullable": true,
+            "shape": {
+              "type": "object",
+              "fields": {
+                "period": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "enum",
+                    "values": [
+                      "day",
+                      "month"
+                    ]
+                  }
+                },
+                "maxReleases": {
+                  "required": true,
+                  "nullable": true,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "number"
+                  }
+                },
+                "maxAmount": {
+                  "required": true,
+                  "nullable": true,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "number"
+                  }
+                }
+              }
+            }
+          },
+          "expiresAt": {
+            "required": true,
+            "nullable": true,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "includeSecurityCode": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "boolean"
+            }
+          },
+          "status": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "enum",
+              "values": [
+                "active",
+                "expired",
+                "revoked"
+              ]
+            }
+          },
+          "createdAt": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "revokedAt": {
+            "required": true,
+            "nullable": true,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "usage": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "object",
+              "fields": {
+                "periodReleases": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "number"
+                  }
+                },
+                "periodAmount": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "number"
+                  }
+                },
+                "totalReleases": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "number"
+                  }
+                },
+                "lastReleasedAt": {
+                  "required": true,
+                  "nullable": true,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "cardGrantStatusSchema": {
+      "role": "response",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "enum",
+        "values": [
+          "active",
+          "expired",
+          "revoked"
+        ]
+      }
+    },
+    "createCardGrantSchema": {
+      "role": "request",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "merchantOrigin": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "frameOrigins": {
+            "required": false,
+            "nullable": false,
+            "shape": {
+              "type": "array",
+              "element": {
+                "type": "primitive",
+                "name": "string"
+              }
+            }
+          },
+          "maxAmount": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "number"
+            }
+          },
+          "currency": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "periodLimit": {
+            "required": false,
+            "nullable": true,
+            "shape": {
+              "type": "object",
+              "fields": {
+                "period": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "enum",
+                    "values": [
+                      "day",
+                      "month"
+                    ]
+                  }
+                },
+                "maxReleases": {
+                  "required": false,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "number"
+                  }
+                },
+                "maxAmount": {
+                  "required": false,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "number"
+                  }
+                }
+              }
+            }
+          },
+          "expiresAt": {
+            "required": false,
+            "nullable": true,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "includeSecurityCode": {
+            "required": false,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "boolean"
+            }
+          }
+        }
+      }
+    }
+  },
+  "constants": {
+    "AGENT_API_BASE_PATH": "/api/agent/v1",
+    "AGENT_SCOPES": {
+      "ITEMS_READ": "vault:items_read",
+      "ITEMS_FILL": "vault:items_fill",
+      "ITEMS_WRITE": "vault:items_write",
+      "CARDS_READ": "vault:cards_read",
+      "CARDS_FILL": "vault:cards_fill",
+      "IDENTITY_READ": "vault:identity_read",
+      "IDENTITY_FILL": "vault:identity_fill"
+    },
+    "AGENT_ERROR_CODES": {
+      "ORIGIN_MISMATCH": "ORIGIN_MISMATCH",
+      "AGENT_ACCESS_DISABLED": "AGENT_ACCESS_DISABLED",
+      "AGENT_CREDENTIAL_REQUIRED": "AGENT_CREDENTIAL_REQUIRED",
+      "RATE_LIMITED": "RATE_LIMITED",
+      "AGENT_ACTIVITY_FORBIDDEN": "AGENT_ACTIVITY_FORBIDDEN",
+      "CARD_ACCESS_DISABLED": "CARD_ACCESS_DISABLED",
+      "IDENTITY_ACCESS_DISABLED": "IDENTITY_ACCESS_DISABLED",
+      "SECURITY_CODE_NOT_GRANTED": "SECURITY_CODE_NOT_GRANTED",
+      "CARD_AMOUNT_EXCEEDED": "CARD_AMOUNT_EXCEEDED",
+      "CARD_CURRENCY_MISMATCH": "CARD_CURRENCY_MISMATCH",
+      "CARD_PERIOD_LIMIT_REACHED": "CARD_PERIOD_LIMIT_REACHED",
+      "CARD_DAILY_CAP_REACHED": "CARD_DAILY_CAP_REACHED",
+      "CARD_GRANT_EXPIRED": "CARD_GRANT_EXPIRED",
+      "CARD_GRANT_EXISTS": "CARD_GRANT_EXISTS",
+      "CARD_GRANT_REQUEST_NOT_PENDING": "CARD_GRANT_REQUEST_NOT_PENDING",
+      "OWNER_SESSION_REQUIRED": "OWNER_SESSION_REQUIRED"
+    },
+    "AGENT_CONTRACT_FEATURES": {
+      "LOGINS": "logins",
+      "TOTP": "totp",
+      "CARDS": "cards",
+      "IDENTITY": "identity"
+    },
+    "AGENT_IDENTITY_FIELDS": [
+      "full_name",
+      "date_of_birth",
+      "id_type",
+      "id_number",
+      "id_issuing_country",
+      "address_line1",
+      "address_line2",
+      "city",
+      "region",
+      "postal_code",
+      "country",
+      "phone",
+      "email"
+    ]
+  }
+}

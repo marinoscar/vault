@@ -195,7 +195,13 @@ describeWithDb('Vault agent OAuth (real Postgres, E14.2)', () => {
 
     // Inside the resource.
     const who = await http().get('/api/agent/v1/whoami').set(bearer(access)).expect(200);
-    expect(who.body.data).toEqual({ userId, scopes: ['vault:items_read', 'offline_access'], clientId: expect.any(String) });
+    expect(who.body.data).toEqual({
+      userId,
+      scopes: ['vault:items_read', 'offline_access'],
+      clientId: expect.any(String),
+      // Contract 1.2 (#196): card and identity release are off by default, so only logins and totp.
+      contract: { version: '1.2', features: ['logins', 'totp'] },
+    });
 
     // Confinement: refused everywhere outside the resource.
     for (const path of ['/api/secrets', '/api/auth/me', '/api/admin/oauth/clients', '/api/backups/me']) {

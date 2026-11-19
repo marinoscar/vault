@@ -18,6 +18,18 @@ import { join, relative } from 'node:path';
 const PACKAGES = join(__dirname, '..', '..');
 const DISTS = ['vault-api', 'vault-contract', 'vault-db', 'vault-web'].map((name) => join(PACKAGES, name, 'dist'));
 
+/**
+ * Justified exceptions, as `<package>/dist/<path>`: each names why it is still here.
+ *
+ * - agent-testing/guard (#196): the conformance kit's production guard reads `NODE_ENV` only to
+ *   REFUSE to run (the fake Vault and the runner are test tools); it configures nothing. A host
+ *   never loads `./agent-testing` outside its tests.
+ */
+const ALLOWED = new Set<string>([
+  'vault-contract/dist/cjs/agent-testing/guard.js',
+  'vault-contract/dist/esm/agent-testing/guard.js',
+]);
+
 function files(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
     const path = join(dir, name);
@@ -31,7 +43,15 @@ describe('the built packages read no environment variable', () => {
     expect({ dist, built: existsSync(dist) }).toEqual({ dist, built: true });
     const offenders = files(dist)
       .filter((path) => /process\.env|import\.meta\.env/.test(readFileSync(path, 'utf8')))
-      .map((path) => relative(PACKAGES, path).split('\\').join('/'));
+      .map((path) => relative(PACKAGES, path).split('\\').join('/'))
+      .filter((path) => !ALLOWED.has(path));
     expect(offenders).toEqual([]);
+  });
+
+  it('keeps every allowance justified: an allowed file that no longer reads the environment is removed from the list', () => {
+    for (const path of ALLOWED) {
+      const full = join(PACKAGES, path);
+      expect({ path, stillReads: existsSync(full) && /process\.env/.test(readFileSync(full, 'utf8')) }).toEqual({ path, stillReads: true });
+    }
   });
 });

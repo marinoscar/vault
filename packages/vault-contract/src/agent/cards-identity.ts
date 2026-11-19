@@ -16,14 +16,14 @@ import { z } from 'zod';
 // Money
 // -----------------------------------------------------------------------------
 
-/** The largest amount a grant or a call may carry: 10,000,000.00. @stability experimental */
+/** The largest amount a grant or a call may carry: 10,000,000.00. @stability beta */
 export const AGENT_MAX_AMOUNT = 10_000_000;
 
 /**
  * An amount in major units with at most two decimal places, greater than zero and at most
  * {@link AGENT_MAX_AMOUNT}. The API stores it in hundredths.
  *
- * @stability experimental
+ * @stability beta
  */
 export const agentAmountSchema = z
   .number()
@@ -33,24 +33,24 @@ export const agentAmountSchema = z
     message: 'Use at most two decimal places',
   });
 
-/** An ISO 4217 currency code, upper case (`USD`, `EUR`). Lower case is accepted and upper-cased. @stability experimental */
+/** An ISO 4217 currency code, upper case (`USD`, `EUR`). Lower case is accepted and upper-cased. @stability beta */
 export const agentCurrencySchema = z
   .string()
   .trim()
   .transform((value) => value.toUpperCase())
   .pipe(z.string().regex(/^[A-Z]{3}$/, 'Use a three-letter ISO 4217 currency code'));
 
-/** An amount in hundredths (the stored form). @stability experimental */
+/** An amount in hundredths (the stored form). @stability beta */
 export function amountToMinor(amount: number): number {
   return Math.round(amount * 100);
 }
 
-/** Hundredths back to a major-unit number. @stability experimental */
+/** Hundredths back to a major-unit number. @stability beta */
 export function minorToAmount(minor: number): number {
   return Math.round(minor) / 100;
 }
 
-/** Hundredths as a two-decimal string (`4250` is `"42.50"`), for the activity trail. @stability experimental */
+/** Hundredths as a two-decimal string (`4250` is `"42.50"`), for the activity trail. @stability beta */
 export function formatMinorAmount(minor: number): string {
   return (Math.round(minor) / 100).toFixed(2);
 }
@@ -66,14 +66,14 @@ const originSchema = z.string().trim().min(1).max(2048);
  * `number` (number), `expMonth` (exp_month), `expYear` (exp_year), `holderName` (cardholder_name),
  * `securityCode` (cvv), `postalCode` (billing_postal_code).
  *
- * @stability experimental
+ * @stability beta
  */
 export const agentCardFillFieldSchema = z.enum(['number', 'expMonth', 'expYear', 'holderName', 'securityCode', 'postalCode']);
 
-/** @stability experimental */
+/** @stability beta */
 export type AgentCardFillField = z.infer<typeof agentCardFillFieldSchema>;
 
-/** The stored `Card` type field behind each {@link AgentCardFillField}. @stability experimental */
+/** The stored `Card` type field behind each {@link AgentCardFillField}. @stability beta */
 export const AGENT_CARD_FIELD_MAP: Readonly<Record<AgentCardFillField, string>> = Object.freeze({
   number: 'number',
   expMonth: 'exp_month',
@@ -83,13 +83,13 @@ export const AGENT_CARD_FIELD_MAP: Readonly<Record<AgentCardFillField, string>> 
   postalCode: 'billing_postal_code',
 });
 
-/** Query of `GET /api/agent/v1/cards`: the top-level page's origin (the merchant). @stability experimental */
+/** Query of `GET /api/agent/v1/cards`: the top-level page's origin (the merchant). @stability beta */
 export const agentCardsLookupQuerySchema = z.object({ origin: originSchema });
 
-/** @stability experimental */
+/** @stability beta */
 export type AgentCardsLookupQuery = z.infer<typeof agentCardsLookupQuerySchema>;
 
-/** The grant a card is listed under. @stability experimental */
+/** The grant a card is listed under. @stability beta */
 export const agentCardGrantSummarySchema = z.object({
   maxAmount: z.number(),
   currency: z.string(),
@@ -102,7 +102,7 @@ export const agentCardGrantSummarySchema = z.object({
  * One opened card with a live grant for the asked merchant. Never a number or a code:
  * `last4` is the only part of the number, and `brand` is the stored network.
  *
- * @stability experimental
+ * @stability beta
  */
 export const agentCardSummarySchema = z.object({
   id: z.string().uuid(),
@@ -114,10 +114,10 @@ export const agentCardSummarySchema = z.object({
   grant: agentCardGrantSummarySchema,
 });
 
-/** @stability experimental */
+/** @stability beta */
 export type AgentCardSummary = z.infer<typeof agentCardSummarySchema>;
 
-/** Response of `GET /api/agent/v1/cards`. @stability experimental */
+/** Response of `GET /api/agent/v1/cards`. @stability beta */
 export const agentCardsLookupResponseSchema = z.object({ data: z.array(agentCardSummarySchema) });
 
 /**
@@ -125,7 +125,7 @@ export const agentCardsLookupResponseSchema = z.object({ data: z.array(agentCard
  * embedded payment frame's origin when the field is typed into one, and the purchase's amount and
  * currency (checked against the grant and recorded).
  *
- * @stability experimental
+ * @stability beta
  */
 export const agentCardFillRequestSchema = z.object({
   field: agentCardFillFieldSchema,
@@ -136,13 +136,13 @@ export const agentCardFillRequestSchema = z.object({
   purpose: z.literal('purchase'),
 });
 
-/** @stability experimental */
+/** @stability beta */
 export type AgentCardFillRequest = z.infer<typeof agentCardFillRequestSchema>;
 
-/** Response of a card or identity fill: one value. Type it, never show it to a model or put it in a screenshot. @stability experimental */
+/** Response of a card or identity fill: one value. Type it, never show it to a model or put it in a screenshot. @stability beta */
 export const agentValueResponseSchema = z.object({ data: z.object({ value: z.string() }) });
 
-/** Body of `POST /api/agent/v1/cards/:id/grant-requests`. @stability experimental */
+/** Body of `POST /api/agent/v1/cards/:id/grant-requests`. @stability beta */
 export const agentCardGrantRequestCreateSchema = z.object({
   origin: originSchema,
   amount: agentAmountSchema,
@@ -151,16 +151,16 @@ export const agentCardGrantRequestCreateSchema = z.object({
   reason: z.string().trim().min(1).max(500),
 });
 
-/** @stability experimental */
+/** @stability beta */
 export type AgentCardGrantRequestCreate = z.infer<typeof agentCardGrantRequestCreateSchema>;
 
-/** The status of a grant request. @stability experimental */
+/** The status of a grant request. @stability beta */
 export const cardGrantRequestStatusSchema = z.enum(['pending', 'approved', 'declined']);
 
-/** @stability experimental */
+/** @stability beta */
 export type CardGrantRequestStatus = z.infer<typeof cardGrantRequestStatusSchema>;
 
-/** Response of the grant-request route: an id and a status, never card data. @stability experimental */
+/** Response of the grant-request route: an id and a status, never card data. @stability beta */
 export const agentCardGrantRequestResponseSchema = z.object({
   data: z.object({ id: z.string().uuid(), status: cardGrantRequestStatusSchema }),
 });
@@ -174,7 +174,7 @@ export const agentCardGrantRequestResponseSchema = z.object({
  * `date_of_birth` and `id_number` are sensitive: released only to an origin on the item's
  * allowed origins.
  *
- * @stability experimental
+ * @stability beta
  */
 export const AGENT_IDENTITY_FIELDS = [
   'full_name',
@@ -192,16 +192,16 @@ export const AGENT_IDENTITY_FIELDS = [
   'email',
 ] as const;
 
-/** @stability experimental */
+/** @stability beta */
 export const agentIdentityFieldSchema = z.enum(AGENT_IDENTITY_FIELDS);
 
-/** @stability experimental */
+/** @stability beta */
 export type AgentIdentityField = z.infer<typeof agentIdentityFieldSchema>;
 
-/** Query of `GET /api/agent/v1/identity`: the origin of the form. @stability experimental */
+/** Query of `GET /api/agent/v1/identity`: the origin of the form. @stability beta */
 export const agentIdentityLookupQuerySchema = z.object({ origin: originSchema });
 
-/** One field of an identity item as the lookup lists it: a label, never a value. @stability experimental */
+/** One field of an identity item as the lookup lists it: a label, never a value. @stability beta */
 export const agentIdentityFieldSummarySchema = z.object({
   field: agentIdentityFieldSchema,
   label: z.string(),
@@ -210,7 +210,7 @@ export const agentIdentityFieldSummarySchema = z.object({
   fillable: z.boolean(),
 });
 
-/** One opened identity item. @stability experimental */
+/** One opened identity item. @stability beta */
 export const agentIdentitySummarySchema = z.object({
   id: z.string().uuid(),
   name: z.string(),
@@ -219,27 +219,27 @@ export const agentIdentitySummarySchema = z.object({
   fields: z.array(agentIdentityFieldSummarySchema),
 });
 
-/** @stability experimental */
+/** @stability beta */
 export type AgentIdentitySummary = z.infer<typeof agentIdentitySummarySchema>;
 
-/** Response of `GET /api/agent/v1/identity`. @stability experimental */
+/** Response of `GET /api/agent/v1/identity`. @stability beta */
 export const agentIdentityLookupResponseSchema = z.object({ data: z.array(agentIdentitySummarySchema) });
 
-/** Body of `POST /api/agent/v1/identity/:id/fill`. @stability experimental */
+/** Body of `POST /api/agent/v1/identity/:id/fill`. @stability beta */
 export const agentIdentityFillRequestSchema = z.object({
   field: agentIdentityFieldSchema,
   origin: originSchema,
   purpose: z.literal('form'),
 });
 
-/** @stability experimental */
+/** @stability beta */
 export type AgentIdentityFillRequest = z.infer<typeof agentIdentityFillRequestSchema>;
 
 // -----------------------------------------------------------------------------
 // Owner: merchant grants and grant requests (browser session only)
 // -----------------------------------------------------------------------------
 
-/** A grant's optional period limit: at most `maxReleases` and/or `maxAmount` per UTC day or month. @stability experimental */
+/** A grant's optional period limit: at most `maxReleases` and/or `maxAmount` per UTC day or month. @stability beta */
 export const cardGrantPeriodLimitSchema = z
   .object({
     period: z.enum(['day', 'month']),
@@ -251,13 +251,13 @@ export const cardGrantPeriodLimitSchema = z
     path: ['maxReleases'],
   });
 
-/** @stability experimental */
+/** @stability beta */
 export type CardGrantPeriodLimit = z.infer<typeof cardGrantPeriodLimitSchema>;
 
-/** Most payment frame origins one grant may list. @stability experimental */
+/** Most payment frame origins one grant may list. @stability beta */
 export const MAX_CARD_GRANT_FRAME_ORIGINS = 10;
 
-/** Body of `POST /api/secrets/:id/card-grants` (owner, browser session). @stability experimental */
+/** Body of `POST /api/secrets/:id/card-grants` (owner, browser session). @stability beta */
 export const createCardGrantSchema = z.object({
   merchantOrigin: originSchema,
   frameOrigins: z.array(originSchema).max(MAX_CARD_GRANT_FRAME_ORIGINS).default([]),
@@ -269,16 +269,16 @@ export const createCardGrantSchema = z.object({
   includeSecurityCode: z.boolean().default(false),
 });
 
-/** @stability experimental */
+/** @stability beta */
 export type CreateCardGrant = z.input<typeof createCardGrantSchema>;
 
-/** A grant's state: live, past its expiry, or revoked by the owner. @stability experimental */
+/** A grant's state: live, past its expiry, or revoked by the owner. @stability beta */
 export const cardGrantStatusSchema = z.enum(['active', 'expired', 'revoked']);
 
-/** @stability experimental */
+/** @stability beta */
 export type CardGrantStatus = z.infer<typeof cardGrantStatusSchema>;
 
-/** One merchant grant as the owner sees it, with its use. @stability experimental */
+/** One merchant grant as the owner sees it, with its use. @stability beta */
 export const cardGrantSchema = z.object({
   id: z.string().uuid(),
   secretId: z.string().uuid(),
@@ -306,16 +306,16 @@ export const cardGrantSchema = z.object({
   }),
 });
 
-/** @stability experimental */
+/** @stability beta */
 export type CardGrant = z.infer<typeof cardGrantSchema>;
 
-/** Response of `GET /api/secrets/:id/card-grants`: active first, then expired and revoked. @stability experimental */
+/** Response of `GET /api/secrets/:id/card-grants`: active first, then expired and revoked. @stability beta */
 export const cardGrantListResponseSchema = z.object({ data: z.array(cardGrantSchema) });
 
-/** Query of `GET /api/secrets/:id/card-grant-requests`. @stability experimental */
+/** Query of `GET /api/secrets/:id/card-grant-requests`. @stability beta */
 export const cardGrantRequestListQuerySchema = z.object({ status: cardGrantRequestStatusSchema.optional() });
 
-/** One grant request as the owner sees it. @stability experimental */
+/** One grant request as the owner sees it. @stability beta */
 export const cardGrantRequestSchema = z.object({
   id: z.string().uuid(),
   secretId: z.string().uuid(),
@@ -333,13 +333,13 @@ export const cardGrantRequestSchema = z.object({
   grantId: z.string().nullable(),
 });
 
-/** @stability experimental */
+/** @stability beta */
 export type CardGrantRequest = z.infer<typeof cardGrantRequestSchema>;
 
-/** Response of the grant-request list, newest first. @stability experimental */
+/** Response of the grant-request list, newest first. @stability beta */
 export const cardGrantRequestListResponseSchema = z.object({ data: z.array(cardGrantRequestSchema) });
 
-/** The owner's audit actions on grants (`audit_events.action`). @stability experimental */
+/** The owner's audit actions on grants (`audit_events.action`). @stability beta */
 export const CARD_GRANT_AUDIT_ACTIONS = {
   CREATE: 'secret.card_grant.create',
   REVOKE: 'secret.card_grant.revoke',
@@ -347,5 +347,5 @@ export const CARD_GRANT_AUDIT_ACTIONS = {
   DECLINE: 'secret.card_grant_request.decline',
 } as const;
 
-/** @stability experimental */
+/** @stability beta */
 export type CardGrantAuditAction = (typeof CARD_GRANT_AUDIT_ACTIONS)[keyof typeof CARD_GRANT_AUDIT_ACTIONS];

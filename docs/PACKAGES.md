@@ -13,6 +13,7 @@ Vault's domain code is written once, in packages, and the apps are hosts ([ADR-0
 - [CI](#ci)
 - [Installing from npm](#installing-from-npm)
 - [Versioning plan](#versioning-plan)
+- [Platform compatibility](#platform-compatibility)
 
 ## The packages
 
@@ -205,3 +206,28 @@ Install every Vault package you use at the same version (`npm view @marinoscar/v
 All Vault packages are versioned together at `0.1.0-next.<n>`, starting at `0.1.0-next.0`. The apps pin the exact version, which npm resolves to the workspace while the version matches. Other apps install them from npm ([Installing from npm](#installing-from-npm)).
 
 Releases are Changesets in pre mode (`.changeset/`, the `fixed` glob `@marinoscar/vault-*`): `vault-release.yml` opens the `vault-release/version` pull request from pending changesets, and merging it runs a gate, then either publishes to npm under the `next` dist-tag (OIDC trusted publishing, provenance, no token; only when `NPM_PUBLISH_ENABLED` is `true`) or does a dry run that uploads the tarballs. The scripts under `scripts/vault-packages/` iterate over the packages present, so `vault-api` and `vault-web` join when their folders exist. Add a changeset (`npx changeset`) with every package change. Procedure, owner setup and rollback: [runbooks/release-vault-packages.md](runbooks/release-vault-packages.md).
+
+## Platform compatibility
+
+`vault-api` and `vault-web` run inside a host built on the `@marinoscar/platform-*` packages, which they declare as peer dependencies. The platform is still on `0.1.0-next.<n>`, where any release may break something, and a second host is rarely on Vault's own pre-release on the same day. So the Vault packages state, and test, a range of platform versions.
+
+The policy:
+
+- **Each Vault packages release names the platform pre-releases it was tested with**: a lowest and a highest. Vault's own apps run on the highest (every workspace pin of a `@marinoscar/platform-*` package is the highest of the range).
+- **The peer range is exactly that tested range**, written explicitly as `>=<lowest> <=<highest>`, for example `>=0.1.0-next.36 <=0.1.0-next.39`. Never a caret: on a pre-release, `^0.1.0-next.36` admits every later `0.1.0-next.*` (and, outside the `0.1.0` tuple, only releases), which is neither the tested set nor what people read into it. The same range is in every `@marinoscar/platform-*` peer of the four package manifests (`vault-contract` and `vault-db` declare none today) and in `SUPPORTED_PLATFORM_RANGE` (`@marinoscar/vault-api/core`).
+- **Both ends are tested in CI.** The `Platform range` matrix of `.github/workflows/vault-packages.yml` installs the lowest and the highest platform version and runs `npm run build:packages`, `typecheck:packages`, `test:packages`, and `packages/vault-api/test/conformance.spec.ts` (the conformance run over fake ports) on its own. The matrix reads both versions from the peers (`node scripts/vault-packages/platform-compat.mjs --matrix`), so it cannot test a range other than the declared one. **A failing cell narrows the range; it is never skipped.**
+- **The host fails early and clearly.** `VaultApiModule.forRoot` reads the installed `@marinoscar/platform-api` version from its `package.json` and, outside the range, throws one error naming the installed and the supported versions (`assertSupportedPlatform`), instead of failing later on a missing symbol. The platform has no supported version API yet; the `package.json` read is a stop-gap recorded in [local-exceptions](platform-adoption/local-exceptions.md).
+- **When the platform reaches a stable `0.x` or `1.0`**, the range becomes a normal semver range (`^1.2.0`, or `>=0.4.0 <0.6.0` across minors of a `0.x`), still tested at its lowest and highest version.
+
+To change the range (a platform upgrade moves the highest; a consumer that needs an older platform moves the lowest, if that end passes): edit the peers of `vault-api` and `vault-web`, `SUPPORTED_PLATFORM_RANGE`, and, for a new highest, the workspace pins ([platform upgrades](platform-adoption/README.md#platform-upgrades)); run `node scripts/vault-packages/platform-compat.mjs --write`, which puts the new range in an `Unreleased` first row of the table; add a changeset. `npm run version-packages` (the version pull request) runs it with `--release`, which turns that row into the new version's row (or adds the row with the unchanged range). `npm run check:platform-compat` (CI: the `Platform compatibility` job) fails when the table's first row, the peers, the constant and the pins disagree, and runs the script's own tests (`scripts/vault-packages/test/platform-compat.test.mjs`, also part of `test:package-scripts`).
+
+To try one end locally: `node scripts/vault-packages/platform-compat.mjs --use <version>`, `npm install`, then the build, typecheck and tests above; restore the manifests and the lockfile from Git and run `npm ci` afterwards.
+
+The compatibility table, one row per Vault packages release, newest first; an `Unreleased` first row is the range on `main` that the next release will carry. `0.1.0-next.3` predates this policy: it peers on one exact platform pre-release.
+
+<!-- platform-compat:start -->
+| Vault packages | Platform range (`@marinoscar/platform-*`) | Date |
+|---|---|---|
+| `Unreleased` | `>=0.1.0-next.36 <=0.1.0-next.39` | 2026-11-19 |
+| `0.1.0-next.3` | `>=0.1.0-next.37 <=0.1.0-next.37` | 2026-11-19 |
+<!-- platform-compat:end -->
