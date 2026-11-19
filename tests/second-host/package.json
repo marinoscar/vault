@@ -8,7 +8,7 @@
     "prisma:generate": "cd api && prisma generate --generator hostbeta",
     "typecheck": "tsc -p api/tsconfig.json --noEmit && tsc -p web/tsconfig.json --noEmit",
     "test:api": "jest --config api/test/jest.config.js --runInBand",
-    "test:web": "vitest run --config web/vitest.config.ts",
+    "test:web": "vitest run --config web/vitest.config.mts",
     "test": "npm run test:api && npm run test:web"
   }
 }
