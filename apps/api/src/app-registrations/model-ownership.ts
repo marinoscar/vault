@@ -11,25 +11,5 @@
 // docs/platform-adoption/local-exceptions.md), so it names it as a reference.
 // =============================================================================
 
-import type { Prisma } from '@prisma/client';
-import type { ModelOwnershipDef } from '@marinoscar/platform-api/core';
-
-export const VAULT_MODEL_OWNERSHIP: readonly ModelOwnershipDef<Prisma.ModelName>[] = [
-  { model: 'MediaFolder', kind: 'user', rationale: 'A media folder belongs to the user who created it.' },
-  {
-    model: 'MediaFolderFile',
-    kind: 'system',
-    orgReference: 'orgId',
-    rationale:
-      'Side table placing a storage object in a folder; org_id is half of the composite key to storage_objects, not an isolation key.',
-  },
-  { model: 'SecretType', kind: 'system', rationale: 'Shared secret-type definitions: system types are code-seeded, custom ones are shared.' },
-  { model: 'Secret', kind: 'user', rationale: 'A secret belongs to the user who created it.' },
-  { model: 'SecretVersion', kind: 'user', rationale: 'A version belongs to its secret, and so to the secret’s owner.' },
-  { model: 'SecretAttachment', kind: 'user', rationale: 'An attachment belongs to its secret version, and so to the secret’s owner.' },
-  { model: 'BackupSchedule', kind: 'system', rationale: 'The one system backup schedule, configured by administrators.' },
-  { model: 'BackupRun', kind: 'user', rationale: 'A backup run is system-wide or belongs to the user it was made for.' },
-  { model: 'AgentCardGrant', kind: 'user', rationale: 'A merchant grant belongs to the card owner who created it (ADR-0003).' },
-  { model: 'AgentCardGrantRequest', kind: 'user', rationale: 'A grant request belongs to the owner of the card it asks for.' },
-  { model: 'AgentCardRelease', kind: 'user', rationale: 'A release belongs to its grant and card, and so to the card owner.' },
-];
+// The classification moved to @marinoscar/vault-api/core (issue #194), so every host registers the same one.
+export { VAULT_MODEL_OWNERSHIP } from '@marinoscar/vault-api/core';

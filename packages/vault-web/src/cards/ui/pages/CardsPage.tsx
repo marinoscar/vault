@@ -21,6 +21,7 @@ import {
 } from '@mui/icons-material';
 import { CardTile } from '../components/CardTile.js';
 import { useAiStatus } from '../../../core/headless/useAiStatus.js';
+import { getVaultProductName } from '../../../core/headless/http.js';
 import { useCards, type CardSummary } from '../../headless/useCards.js';
 import { EXPIRING_SOON_DAYS, isNeedsAttention } from '../../headless/cardExpiry.js';
 
@@ -300,7 +301,7 @@ export default function CardsPage() {
             {isScanAvailable
               ? 'Scan a card with your camera and check the details, or type them in yourself. '
               : 'Add a card and type its details in. '}
-            Vault warns you {EXPIRING_SOON_DAYS} days before a card expires.
+            {getVaultProductName()} warns you {EXPIRING_SOON_DAYS} days before a card expires.
           </Typography>
           <Box sx={{ mt: 3, display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
             {isScanAvailable && (
