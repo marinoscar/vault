@@ -2083,7 +2083,7 @@ The wire shapes are the provider contract an agent runtime codes against: `@mari
 
 #### GET /agent/v1/whoami
 
-Requires `secrets:read` (scope `vault:items_read` or wider). Returns `{ "data": { "userId", "scopes", "clientId" } }`; for a session JWT `scopes` is `[]` and `clientId` is `null`. Subject to the kill switch.
+Requires `secrets:read` (scope `vault:items_read` or wider). Returns `{ "data": { "userId", "scopes", "clientId", "contract": { "version", "features" } } }`; for a session JWT `scopes` is `[]` and `clientId` is `null`. `contract` (since contract 1.2, #196) is the agent contract version (`AGENT_CONTRACT_VERSION`) and the features on now: `logins` and `totp` always, `cards` and `identity` while their switches are on. Subject to the kill switch. Stability promise and changelog: [agent-credential-api.md](agent-credential-api.md#9-stability).
 
 #### GET /agent/v1/credentials?origin=
 

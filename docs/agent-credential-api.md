@@ -8,7 +8,7 @@ Do not use MCP (`/api/mcp`) for secret values: it never returns one, by design. 
 
 ## Contract package
 
-`@marinoscar/vault-contract/agent` exports the Zod schemas and types of every request and response below (`agentLookupQuerySchema`, `agentFillRequestSchema`, `agentFillResponseSchema`, `agentTotpRequestSchema`, `agentCreateCredentialRequestSchema`, `agentRotatePasswordRequestSchema`, `agentWhoamiResponseSchema`, ...), `AGENT_SCOPES`, `AGENT_ERROR_CODES`, `agentPurposeSchema` and `AGENT_API_BASE_PATH`. Its stability is **experimental** (`@stability experimental`): shapes may change before 1.0. The version is in the path; an incompatible change is `/api/agent/v2`.
+`@marinoscar/vault-contract/agent` exports the Zod schemas and types of every request and response below (`agentLookupQuerySchema`, `agentFillRequestSchema`, `agentFillResponseSchema`, `agentTotpRequestSchema`, `agentCreateCredentialRequestSchema`, `agentRotatePasswordRequestSchema`, `agentWhoamiResponseSchema`, ...), `AGENT_SCOPES`, `AGENT_ERROR_CODES`, `agentPurposeSchema`, `AGENT_API_BASE_PATH`, `AGENT_CONTRACT_VERSION` and `AGENT_CONTRACT_FEATURES`. Its stability is **beta** (`@stability beta`); the promise is in [section 9](#9-stability) and every change is listed in [section 8](#8-changes). `@marinoscar/vault-contract/agent-testing` is the conformance kit for your runtime's tests ([section 10](#10-conformance-kit)).
 
 ## 1. Get a token (OAuth)
 
@@ -81,7 +81,14 @@ Over the limit: `429` with code `RATE_LIMITED` and a `Retry-After` header (secon
 
 ### GET /api/agent/v1/whoami
 
-Scope `vault:items_read`. Returns `{ "data": { "userId", "scopes": [...], "clientId" } }`. Use it to check the token works and which scopes you hold.
+Scope `vault:items_read`. Returns `{ "data": { "userId", "scopes": [...], "clientId", "contract": { "version", "features": [...] } } }`. Use it to check the token works, which scopes you hold and what this Vault offers:
+
+```json
+{ "data": { "userId": "...", "scopes": ["vault:items_read", "vault:items_fill"], "clientId": "...",
+  "contract": { "version": "1.2", "features": ["logins", "totp", "cards"] } } }
+```
+
+`contract.version` is the contract this Vault speaks (`<path major>.<minor>`, [section 8](#8-changes)); `features` lists what is on now: `logins` and `totp` always, `cards` and `identity` only while their switches are on ([section 7](#7-cards-and-identity-adr-0003)). Ignore a feature id you do not know. A Vault older than contract 1.2 sends no `contract`: treat it as `1.0` with `logins` and `totp`.
 
 ### GET /api/agent/v1/credentials?origin=
 
@@ -255,3 +262,89 @@ Body `{ field, origin, purpose: "form" }`; `field` is one of `full_name`, `date_
 ### In-process hosts
 
 A host that embeds the Vault packages calls `AgentReleasePort` (`@marinoscar/vault-api/agent`, token `AGENT_RELEASE_PORT`) instead of HTTP: `lookup`, `fill`, `totp`, `cardsLookup`, `cardFill`, `cardGrantRequest`, `identityLookup`, `identityFill`, each taking `{ userId, clientLabel, ... }`. The same rules, switches, limits, audit and notifications apply; `clientLabel` is what the owner sees as the app.
+
+## 8. Changes
+
+One entry per change to the contract of `/api/agent/v1` and `@marinoscar/vault-contract/agent`, newest first, marked **additive** or **breaking** ([section 9](#9-stability)). `AGENT_CONTRACT_VERSION` and `whoami`'s `contract.version` carry the newest entry's version. The package test `packages/vault-contract/test/agent-contract-snapshot.test.ts` reads this section: a breaking entry must say `ACCEPT_BREAKING` in its heading, and only a new path version may carry one.
+
+### 1.2 (additive)
+
+Issue #196. The contract is **beta**.
+
+- `GET /whoami` adds `contract: { version, features }` (`agentContractInfoSchema`, `AGENT_CONTRACT_VERSION`, `AGENT_CONTRACT_FEATURES`). Older clients ignore it.
+- The stability promise ([section 9](#9-stability)) and the shape snapshot that enforces it.
+- `@marinoscar/vault-contract/agent-testing`: the fake Vault, the canary helpers and the scenario suite ([section 10](#10-conformance-kit)).
+
+### 1.1 (additive)
+
+Issue #195, [ADR-0003](decisions/0003-agent-cards-identity.md).
+
+- Card routes: `GET /cards`, `POST /cards/{id}/fill`, `POST /cards/{id}/grant-requests`; identity routes: `GET /identity`, `POST /identity/{id}/fill`.
+- Scopes `vault:cards_read`, `vault:cards_fill`, `vault:identity_read`, `vault:identity_fill`.
+- Error codes `CARD_ACCESS_DISABLED`, `IDENTITY_ACCESS_DISABLED`, `SECURITY_CODE_NOT_GRANTED`, `CARD_AMOUNT_EXCEEDED`, `CARD_CURRENCY_MISMATCH`, `CARD_PERIOD_LIMIT_REACHED`, `CARD_DAILY_CAP_REACHED`, `CARD_GRANT_EXPIRED`, `CARD_GRANT_EXISTS`, `CARD_GRANT_REQUEST_NOT_PENDING`, `OWNER_SESSION_REQUIRED` (all on new routes).
+- The `cards` and `identity` blocks of the `agentAccess` settings (both off), new agent activity actions and the optional `amount` and `currency` of an activity item.
+
+### 1.0 (additive)
+
+E14.6 and E14.7: the first contract. `GET /whoami`, `GET /credentials`, `POST /credentials/{id}/fill`, `POST /credentials/{id}/totp`, `POST /credentials`, `POST /credentials/{id}/password`; scopes `vault:items_read`, `vault:items_fill`, `vault:items_write`; error codes `ORIGIN_MISMATCH`, `AGENT_ACCESS_DISABLED`, `AGENT_CREDENTIAL_REQUIRED`, `RATE_LIMITED`, `AGENT_ACTIVITY_FORBIDDEN`.
+
+## 9. Stability
+
+The agent contract is **beta** since contract 1.2: the JSDoc tag of `@marinoscar/vault-contract/agent` is `@stability beta`. It becomes `stable` at 1.0 of the packages.
+
+**Will not change inside `/api/agent/v1`:**
+
+- The route paths and methods.
+- The required request fields, their names and the values they accept today.
+- The meaning of each code in `AGENT_ERROR_CODES`, and its status.
+- The scope names in `AGENT_SCOPES`.
+- The rule that a response carries at most one secret field (`value`, `code` or `generatedPassword`).
+
+**May change without a new version (additive):**
+
+- New optional request fields.
+- New response fields, and new values in a response's enums (a new `matchKind`, a new activity `action`).
+- New error codes on new routes, and new scopes for new routes.
+- New feature ids in `whoami`'s `contract.features`.
+- Stricter rate-limit defaults.
+
+A runtime must therefore ignore response fields and enum values it does not know, must not branch on `message` (branch on the status and `code`), and must handle `429` at any limit.
+
+**Needs `/api/agent/v2` (breaking):** anything else, for example removing or renaming a field, a route, a scope or a code; making an optional request field required; changing what a code means; returning two secret fields. `v1` keeps working for **two minor releases of the packages** after the release that ships `v2`, and its removal is announced in this section and in the packages' changelog.
+
+**How it is held:** `packages/vault-contract/test/agent-contract-snapshot.test.ts` compares the code with a committed snapshot of every public schema of `./agent` (field names, requiredness, nullability, enums) and of `AGENT_SCOPES`, `AGENT_ERROR_CODES`, `AGENT_API_BASE_PATH`, `AGENT_CONTRACT_FEATURES` and `AGENT_IDENTITY_FIELDS`. An additive difference passes. A breaking one fails until the base path names a new major, `AGENT_CONTRACT_VERSION` carries it, the entry in [section 8](#8-changes) is marked `(breaking) ACCEPT_BREAKING`, and the snapshot is refreshed (`UPDATE_AGENT_CONTRACT_SNAPSHOT=1`). The real API and the fake Vault run the same scenario list ([section 10](#10-conformance-kit)), so they cannot drift apart.
+
+## 10. Conformance kit
+
+`@marinoscar/vault-contract/agent-testing` (Node 24, CommonJS and ESM, no runtime dependency beyond the package's own) is for your runtime's tests:
+
+| Export | What it is |
+|---|---|
+| `createFakeVault(options?)` | An in-memory `/api/agent/v1` on `127.0.0.1` built from the contract schemas: seeded logins (one with a one-time code, two on one origin, one closed), a card with a merchant grant, an identity item; exact origin binding, the identical `404`, scopes, the three switches, per-minute limits with `Retry-After`, `POST /api/oauth/token` with refresh-token rotation (a replayed refresh token revokes the grant) and `POST /api/oauth/revoke`. `connect()`, `revokeGrants()`, `setAgentAccess()`, `setLoginOpen()`, `throttleNext()` and `requests` drive and inspect it. It refuses to start with `NODE_ENV=production` and holds only invented data. It is not a secrets store. |
+| `createConformanceSeed()`, `CONFORMANCE_ORIGINS` | The seeded data: `Person A`, `*.example.test` (plus a look-alike `.test` host), the published test card number `4242424242424242`, random canaries as values. |
+| `seedCanaries(labels)`, `createCanary(label)`, `findCanaries(canaries, ...sources)`, `assertNoCanary(canaries, ...sources)` | Canaries and the scan. A source is text, bytes, `{ label, content }`, `{ file }` or `{ files }` (folders are walked); a canary is found raw, JSON-escaped, URL-encoded, as hex, UTF-16LE, base64 or base64url at any alignment. The error names where, never the value. |
+| `AGENT_CONFORMANCE_SCENARIOS` | The scenario list as data (id, kind, title, expectation). |
+| `runAgentConformance({ target, signIn, artifacts? })`, `assertAgentConformance(...)` | The runner: plain functions, no test framework. `signIn(page, vault)` is your "sign in to this page": the page gives its origin (it can change), `asksForCode`, `type(field, value)` and `askPerson(question, choices)`; `vault` gives `apiBaseUrl` and `connect()` (consent again). It returns `{ status: 'signed_in' \| 'no_login' \| 'stopped', code? }`. The runner returns one result per scenario; `assertAgentConformance` throws `AgentConformanceError` when one failed. |
+| `createReferenceSignIn()` | A minimal runtime that passes, to read as an example. |
+
+The scenarios: `server.*` check that the Vault in front of you behaves like Vault (whoami contract, exact origin binding, the identical `404`, `no-store`, the kill switch, `Retry-After`, a revoked grant is `401`); `runtime.*` check your sign-in: an exact match fills; a site-only match is not filled; `ORIGIN_MISMATCH` stops without a retry (the page moves to a look-alike after the lookup); several matches ask the person; a code is fetched right before typing; a revoked grant reconnects; `429` waits for `Retry-After`; nothing is cached across pages (the owner closes the login between two visits); the kill switch is reported plainly (`stopped`, `AGENT_ACCESS_DISABLED`); no value reaches the artifacts you hand over (logs, traces, model transcripts, screenshots, files).
+
+```ts
+import { assertAgentConformance, createFakeVault } from '@marinoscar/vault-contract/agent-testing';
+
+const vault = createFakeVault();
+await vault.start();
+try {
+  await assertAgentConformance({
+    target: vault,
+    signIn: (page, access) => myRuntime.signIn(page, access),
+    artifacts: () => [myRuntime.logText(), { files: [myRuntime.traceDir] }],
+  });
+} finally {
+  await vault.stop();
+}
+```
+
+**What passing proves:** your runtime follows the rules of sections 2, 4 and 5 that can be seen from outside, against a Vault that behaves like Vault (the same list passes against Vault's real API in Vault's own tests): it fills only exact matches, sends the page's own origin, stops on a mismatch and on the kill switch, asks when there is a choice, fetches a code at the last moment, reconnects after a revocation, waits out a `429`, does not cache lookups, zeroes the byte buffers it types, and nothing it handed the canary scan holds a value.
+
+**What it does not prove:** that values stay out of places you did not hand to the scan (memory dumps, crash reports, a model provider's logs, telemetry exported elsewhere); that your browser input is trusted or reaches the right frame; that the origin you report really is the tab's top-level origin; the OAuth consent flow itself (the kit hands you tokens); behaviour under real network failures; card and identity flows (the fake serves them, the scenarios do not drive them yet). Passing the kit is necessary, not sufficient: keep your own review of section 4.
