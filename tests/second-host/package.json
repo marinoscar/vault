@@ -1,0 +1,14 @@
+{
+  "name": "second-host-fixture",
+  "private": true,
+  "description": "Host Beta: the smallest EnterpriseAppBase-style host that is not Vault, mounting the Vault packages as a test fixture (issue #194). Not a workspace and not published: it resolves every dependency from the repository root's node_modules, after `npm ci` and `npm run build:packages`.",
+  "scripts": {
+    "db:sync": "cd api && platform db sync --timestamp 2024-01-01T00:00:00Z && vault-db sync --names stable && platform db compose",
+    "db:check": "cd api && platform db compose --check && platform db check && vault-db check",
+    "prisma:generate": "cd api && prisma generate --generator hostbeta",
+    "typecheck": "tsc -p api/tsconfig.json --noEmit && tsc -p web/tsconfig.json --noEmit",
+    "test:api": "jest --config api/test/jest.config.js --runInBand",
+    "test:web": "vitest run --config web/vitest.config.mts",
+    "test": "npm run test:api && npm run test:web"
+  }
+}

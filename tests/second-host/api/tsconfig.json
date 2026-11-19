@@ -1,0 +1,19 @@
+{
+  // Host Beta's API: typecheck and ts-jest. CommonJS (the fixture's package.json has no "type"),
+  // decorator metadata on (Nest). It imports the BUILT Vault packages, like a host that installed them.
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "allowSyntheticDefaultImports": true,
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "resolveJsonModule": true,
+    "types": ["node", "jest"]
+  },
+  "include": ["src", "test", "prisma.config.ts"]
+}

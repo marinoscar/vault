@@ -50,6 +50,7 @@ import {
   VAULT_AI_KEY_PRESENCE,
   VAULT_AUDIT,
   VAULT_CRYPTO,
+  VAULT_HOST,
   VAULT_JOBS,
   VAULT_METRICS,
   VAULT_NOTIFY,
@@ -113,6 +114,11 @@ export interface VaultApiBindings {
   metrics?: VaultPortBinding;
   /** The MCP endpoint's settings (`VAULT_MCP_OPTIONS`: the app URL for the Origin rule, the rate limit); optional. */
   mcp?: VaultPortBinding;
+  /**
+   * The host facts (`VAULT_HOST`: the public base URL for notification links); optional. The
+   * package reads no environment variable: a host that wants links binds its URL here.
+   */
+  host?: VaultPortBinding;
 }
 
 /** Options of {@link VaultApiModule.forRoot}. */
@@ -140,6 +146,7 @@ const TOKENS: ReadonlyArray<[keyof VaultApiBindings, symbol]> = [
   ['settings', VAULT_SETTINGS],
   ['metrics', VAULT_METRICS],
   ['mcp', VAULT_MCP_OPTIONS],
+  ['host', VAULT_HOST],
 ];
 
 function toProvider(provide: symbol, binding: VaultPortBinding): Provider {

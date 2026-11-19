@@ -1,4 +1,4 @@
-import { Injectable, Logger, Inject } from '@nestjs/common';
+import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
 
 
 import { PERMISSIONS } from '../core/roles.constants';
@@ -9,7 +9,7 @@ import {
 } from '../core/notification-data';
 import type { BackupArchiveCounts } from './backup-archive.service';
 import type { BackupRunRow } from './dto/backup-responses';
-import { VAULT_NOTIFY, type VaultNotifyPort } from '../ports';
+import { hostAppUrl, VAULT_HOST, VAULT_NOTIFY, type VaultHostConfig, type VaultNotifyPort } from '../ports';
 
 /** What the runner knows when a run settles. */
 export interface BackupSettledOutcome {
@@ -37,7 +37,10 @@ export interface BackupSettledOutcome {
 export class BackupNotifier {
   private readonly logger = new Logger(BackupNotifier.name);
 
-  constructor(@Inject(VAULT_NOTIFY) private readonly notifications: VaultNotifyPort) {}
+  constructor(
+    @Inject(VAULT_NOTIFY) private readonly notifications: VaultNotifyPort,
+    @Optional() @Inject(VAULT_HOST) private readonly host?: VaultHostConfig,
+  ) {}
 
   async runSettled(run: BackupRunRow, outcome: BackupSettledOutcome): Promise<void> {
     try {
@@ -54,7 +57,7 @@ export class BackupNotifier {
         mediaFileCount: outcome.counts?.mediaFileCount ?? 0,
         warningCount: outcome.counts?.warningCount ?? 0,
         ...(outcome.status === 'failed' && outcome.error ? { error: outcome.error } : {}),
-        ...(process.env.APP_URL ? { appUrl: process.env.APP_URL } : {}),
+        ...hostAppUrl(this.host),
       };
       const event = outcome.status === 'succeeded' ? VAULT_BACKUP_SUCCEEDED_EVENT : VAULT_BACKUP_FAILED_EVENT;
 

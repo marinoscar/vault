@@ -3,3 +3,4 @@ export * from './fake-audit';
 export * from './fake-ports';
 export * from './fake-mcp';
 export * from './fake-card-grant-store';
+export * from './host-conformance';

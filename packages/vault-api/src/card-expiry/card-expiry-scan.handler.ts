@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit, Inject } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, Inject, Optional } from '@nestjs/common';
 
 import type { Job, JobHandler } from '@marinoscar/platform-api/jobs';
 
@@ -16,13 +16,16 @@ import {
 } from './card-expiry-job-types';
 import { daysUntilExpiry, dueThreshold, formatCardExpiry, parseCardExpiry } from './card-expiry';
 import {
+  hostAppUrl,
   VAULT_AUDIT,
   VAULT_CRYPTO,
+  VAULT_HOST,
   VAULT_JOBS,
   VAULT_NOTIFY,
   VAULT_PRISMA,
   type VaultAuditPort,
   type VaultCryptoPort,
+  type VaultHostConfig,
   type VaultJobsPort,
   type VaultNotifyPort,
   type VaultPrismaClient,
@@ -69,6 +72,7 @@ export class CardExpiryScanHandler implements JobHandler, OnModuleInit {
     @Inject(VAULT_CRYPTO) private readonly crypto: VaultCryptoPort,
     @Inject(VAULT_NOTIFY) private readonly notifications: VaultNotifyPort,
     @Inject(VAULT_AUDIT) private readonly auditLog: VaultAuditPort,
+    @Optional() @Inject(VAULT_HOST) private readonly host?: VaultHostConfig,
   ) {}
 
   onModuleInit(): void {
@@ -134,7 +138,7 @@ export class CardExpiryScanHandler implements JobHandler, OnModuleInit {
           secretName: secret.name,
           expiry: label,
           threshold,
-          ...(process.env.APP_URL ? { appUrl: process.env.APP_URL } : {}),
+          ...hostAppUrl(this.host),
         };
         await this.notifications.notifyNow(VAULT_CARD_EXPIRING_EVENT, secret.createdById, data);
         await this.record(secret.id, label, threshold);
