@@ -132,6 +132,8 @@ model User {
   secretTypes    SecretType[]    @relation("UserSecretTypes")
   secrets        Secret[]        @relation("UserSecrets")
   secretVersions SecretVersion[] @relation("UserSecretVersions")
+  agentCardGrants        AgentCardGrant[]        @relation("UserAgentCardGrants")
+  agentCardGrantRequests AgentCardGrantRequest[] @relation("UserAgentCardGrantRequests")
 
   @@map("users")
 }
