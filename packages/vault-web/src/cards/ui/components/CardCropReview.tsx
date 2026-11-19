@@ -25,16 +25,22 @@ export interface CardSideCrop {
   adjustments: CardAdjustments | null;
 }
 
-export interface CardCropReviewSide {
-  side: 'front' | 'back';
+export interface CardCropReviewSide<S extends string = 'front' | 'back'> {
+  side: S;
+  /** The slot's label ("Front", "Data page"). Defaults to the side, capitalised. */
+  label?: string;
+  /** Width to height of the slot's document. Defaults to the card's ID-1 ratio. */
+  aspectRatio?: number;
   /** The raw full capture the crop is rendered from. Never uploaded itself. */
   file: File;
   /** Null when the initial render failed; the adjuster can still create one. */
   crop: CardSideCrop | null;
 }
 
-interface CardCropReviewProps {
-  sides: CardCropReviewSide[];
+interface CardCropReviewProps<S extends string> {
+  sides: CardCropReviewSide<S>[];
+  /** What is cropped, as a noun ("card", "document"). Defaults to `card`. */
+  subjectNoun?: string;
   disabled?: boolean;
   /**
    * Summary mode, for the Review step: small read-only thumbnails of what will
@@ -49,7 +55,7 @@ interface CardCropReviewProps {
    * adjustments so reopening the adjuster resumes from them.
    */
   onCropChange: (
-    side: 'front' | 'back',
+    side: S,
     image: CroppedCardImage,
     adjustments: CardAdjustments,
   ) => void;
@@ -65,14 +71,17 @@ interface CardCropReviewProps {
  * re-renders the attachment file on confirm — so what is uploaded on save is
  * always exactly what is previewed here.
  */
-export function CardCropReview({
+export function CardCropReview<S extends string = 'front' | 'back'>({
   sides,
+  subjectNoun = 'card',
   disabled = false,
   compact = false,
   onEdit,
   onCropChange,
-}: CardCropReviewProps) {
-  const [adjustingSide, setAdjustingSide] = useState<'front' | 'back' | null>(null);
+}: CardCropReviewProps<S>) {
+  const [adjustingSide, setAdjustingSide] = useState<S | null>(null);
+  const labelOf = (entry: CardCropReviewSide<S>) =>
+    entry.label ?? entry.side.charAt(0).toUpperCase() + entry.side.slice(1).replace(/_/g, ' ');
   const [isRendering, setIsRendering] = useState(false);
   const [renderError, setRenderError] = useState<string | null>(null);
 
@@ -101,11 +110,11 @@ export function CardCropReview({
                 key={entry.side}
                 component="img"
                 src={entry.crop.image.previewUrl}
-                alt={`Cropped ${entry.side} of the card`}
+                alt={`Cropped ${labelOf(entry).toLowerCase()} of the ${subjectNoun}`}
                 sx={{
                   display: 'block',
                   width: 88,
-                  aspectRatio: String(CARD_ASPECT_RATIO),
+                  aspectRatio: String(entry.aspectRatio ?? CARD_ASPECT_RATIO),
                   objectFit: 'cover',
                   borderRadius: 1,
                   border: 1,
@@ -117,10 +126,12 @@ export function CardCropReview({
         </Box>
         <Box sx={{ flex: '1 1 160px', minWidth: 0 }}>
           <Typography variant="body2" sx={{ fontWeight: 600 }}>
-            {sides.length === 2 ? 'Front and back photos' : `${sides[0].side === 'front' ? 'Front' : 'Back'} photo`}
+            {sides.length === 2
+              ? `${labelOf(sides[0])} and ${labelOf(sides[1]).toLowerCase()} photos`
+              : `${labelOf(sides[0])} photo`}
           </Typography>
           <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
-            Only these crops are stored with the card.
+            {`Only these crops are stored with the ${subjectNoun}.`}
           </Typography>
         </Box>
         {onEdit && (
@@ -135,15 +146,16 @@ export function CardCropReview({
   const adjusting = sides.find((entry) => entry.side === adjustingSide) ?? null;
 
   const applyAdjustments = async (
-    entry: CardCropReviewSide,
+    entry: CardCropReviewSide<S>,
     adjustments: CardAdjustments,
   ) => {
     setIsRendering(true);
     setRenderError(null);
     try {
       const image = await cropImageFileToCard(entry.file, {
-        fileName: `card-${entry.side}.jpg`,
+        fileName: `${subjectNoun}-${entry.side}.jpg`,
         ...adjustments,
+        aspectRatio: entry.aspectRatio ?? CARD_ASPECT_RATIO,
       });
       onCropChange(entry.side, image, adjustments);
       setAdjustingSide(null);
@@ -164,8 +176,7 @@ export function CardCropReview({
           color: "text.secondary",
           mb: 1.5
         }}>
-        These crops are what gets saved with the card — the full photos are
-        never stored. Adjust a crop if the card was not framed right.
+        {`These crops are what gets saved with the ${subjectNoun} — the full photos are never stored. Adjust a crop if the ${subjectNoun} was not framed right.`}
       </Typography>
 
       {renderError && (
@@ -180,7 +191,7 @@ export function CardCropReview({
             <Typography variant="caption" sx={{
               color: "text.secondary"
             }}>
-              {entry.side === 'front' ? 'Front' : 'Back'}
+              {labelOf(entry)}
             </Typography>
             {entry.crop ? (
               <Box
@@ -194,14 +205,14 @@ export function CardCropReview({
                 <Box
                   component="img"
                   src={entry.crop.image.previewUrl}
-                  alt={`Cropped ${entry.side} of the card`}
+                  alt={`Cropped ${labelOf(entry).toLowerCase()} of the ${subjectNoun}`}
                   sx={{ display: 'block', width: '100%', height: 'auto' }}
                 />
               </Box>
             ) : (
               <Box
                 sx={{
-                  aspectRatio: String(CARD_ASPECT_RATIO),
+                  aspectRatio: String(entry.aspectRatio ?? CARD_ASPECT_RATIO),
                   border: 1,
                   borderStyle: 'dashed',
                   borderColor: 'divider',
@@ -236,6 +247,9 @@ export function CardCropReview({
           <CardCropAdjuster
             file={adjusting.file}
             side={adjusting.side}
+            slotLabel={labelOf(adjusting)}
+            subjectNoun={subjectNoun}
+            aspectRatio={adjusting.aspectRatio ?? CARD_ASPECT_RATIO}
             isProcessing={isRendering}
             initialAdjustments={adjusting.crop?.adjustments ?? undefined}
             initialBox={adjusting.crop?.box ?? undefined}

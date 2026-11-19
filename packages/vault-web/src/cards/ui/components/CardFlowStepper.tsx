@@ -19,6 +19,8 @@ interface CardFlowStepperProps {
   skipped?: ReadonlySet<CardFlowStep>;
   /** True once the save went through: every step shows as done. */
   done?: boolean;
+  /** Override a step's label (the document scan reuses the same four steps). */
+  labels?: Partial<Record<CardFlowStep, string>>;
 }
 
 /**
@@ -27,7 +29,7 @@ interface CardFlowStepperProps {
  * four fit a 390px phone without wrapping. The active step is exposed to
  * assistive technology through `aria-current="step"`.
  */
-export function CardFlowStepper({ active, skipped, done = false }: CardFlowStepperProps) {
+export function CardFlowStepper({ active, skipped, done = false, labels }: CardFlowStepperProps) {
   const activeIndex = done
     ? CARD_FLOW_STEPS.length
     : CARD_FLOW_STEPS.findIndex((step) => step.id === active);
@@ -56,7 +58,7 @@ export function CardFlowStepper({ active, skipped, done = false }: CardFlowStepp
                 ) : undefined
               }
             >
-              {step.label}
+              {labels?.[step.id] ?? step.label}
             </StepLabel>
           </Step>
         );
