@@ -76,6 +76,9 @@ export const VAULT_ERROR_CODES: readonly VaultErrorCodeDef[] = Object.freeze([
   { code: 'CARD_GRANT_REQUEST_NOT_PENDING', status: 409, description: 'The grant request was already approved or declined.' },
   { code: 'OWNER_SESSION_REQUIRED', status: 403, description: 'Changing what agents may do needs the owner signed in to Vault; an OAuth access token or a personal access token cannot.' },
 
+  // Document images (attachment roles).
+  { code: 'ATTACHMENT_ROLE_NOT_ALLOWED', status: 422, description: "The attachment role is not one of the image slots of the secret's type (Card: card_front, card_back; Passport: data_page, back; ID Document: front, back; a custom type: none)." },
+
   // Card scanning. The platform's own `AI_*` codes are registered by the AI slice.
   { code: AI_ERROR_CODES.NOT_CONFIGURED, status: 503, description: 'AI card scanning is not set up (provider, model or deployment key missing).' },
   { code: AI_ERROR_CODES.INVALID_IMAGE, status: 400, description: 'The images are not acceptable base64 data URLs within the size limit.' },
