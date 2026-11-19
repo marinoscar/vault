@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, fireEvent, waitFor } from '@testing-library/react';
+import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '../utils/test-utils.js';
 import { DynamicSecretFields } from '../../src/secrets/ui/components/DynamicSecretFields.js';
 import { clipboardMock, resetClipboardMock } from '../setup.js';
 import type { FieldDefinition } from '../../src/core/headless/types.js';
+import { mockDocumentSecret, mockDocumentType } from '../mocks/data.js';
 
 const cardNumberField: FieldDefinition = {
   name: 'number',
@@ -973,6 +974,85 @@ describe('DynamicSecretFields', () => {
           expect(clipboardMock.writeText).toHaveBeenCalledWith('alice-123 456');
         });
       });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // keyvalue, country and multiline (issue #207)
+  // -------------------------------------------------------------------------
+
+  describe('The field model of issue #207', () => {
+    const fixtureFields = mockDocumentType.fields;
+    const fixtureValues = mockDocumentSecret.values;
+
+    it('edits a keyvalue field with the key/value editor and its suggestions', async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      render(
+        <DynamicSecretFields
+          fields={fixtureFields}
+          data={fixtureValues}
+          onChange={onChange}
+          keyValueSuggestions={{ details: [{ key: 'restrictions', label: 'Restrictions', sensitive: false }] }}
+        />,
+      );
+
+      expect(screen.getByLabelText('Value of Class')).toHaveValue('B');
+      expect(screen.getByLabelText('Value of PIN')).toHaveAttribute('type', 'password');
+
+      await user.click(screen.getByRole('button', { name: 'Add: Restrictions' }));
+      const next = onChange.mock.calls[onChange.mock.calls.length - 1][0];
+      expect(next.details).toEqual([
+        ...(fixtureValues.details as unknown[]),
+        { key: 'restrictions', label: 'Restrictions', value: '', sensitive: false },
+      ]);
+      // The other fields are passed through untouched.
+      expect(next.holder).toBe('Person A');
+    });
+
+    it('edits a country field with the country picker, storing the alpha-3 code', async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      render(<DynamicSecretFields fields={fixtureFields} data={fixtureValues} onChange={onChange} />);
+
+      const input = screen.getByRole('combobox', { name: 'Issuing country' });
+      expect(input).toHaveValue('Utopia (ICAO specimen state) (UTO)');
+      await user.clear(input);
+      await user.type(input, 'Germany');
+      await user.click(await screen.findByRole('option', { name: 'Germany (DEU)' }));
+      expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ country: 'DEU' }));
+    });
+
+    it('renders format: multiline as a multi-line input, and keeps the notes/content inference', () => {
+      render(
+        <DynamicSecretFields
+          fields={[...fixtureFields, optionalTextField]}
+          data={fixtureValues}
+          onChange={vi.fn()}
+        />,
+      );
+      expect(screen.getByLabelText('Remarks').tagName).toBe('TEXTAREA');
+      expect(screen.getByLabelText('Notes').tagName).toBe('TEXTAREA');
+      expect(screen.getByLabelText(/Holder/).tagName).toBe('INPUT');
+    });
+
+    it('lists keyvalue entries read-only, a sensitive one masked with a chip and its own copy', async () => {
+      resetClipboardMock();
+      render(<DynamicSecretFields fields={fixtureFields} data={fixtureValues} onChange={vi.fn()} readOnly />);
+
+      const list = screen.getByRole('list', { name: 'Details' });
+      expect(within(list).getByText('Class')).toBeInTheDocument();
+      expect(within(list).getByText('B')).toBeInTheDocument();
+      expect(within(list).getByText('Sensitive')).toBeInTheDocument();
+      expect(within(list).queryByText('0000-placeholder')).not.toBeInTheDocument();
+
+      const copies = within(list).getAllByRole('button', { name: 'Copy to clipboard' });
+      expect(copies).toHaveLength(2);
+      fireEvent.click(copies[1]);
+      await waitFor(() => expect(clipboardMock.writeText).toHaveBeenLastCalledWith('0000-placeholder'));
+
+      // The country shows its name; the stored code is what copies.
+      expect(screen.getByText('Utopia (ICAO specimen state) (UTO)')).toBeInTheDocument();
     });
   });
 });

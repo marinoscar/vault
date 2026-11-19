@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 
 import { render, mockUser, type MockUser } from '../utils/test-utils.js';
 import { server } from '../mocks/server.js';
+import { mockDocumentSecret, mockDocumentType } from '../mocks/data.js';
 import SecretDetailPage from '../../src/secrets/ui/pages/SecretDetailPage.js';
 import type { SecretAttachment, SecretType } from '../../src/core/headless/types.js';
 
@@ -186,6 +187,24 @@ describe('SecretDetailPage', () => {
 
       await user.click(screen.getByRole('button', { name: 'Reveal Card Number' }));
       expect(screen.getByText('4242424242424242')).toBeInTheDocument();
+    });
+  });
+
+  describe('the field model of issue #207', () => {
+    it('renders a fixture type with last4, country and key/value entries', async () => {
+      server.use(...baseHandlers({ ...secret(mockDocumentType), values: mockDocumentSecret.values }));
+      const user = userEvent.setup();
+      renderPage();
+
+      expect(await screen.findByText('Person A')).toBeInTheDocument();
+      expect(screen.getByTestId('secret-value-number')).toHaveTextContent('•••• 4567');
+      expect(screen.getByText('Utopia (ICAO specimen state) (UTO)')).toBeInTheDocument();
+
+      const details = screen.getByRole('list', { name: 'Details' });
+      expect(within(details).getByText('B')).toBeInTheDocument();
+      expect(within(details).queryByText('0000-placeholder')).not.toBeInTheDocument();
+      await user.click(within(details).getByRole('button', { name: 'Reveal PIN' }));
+      expect(within(details).getByText('0000-placeholder')).toBeInTheDocument();
     });
   });
 

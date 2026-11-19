@@ -1,9 +1,11 @@
 // Secrets and secret types: the components and the pages the host routes to.
 
 export * from './components/CardImages.js';
+export * from './components/CountryField.js';
 export * from './components/DynamicSecretFields.js';
 export * from './components/FieldDefinitionBuilder.js';
 export * from './components/FieldOptionsEditor.js';
+export * from './components/KeyValueFieldEditor.js';
 export * from './components/SecretAttachments.js';
 export * from './components/SecretForm.js';
 export * from './components/SecretFormDialog.js';

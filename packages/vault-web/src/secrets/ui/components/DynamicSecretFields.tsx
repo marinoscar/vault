@@ -20,6 +20,10 @@ import { visuallyHidden } from '@mui/utils';
 import type { FieldDefinition } from '../../../core/headless/types.js';
 import { useCopyToClipboard } from '../../../core/headless/useCopyToClipboard.js';
 import { TOTP_FIELD_NAME, formatSecretValueForCopy } from '../../headless/secretFields.js';
+import { toKeyValueEntries, type KeyValueSuggestion } from '../../headless/keyValue.js';
+import { formatCountryValue } from '../../headless/country.js';
+import { KeyValueFieldEditor } from './KeyValueFieldEditor.js';
+import { CountryField } from './CountryField.js';
 
 interface DynamicSecretFieldsProps {
   fields: FieldDefinition[];
@@ -27,6 +31,13 @@ interface DynamicSecretFieldsProps {
   onChange: (data: Record<string, unknown>) => void;
   readOnly?: boolean;
   errors?: Record<string, string>;
+  /** "Add: <label>" suggestions of a `keyvalue` field, by field name. */
+  keyValueSuggestions?: Record<string, KeyValueSuggestion[]>;
+}
+
+/** A multi-line input: `format: 'multiline'`, or the legacy `notes` and `content` names. */
+function isMultilineField(field: FieldDefinition): boolean {
+  return field.format === 'multiline' || field.name === 'notes' || field.name === 'content';
 }
 
 interface SensitiveDisplayProps {
@@ -107,6 +118,7 @@ export function DynamicSecretFields({
   onChange,
   readOnly = false,
   errors = {},
+  keyValueSuggestions = {},
 }: DynamicSecretFieldsProps) {
   const [visibleFields, setVisibleFields] = useState<Set<string>>(new Set());
 
@@ -131,7 +143,53 @@ export function DynamicSecretFields({
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {fields.map((field) => {
           const rawValue = data[field.name];
+          if (field.type === 'keyvalue') {
+            const entries = toKeyValueEntries(rawValue);
+            return (
+              <Box key={field.name}>
+                <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
+                  {field.label}
+                  {field.required && ' *'}
+                </Typography>
+                {entries.length === 0 ? (
+                  <Typography variant="body2" sx={{ color: 'text.disabled' }}>
+                    —
+                  </Typography>
+                ) : (
+                  <Box component="ul" aria-label={field.label} sx={{ listStyle: 'none', m: 0, p: 0 }}>
+                    {entries.map((entry, index) => (
+                      <Box
+                        component="li"
+                        key={entry.key || index}
+                        sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1, py: 0.5 }}
+                      >
+                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                          {entry.label}
+                        </Typography>
+                        {entry.sensitive && <Chip label="Sensitive" size="small" variant="outlined" />}
+                        {entry.value === '' ? (
+                          <Typography variant="body2" sx={{ color: 'text.disabled' }}>
+                            —
+                          </Typography>
+                        ) : entry.sensitive ? (
+                          <SensitiveDisplay value={entry.value} />
+                        ) : (
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Typography variant="body2" sx={{ wordBreak: 'break-word' }}>
+                              {entry.value}
+                            </Typography>
+                            <CopyButton value={entry.value} />
+                          </Box>
+                        )}
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+              </Box>
+            );
+          }
           const value = rawValue !== undefined && rawValue !== null ? String(rawValue) : '';
+          const display = field.format === 'country' ? formatCountryValue(value) : value;
           return (
             <Box key={field.name}>
               <Typography
@@ -154,7 +212,7 @@ export function DynamicSecretFields({
               ) : (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                    {value}
+                    {display}
                   </Typography>
                   <CopyButton value={value} fieldName={field.name} />
                 </Box>
@@ -170,8 +228,37 @@ export function DynamicSecretFields({
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       {fields.map((field) => {
         const rawValue = data[field.name];
-        const value = rawValue !== undefined && rawValue !== null ? String(rawValue) : '';
         const hasError = Boolean(errors[field.name]);
+
+        if (field.type === 'keyvalue') {
+          return (
+            <KeyValueFieldEditor
+              key={field.name}
+              label={field.label}
+              required={field.required}
+              value={toKeyValueEntries(rawValue)}
+              onChange={(entries) => handleChange(field.name, entries)}
+              suggestions={keyValueSuggestions[field.name]}
+              error={errors[field.name]}
+            />
+          );
+        }
+
+        const value = rawValue !== undefined && rawValue !== null ? String(rawValue) : '';
+
+        if (field.type === 'string' && field.format === 'country') {
+          return (
+            <CountryField
+              key={field.name}
+              label={field.label}
+              required={field.required}
+              value={value}
+              onChange={(code) => handleChange(field.name, code)}
+              error={hasError}
+              helperText={errors[field.name]}
+            />
+          );
+        }
 
         if (field.type === 'string' && field.sensitive) {
           const isVisible = visibleFields.has(field.name);
@@ -210,7 +297,7 @@ export function DynamicSecretFields({
         }
 
         if (field.type === 'string') {
-          const isMultiline = field.name === 'notes' || field.name === 'content';
+          const isMultiline = isMultilineField(field);
           return (
             <TextField
               key={field.name}

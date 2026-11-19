@@ -35,7 +35,7 @@ import { CardImages, supportsCardImages } from './CardImages.js';
 import { MASK } from './SecretValueField.js';
 import { diffSecretValues, type FieldChange } from '../../headless/secretFields.js';
 import type { SecretVersionDetailWithAttachments } from '../../headless/useSecretDetail.js';
-import type { SecretDetail, SecretVersion } from '../../../core/headless/types.js';
+import type { KeyValueEntry, SecretDetail, SecretVersion } from '../../../core/headless/types.js';
 
 interface SecretVersionDrawerProps {
   open: boolean;
@@ -63,12 +63,46 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleString();
 }
 
-function ValueBox({ label, value, sensitive, showValues }: {
+function ValueBox({ label, value, sensitive, showValues, entries }: {
   label: string;
   value: string;
   sensitive: boolean;
   showValues: boolean;
+  /** A `keyvalue` field's entries; sensitive ones are masked unless `showValues`. */
+  entries?: KeyValueEntry[];
 }) {
+  if (entries) {
+    return (
+      <Box sx={{ flex: '1 1 180px', minWidth: 0 }}>
+        <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
+          {label}
+        </Typography>
+        {entries.length === 0 ? (
+          <Typography variant="body2" sx={{ color: 'text.disabled' }}>
+            —
+          </Typography>
+        ) : (
+          <Box component="ul" sx={{ listStyle: 'none', m: 0, p: 0 }}>
+            {entries.map((entry, index) => (
+              <Typography
+                key={entry.key || index}
+                component="li"
+                variant="body2"
+                sx={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}
+              >
+                <Box component="span" sx={{ color: 'text.secondary' }}>
+                  {entry.label}:{' '}
+                </Box>
+                <Box component="span" sx={{ fontFamily: entry.sensitive ? 'monospace' : undefined }}>
+                  {entry.value === '' ? '—' : entry.sensitive && !showValues ? MASK : entry.value}
+                </Box>
+              </Typography>
+            ))}
+          </Box>
+        )}
+      </Box>
+    );
+  }
   return (
     <Box sx={{ flex: '1 1 180px', minWidth: 0 }}>
       <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
@@ -145,7 +179,9 @@ export function SecretVersionDrawer({
   const fields = secret.type?.fields ?? [];
   const diffs = detail ? diffSecretValues(fields, detail.values ?? {}, secret.values ?? {}) : [];
   const differing = diffs.filter((d) => d.change !== 'unchanged').length;
-  const hasSensitive = fields.some((f) => f.sensitive);
+  const hasSensitive =
+    fields.some((f) => f.sensitive) ||
+    diffs.some((d) => [...(d.versionEntries ?? []), ...(d.currentEntries ?? [])].some((e) => e.sensitive));
 
   const restore = async () => {
     if (!selected || !onRollback) return;
@@ -330,6 +366,7 @@ export function SecretVersionDrawer({
                           <ValueBox
                             label="Both"
                             value={d.version}
+                            entries={d.versionEntries}
                             sensitive={d.field.sensitive}
                             showValues={showValues}
                           />
@@ -338,12 +375,14 @@ export function SecretVersionDrawer({
                             <ValueBox
                               label={`v${detail.version}`}
                               value={d.version}
+                              entries={d.versionEntries}
                               sensitive={d.field.sensitive}
                               showValues={showValues}
                             />
                             <ValueBox
                               label={`Current (v${secret.currentVersion})`}
                               value={d.current}
+                              entries={d.currentEntries}
                               sensitive={d.field.sensitive}
                               showValues={showValues}
                             />
