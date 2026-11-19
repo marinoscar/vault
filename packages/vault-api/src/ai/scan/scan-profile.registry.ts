@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 
 import { cardScanProfile } from '../card-scan.profile';
+import { idDocumentScanProfile } from './profiles/id-document.profile';
+import { passportScanProfile } from './profiles/passport.profile';
 import type { ScanProfile } from './scan-profile';
 
 /**
@@ -35,12 +37,14 @@ export class ScanProfileRegistry {
 }
 
 /**
- * A registry holding the built-in profiles (today: `card`).
+ * A registry holding the built-in profiles: `card`, `passport` and `id_document`.
  *
  * @stability experimental
  */
 export function createScanProfileRegistry(): ScanProfileRegistry {
   const registry = new ScanProfileRegistry();
   registry.register(cardScanProfile);
+  registry.register(passportScanProfile);
+  registry.register(idDocumentScanProfile);
   return registry;
 }

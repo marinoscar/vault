@@ -4,6 +4,12 @@ export * from './card-extract.service';
 export * from './card-extraction.types';
 export * from './card-normalizer';
 export * from './card-scan-availability';
+// Identity-document scanning (#210, IDOC-7).
+export * from './document-extract.controller';
+export * from './document-extract.service';
+export * from './scan/document-normalizer';
+export * from './scan/profiles/passport.profile';
+export * from './scan/profiles/id-document.profile';
 // Scan-profile registry (#204, IDOC-1).
 export * from './card-scan.profile';
 export * from './scan/crop-box';

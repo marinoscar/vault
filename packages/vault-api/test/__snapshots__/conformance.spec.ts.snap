@@ -65,6 +65,7 @@ exports[`vault-api conformance (fake ports) exposes exactly the routes the API a
   "POST /secrets/:id/totp",
   "POST /secrets/:id/versions/:versionId/rollback",
   "POST /secrets/cards/extract",
+  "POST /secrets/documents/extract",
   "POST /secrets/export",
   "PUT /admin/backups/schedule",
   "PUT /secret-types/:id",

@@ -10,7 +10,7 @@ import { JwtAuthGuard } from '@marinoscar/platform-api/identity';
 import { AGENT_AUDIT_ACTIONS } from '@marinoscar/vault-contract/agent';
 
 import { AgentActivityController, AgentController, VAULT_OAUTH_RESOURCES, VAULT_OAUTH_SCOPE_DEFINITIONS } from '../src/agent';
-import { CardExtractController } from '../src/ai';
+import { CardExtractController, DocumentExtractController } from '../src/ai';
 import { BackupNotifier, BackupsController, MyBackupsController } from '../src/backups';
 import { CardExpiryScanHandler } from '../src/card-expiry';
 import * as notificationData from '../src/core/notification-data';
@@ -46,6 +46,7 @@ const CONTROLLERS = [
   SecretsController,
   MediaController,
   CardExtractController,
+  DocumentExtractController,
   BackupsController,
   MyBackupsController,
   AgentController,

@@ -23,7 +23,7 @@ import {
 } from '../src/agent';
 import { McpController } from '../src/mcp';
 import { CardExpiryScanHandler, CARD_EXPIRY_SCAN_JOB_TYPE } from '../src/card-expiry';
-import { CardExtractController } from '../src/ai';
+import { CardExtractController, DocumentExtractController } from '../src/ai';
 import { MediaController } from '../src/media';
 import { SecretsController } from '../src/secrets';
 import { SecretTypesController } from '../src/secret-types';
@@ -75,6 +75,7 @@ const CONTROLLERS = [
   SecretsController,
   MediaController,
   CardExtractController,
+  DocumentExtractController,
   BackupsController,
   MyBackupsController,
   AgentController,
@@ -196,6 +197,20 @@ describe('vault-api conformance (fake ports)', () => {
     const app = await boot(rest);
     expect(app.get(SecretsController, { strict: false })).toBeInstanceOf(SecretsController);
     await app.close();
+  });
+});
+
+describe('the metrics port', () => {
+  it('has a counting fake for every method, labels only (documentExtracted: #210)', () => {
+    const { ports } = createFakeBindings();
+    ports.metrics.cardExtracted('succeeded');
+    ports.metrics.documentExtracted('passport', 'succeeded');
+    ports.metrics.documentExtracted('id_document', 'invalid_image');
+    expect(ports.metrics.calls).toEqual([
+      { method: 'cardExtracted', args: ['succeeded'] },
+      { method: 'documentExtracted', args: ['passport', 'succeeded'] },
+      { method: 'documentExtracted', args: ['id_document', 'invalid_image'] },
+    ]);
   });
 });
 
