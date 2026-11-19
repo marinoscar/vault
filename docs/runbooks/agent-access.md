@@ -1,6 +1,6 @@
 # Runbook: agent access
 
-Operator and owner procedures for letting AI agents use Vault: enable it, connect an agent runtime or a chat assistant, open logins to agents, watch what they do, revoke an app, and turn everything off. Design and reasoning: [ADR-0002](../decisions/0002-agent-access.md) and [SECURITY-ARCHITECTURE.md §16](../SECURITY-ARCHITECTURE.md#16-oauth-server-agent-access). Contract for runtime authors: [agent-credential-api.md](../agent-credential-api.md). The OAuth server itself is the platform's: its own runbook (hosts, reuse detection, failures) is [oauth-server.md in EnterpriseAppBase](https://github.com/marinoscar/EnterpriseAppBase/blob/main/docs/runbooks/oauth-server.md).
+Operator and owner procedures for letting AI agents use Vault: enable it, connect an agent runtime or a chat assistant, open logins to agents, watch what they do, revoke an app, and turn everything off. Design and reasoning: [ADR-0002](../decisions/0002-agent-access.md), [ADR-0003](../decisions/0003-agent-cards-identity.md) (cards and identity, [below](#cards-and-identity-adr-0003)) and [SECURITY-ARCHITECTURE.md §16](../SECURITY-ARCHITECTURE.md#16-oauth-server-agent-access). Contract for runtime authors: [agent-credential-api.md](../agent-credential-api.md). The OAuth server itself is the platform's: its own runbook (hosts, reuse detection, failures) is [oauth-server.md in EnterpriseAppBase](https://github.com/marinoscar/EnterpriseAppBase/blob/main/docs/runbooks/oauth-server.md).
 
 Examples use invented names: `https://vault.example.test` (your Vault), `https://app.example.test` (a website), "Agent runtime X", `person-a@example.test`.
 
@@ -93,3 +93,24 @@ Closing a login or switching off the kill switch needs no deploy and no restart.
 | Consent page never appears for a client | The client's host is not allowed, or the OAuth server is off | Check the client host allowlist and the OAuth server switch |
 | An MCP tool result is `REDACTION_BLOCKED` | The guard found a sensitive value in the result and withheld it | Report it as a bug; the value was not sent |
 | `update_secret` returns `FIELD_NOT_UPDATABLE` | `url` and `additional_urls` cannot be changed through MCP | The owner edits the website in Vault |
+
+## Cards and identity (ADR-0003)
+
+Card and identity release have their own switches, both **off** by default, separate from `agentAccess.enabled` ([ADR-0003](../decisions/0003-agent-cards-identity.md)).
+
+1. **Enable (administrator).** Console, Agent access: turn on **Allow agents to use cards** and/or **Allow agents to fill identity details** (`agentAccess.cards.enabled`, `agentAccess.identity.enabled`; `system_settings:write`). The same page sets `cards.fillPerMinute` (default 10), `cards.releasesPerCardPerDay` (default 5, card numbers handed out per card per day) and `identity.fillPerMinute` (default 20). `agentAccess.enabled` must be on too.
+2. **Runtime scopes.** A runtime must ask for `vault:cards_read` / `vault:cards_fill` and `vault:identity_read` / `vault:identity_fill`; tokens issued before this release carry only the login scopes and reach no card route (`403 insufficient_scope`). The user re-consents.
+3. **Open a card (the owner).** On the card's page, Agent access: switch on **Allow agents to use this card**, then **Allow a shop**: the shop's website, the most per purchase and its currency, optional payment frames, an optional limit per day or month, an optional end date, and the security code (off by default). Nothing is released until a shop is allowed. Recommend a virtual card with its own limit.
+4. **Requests.** An agent that finds no grant may ask for one; the owner gets a bell and an email and sees the request on the card with **Approve** (creates exactly the requested grant) and **Decline**.
+5. **Open an identity item (the owner).** On the Identity item's page: switch on **Allow agents to fill these details** and add the websites that may receive the date of birth and the id number. Name, address and phone are filled on any website once the item is opened.
+6. **Only the owner's session.** Opening a card or identity item, changing its websites, and every grant or request decision need the owner signed in to Vault: a personal access token or an agent token gets `403 OWNER_SESSION_REQUIRED`.
+7. **Stop.** Revoke a shop on the card, close the card, or switch card release off for the deployment; each takes effect on the next call. Grants are not in backups: after a restore, owners re-create them.
+
+| Symptom | Cause |
+|---|---|
+| `403 CARD_ACCESS_DISABLED` / `IDENTITY_ACCESS_DISABLED` | The card or identity switch is off |
+| `GET /cards` is empty | The card is not opened, or has no live grant for that shop's registrable domain |
+| `403 ORIGIN_MISMATCH` on a card | The page is another shop, or the payment frame is not on the grant's list |
+| `403 CARD_AMOUNT_EXCEEDED` / `CARD_CURRENCY_MISMATCH` | The purchase does not fit the grant; the owner can allow a higher amount |
+| `403 CARD_PERIOD_LIMIT_REACHED` / `CARD_DAILY_CAP_REACHED` | The grant's limit or the per-card daily cap was used up (UTC day or month) |
+| `403 OWNER_SESSION_REQUIRED` | A token tried to open a card or change a grant; use Vault in the browser |

@@ -1,6 +1,6 @@
 # Agent credential API: guide for agent-runtime authors
 
-For people building an agent runtime (a browser-automation fabric, a desktop agent) that logs in to websites with a Vault user's logins. The runtime finds the login for the site on screen, asks for **one field at a time**, types it itself, and never shows it to a model. Reasoning: [ADR-0002](decisions/0002-agent-access.md). Operator setup: [runbook](runbooks/agent-access.md). Threat model: [SECURITY-ARCHITECTURE.md §16](SECURITY-ARCHITECTURE.md#16-oauth-server-agent-access).
+For people building an agent runtime (a browser-automation fabric, a desktop agent) that logs in to websites with a Vault user's logins. The runtime finds the login for the site on screen, asks for **one field at a time**, types it itself, and never shows it to a model. Reasoning: [ADR-0002](decisions/0002-agent-access.md); cards and identity: [ADR-0003](decisions/0003-agent-cards-identity.md) and [section 7](#7-cards-and-identity-adr-0003). Operator setup: [runbook](runbooks/agent-access.md). Threat model: [SECURITY-ARCHITECTURE.md §16](SECURITY-ARCHITECTURE.md#16-oauth-server-agent-access).
 
 All examples use invented values: `https://vault.example.test` is the Vault, `https://app.example.test` a website, "Agent runtime X" the runtime.
 
@@ -189,4 +189,69 @@ sequenceDiagram
 
 ## 6. What the owner sees
 
-Agent activity lists each call with your client name, the login, the origin, the field and the purpose, and the bell reports your first use, a created login and a rotation. The owner can revoke your grant at any time (your next call is `401`) and can close any login with one switch.
+Agent activity lists each call with your client name, the login, card or identity item, the origin, the field, the purpose and (for a card) the amount, and the bell reports your first use, a created login, a rotation, a grant request, the first use of a card at a shop and a declined card use. The owner can revoke your grant at any time (your next call is `401`) and can close any login with one switch.
+
+## 7. Cards and identity (ADR-0003)
+
+Decision record: [ADR-0003](decisions/0003-agent-cards-identity.md). Contract: the same `@marinoscar/vault-contract/agent` (`agentCardFillRequestSchema`, `agentCardSummarySchema`, `agentIdentityFillRequestSchema`, ...).
+
+A card works on any site, so it is stricter than a login: nothing is released unless the owner opened the card **and** created a **merchant grant** for the shop, in Vault, with their own session. Your runtime cannot create or widen a grant; it can only ask for one.
+
+### Switches and scopes
+
+- Two more deployment switches, both **off** by default: `agentAccess.cards.enabled` (`403 CARD_ACCESS_DISABLED`) and `agentAccess.identity.enabled` (`403 IDENTITY_ACCESS_DISABLED`). `agentAccess.enabled` still closes everything (`403 AGENT_ACCESS_DISABLED`).
+- Scopes: `vault:cards_read` (list), `vault:cards_fill` (fill and ask for a grant), `vault:identity_read`, `vault:identity_fill`. The login scopes reach no card or identity route; ask for these explicitly.
+- Rate limits: card fills `agentAccess.cards.fillPerMinute` (default 10), identity fills `agentAccess.identity.fillPerMinute` (default 20), lookups the `lookup` bucket, grant requests the `write` bucket. Plus a per-card daily cap of releases, `agentAccess.cards.releasesPerCardPerDay` (default 5).
+
+### Merchant matching
+
+Send the **top-level page origin** as `origin`. It is matched to a grant by **registrable domain** (`checkout.shop.example.test` matches a grant for `https://shop.example.test`), because checkout pages move between subdomains. When the field is typed into an **embedded payment frame**, also send that frame's origin as `frameOrigin`: it must be exactly on the grant's list.
+
+### GET /api/agent/v1/cards?origin=
+
+The caller's opened cards with a live grant for the merchant: `id`, `name`, `brand`, `last4`, `expMonth`, `expYear`, `grant { maxAmount, currency, includesSecurityCode, expiresAt }`. Never the number or the code. An empty list means: ask for a grant, or ask the user.
+
+### POST /api/agent/v1/cards/{id}/fill
+
+Body `{ field, origin, frameOrigin?, amount, currency, purpose: "purchase" }`; `field` is one of `number`, `expMonth`, `expYear`, `holderName`, `securityCode`, `postalCode`. Returns `{ value }`. One field per call. `amount` (decimal, at most two places) and `currency` (ISO 4217) are the purchase you are about to make: they are checked against the grant and recorded.
+
+Checked in this order:
+
+| Check | Refusal |
+|---|---|
+| Card missing, not yours, not opened, not a Card | `404` (identical) |
+| `origin` not a valid https origin | `400` |
+| The merchant's grant expired | `403 CARD_GRANT_EXPIRED` |
+| No grant for this merchant (the card is granted elsewhere) | `403 ORIGIN_MISMATCH` (no live grant anywhere: the same `404`) |
+| `frameOrigin` not on the grant's list | `403 ORIGIN_MISMATCH` |
+| Currency not the grant's | `403 CARD_CURRENCY_MISMATCH` |
+| Amount above the grant's maximum | `403 CARD_AMOUNT_EXCEEDED` |
+| `securityCode` without the grant's flag | `403 SECURITY_CODE_NOT_GRANTED` |
+| A `number` fill past the grant's limit per day or month (count or total) | `403 CARD_PERIOD_LIMIT_REACHED` |
+| A `number` fill past the card's daily cap | `403 CARD_DAILY_CAP_REACHED` |
+
+A `number` fill is a **release**: it is what the period limit and the daily cap count. The other fields are not, so a checkout needs one release.
+
+### POST /api/agent/v1/cards/{id}/grant-requests
+
+Body `{ origin, amount, currency, reason }`. Creates a pending request the owner sees (bell and email) and approves or declines in Vault. Returns `{ id, status: "pending" }`, never card data. While a request for the same card and merchant is pending you get that one back. Approval creates exactly what you asked for: that merchant, your amount as the maximum, your currency, no period limit, no expiry, no security code. Poll `GET /cards?origin=` afterwards; do not loop on the request.
+
+### GET /api/agent/v1/identity?origin=
+
+The caller's opened Identity items with, per field, `{ field, label, sensitive, fillable }` for this origin, and `originAllowed`. Never a value.
+
+### POST /api/agent/v1/identity/{id}/fill
+
+Body `{ field, origin, purpose: "form" }`; `field` is one of `full_name`, `date_of_birth`, `id_type`, `id_number`, `id_issuing_country`, `address_line1`, `address_line2`, `city`, `region`, `postal_code`, `country`, `phone`, `email`. A **sensitive** field (`date_of_birth`, `id_number`) is released only when `origin` is exactly one of the item's allowed origins (`403 ORIGIN_MISMATCH` otherwise); the others on any https origin. An empty field is `404`.
+
+### Holding a card value (in addition to section 4)
+
+1. **Never put a card number in a screenshot.** Take the screenshot your model needs before you type the number, or mask the field; never send a frame with a typed number to a model or a trace.
+2. **Type the security code last**, right before submitting, and zero it at once.
+3. **A release is not a payment authorisation.** Vault does not see the charge; the shop does. Send the real amount: a runtime that understates it still hits the period limit, the daily cap and the owner's trail.
+4. **Prefer a virtual card** with its own limit; recommend it to your users.
+5. Add your own approval before a purchase if your product needs one; Vault's rules hold without it, but do not replace it.
+
+### In-process hosts
+
+A host that embeds the Vault packages calls `AgentReleasePort` (`@marinoscar/vault-api/agent`, token `AGENT_RELEASE_PORT`) instead of HTTP: `lookup`, `fill`, `totp`, `cardsLookup`, `cardFill`, `cardGrantRequest`, `identityLookup`, `identityFill`, each taking `{ userId, clientLabel, ... }`. The same rules, switches, limits, audit and notifications apply; `clientLabel` is what the owner sees as the app.

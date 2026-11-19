@@ -253,12 +253,18 @@ Agent access is a per-secret opt-in that decides whether an AI agent (an OAuth c
 |---|---|
 | Values | `none` (default) or `fill`. `fill` means an agent may have the fabric type the login into a matching site; the agent never reads the value |
 | Default | `none` for every secret, including every secret that existed before the column was added (migration `20261118164725_add_secret_agent_access`). Nothing is exposed to agents until the owner turns it on |
-| Which secrets | Only the system `Credential` type may be set to `fill`; any other type answers `422 AGENT_ACCESS_UNSUPPORTED_TYPE`. Setting `none` is always allowed |
+| Which secrets | The system `Credential`, `Card` and `Identity` types may be set to `fill` (cards and identity since [ADR-0003](decisions/0003-agent-cards-identity.md)); any other type answers `422 AGENT_ACCESS_UNSUPPORTED_TYPE`. Setting `none` is always allowed. Opening a Card or an Identity, or changing an Identity's allowed origins, needs the owner's browser session (`403 OWNER_SESSION_REQUIRED` for a PAT) |
 | Storage | `secrets.agent_access` (enum `secret_agent_access`, NOT NULL, default `none`) and `secrets.agent_access_changed_at` (timestamptz, null until first changed). It is a property of the secret, not of a version: rollback, renew and update do not change it |
 | Who can change it | `PATCH /api/secrets/:id/agent-access` with `secrets:write` and the same ownership rule as `PUT /api/secrets/:id` (own secrets, or `secrets:write_any`). An OAuth (`oat_`) credential is refused with 403, so an agent can never widen its own access. Setting the current value is a no-op (no write, no audit row) |
 | Audit | `secret.agent_access.update` with `{ secretId, from, to }`; see [Audit Trail](#audit-trail) |
 | Where it shows | List and detail responses carry `agentAccess` and `agentAccessChangedAt`; the list takes `?agentAccess=fill\|none`. The web form has the switch "Allow agents to use this login" on Credential secrets, and the list shows an "Agents" chip and an Agent access filter |
 | Consumers | The agent API (E14.6) and the MCP tools (E14.8) reach only secrets with `agentAccess = fill` |
+
+### Cards and identity (ADR-0003)
+
+A card opened to agents is released only under a **merchant grant** the owner creates on the card's page (Agent access: Allow a shop) or by approving an agent's grant request; see [ADR-0003](decisions/0003-agent-cards-identity.md) and [API.md](API.md#cards-and-identity-adr-0003). Grants (`agent_card_grants`), requests (`agent_card_grant_requests`) and the release ledger (`agent_card_releases`) go with the card when it is deleted, and with the user in a user-data purge (category `secrets`); they are not in backups or exports.
+
+The system type **`Identity`** (fields `full_name`, `date_of_birth`, `id_type`, `id_number`, `id_issuing_country`, `address_line1`, `address_line2`, `city`, `region`, `postal_code`, `country`, `phone`, `email`, `notes`; `date_of_birth` and `id_number` sensitive) is seeded by `prisma/seed.ts` like the others. An opened Identity releases a non-sensitive field to any https form and a sensitive one only to its allowed origins (`secrets.agent_origins`). The `Card` type gains the optional `billing_postal_code` (append-only), released as `postalCode`.
 
 ## Agent activity and notifications
 
@@ -273,6 +279,9 @@ Every agent call is audited (`agent.credential.lookup|fill|totp|create|rotate`, 
 | `vault.agent_credential_changed` | email + bell, immediately | an agent created a login or rotated a password |
 | `vault.agent_new_app` | email + bell | the first successful fill by an app (an OAuth client, or a PAT) for this user; detected as "no earlier `ok` fill audit row for that client or token" |
 | `vault.agent_credential_used` | bell only | every successful fill or one-time code; a `counted` event, so uses of one login by one app within an hour fold into one bell entry with a count |
+| `vault.agent_card_grant_requested` | email + bell | an agent asked to use a card at a shop (ADR-0003); links to the card, where Approve and Decline are |
+| `vault.agent_card_first_release` | email + bell | the first release of a card under a grant |
+| `vault.agent_card_declined` | email + bell | Vault refused a card fill by a grant rule; at most once per card, reason and merchant per hour (in process memory) |
 
 All three honour the user's notification preferences per channel (none is `mandatory`). Email templates: `vault-agent-credential-changed` and `vault-agent-new-app` (`apps/api/src/email-templates/vault-agent.email.ts`), both linking to `/secrets/:id` or `/settings/agent-activity`.
 
