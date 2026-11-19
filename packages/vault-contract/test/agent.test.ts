@@ -57,6 +57,8 @@ describe('agent contract', () => {
   it('the settings defaults are off and satisfy the schema', () => {
     expect(agentAccessSettingsSchema.parse(AGENT_ACCESS_SETTINGS_DEFAULTS)).toEqual({
       enabled: false, lookupPerMinute: 60, fillPerMinute: 30, totpPerMinute: 10, writePerMinute: 10,
+      cards: { enabled: false, fillPerMinute: 10, releasesPerCardPerDay: 5 },
+      identity: { enabled: false, fillPerMinute: 20 },
     });
   });
 
@@ -80,7 +82,7 @@ describe('agent activity (E14.7)', () => {
 
   it('an item has no key for a value, and AGENT_ACTIVITY_FORBIDDEN is a registered 403', () => {
     expect(Object.keys(agentActivityItemSchema.shape).sort()).toEqual(
-      ['action', 'at', 'clientId', 'clientName', 'credentialKind', 'field', 'id', 'origin', 'purpose', 'reason', 'result', 'secretId', 'secretName'],
+      ['action', 'amount', 'at', 'clientId', 'clientName', 'credentialKind', 'currency', 'field', 'id', 'origin', 'purpose', 'reason', 'result', 'secretId', 'secretName'],
     );
     expect(new Map(VAULT_ERROR_CODES.map((d) => [d.code, d.status])).get(AGENT_ERROR_CODES.AGENT_ACTIVITY_FORBIDDEN)).toBe(403);
   });
