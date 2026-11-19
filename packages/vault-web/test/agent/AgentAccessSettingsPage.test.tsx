@@ -47,7 +47,30 @@ describe('AgentAccessSettingsPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(patches).toHaveLength(1));
     expect(patches[0]).toEqual({
-      agentAccess: { enabled: true, lookupPerMinute: 60, fillPerMinute: 45, totpPerMinute: 10, writePerMinute: 10 },
+      agentAccess: {
+        enabled: true, lookupPerMinute: 60, fillPerMinute: 45, totpPerMinute: 10, writePerMinute: 10,
+        cards: { enabled: false, fillPerMinute: 10, releasesPerCardPerDay: 5 },
+        identity: { enabled: false, fillPerMinute: 20 },
+      },
+    });
+  });
+
+  it('shows the card and identity switches off by default and saves them with their limits (ADR-0003)', async () => {
+    const patches = handlers();
+    render(<AgentAccessSettingsPage />, { wrapperOptions: { user: WRITER } });
+    const cards = await screen.findByRole('switch', { name: 'Allow agents to use cards' });
+    const identity = screen.getByRole('switch', { name: 'Allow agents to fill identity details' });
+    expect(cards).not.toBeChecked();
+    expect(identity).not.toBeChecked();
+    expect(screen.getByLabelText('Card uses per card per day')).toHaveValue(5);
+    await userEvent.click(cards);
+    const cap = screen.getByLabelText('Card uses per card per day');
+    await userEvent.clear(cap);
+    await userEvent.type(cap, '3');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(patches).toHaveLength(1));
+    expect(patches[0]).toMatchObject({
+      agentAccess: { enabled: false, cards: { enabled: true, fillPerMinute: 10, releasesPerCardPerDay: 3 }, identity: { enabled: false } },
     });
   });
 

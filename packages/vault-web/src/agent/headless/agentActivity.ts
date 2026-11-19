@@ -1,10 +1,22 @@
 import { api } from '../../core/headless/http.js';
 
-/** What an agent did: the audit actions of the agent credential API. */
-export type AgentActivityAction = 'lookup' | 'fill' | 'totp' | 'create' | 'rotate' | 'agent_access';
+/** What an agent did: the audit actions of the agent API (logins, cards, identity) and the owner's decisions. */
+export type AgentActivityAction =
+  | 'lookup'
+  | 'fill'
+  | 'totp'
+  | 'create'
+  | 'rotate'
+  | 'agent_access'
+  | 'card_lookup'
+  | 'card_fill'
+  | 'card_grant_request'
+  | 'identity_lookup'
+  | 'identity_fill'
+  | 'card_grant';
 
-/** The credential an agent call authenticated with. */
-export type AgentCredentialKind = 'oauth' | 'pat' | 'session';
+/** The credential an agent call authenticated with (`embedded`: a host that embeds Vault, by its label). */
+export type AgentCredentialKind = 'oauth' | 'pat' | 'session' | 'embedded';
 
 /**
  * One row of `GET /api/agent-activity`. Never carries a value, code or seed: only who, what, where and why.
@@ -29,6 +41,10 @@ export interface AgentActivityItem {
   credentialKind: AgentCredentialKind | null;
   clientId: string | null;
   clientName: string | null;
+  /** A card call's stated amount (`"42.50"`); absent otherwise. */
+  amount?: string | null;
+  /** A card call's currency. */
+  currency?: string | null;
 }
 
 export const AGENT_ACTIVITY_ACTIONS: readonly AgentActivityAction[] = [
@@ -38,6 +54,12 @@ export const AGENT_ACTIVITY_ACTIONS: readonly AgentActivityAction[] = [
   'create',
   'rotate',
   'agent_access',
+  'card_lookup',
+  'card_fill',
+  'card_grant_request',
+  'identity_lookup',
+  'identity_fill',
+  'card_grant',
 ];
 
 export const AGENT_ACTION_LABELS: Record<AgentActivityAction, string> = {
@@ -47,6 +69,12 @@ export const AGENT_ACTION_LABELS: Record<AgentActivityAction, string> = {
   create: 'Created',
   rotate: 'Rotated',
   agent_access: 'Access changed',
+  card_lookup: 'Cards looked up',
+  card_fill: 'Card filled',
+  card_grant_request: 'Asked for a shop',
+  identity_lookup: 'Identity looked up',
+  identity_fill: 'Identity filled',
+  card_grant: 'Shop permission',
 };
 
 export interface AgentActivityQuery {

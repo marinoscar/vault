@@ -1,7 +1,7 @@
 /**
  * Visual regression for the refreshed Vault UI (E10.7, #98).
  *
- * Six screens at a phone (390 px) and a desktop (1440 px) viewport, light and
+ * Seven screens at a phone (390 px) and a desktop (1440 px) viewport, light and
  * dark. The built app is served by `vite preview`; every `/api` call is answered
  * by `tests/support/mock-api.ts`. Update baselines: `docs/TESTING.md#visual`.
  */
@@ -14,6 +14,8 @@ const SCREENS: { name: string; path: string; ready: RegExp }[] = [
   { name: 'secrets', path: '/secrets', ready: /Org Alpha portal/ },
   { name: 'secret-detail', path: '/secrets/secret-alpha-portal', ready: /Org Alpha portal/ },
   { name: 'cards', path: '/cards', ready: /Visa ending 1111/ },
+  // ADR-0003 (#195): a card's Agent access panel with a merchant grant and a pending request.
+  { name: 'card-detail', path: '/secrets/secret-card-visa', ready: /Allowed shops/ },
   { name: 'user-settings', path: '/settings', ready: /Settings/i },
   { name: 'admin-settings', path: '/admin/settings', ready: /Settings|Administration|Console/i },
 ];

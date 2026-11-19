@@ -43,7 +43,8 @@ interface UseSecretDetailResult {
   ) => Promise<SecretVersionDetailWithAttachments>;
   rollback: (secretId: string, versionId: string) => Promise<void>;
   /** Throws on failure (the caller shows it); does not set the hook's `error`. */
-  setAgentAccess: (id: string, agentAccess: SecretAgentAccess) => Promise<void>;
+  /** `allowedOrigins`: Identity only (ADR-0003); omit to keep them. */
+  setAgentAccess: (id: string, agentAccess: SecretAgentAccess, allowedOrigins?: string[]) => Promise<void>;
 }
 
 export function useSecretDetail(): UseSecretDetailResult {
@@ -118,8 +119,8 @@ export function useSecretDetail(): UseSecretDetailResult {
     }
   }, [fetchVersions]);
 
-  const setAgentAccess = useCallback(async (id: string, agentAccess: SecretAgentAccess) => {
-    const result = await updateAgentAccessApi(id, agentAccess);
+  const setAgentAccess = useCallback(async (id: string, agentAccess: SecretAgentAccess, allowedOrigins?: string[]) => {
+    const result = await updateAgentAccessApi(id, agentAccess, allowedOrigins);
     // Only the agent-access fields change; keep the loaded values and attachments.
     setSecret((prev) =>
       prev
@@ -127,6 +128,7 @@ export function useSecretDetail(): UseSecretDetailResult {
             ...prev,
             agentAccess: result.agentAccess ?? agentAccess,
             agentAccessChangedAt: result.agentAccessChangedAt ?? prev.agentAccessChangedAt,
+            agentOrigins: result.agentOrigins ?? prev.agentOrigins,
           }
         : result,
     );

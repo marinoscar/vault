@@ -42,6 +42,8 @@ import { CardImages, supportsCardImages } from '../components/CardImages.js';
 import { SecretTypeIcon } from '../components/SecretTypeIcon.js';
 import { SecretValueField } from '../components/SecretValueField.js';
 import { TotpCodeCard } from '../components/TotpCodeCard.js';
+import { CardAgentAccessPanel } from '../../../agent/ui/components/CardAgentAccessPanel.js';
+import { IdentityAgentAccessPanel } from '../../../agent/ui/components/IdentityAgentAccessPanel.js';
 import { SecretVersionDrawer } from '../components/SecretVersionDrawer.js';
 import { useSecretDetail } from '../../headless/useSecretDetail.js';
 import { usePermissions } from '@marinoscar/platform-web/identity/headless';
@@ -51,6 +53,7 @@ import {
   formatRelativeTime,
   isCardType,
   supportsAgentAccess,
+  isSystemType,
 } from '../../headless/secretFields.js';
 
 /**
@@ -140,20 +143,30 @@ export default function SecretDetailPage() {
   }, [id, navigate]);
 
   const toggleAgentAccess = useCallback(
-    async (enabled: boolean) => {
+    async (enabled: boolean, noun = 'login') => {
       if (!id) return;
       setSavingAgentAccess(true);
       try {
         await setAgentAccess(id, enabled ? 'fill' : 'none');
         setToast({
           severity: 'success',
-          message: enabled ? 'Agents can now use this login' : 'Agents can no longer use this login',
+          message: enabled ? `Agents can now use this ${noun}` : `Agents can no longer use this ${noun}`,
         });
       } catch (err) {
         setToast({ severity: 'error', message: agentAccessErrorMessage(err) });
       } finally {
         setSavingAgentAccess(false);
       }
+    },
+    [id, setAgentAccess],
+  );
+
+  /** Identity (ADR-0003): the access and, when given, the websites its sensitive fields may go to. */
+  const saveIdentityAccess = useCallback(
+    async (access: 'none' | 'fill', allowedOrigins?: string[]) => {
+      if (!id) return;
+      await setAgentAccess(id, access, allowedOrigins);
+      setToast({ severity: 'success', message: 'Agent access saved' });
     },
     [id, setAgentAccess],
   );
@@ -471,6 +484,25 @@ export default function SecretDetailPage() {
                   time.
                 </Typography>
               </Paper>
+            )}
+            {isSystemType(secret.type, 'Card') && (
+              <CardAgentAccessPanel
+                secretId={secret.id}
+                cardName={secret.name}
+                agentAccess={secret.agentAccess === 'fill' ? 'fill' : 'none'}
+                canWrite={canWrite}
+                toggling={savingAgentAccess}
+                onToggle={(enabled) => toggleAgentAccess(enabled, 'card')}
+              />
+            )}
+            {isSystemType(secret.type, 'Identity') && (
+              <IdentityAgentAccessPanel
+                agentAccess={secret.agentAccess === 'fill' ? 'fill' : 'none'}
+                agentOrigins={secret.agentOrigins ?? []}
+                canWrite={canWrite}
+                onSave={saveIdentityAccess}
+                errorMessage={agentAccessErrorMessage}
+              />
             )}
           </Grid>
         </Grid>
