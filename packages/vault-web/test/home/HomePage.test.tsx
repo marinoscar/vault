@@ -243,6 +243,8 @@ describe('HomePage', () => {
       expect(within(actions).getAllByRole('link').map((l) => l.textContent)).toEqual([
         'New secret',
         'Scan a card',
+        // Document scanning follows the card rule for now (#211).
+        'Scan an ID',
         'Back up now',
       ]);
     });
