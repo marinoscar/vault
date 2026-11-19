@@ -1,0 +1,7 @@
+---
+'@marinoscar/vault-contract': minor
+'@marinoscar/vault-api': minor
+'@marinoscar/vault-web': minor
+---
+
+Cross-check a driver license's PDF417 (AAMVA) barcode, decoded in the browser (IDOC-11, #214). `@marinoscar/vault-contract/secrets`: `extractDocumentRequestSchema` takes an optional `barcode` (`documentBarcodeSchema`: `{ format: 'aamva', fields }` with the twelve `AAMVA_BARCODE_FIELDS`, each at most `DOCUMENT_BARCODE_FIELD_MAX_LENGTH` = 200 characters; unknown keys stripped), `extractDocumentResponseSchema` an optional `barcodePresent`; `DOCUMENT_CHECK_IDS` appends `aamva` and the Driver License kind declares it. `@marinoscar/vault-api/ai`: `CheckId` appends `aamva`; the ID document normalizer compares the barcode with the model's reading for a Driver License (the barcode wins on a mismatch, confidence 0.95, `BARCODE_WINS_WARNING`), adds the `aamva` check and returns `barcodePresent`; scan profiles receive `ScanRequestHints` (never sent to the model); `AAMVA_JURISDICTIONS` and `jurisdictionAgrees`. `@marinoscar/vault-web/documents/headless`: `parseAamva` (pure), `toDocumentBarcode`, `decodePdf417` (lazy-loads the new dependency `@zxing/library`, Apache-2.0, in its own chunk; never rejects), `readDriverLicenseBarcode`; `useDocumentScan` decodes the original back photo and exposes `barcodeOutcome` and `barcodeUnread`; the scan page shows a dismissible retake hint. All `@stability experimental`.

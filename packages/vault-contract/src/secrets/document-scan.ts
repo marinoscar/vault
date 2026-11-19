@@ -45,9 +45,67 @@ export const DOCUMENT_SCAN_SLOTS = ['data_page', 'front', 'back'] as const;
 export type DocumentScanSlot = (typeof DOCUMENT_SCAN_SLOTS)[number];
 
 /**
+ * Longest value of one decoded barcode field.
+ *
+ * @stability experimental
+ */
+export const DOCUMENT_BARCODE_FIELD_MAX_LENGTH = 200;
+
+/**
+ * The fields of an AAMVA (US and Canadian driver license) PDF417 barcode the
+ * browser may send with a scan, already parsed: dates `YYYY-MM-DD`, `country`
+ * `USA` or `CAN`, `sex` `M`, `F` or `X`. Each is optional.
+ *
+ * @stability experimental
+ */
+export const AAMVA_BARCODE_FIELDS = [
+  'documentNumber',
+  'familyName',
+  'givenNames',
+  'birthDate',
+  'expiryDate',
+  'issueDate',
+  'state',
+  'country',
+  'sex',
+  'licenseClass',
+  'restrictions',
+  'endorsements',
+] as const;
+
+/** @stability experimental */
+export type AamvaBarcodeField = (typeof AAMVA_BARCODE_FIELDS)[number];
+
+const barcodeFieldSchema = z.string().max(DOCUMENT_BARCODE_FIELD_MAX_LENGTH).optional();
+
+/**
+ * The parsed values of the PDF417 barcode on the back of a driver license,
+ * decoded in the browser (issue #214). Never the barcode image or its raw
+ * string: an unknown key is stripped. Nothing is persisted; the values travel
+ * only in the extract request, and the server compares them with what the
+ * model read.
+ *
+ * @stability experimental
+ */
+export const documentBarcodeSchema = z.object({
+  format: z.literal('aamva'),
+  fields: z.object(
+    Object.fromEntries(AAMVA_BARCODE_FIELDS.map((name) => [name, barcodeFieldSchema])) as Record<
+      AamvaBarcodeField,
+      typeof barcodeFieldSchema
+    >,
+  ),
+});
+
+/** @stability experimental */
+export type DocumentBarcode = z.infer<typeof documentBarcodeSchema>;
+
+/**
  * Body of `POST /api/secrets/documents/extract`. A passport needs `data_page`
  * and has no `front`; an ID document needs `front` and has no `data_page`;
- * `back` is optional for both.
+ * `back` is optional for both. `barcode` (optional) carries the values the
+ * browser decoded from the back's PDF417 barcode; the server uses it for a
+ * Driver License only.
  *
  * @stability experimental
  */
@@ -59,6 +117,7 @@ export const extractDocumentRequestSchema = z
       front: scanImageDataUrlSchema.optional(),
       back: scanImageDataUrlSchema.optional(),
     }),
+    barcode: documentBarcodeSchema.optional(),
   })
   .superRefine((body, ctx) => {
     const issue = (slot: DocumentScanSlot, message: string) =>
@@ -106,7 +165,7 @@ export const scannedAttributeSchema = keyValueEntrySchema.extend({
 export type ScannedAttribute = z.infer<typeof scannedAttributeSchema>;
 
 /**
- * The outcome of one deterministic check (`mrz`, `ssn`, `vin`): `failed` names
+ * The outcome of one deterministic check (`mrz`, `ssn`, `vin`, `aamva`): `failed` names
  * the fields that did not pass, never their values.
  *
  * @stability experimental
@@ -129,6 +188,7 @@ export type DocumentCheckResult = z.infer<typeof documentCheckResultSchema>;
  * - `attributes`: kind-specific details (ID document only; `[]` for a passport).
  * - `crops`: one box per provided image, `null` when absent or no document was found.
  * - `partial`: the call succeeded but every typed field is null.
+ * - `barcodePresent`: the model saw a barcode (ID document only).
  *
  * @stability experimental
  */
@@ -145,6 +205,11 @@ export const extractDocumentResponseSchema = z.object({
   crops: z.partialRecord(z.enum(DOCUMENT_SCAN_SLOTS), scanCropBoxSchema.nullable()),
   model: z.string().nullable(),
   partial: z.boolean(),
+  /**
+   * ID document only: the model saw a PDF417 or other 2D barcode. The web
+   * uses it to suggest a retake when the browser could not decode one.
+   */
+  barcodePresent: z.boolean().optional(),
 });
 
 /** @stability experimental */

@@ -37,7 +37,7 @@ export type IdDocumentKind = (typeof ID_DOCUMENT_KINDS)[number];
  *
  * @stability experimental
  */
-export const DOCUMENT_CHECK_IDS = ['mrz', 'ssn', 'vin'] as const;
+export const DOCUMENT_CHECK_IDS = ['mrz', 'ssn', 'vin', 'aamva'] as const;
 
 /** @stability experimental */
 export type DocumentCheckId = (typeof DOCUMENT_CHECK_IDS)[number];
@@ -60,7 +60,8 @@ export interface StandardAttributeKey {
  * - `standardKeys`: the `attributes` entries the editor suggests and the scan
  *   asks the model for.
  * - `checks`: `ssn` applies to `document_number`, `vin` to `attributes.vin`,
- *   `mrz` to `attributes.mrz` (the MRZ lines).
+ *   `mrz` to `attributes.mrz` (the MRZ lines), `aamva` to the values the
+ *   browser decoded from the PDF417 barcode on the back (a Driver License).
  * - `expiryLeadDays`: days before `expiry_date` a reminder is due, descending;
  *   `[]` means no reminders.
  *
@@ -102,8 +103,8 @@ export const ID_DOCUMENT_KIND_CATALOG: Readonly<Record<IdDocumentKind, IdDocumen
       key('eye_color', 'Eye Color'),
       key('organ_donor', 'Organ Donor'),
     ],
-    // PDF417 barcode decoding is IDOC-11 (#214).
-    checks: [],
+    // The PDF417 barcode on the back, decoded in the browser (AAMVA, #214).
+    checks: ['aamva'],
     expiryLeadDays: STANDARD_LEAD_DAYS,
   },
   'National ID': {

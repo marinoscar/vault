@@ -2,7 +2,7 @@
 // orphan cleanup and unmount cleanup. Invented values only.
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { HttpResponse, delay, http } from 'msw';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   buildDefaultDocumentName,
@@ -21,6 +21,10 @@ import { server } from '../mocks/server.js';
 import { ID_DOCUMENT_TYPE, ID_EXTRACTION, PASSPORT_EXTRACTION, PASSPORT_TYPE } from './documentFixtures.js';
 
 const API_BASE = '*/api';
+
+// The PDF417 decoder (issue #214) is mocked; it is lazy-loaded by the barcode reader.
+const decodePdf417Image = vi.hoisted(() => vi.fn<(file: Blob) => Promise<string | null>>());
+vi.mock('../../src/documents/headless/pdf417Decoder.js', () => ({ decodePdf417Image }));
 
 function image(role: string): CroppedCardImage {
   return {
@@ -116,6 +120,40 @@ describe('useDocumentScan', () => {
     expect(body).toEqual({ documentType: 'passport', images: { data_page: 'data:image/jpeg;base64,AAAA' } });
     expect(out?.fields.surname).toBe('EXAMPLE');
     expect(result.current.extraction?.documentType).toBe('passport');
+  });
+
+  it('decodes the back barcode of an ID document only, and flags a barcode it could not read (issue #214)', async () => {
+    const bodies: unknown[] = [];
+    server.use(
+      typesHandler(),
+      http.post(`${API_BASE}/secrets/documents/extract`, async ({ request }) => {
+        const body = (await request.json()) as { documentType: string };
+        bodies.push(body);
+        return HttpResponse.json({
+          data: body.documentType === 'passport' ? PASSPORT_EXTRACTION : { ...ID_EXTRACTION, barcodePresent: true },
+        });
+      }),
+    );
+    const back = new File(['back'], 'back.jpg', { type: 'image/jpeg' });
+    decodePdf417Image.mockResolvedValue(null);
+
+    const { result } = renderHook(() => useDocumentScan('id_document'));
+    await act(() => result.current.runExtraction({ front: 'data:image/jpeg;base64,AAAA' }));
+    expect(result.current.barcodeOutcome).toBe('skipped');
+    expect(result.current.barcodeUnread).toBe(false);
+    expect(decodePdf417Image).not.toHaveBeenCalled();
+
+    await act(() => result.current.runExtraction({ front: 'data:image/jpeg;base64,AAAA' }, { backPhoto: back }));
+    expect(decodePdf417Image).toHaveBeenCalledWith(back);
+    expect(result.current.barcodeOutcome).toBe('failed');
+    expect(result.current.barcodeUnread).toBe(true);
+    expect(bodies.at(-1)).not.toHaveProperty('barcode');
+
+    const passport = renderHook(() => useDocumentScan('passport'));
+    decodePdf417Image.mockClear();
+    await act(() => passport.result.current.runExtraction({ data_page: 'data:image/jpeg;base64,AAAA' }, { backPhoto: back }));
+    expect(decodePdf417Image).not.toHaveBeenCalled();
+    expect(passport.result.current.barcodeOutcome).toBe('skipped');
   });
 
   it('resolves a failed extraction to null with a worded error', async () => {

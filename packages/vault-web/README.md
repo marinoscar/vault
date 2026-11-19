@@ -46,6 +46,8 @@ Everything React and MUI is a peer, so the host keeps one copy of each (two Reac
 
 The host's bundler must understand an image import (Vite does): `BrandLockup` imports the PNG next to it.
 
+`@zxing/library` (Apache-2.0, pinned) is a regular dependency, not a peer: the PDF417 decoder of the document scan (`decodePdf417` of `documents/headless`, #214). It is loaded with a dynamic import only when a scan decodes a driver license barcode, so a code-splitting bundler (Vite does) keeps it out of the main chunk. It is pure JavaScript, so it needs no `wasm-unsafe-eval` in the host's Content Security Policy.
+
 ## Quick start
 
 ```tsx
@@ -88,6 +90,7 @@ The suites render through `test/utils/test-utils.tsx`, which mounts what the hos
 ## Security notes
 
 - The browser never calls an AI provider: card scanning posts to `POST /api/secrets/cards/extract` and shows `AiEgressNotice`; the CVV is never sent, returned or seeded into the review form.
+- A driver license barcode is decoded in the browser; only its parsed values (never the raw string or the image) travel, in the extract request alone, and nothing is stored.
 - Secret values come only from the detail view, are copied through `useCopyToClipboard` and are never written to `localStorage`, logs or error reports. Backup passwords live in component state only.
 - The UI presents and the API authorizes: a hidden button is not a permission check.
 

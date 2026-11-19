@@ -1,12 +1,14 @@
 // Fixtures are invented: the ICAO 9303 specimen state UTO and its specimen
 // holder (ERIKSSON, ANNA MARIA), invalid-by-construction SSNs and made-up VINs.
 import {
+  AAMVA_JURISDICTIONS,
   COUNTRY_CODES,
   COUNTRY_TABLE,
   checkSsn,
   checkVin,
   isCountryCode,
   isMrzCountryCode,
+  jurisdictionAgrees,
   mrzCheckDigit,
   mrzDate,
   normalizeDate,
@@ -368,5 +370,22 @@ describe('country', () => {
     expect(isMrzCountryCode('D')).toBe(true);
     expect(isMrzCountryCode('UTO')).toBe(true);
     expect(isMrzCountryCode('QQQ')).toBe(false);
+  });
+});
+
+describe('jurisdictionAgrees (issue #214)', () => {
+  it('matches the code as a word, or the full name of a known code', () => {
+    expect(jurisdictionAgrees('ZZ', 'ZZ')).toBe(true);
+    expect(jurisdictionAgrees('zz dmv', 'ZZ')).toBe(true);
+    expect(jurisdictionAgrees('State of Ohio', 'OH')).toBe(true);
+    expect(jurisdictionAgrees('Québec', 'QC')).toBe(true);
+    expect(jurisdictionAgrees('New York State', 'NY')).toBe(true);
+  });
+
+  it('refuses another jurisdiction or a partial word', () => {
+    expect(jurisdictionAgrees('ZY', 'ZZ')).toBe(false);
+    expect(jurisdictionAgrees('York', 'NY')).toBe(false);
+    expect(jurisdictionAgrees('Department of Motor Vehicles', 'ZZ')).toBe(false);
+    expect(AAMVA_JURISDICTIONS.ZZ).toBeUndefined();
   });
 });

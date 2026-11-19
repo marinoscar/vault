@@ -150,5 +150,8 @@
     "vite": "^8.0.16",
     "vitest": "^4.1.8",
     "vitest-axe": "^1.0.0-pre.5"
+  },
+  "dependencies": {
+    "@zxing/library": "0.23.0"
   }
 }

@@ -94,6 +94,7 @@ export default function DocumentScanPage() {
     extraction,
     extractionError,
     isExtracting,
+    barcodeUnread,
     runExtraction,
     isSaving,
     saveError,
@@ -113,6 +114,7 @@ export default function DocumentScanPage() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [editedFields, setEditedFields] = useState<Set<string>>(new Set());
   const [savedNotice, setSavedNotice] = useState<{ secretId: string; warning: string } | null>(null);
+  const [barcodeHintDismissed, setBarcodeHintDismissed] = useState(false);
 
   // A run that finishes after Cancel must not move the (unmounting) page on.
   const runRef = useRef(0);
@@ -210,7 +212,9 @@ export default function DocumentScanPage() {
       const photo = taken[s.role as DocumentScanSlot];
       if (photo) images[s.role as DocumentScanSlot] = photo.prepared.dataUrl;
     }
-    const result = await runExtraction(images);
+    setBarcodeHintDismissed(false);
+    // The barcode is decoded from the ORIGINAL back photo, before any crop.
+    const result = await runExtraction(images, { backPhoto: taken.back?.file ?? null });
     if (run !== runRef.current) return;
 
     const nextCrops: Partial<Record<DocumentScanSlot, CardSideCrop>> = {};
@@ -577,6 +581,12 @@ export default function DocumentScanPage() {
           {extraction?.partial && !extractionError && (
             <Alert severity="warning" sx={{ mb: 2 }}>
               Nothing legible came back from the photos. Enter the details below.
+            </Alert>
+          )}
+
+          {barcodeUnread && !barcodeHintDismissed && (
+            <Alert severity="info" sx={{ mb: 2 }} onClose={() => setBarcodeHintDismissed(true)}>
+              Couldn't read the barcode. Retake the back photo closer and in focus to double-check the values.
             </Alert>
           )}
 

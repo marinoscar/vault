@@ -1,4 +1,9 @@
-import { DOCUMENT_SCAN_SLOTS, SCANNABLE_DOCUMENT_TYPES } from '@marinoscar/vault-contract/secrets';
+import {
+  AAMVA_BARCODE_FIELDS,
+  DOCUMENT_BARCODE_FIELD_MAX_LENGTH,
+  DOCUMENT_SCAN_SLOTS,
+  SCANNABLE_DOCUMENT_TYPES,
+} from '@marinoscar/vault-contract/secrets';
 
 /**
  * OpenAPI body description of `POST /api/secrets/documents/extract`.
@@ -27,6 +32,21 @@ export const EXTRACT_DOCUMENT_BODY_SCHEMA: Record<string, unknown> = {
           { type: 'string', example: slot === 'back' ? undefined : 'data:image/jpeg;base64,/9j/4AAQSkZJRg...' },
         ]),
       ),
+    },
+    barcode: {
+      type: 'object',
+      required: ['format', 'fields'],
+      description:
+        'Optional. The values the browser decoded from the PDF417 (AAMVA) barcode on the back of a driver license, already parsed (dates `YYYY-MM-DD`). Never the barcode image or its raw string. Compared with the model\'s reading for a Driver License; nothing is persisted.',
+      properties: {
+        format: { type: 'string', enum: ['aamva'] },
+        fields: {
+          type: 'object',
+          properties: Object.fromEntries(
+            AAMVA_BARCODE_FIELDS.map((name) => [name, { type: 'string', maxLength: DOCUMENT_BARCODE_FIELD_MAX_LENGTH }]),
+          ),
+        },
+      },
     },
   },
 };

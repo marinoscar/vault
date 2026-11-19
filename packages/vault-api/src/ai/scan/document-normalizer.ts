@@ -4,7 +4,8 @@
 // Pure functions: the model's (already validated and trimmed) answer in, the
 // caller-facing `ExtractDocumentResponse` out. The deterministic checks of
 // IDOC-2 (#205) run here: the MRZ check digits, the SSN structure, the VIN
-// check digit. A check only warns and adjusts confidence: the human decides.
+// check digit, and (#214) the AAMVA barcode values the browser decoded from a
+// driver license. A check only warns and adjusts confidence: the human decides.
 //
 // WARNINGS NEVER CARRY A VALUE. A warning this file writes names a field at
 // most; a model warning that repeats an extracted value is dropped.
@@ -18,13 +19,22 @@ import {
   type IdDocumentKind,
 } from '@marinoscar/vault-contract/secret-types';
 import type {
+  DocumentBarcode,
   DocumentCheckResult,
   ExtractDocumentResponse,
   ScannedAttribute,
   ScannableDocumentType,
 } from '@marinoscar/vault-contract/secrets';
 
-import { checkSsn, checkVin, normalizeDate, parseMrz, toAlpha3, type MrzParseResult } from './checks';
+import {
+  checkSsn,
+  checkVin,
+  jurisdictionAgrees,
+  normalizeDate,
+  parseMrz,
+  toAlpha3,
+  type MrzParseResult,
+} from './checks';
 import type { ScanCropBox } from './crop-box';
 
 /** Longest value kept for an ordinary field. @stability experimental */
@@ -79,6 +89,12 @@ const COUNTRY_FIELDS = new Set(['issuing_country', 'nationality']);
 /** The warning a misread value replaced by the machine-readable zone carries. @stability experimental */
 export const MRZ_WINS_WARNING = 'Read from the machine-readable zone; the printed value looked different';
 
+/** The warning a misread value replaced by the driver license barcode carries. @stability experimental */
+export const BARCODE_WINS_WARNING = 'Read from the barcode; the printed value looked different';
+
+/** Confidence of a value the barcode replaced. @stability experimental */
+export const BARCODE_WINS_CONFIDENCE = 0.95;
+
 /** One attribute as the model returned it (trimmed). @stability experimental */
 export interface RawScannedAttribute {
   key: string | null;
@@ -117,6 +133,11 @@ export interface DocumentNormalizeContext {
   slots: readonly string[];
   /** Reference day for the MRZ date century rule. */
   today: Date;
+  /**
+   * The AAMVA barcode values the browser decoded from the back (issue #214);
+   * cross-checked for a Driver License only, ignored otherwise.
+   */
+  barcode?: DocumentBarcode | null;
 }
 
 // -----------------------------------------------------------------------------
@@ -487,6 +508,11 @@ export function normalizeIdDocumentScan(raw: RawDocumentScan, ctx: DocumentNorma
     }
   }
 
+  // AAMVA: the barcode on the back of a driver license.
+  if (kind === 'Driver License' && ctx.barcode?.format === 'aamva') {
+    crossCheckBarcode(draft, fromModel, standard, ctx.barcode);
+  }
+
   // SSN: the number is `document_number`.
   if (kind === 'Social Security Card' && draft.fields.document_number !== null) {
     const ssn = checkSsn(draft.fields.document_number);
@@ -545,7 +571,84 @@ export function normalizeIdDocumentScan(raw: RawDocumentScan, ctx: DocumentNorma
     crops: crops(raw, ctx),
     model: raw.model || null,
     partial: allNull(draft.fields),
+    barcodePresent: raw.barcodePresent === true,
   };
+}
+
+/**
+ * Compares the decoded barcode with what the model read: a missing value is
+ * filled, a value that disagrees is replaced by the barcode's (confidence
+ * {@link BARCODE_WINS_CONFIDENCE}, a warning naming the field), and the `aamva`
+ * check lists the fields that disagreed. Never a value in a warning.
+ */
+function crossCheckBarcode(
+  draft: Draft,
+  attributes: ScannedAttribute[],
+  standard: ReadonlyMap<string, { label: string; sensitive: boolean }>,
+  barcode: DocumentBarcode,
+): void {
+  const b = barcode.fields;
+  const value = (v: string | undefined): string | null => cleanText(v);
+  const failed: string[] = [];
+
+  const field = (name: string, decoded: string | null, agree: (printed: string, decoded: string) => boolean): void => {
+    if (decoded === null) return;
+    const printed = draft.fields[name];
+    if (printed === null || printed === undefined) {
+      draft.set(name, decoded, 0.9);
+      return;
+    }
+    if (agree(printed, decoded)) return;
+    draft.set(name, decoded, BARCODE_WINS_CONFIDENCE);
+    draft.warn(`${BARCODE_WINS_WARNING} (${name})`);
+    failed.push(name);
+  };
+  const isoDate = (v: string | undefined): string | null => {
+    const text = value(v);
+    return text === null ? null : normalizeDate(text);
+  };
+  const same = (a: string, c: string): boolean => a === c;
+
+  field('document_number', value(b.documentNumber), (a, c) => alnum(a) === alnum(c));
+  const name = [value(b.givenNames), value(b.familyName)].filter(Boolean).join(' ');
+  field('holder_name', name === '' ? null : name.slice(0, DOCUMENT_FIELD_MAX_LENGTH), namesAgree);
+  field('date_of_birth', isoDate(b.birthDate), same);
+  field('expiry_date', isoDate(b.expiryDate), same);
+  field('issue_date', isoDate(b.issueDate), same);
+  field('issuing_authority', value(b.state)?.toUpperCase() ?? null, jurisdictionAgrees);
+  // The country only fills a gap: the barcode names USA or CAN, which the front rarely misprints.
+  const country = value(b.country);
+  if (draft.fields.issuing_country === null && country !== null) {
+    const code = toAlpha3(country);
+    if (code !== null) draft.set('issuing_country', code, 0.9);
+  }
+
+  const attribute = (key: string, decoded: string | null, agree: (printed: string, decoded: string) => boolean): void => {
+    if (decoded === null) return;
+    const existing = attributes.find((a) => a.key === key);
+    if (!existing) {
+      attributes.push({
+        key,
+        label: standard.get(key)?.label ?? humanize(key),
+        value: decoded,
+        sensitive: standard.get(key)?.sensitive ?? false,
+        confidence: 0.9,
+      });
+      return;
+    }
+    if (agree(existing.value, decoded)) return;
+    existing.value = decoded;
+    existing.confidence = BARCODE_WINS_CONFIDENCE;
+    draft.warn(`${BARCODE_WINS_WARNING} (${key})`);
+    failed.push(key);
+  };
+  const sameText = (a: string, c: string): boolean => alnum(a) === alnum(c);
+  attribute('license_class', value(b.licenseClass), sameText);
+  attribute('restrictions', value(b.restrictions), sameText);
+  attribute('endorsements', value(b.endorsements), sameText);
+  attribute('sex', normalizeSex(value(b.sex)), (a, c) => (normalizeSex(a) ?? a) === c);
+
+  draft.checks.push({ id: 'aamva', ok: failed.length === 0, failed });
 }
 
 /** A printed `sex` or `nationality` attribute in the form the MRZ uses. */

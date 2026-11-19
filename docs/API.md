@@ -1770,6 +1770,8 @@ A `429`/`502` may include a `Retry-After` header (seconds). **Limits replace the
 
 `documentType` is `passport` or `id_document`. A passport needs `images.data_page` and takes no `front`; an ID document needs `images.front` and takes no `data_page`; `back` is optional for both. Each image is a JPEG, PNG or WebP base64 data URL of at most `MAX_IMAGE_DATA_URL_LENGTH` (6,000,000) characters.
 
+`barcode` (optional, #214): the values the browser decoded from a driver license's PDF417 (AAMVA) barcode, already parsed: `{ "format": "aamva", "fields": { "documentNumber", "familyName", "givenNames", "birthDate", "expiryDate", "issueDate", "state", "country", "sex", "licenseClass", "restrictions", "endorsements" } }`, each optional and at most 200 characters (`DOCUMENT_BARCODE_FIELD_MAX_LENGTH`); unknown keys are stripped, so neither the raw barcode string nor the image is accepted. Used for a Driver License only (the `aamva` check), never sent to the model, never persisted.
+
 **Response** (an ID document):
 ```json
 {
@@ -1804,9 +1806,10 @@ A `429`/`502` may include a `Retry-After` header (seconds). **Limits replace the
 - `fields`: the typed fields of the target type, never `attributes` or `notes`. A passport returns `surname`, `given_names`, `passport_number`, `passport_type`, `issuing_country`, `nationality`, `date_of_birth`, `place_of_birth`, `sex`, `issue_date`, `expiry_date`, `issuing_authority`, `personal_number` and `mrz` (the joined MRZ lines). Dates are `YYYY-MM-DD`; countries ICAO alpha-3.
 - `documentKind`: one of `ID_DOCUMENT_KINDS` or `null` (ID document only; `null` for a passport).
 - `attributes`: ID document only (`[]` for a passport), keyed snake_case, `sensitive` from the kind catalog.
-- `checks`: one entry per check that ran (`mrz`, `ssn`, `vin`), `failed` naming fields. See [SECRETS.md § Document scanning](SECRETS.md#document-scanning).
+- `checks`: one entry per check that ran (`mrz`, `ssn`, `vin`, `aamva`), `failed` naming fields. See [SECRETS.md § Document scanning](SECRETS.md#document-scanning).
 - `crops`: one box per slot of the type (`data_page`/`back` or `front`/`back`), `null` for an image that was not sent or showed no document.
 - `partial`: `true` when every typed field is `null`.
+- `barcodePresent`: ID document only: the model saw a PDF417 or other 2D barcode (the web suggests a retake when it could not decode one).
 
 **Error Cases:** as for `POST /secrets/cards/extract` (same table, same `Retry-After`): `400 AI_INVALID_IMAGE` also covers an unknown `documentType` and a missing or misplaced image slot (the message names the field paths, never the bytes); `422 AI_EXTRACTION_FAILED` when the model could not read the document.
 

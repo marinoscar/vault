@@ -5,6 +5,7 @@ import { extractDocumentResponseSchema } from '@marinoscar/vault-contract/secret
 import { vinCheckDigit } from './checks';
 import {
   attributeKeyFromLabel,
+  BARCODE_WINS_WARNING,
   MRZ_WINS_WARNING,
   normalizeIdDocumentScan,
   normalizePassportScan,
@@ -270,6 +271,130 @@ describe('normalizeIdDocumentScan', () => {
     const fields = Object.fromEntries(Object.keys(idRaw().fields).map((k) => [k, null]));
     expect(normalizeIdDocumentScan(idRaw({ fields }), idCtx).partial).toBe(true);
     expect(normalizeIdDocumentScan(idRaw(), idCtx).partial).toBe(false);
+  });
+});
+
+describe('normalizeIdDocumentScan: AAMVA barcode cross-check (issue #214)', () => {
+  // Invented: Person A, a made-up license number, the placeholder state ZZ.
+  const barcode = {
+    format: 'aamva' as const,
+    fields: {
+      documentNumber: 'X1234567',
+      familyName: 'A',
+      givenNames: 'PERSON',
+      birthDate: '1990-01-31',
+      expiryDate: '2030-01-31',
+      issueDate: '2022-01-31',
+      state: 'ZZ',
+      country: 'USA',
+      sex: 'F',
+      licenseClass: 'C',
+      restrictions: 'NONE',
+      endorsements: 'NONE',
+    },
+  };
+  const ctx = { providedSlots: ['front', 'back'], slots: ['front', 'back'], today: TODAY, barcode };
+  const license = (over: Partial<RawDocumentScan> = {}): RawDocumentScan => {
+    const raw = idRaw({
+      documentKind: 'Driver License',
+      barcodePresent: true,
+      attributes: [
+        { key: 'license_class', label: 'Class', value: 'C', confidence: 0.8 },
+        { key: 'restrictions', label: 'Restrictions', value: 'NONE', confidence: 0.8 },
+        { key: 'endorsements', label: 'Endorsements', value: 'NONE', confidence: 0.8 },
+        { key: 'sex', label: 'Sex', value: 'F', confidence: 0.8 },
+      ],
+      ...over,
+    });
+    raw.fields = {
+      ...raw.fields,
+      holder_name: 'A, PERSON',
+      document_number: 'X1234567',
+      issuing_country: 'USA',
+      issuing_authority: 'ZZ',
+      date_of_birth: '01/31/1990',
+      issue_date: '2022-01-31',
+      expiry_date: '2030-01-31',
+    };
+    return raw;
+  };
+
+  it('agrees with a matching reading: an ok aamva check and no warning', () => {
+    const out = normalizeIdDocumentScan(license(), ctx);
+    expect(extractDocumentResponseSchema.parse(out)).toEqual(out);
+    expect(out.checks).toEqual([{ id: 'aamva', ok: true, failed: [] }]);
+    expect(out.warnings).toEqual([]);
+    expect(out.fields.holder_name).toBe('A, PERSON');
+    expect(out.fields.date_of_birth).toBe('1990-01-31');
+    expect(out.barcodePresent).toBe(true);
+  });
+
+  it('prefers the barcode on a mismatch, with confidence 0.95 and a warning naming the field only', () => {
+    const raw = license();
+    raw.fields.document_number = 'X1284567';
+    raw.fields.expiry_date = '2030-07-31';
+    raw.fields.issuing_authority = 'ZY';
+    raw.attributes![0].value = 'D';
+    const out = normalizeIdDocumentScan(raw, ctx);
+    expect(out.fields.document_number).toBe('X1234567');
+    expect(out.confidence.document_number).toBe(0.95);
+    expect(out.fields.expiry_date).toBe('2030-01-31');
+    expect(out.fields.issuing_authority).toBe('ZZ');
+    expect(out.attributes.find((a) => a.key === 'license_class')).toMatchObject({ value: 'C', confidence: 0.95 });
+    expect(out.checks).toEqual([
+      { id: 'aamva', ok: false, failed: ['document_number', 'expiry_date', 'issuing_authority', 'license_class'] },
+    ]);
+    expect(out.warnings).toEqual([
+      `${BARCODE_WINS_WARNING} (document_number)`,
+      `${BARCODE_WINS_WARNING} (expiry_date)`,
+      `${BARCODE_WINS_WARNING} (issuing_authority)`,
+      `${BARCODE_WINS_WARNING} (license_class)`,
+    ]);
+    expect(out.warnings.join(' ')).not.toMatch(/X12|2030|ZY/);
+  });
+
+  it('replaces a misread name, and fills what the model left out without counting it as a failure', () => {
+    const raw = license({ attributes: [] });
+    raw.fields.holder_name = 'PERS0N B';
+    raw.fields.date_of_birth = null;
+    raw.fields.issuing_country = null;
+    const out = normalizeIdDocumentScan(raw, ctx);
+    expect(out.fields.holder_name).toBe('PERSON A');
+    expect(out.fields.date_of_birth).toBe('1990-01-31');
+    expect(out.confidence.date_of_birth).toBe(0.9);
+    expect(out.fields.issuing_country).toBe('USA');
+    expect(out.attributes.map((a) => [a.key, a.value])).toEqual([
+      ['license_class', 'C'],
+      ['restrictions', 'NONE'],
+      ['endorsements', 'NONE'],
+      ['sex', 'F'],
+    ]);
+    expect(out.checks).toEqual([{ id: 'aamva', ok: false, failed: ['holder_name'] }]);
+  });
+
+  it('accepts the full name of a known jurisdiction as the issuing authority', () => {
+    const raw = license();
+    raw.fields.issuing_authority = 'State of Ohio';
+    const out = normalizeIdDocumentScan(raw, { ...ctx, barcode: { ...barcode, fields: { ...barcode.fields, state: 'OH' } } });
+    expect(out.fields.issuing_authority).toBe('State of Ohio');
+    expect(out.checks).toEqual([{ id: 'aamva', ok: true, failed: [] }]);
+  });
+
+  it('is ignored for any other kind, and absent without a barcode', () => {
+    const other = license({ documentKind: 'National ID' });
+    other.fields.document_number = 'X1284567';
+    const out = normalizeIdDocumentScan(other, ctx);
+    expect(out.fields.document_number).toBe('X1284567');
+    expect(out.checks).toEqual([]);
+    const none = normalizeIdDocumentScan(license({ barcodePresent: false }), { ...ctx, barcode: null });
+    expect(none.checks).toEqual([]);
+    expect(none.barcodePresent).toBe(false);
+  });
+
+  it('never runs for a passport', () => {
+    const out = normalizePassportScan(passportRaw(), { ...passportCtx, barcode } as never);
+    expect(out.checks.map((c) => c.id)).toEqual(['mrz']);
+    expect(out.barcodePresent).toBeUndefined();
   });
 });
 

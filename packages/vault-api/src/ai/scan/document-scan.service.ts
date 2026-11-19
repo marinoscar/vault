@@ -15,7 +15,7 @@ import {
   AiException,
 } from '../ai.errors';
 import { VAULT_AI, VAULT_METRICS, type VaultAiPort, type VaultMetricsPort } from '../../ports';
-import type { ScanOutcome, ScanProfile } from './scan-profile';
+import type { ScanOutcome, ScanProfile, ScanRequestHints } from './scan-profile';
 import { ScanProfileRegistry } from './scan-profile.registry';
 
 /**
@@ -45,12 +45,13 @@ export class DocumentScanService {
   /**
    * Scans `images` (data URLs keyed by slot) with the profile `profileId`. An absent or empty
    * optional slot is skipped; an absent required slot is `AI_INVALID_IMAGE`. Image validation
-   * (type, size) is the caller's.
+   * (type, size) is the caller's. `hints` go to the profile's normalizer only, never to the model.
    */
   async extract<TResult = unknown>(
     profileId: string,
     user: RequestUser,
     images: Readonly<Record<string, string | null | undefined>>,
+    hints?: ScanRequestHints,
   ): Promise<TResult> {
     const profile = this.registry.get<unknown, TResult>(profileId);
 
@@ -91,7 +92,7 @@ export class DocumentScanService {
         );
 
       const raw = profile.toRaw(result.parsed, { model: result.model });
-      const normalized = profile.normalize(raw, { providedSlots, model: result.model });
+      const normalized = profile.normalize(raw, { providedSlots, model: result.model, hints });
       this.record(profile, 'succeeded');
       return normalized;
     } catch (error) {
