@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import { render } from '../utils/test-utils.js';
 import { clipboardMock } from '../setup.js';
 import { MASK, SecretValueField } from '../../src/secrets/ui/components/SecretValueField.js';
 import { SECRET_CLIPBOARD_CLEAR_MS, SECRET_REVEAL_TIMEOUT_MS } from '../../src/secrets/headless/secretFields.js';
 import type { FieldDefinition } from '../../src/core/headless/types.js';
+import { mockDocumentSecret, mockDocumentType } from '../mocks/data.js';
 
 const PASSWORD: FieldDefinition = { name: 'password', label: 'Password', type: 'string', required: true, sensitive: true };
 const USERNAME: FieldDefinition = { name: 'username', label: 'Username', type: 'string', required: true, sensitive: false };
@@ -126,5 +127,79 @@ describe('SecretValueField', () => {
     render(<SecretValueField field={USERNAME} value="person.a@example.test" />);
     await click(screen.getByRole('button', { name: 'Copy Username' }));
     expect(screen.getByRole('status')).toHaveTextContent('Copy failed');
+  });
+
+  // -------------------------------------------------------------------------
+  // last4, keyvalue and country (issue #207)
+  // -------------------------------------------------------------------------
+
+  describe('the field model of issue #207', () => {
+    const fieldOf = (name: string) => mockDocumentType.fields.find((f) => f.name === name)!;
+    const NUMBER = fieldOf('number');
+    const DETAILS = fieldOf('details');
+    const COUNTRY = fieldOf('country');
+
+    it('masks a last4 field as bullets and its last four characters; reveal and copy are unchanged', async () => {
+      render(<SecretValueField field={NUMBER} value="X1234567" />);
+      expect(screen.getByTestId('secret-value-number')).toHaveTextContent('•••• 4567');
+      expect(screen.queryByText('X1234567')).not.toBeInTheDocument();
+
+      await click(screen.getByRole('button', { name: 'Copy Document number' }));
+      expect(clipboardMock.writeText).toHaveBeenCalledWith('X1234567');
+
+      await click(screen.getByRole('button', { name: 'Reveal Document number' }));
+      expect(screen.getByTestId('secret-value-number')).toHaveTextContent('X1234567');
+    });
+
+    it('keeps the full mask for a sensitive field without mask: last4 (cards unchanged)', () => {
+      render(<SecretValueField field={CARD_NUMBER} value="4242424242424242" />);
+      expect(screen.getByText(MASK)).toBeInTheDocument();
+    });
+
+    it('renders each keyvalue entry as its own row with its own copy', async () => {
+      render(<SecretValueField field={DETAILS} value={mockDocumentSecret.values.details} />);
+      const list = screen.getByRole('list', { name: 'Details' });
+      expect(within(list).getAllByRole('listitem')).toHaveLength(2);
+      expect(within(list).getByText('B')).toBeInTheDocument();
+      expect(within(list).queryByText('0000-placeholder')).not.toBeInTheDocument();
+      expect(within(list).queryByRole('button', { name: 'Reveal Class' })).not.toBeInTheDocument();
+
+      await click(within(list).getByRole('button', { name: 'Copy PIN' }));
+      expect(clipboardMock.writeText).toHaveBeenCalledWith('0000-placeholder');
+      expect(within(list).queryByText('0000-placeholder')).not.toBeInTheDocument();
+    });
+
+    it('reveals a sensitive entry on its own and masks it again after the timeout', async () => {
+      vi.useFakeTimers();
+      render(<SecretValueField field={DETAILS} value={mockDocumentSecret.values.details} />);
+
+      await click(screen.getByRole('button', { name: 'Reveal PIN' }));
+      expect(screen.getByText('0000-placeholder')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Hide PIN' })).toHaveAttribute('aria-pressed', 'true');
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(SECRET_REVEAL_TIMEOUT_MS - 1);
+      });
+      expect(screen.getByText('0000-placeholder')).toBeInTheDocument();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(screen.queryByText('0000-placeholder')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Reveal PIN' })).toBeInTheDocument();
+    });
+
+    it('renders an empty keyvalue value as a dash', () => {
+      render(<SecretValueField field={DETAILS} value={[]} />);
+      expect(screen.getByText('—')).toBeInTheDocument();
+      expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    });
+
+    it('shows a country by name and copies its code', async () => {
+      render(<SecretValueField field={COUNTRY} value="UTO" />);
+      expect(screen.getByText('Utopia (ICAO specimen state) (UTO)')).toBeInTheDocument();
+      await click(screen.getByRole('button', { name: 'Copy Issuing country' }));
+      expect(clipboardMock.writeText).toHaveBeenCalledWith('UTO');
+    });
   });
 });

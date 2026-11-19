@@ -15,13 +15,19 @@ import {
   formatSecretValueForCopy,
 } from '../../headless/secretFields.js';
 import type { FieldDefinition } from '../../../core/headless/types.js';
+import { maskLast4 } from '../../headless/masking.js';
+import { toKeyValueEntries } from '../../headless/keyValue.js';
+import { formatCountryValue } from '../../headless/country.js';
 
 export const MASK = '••••••••••••';
 
 interface SecretValueFieldProps {
   field: FieldDefinition;
-  /** The decrypted value from the detail response; '' when empty. */
-  value: string;
+  /**
+   * The decrypted value from the detail response; '' when empty. A `keyvalue`
+   * field's value is its entry array.
+   */
+  value: unknown;
   /** Masks again after this many ms; defaults to {@link SECRET_REVEAL_TIMEOUT_MS}. */
   revealTimeoutMs?: number;
 }
@@ -34,12 +40,84 @@ interface SecretValueFieldProps {
  * {@link SECRET_CLIPBOARD_CLEAR_MS} when the browser allows a readback and it
  * still holds what was copied. Outcomes are announced in a polite live region;
  * the value itself is never put in an accessible name.
+ *
+ * `mask: 'last4'` masks as `•••• ` plus the last four characters. A `keyvalue`
+ * field renders one row per entry, each with its own copy and, for a sensitive
+ * entry, its own reveal that masks again after the same timeout. A `country`
+ * field shows `"<name> (<code>)"` and copies the code.
  */
 export function SecretValueField({
   field,
   value,
   revealTimeoutMs = SECRET_REVEAL_TIMEOUT_MS,
 }: SecretValueFieldProps) {
+  if (field.type === 'keyvalue') {
+    return <KeyValueValue field={field} value={value} revealTimeoutMs={revealTimeoutMs} />;
+  }
+  return (
+    <ScalarValue
+      field={field}
+      value={value === undefined || value === null ? '' : String(value)}
+      revealTimeoutMs={revealTimeoutMs}
+    />
+  );
+}
+
+function KeyValueValue({
+  field,
+  value,
+  revealTimeoutMs,
+}: {
+  field: FieldDefinition;
+  value: unknown;
+  revealTimeoutMs: number;
+}) {
+  const entries = toKeyValueEntries(value);
+  return (
+    <Box data-testid={`secret-field-${field.name}`} sx={{ py: 1.25, minWidth: 0 }}>
+      <Typography
+        variant="caption"
+        component="div"
+        sx={{ color: 'text.secondary', fontWeight: 500, px: 2 }}
+      >
+        {field.label}
+      </Typography>
+      {entries.length === 0 ? (
+        <Typography variant="body2" sx={{ color: 'text.disabled', px: 2 }}>
+          —
+        </Typography>
+      ) : (
+        <Box component="ul" aria-label={field.label} sx={{ listStyle: 'none', m: 0, p: 0 }}>
+          {entries.map((entry, index) => (
+            <Box component="li" key={entry.key || index} sx={{ '& > div': { py: 0.5 } }}>
+              <ScalarValue
+                field={{
+                  name: `${field.name}.${entry.key || index}`,
+                  label: entry.label,
+                  type: 'string',
+                  required: false,
+                  sensitive: entry.sensitive,
+                }}
+                value={entry.value}
+                revealTimeoutMs={revealTimeoutMs}
+              />
+            </Box>
+          ))}
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+function ScalarValue({
+  field,
+  value,
+  revealTimeoutMs,
+}: {
+  field: FieldDefinition;
+  value: string;
+  revealTimeoutMs: number;
+}) {
   const [revealed, setRevealed] = useState(false);
   const [announcement, setAnnouncement] = useState('');
   const { copy, copied, failed } = useCopyToClipboard({ clearAfterMs: SECRET_CLIPBOARD_CLEAR_MS });
@@ -71,6 +149,8 @@ export function SecretValueField({
   };
 
   const multiline = !field.sensitive && value.includes('\n');
+  const maskedText = field.mask === 'last4' ? maskLast4(value) || MASK : MASK;
+  const display = field.format === 'country' ? formatCountryValue(value) : value;
 
   return (
     <Box
@@ -102,7 +182,7 @@ export function SecretValueField({
               mt: 0.25,
             }}
           >
-            {masked ? MASK : value}
+            {masked ? maskedText : display}
           </Typography>
         )}
       </Box>

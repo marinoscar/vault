@@ -12,6 +12,8 @@
  * Pure functions only: no DOM access, so they are reusable from the cards view.
  */
 
+import { maskLast4 } from '../../secrets/headless/masking.js';
+
 /** Coerce an unknown stored field into a trimmed string. */
 function toStringValue(value: unknown): string {
   if (value === null || value === undefined) {
@@ -124,25 +126,5 @@ export function formatExpiryForCopy(month: unknown, year: unknown): string {
  * four".
  */
 export function maskCardNumber(value: unknown): string {
-  const digits = digitsOnly(value);
-  if (digits === '') {
-    return '';
-  }
-
-  const VISIBLE = 4;
-
-  // Too short to reveal a meaningful "last four" without leaking the whole
-  // number, so mask all of it.
-  if (digits.length <= VISIBLE) {
-    return '•'.repeat(digits.length);
-  }
-
-  const hiddenCount = digits.length - VISIBLE;
-  const last = digits.slice(hiddenCount);
-
-  // Group the masked portion in fours and keep the visible digits as their own
-  // trailing group, so a 15-digit Amex renders '•••• •••• ••• 4242' rather than
-  // splitting the real digits across groups.
-  const maskedGroups = '•'.repeat(hiddenCount).match(/.{1,4}/g) ?? [];
-  return [...maskedGroups, last].join(' ');
+  return maskLast4(digitsOnly(value), { groupHidden: true });
 }

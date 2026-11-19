@@ -142,15 +142,15 @@ describe('SecretForm with the identity document types', () => {
     const user = userEvent.setup();
     renderForm();
     await pickOption(user, /Type/, 'ID Document');
-    expect(dynamicFieldsProps.at(-1)!.suggestions).toEqual({});
+    expect(dynamicFieldsProps.at(-1)!.keyValueSuggestions).toEqual({});
 
     await pickOption(user, /Document Kind/, 'Trusted Traveler Card');
-    expect(dynamicFieldsProps.at(-1)!.suggestions).toEqual({
+    expect(dynamicFieldsProps.at(-1)!.keyValueSuggestions).toEqual({
       attributes: ID_DOCUMENT_KIND_CATALOG['Trusted Traveler Card'].standardKeys,
     });
 
     await pickOption(user, /Document Kind/, 'Vehicle Registration');
-    const keys = (dynamicFieldsProps.at(-1)!.suggestions as { attributes: Array<{ key: string }> }).attributes.map((k) => k.key);
+    const keys = (dynamicFieldsProps.at(-1)!.keyValueSuggestions as { attributes: Array<{ key: string }> }).attributes.map((k) => k.key);
     expect(keys).toEqual(['vin', 'plate', 'make', 'model', 'year', 'registered_owner']);
   });
 });

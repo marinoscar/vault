@@ -844,7 +844,7 @@ Two Playwright suites live under `tests/` (E10.7, #98). They share `tests/suppor
 | Suite | Folder | Covers |
 |---|---|---|
 | e2e | `tests/e2e/specs/journeys.spec.ts` | sign in (the OAuth redirect is collapsed into `/auth/callback`), create a secret, reveal and copy a value, import a card with a mocked AI extraction, save a My backup |
-| visual | `tests/visual/specs/screens.spec.ts` | Home, Secrets, Secret detail, Cards, `/settings`, `/admin/settings`, each at 390 and 1440 px, light and dark (24 screenshots) |
+| visual | `tests/visual/specs/screens.spec.ts` | Home, Secrets, Secret detail, Cards, Card detail, a secret with key/value entries (#207), `/settings`, `/admin/settings`, each at 390 and 1440 px, light and dark (32 screenshots) |
 
 The obsolete `tests/e2e` specs (`auth.spec.ts`, `example.spec.ts`, `helpers/auth.helper.ts`, `fixtures/auth.fixture.ts`) drove `/testing/login` against the docker-compose stack and were removed; the production build has no `/testing/login` route.
 

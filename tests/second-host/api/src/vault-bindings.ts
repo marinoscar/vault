@@ -268,6 +268,9 @@ export class HostBetaMetrics implements VaultMetricsPort {
   cardExtracted(): void {
     this.add('app.beta.cards.extractions');
   }
+  documentExtracted(): void {
+    this.add('app.beta.documents.extractions');
+  }
 }
 
 // -----------------------------------------------------------------------------

@@ -270,6 +270,45 @@ export const SECRETS: FixtureSecret[] = [
   },
 ];
 
+/**
+ * A test-only system type with the field model of #207: a `last4` mask, a
+ * `country` field, a `multiline` field and a `keyvalue` field.
+ */
+export const TYPE_DOCUMENT_FIXTURE = systemType('type-document-fixture', 'Document Fixture', 'Field model fixture', 'Badge', [
+  field('holder', 'Holder', true, false),
+  field('number', 'Document number', true, true, { mask: 'last4' }),
+  field('country', 'Issuing country', false, false, { format: 'country' }),
+  field('remarks', 'Remarks', false, false, { format: 'multiline' }),
+  field('details', 'Details', false, false, { type: 'keyvalue' }),
+]);
+
+/**
+ * Secrets the detail route answers but the list does not hold, so a new
+ * screenshot does not move the list baselines.
+ */
+export const DETAIL_ONLY_SECRETS: FixtureSecret[] = [
+  {
+    id: 'secret-document-fixture',
+    name: 'Person A document',
+    description: null,
+    type: TYPE_DOCUMENT_FIXTURE,
+    currentVersion: 1,
+    createdAt: '2026-04-10T09:00:00.000Z',
+    updatedAt: '2026-04-10T09:00:00.000Z',
+    values: {
+      holder: 'Person A',
+      number: 'X1234567',
+      country: 'UTO',
+      remarks: 'Specimen document.\nInvented values only.',
+      details: [
+        { key: 'class', label: 'Class', value: 'B', sensitive: false },
+        { key: 'restrictions', label: 'Restrictions', value: 'None', sensitive: false },
+        { key: 'pin', label: 'PIN', value: '0000-placeholder', sensitive: true },
+      ],
+    },
+  },
+];
+
 /** The card summaries `GET /secrets/cards/summary` answers (last four digits and expiry only). */
 export const CARD_SUMMARIES = [
   {
