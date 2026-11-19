@@ -17,6 +17,7 @@ import {
   ACCESS_TOKEN,
   BACKUP_RUN,
   CARD_EXTRACTION,
+  DOCUMENT_EXTRACTION,
   CARD_SUMMARIES,
   FROZEN_NOW,
   CARD_GRANTS,
@@ -25,6 +26,7 @@ import {
   DETAIL_ONLY_SECRETS,
   SECRETS,
   SECRET_TYPES,
+  TYPE_ID_DOCUMENT,
   makeUser,
   type FixtureSecret,
 } from './fixtures';
@@ -225,7 +227,7 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}): 
     }
 
     // ---- secret types ------------------------------------------------------
-    if (path === '/secret-types') return json(route, { data: SECRET_TYPES });
+    if (path === '/secret-types') return json(route, { data: [...SECRET_TYPES, TYPE_ID_DOCUMENT] });
     const typeMatch = path.match(/^\/secret-types\/([^/]+)$/);
     if (typeMatch) {
       const t = SECRET_TYPES.find((x) => x.id === typeMatch[1]);
@@ -293,6 +295,9 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}): 
     if (path === '/secrets/cards/summary') {
       const cards = empty ? [] : CARD_SUMMARIES;
       return json(route, { data: page_(cards, 1, Number(url.searchParams.get('pageSize') ?? 20)) });
+    }
+    if (path === '/secrets/documents/extract' && method === 'POST') {
+      return json(route, { data: DOCUMENT_EXTRACTION });
     }
     if (path === '/secrets/cards/extract' && method === 'POST') {
       return json(route, { data: CARD_EXTRACTION });
