@@ -127,3 +127,63 @@ export const VAULT_PERMISSIONS = {
     defaultGrants: ['admin'],
   },
 } as const satisfies Record<string, PermissionDeclaration>;
+
+/**
+ * The four roles {@link VAULT_PERMISSIONS} grants by default: the platform's `admin` (system) and
+ * `org_admin`, `contributor`, `viewer` (org).
+ */
+export type VaultDefaultGrantRole = 'admin' | 'org_admin' | 'contributor' | 'viewer';
+
+/**
+ * How a host maps Vault's default grants onto ITS roles (issue #194): for each of the four roles
+ * Vault grants by default, the host roles that receive those grants instead. A key left out keeps
+ * the platform role of the same name; an empty list grants nothing for that key (an operator then
+ * grants the permission by hand). A target role must exist in the host's registry with the same
+ * scope (`admin` maps to system roles, the other three to org roles); the platform's registry
+ * refuses anything else at registration time.
+ *
+ * @extensionPoint option
+ * @stability experimental
+ */
+export type VaultRoleMapping = Partial<Record<VaultDefaultGrantRole, readonly string[]>>;
+
+/** The keys of {@link VAULT_PERMISSIONS}. */
+export type VaultPermissionKey = keyof typeof VAULT_PERMISSIONS;
+
+/**
+ * Vault's permission declarations with the default grants mapped onto a host's roles. The ids,
+ * descriptions and scopes never change (they are persisted and enforced by the controllers); only
+ * who holds them by default does. Without a mapping it returns {@link VAULT_PERMISSIONS} itself,
+ * which is what Vault registers.
+ *
+ * @param roles - see {@link VaultRoleMapping}.
+ * @returns a declaration map for `registerPlatformPermissions({ app: { permissions: [...] } })`.
+ *
+ * @example
+ * ```ts
+ * registerPlatformPermissions({
+ *   app: {
+ *     roles: [HOST_ROLES],
+ *     permissions: [vaultPermissionDeclarations({ contributor: ['beta_editor'], viewer: ['beta_reader'] })],
+ *   },
+ * });
+ * ```
+ *
+ * @extensionPoint option
+ * @stability experimental
+ */
+export function vaultPermissionDeclarations(roles?: VaultRoleMapping): Record<VaultPermissionKey, PermissionDeclaration> {
+  if (!roles) return VAULT_PERMISSIONS;
+  const map = (grants: readonly string[]): string[] => {
+    const out: string[] = [];
+    for (const role of grants) {
+      for (const target of roles[role as VaultDefaultGrantRole] ?? [role]) {
+        if (!out.includes(target)) out.push(target);
+      }
+    }
+    return out;
+  };
+  return Object.fromEntries(
+    Object.entries(VAULT_PERMISSIONS).map(([key, declaration]) => [key, { ...declaration, defaultGrants: map(declaration.defaultGrants) }]),
+  ) as unknown as Record<VaultPermissionKey, PermissionDeclaration>;
+}
