@@ -449,7 +449,7 @@ export default function SecretDetailPage() {
                       {index > 0 && <Divider />}
                       <SecretValueField
                         field={field}
-                        value={raw === undefined || raw === null ? '' : String(raw)}
+                        value={raw}
                       />
                     </Box>
                   );

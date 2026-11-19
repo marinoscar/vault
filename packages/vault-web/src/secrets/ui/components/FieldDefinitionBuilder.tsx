@@ -34,7 +34,11 @@ interface FieldDefinitionBuilderProps {
   onValidityChange?: (isValid: boolean) => void;
 }
 
-const FIELD_TYPES: { value: FieldDefinition['type']; label: string }[] = [
+/**
+ * The types a custom secret type may use. `keyvalue` is deliberately absent:
+ * it is reserved for system types and the API refuses it on a custom type.
+ */
+const FIELD_TYPES: { value: Exclude<FieldDefinition['type'], 'keyvalue'>; label: string }[] = [
   { value: 'string', label: 'String' },
   { value: 'number', label: 'Number' },
   { value: 'date', label: 'Date' },

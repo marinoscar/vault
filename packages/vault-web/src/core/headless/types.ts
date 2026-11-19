@@ -209,15 +209,14 @@ export interface SystemSettings {
 // Secret Types
 // =============================================================================
 
-export interface FieldDefinition {
-  name: string;
-  label: string;
-  type: 'string' | 'number' | 'date' | 'select';
-  required: boolean;
-  sensitive: boolean;
-  /** Allowed values; only meaningful when type is 'select'. */
-  options?: string[];
-}
+/**
+ * One field of a secret type, the contract's own type
+ * (`@marinoscar/vault-contract/secret-types`): `string | number | date | select
+ * | keyvalue`, with the optional `format` (`country`, `multiline`) and `mask`
+ * (`last4`) of a string field.
+ */
+export type { FieldDefinition, FieldFormat, FieldMask, KeyValueEntry } from '@marinoscar/vault-contract/secret-types';
+import type { FieldDefinition } from '@marinoscar/vault-contract/secret-types';
 
 export interface SecretType {
   id: string;
