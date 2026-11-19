@@ -10,3 +10,4 @@ export * from './scan/crop-box';
 export * from './scan/document-scan.service';
 export * from './scan/scan-profile';
 export * from './scan/scan-profile.registry';
+export * from './scan/checks';

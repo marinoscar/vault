@@ -21,14 +21,11 @@ const DISTS = ['vault-api', 'vault-contract', 'vault-db', 'vault-web'].map((name
 /**
  * Justified exceptions, as `<package>/dist/<path>`: each names why it is still here.
  *
- * - agent-notifier: the agent notification links still read `APP_URL`; it moves to `VAULT_HOST`
- *   when the agent slice's in-process release port (#195) lands, which rewrites that file.
  * - agent-testing/guard (#196): the conformance kit's production guard reads `NODE_ENV` only to
  *   REFUSE to run (the fake Vault and the runner are test tools); it configures nothing. A host
  *   never loads `./agent-testing` outside its tests.
  */
 const ALLOWED = new Set<string>([
-  'vault-api/dist/agent/agent-notifier.service.js',
   'vault-contract/dist/cjs/agent-testing/guard.js',
   'vault-contract/dist/esm/agent-testing/guard.js',
 ]);

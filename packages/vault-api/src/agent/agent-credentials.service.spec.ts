@@ -26,7 +26,7 @@ const secretRow = (over: Record<string, unknown> = {}) => ({
   type: { name: 'Credential', isSystem: true }, ...over,
 });
 
-function build(settings: Record<string, unknown> = { enabled: true }) {
+function build(settings: Record<string, unknown> = { enabled: true }, host?: { appUrl?: string | null }) {
   const secrets = {
     findAgentAccessibleSecret: jest.fn().mockResolvedValue(secretRow()),
     assertAgentAccessible: jest.fn((s: unknown) => { if (!s) throw new NotFoundException('Secret not found'); }),
@@ -55,7 +55,7 @@ function build(settings: Record<string, unknown> = { enabled: true }) {
     },
     oAuthClient: { findUnique: jest.fn().mockResolvedValue({ name: 'Agent App A' }) },
   };
-  const notifier = new AgentNotifier(prisma as never, notify as never);
+  const notifier = new AgentNotifier(prisma as never, notify as never, host);
   const service = new AgentCredentialsService(
     secrets as unknown as SecretsService,
     new AgentCallPipeline(limiter, new FakeSettings({ agentAccess: settings }), audit),
@@ -409,6 +409,32 @@ describe('AgentCredentialsService notifications (E14.7)', () => {
     expect(blob).not.toContain(CANARY_PASSWORD);
     expect(blob).not.toContain(CANARY_USER);
     expect(blob).not.toContain('123456');
+  });
+
+  it('links come from the host binding (VAULT_HOST, read on every use), never from the environment', async () => {
+    const saved = process.env.APP_URL;
+    process.env.APP_URL = 'https://env.example.test';
+    try {
+      const unbound = build();
+      await unbound.service.fill(caller(), ID, fillBody());
+      await unbound.service.create(caller(), { name: 'Shop', origin: ORIGIN, generate: { length: 24 }, purpose: 'signup' } as never);
+      for (const sent of unbound.notify.sent) expect(sent.data).not.toHaveProperty('appUrl');
+
+      const host: { appUrl: string | null } = { appUrl: 'https://host.example.test' };
+      const bound = build(undefined, host);
+      await bound.service.fill(caller(), ID, fillBody());
+      const newApp = bound.notify.sent.find((s) => s.event === 'vault.agent_new_app')!;
+      expect(newApp.data).toMatchObject({ appUrl: 'https://host.example.test' });
+      host.appUrl = 'https://moved.example.test';
+      await bound.service.create(caller(), { name: 'Shop', origin: ORIGIN, generate: { length: 24 }, purpose: 'signup' } as never);
+      expect(bound.notify.sent.at(-1)!.data).toMatchObject({ appUrl: 'https://moved.example.test' });
+      host.appUrl = null;
+      await bound.service.create(caller(), { name: 'Shop', origin: ORIGIN, generate: { length: 24 }, purpose: 'signup' } as never);
+      expect(bound.notify.sent.at(-1)!.data).not.toHaveProperty('appUrl');
+    } finally {
+      if (saved === undefined) delete process.env.APP_URL;
+      else process.env.APP_URL = saved;
+    }
   });
 
   it('notifies after the work committed and the audit row was written, and a failing notifier never fails the call', async () => {
