@@ -9,6 +9,8 @@ import {
   validateSecretFields,
   validateSecretForm,
 } from '../../src/secrets/headless/secretFields.js';
+import { maskLast4 } from '../../src/secrets/headless/masking.js';
+import { deriveEntryKey, entryKeyBase } from '../../src/secrets/headless/keyValue.js';
 import type { FieldDefinition } from '../../src/core/headless/types.js';
 
 const FIELDS: FieldDefinition[] = [
@@ -89,5 +91,125 @@ describe('formatRelativeTime', () => {
     expect(formatRelativeTime('2026-11-02T11:55:00Z', now)).toBe('5m ago');
     expect(formatRelativeTime('2026-11-02T09:00:00Z', now)).toBe('3h ago');
     expect(formatRelativeTime('2026-10-31T12:00:00Z', now)).toBe('2d ago');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// keyvalue, country and the last-4 mask (issue #207)
+// ---------------------------------------------------------------------------
+
+const DETAILS: FieldDefinition = { name: 'details', label: 'Details', type: 'keyvalue', required: true, sensitive: false };
+const OPTIONAL_DETAILS: FieldDefinition = { ...DETAILS, required: false };
+const COUNTRY: FieldDefinition = {
+  name: 'country',
+  label: 'Country',
+  type: 'string',
+  required: false,
+  sensitive: false,
+  format: 'country',
+};
+const CLASS_ENTRY = { key: 'class', label: 'Class', value: 'B', sensitive: false };
+const PIN_ENTRY = { key: 'pin', label: 'PIN', value: '0000-placeholder', sensitive: true };
+
+describe('keyvalue fields', () => {
+  it('validates required as at least one entry with a label or a value', () => {
+    expect(validateSecretFields([DETAILS], { details: [] })).toEqual({ details: 'Details is required' });
+    expect(validateSecretFields([DETAILS], {})).toEqual({ details: 'Details is required' });
+    expect(
+      validateSecretFields([DETAILS], { details: [{ key: '', label: '  ', value: '', sensitive: false }] }),
+    ).toEqual({ details: 'Details is required' });
+    expect(validateSecretFields([DETAILS], { details: [CLASS_ENTRY] })).toEqual({});
+    expect(validateSecretFields([OPTIONAL_DETAILS], { details: [] })).toEqual({});
+  });
+
+  it('requires a label on every entry with a value', () => {
+    expect(
+      validateSecretFields([OPTIONAL_DETAILS], {
+        details: [CLASS_ENTRY, { key: '', label: ' ', value: 'X1234567', sensitive: false }],
+      }),
+    ).toEqual({ details: 'Every Details entry needs a label' });
+  });
+
+  it('cleans entries: trims, drops empty rows, derives missing keys', () => {
+    const cleaned = cleanSecretData([DETAILS], {
+      details: [
+        { key: 'class', label: ' Class ', value: ' B ', sensitive: false },
+        { key: '', label: '', value: '   ', sensitive: false },
+        { key: '', label: 'Class', value: 'C', sensitive: true },
+      ],
+    });
+    expect(cleaned).toEqual({
+      details: [
+        { key: 'class', label: 'Class', value: 'B', sensitive: false },
+        { key: 'class_2', label: 'Class', value: 'C', sensitive: true },
+      ],
+    });
+  });
+
+  it('omits an optional keyvalue field with no entry left', () => {
+    expect(cleanSecretData([OPTIONAL_DETAILS], { details: [{ key: '', label: '', value: '', sensitive: false }] })).toEqual({});
+  });
+
+  it('diffs entries structurally, by key then label, value and sensitive', () => {
+    const same = diffSecretValues([DETAILS], { details: [CLASS_ENTRY, PIN_ENTRY] }, { details: [PIN_ENTRY, CLASS_ENTRY] });
+    expect(same[0].change).toBe('unchanged');
+    expect(same[0].versionEntries).toEqual([CLASS_ENTRY, PIN_ENTRY]);
+    expect(same[0].currentEntries).toEqual([PIN_ENTRY, CLASS_ENTRY]);
+
+    const flipped = diffSecretValues([DETAILS], { details: [PIN_ENTRY] }, { details: [{ ...PIN_ENTRY, sensitive: false }] });
+    expect(flipped[0].change).toBe('changed');
+    const relabelled = diffSecretValues([DETAILS], { details: [CLASS_ENTRY] }, { details: [{ ...CLASS_ENTRY, label: 'Category' }] });
+    expect(relabelled[0].change).toBe('changed');
+    const rekeyed = diffSecretValues([DETAILS], { details: [CLASS_ENTRY] }, { details: [{ ...CLASS_ENTRY, key: 'category' }] });
+    expect(rekeyed[0].change).toBe('changed');
+
+    expect(diffSecretValues([DETAILS], {}, { details: [CLASS_ENTRY] })[0].change).toBe('added');
+    expect(diffSecretValues([DETAILS], { details: [CLASS_ENTRY] }, { details: [] })[0].change).toBe('removed');
+  });
+
+  it('copies a whole keyvalue value as one line per entry', () => {
+    expect(formatSecretValueForCopy([CLASS_ENTRY, PIN_ENTRY], 'details')).toBe('Class: B\nPIN: 0000-placeholder');
+    // A single entry's own copy is its value, never reformatted as a card field.
+    expect(formatSecretValueForCopy('X1234567')).toBe('X1234567');
+  });
+});
+
+describe('country fields', () => {
+  it('accepts an alpha-3 code of the table in any case, refuses anything else', () => {
+    expect(validateSecretFields([COUNTRY], { country: 'UTO' })).toEqual({});
+    expect(validateSecretFields([COUNTRY], { country: 'deu' })).toEqual({});
+    expect(validateSecretFields([COUNTRY], { country: '' })).toEqual({});
+    expect(validateSecretFields([COUNTRY], { country: 'DE' })).toEqual({
+      country: 'Country must be a country code from the list',
+    });
+    expect(validateSecretFields([COUNTRY], { country: 'ZZZ' })).toHaveProperty('country');
+  });
+});
+
+describe('maskLast4', () => {
+  it('shows a fixed prefix and the last four non-space characters', () => {
+    expect(maskLast4('X1234567')).toBe('•••• 4567');
+    expect(maskLast4('X12 345 67')).toBe('•••• 4567');
+    expect(maskLast4('ABCD')).toBe('••••');
+    expect(maskLast4('AB')).toBe('••');
+    expect(maskLast4('')).toBe('');
+    expect(maskLast4(null)).toBe('');
+  });
+
+  it('groups the hidden part in fours on request (the card number display)', () => {
+    expect(maskLast4('4242424242424242', { groupHidden: true })).toBe('•••• •••• •••• 4242');
+    expect(maskLast4('378282246310005', { groupHidden: true })).toBe('•••• •••• ••• 0005');
+  });
+});
+
+describe('entry keys', () => {
+  it('derives a snake_case key from the label and dedupes it', () => {
+    expect(entryKeyBase('Vehicle class')).toBe('vehicle_class');
+    expect(entryKeyBase('  Ünïcode -- Label!! ')).toBe('unicode_label');
+    expect(entryKeyBase('2nd line')).toBe('entry_2nd_line');
+    expect(entryKeyBase('!!!')).toBe('');
+    expect(deriveEntryKey('Class', ['class'])).toBe('class_2');
+    expect(deriveEntryKey('Class', ['class', 'class_2'])).toBe('class_3');
+    expect(deriveEntryKey('', [])).toBe('');
   });
 });
