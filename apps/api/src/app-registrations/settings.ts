@@ -234,6 +234,8 @@ export const DEFAULT_CARD_EXTRACT_MODEL = 'gpt-4o-mini';
  */
 export const vaultAiExtensionSchema = z.object({
   cardExtractModel: z.string().trim().min(1).max(128),
+  /** The model `document_extract` runs on (#210); unset means `cardExtractModel`. */
+  documentExtractModel: z.string().trim().min(1).max(128).optional(),
 });
 export type VaultAiExtensionValue = z.infer<typeof vaultAiExtensionSchema>;
 

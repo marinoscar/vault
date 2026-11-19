@@ -107,6 +107,7 @@ describe('recorded Vault metrics', () => {
     metrics.secretVersionCreated('rollback');
     metrics.backupFinished({ scope: 'user', trigger: 'manual', outcome: 'succeeded', durationMs: 2500 });
     metrics.cardExtracted('succeeded');
+    metrics.documentExtracted('passport', 'invalid_image');
 
     const data = await collect(reader);
     const byName = Object.fromEntries(data.map((m) => [m.descriptor.name, m]));
@@ -116,6 +117,7 @@ describe('recorded Vault metrics', () => {
     expect(attributesOf(byName['app.vault.backups.runs'])).toEqual([{ scope: 'user', trigger: 'manual', outcome: 'succeeded' }]);
     expect(attributesOf(byName['app.vault.backups.duration'])).toEqual([{ scope: 'user', trigger: 'manual', outcome: 'succeeded' }]);
     expect(attributesOf(byName['app.vault.cards.extractions'])).toEqual([{ outcome: 'succeeded' }]);
+    expect(attributesOf(byName['app.vault.documents.extractions'])).toEqual([{ document_type: 'passport', outcome: 'invalid_image' }]);
   });
 
   it('exports an identifier passed as a label value as "other", never as itself', async () => {
