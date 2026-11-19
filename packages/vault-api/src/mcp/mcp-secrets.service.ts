@@ -153,7 +153,7 @@ export class McpSecretsService {
     input: { query?: string; type?: string; origin?: string; limit?: number },
   ): Promise<{ items: McpSecretView[]; sensitive: string[] }> {
     const limit = Math.min(Math.max(input.limit ?? 20, 1), MCP_SEARCH_MAX_LIMIT);
-    // Only Credentials can be opened to agents.
+    // MCP serves Credentials only; cards and identity items (ADR-0003) are never visible over MCP.
     if (input.type && input.type.trim().toLowerCase() !== 'credential') return { items: [], sensitive: [] };
 
     let ids: string[] | undefined;
@@ -215,7 +215,8 @@ export class McpSecretsService {
       .map((t) => ({
         name: t.name,
         description: t.description ?? null,
-        // Only a Credential can be opened to agents, so only its secrets show up in search_secrets and get_secret.
+        // Over MCP only a Credential can be opened to agents (cards and identity are opened in Vault, ADR-0003),
+        // so only its secrets show up in search_secrets and get_secret.
         canOpenToAgents: t.isSystem === true && t.name === 'Credential',
         fields: fieldsOf(t).map((f) => ({
           name: f.name,

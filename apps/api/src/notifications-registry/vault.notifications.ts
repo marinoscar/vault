@@ -9,6 +9,9 @@
 //   vault.agent_credential_changed  an app saved a login or changed a password (E14.7; email + bell)
 //   vault.agent_new_app      the first successful fill by an app (email + bell)
 //   vault.agent_credential_used     a successful fill or one-time code (bell only, counted)
+//   vault.agent_card_grant_requested an app asks to use a card at a shop (ADR-0003; email + bell)
+//   vault.agent_card_first_release   a card was released under a grant for the first time (email + bell)
+//   vault.agent_card_declined        Vault refused a card fill by a grant rule (email + bell, throttled)
 //
 // The platform's event key pattern allows exactly one dot, so the agent events are
 // `vault.agent_*`. The platform has no digest support, so there is no daily email digest of
@@ -33,6 +36,17 @@
 import type { BrowserNotificationContent, NotificationRegistration } from '@marinoscar/platform-api/notifications';
 
 import {
+  AGENT_CARD_DECLINE_REASONS,
+  VAULT_AGENT_CARD_DECLINED_EVENT,
+  VAULT_AGENT_CARD_DECLINED_TEMPLATE,
+  VAULT_AGENT_CARD_FIRST_RELEASE_EVENT,
+  VAULT_AGENT_CARD_FIRST_RELEASE_TEMPLATE,
+  VAULT_AGENT_CARD_GRANT_REQUESTED_EVENT,
+  VAULT_AGENT_CARD_GRANT_REQUESTED_TEMPLATE,
+  agentCardAmountPhrase,
+  type VaultAgentCardDeclinedNotificationData,
+  type VaultAgentCardFirstReleaseNotificationData,
+  type VaultAgentCardGrantRequestedNotificationData,
   VAULT_AGENT_CREDENTIAL_CHANGED_EVENT,
   VAULT_AGENT_CREDENTIAL_CHANGED_TEMPLATE,
   VAULT_AGENT_CREDENTIAL_USED_EVENT,
@@ -120,6 +134,37 @@ export function vaultAgentCredentialUsedBrowserTemplate(
   };
 }
 
+/** Bell and push copy of `vault.agent_card_grant_requested`: links to the card, where Approve and Decline are. */
+export function vaultAgentCardGrantRequestedBrowserTemplate(
+  data: VaultAgentCardGrantRequestedNotificationData,
+): BrowserNotificationContent {
+  return {
+    title: 'An app asks to use a card',
+    body: `${data.clientName} asks to use ${data.secretName}${data.origin ? ` at ${data.origin}` : ''} for ${agentCardAmountPhrase(data)}.`,
+    link: agentSecretLinkFor(data.secretId),
+  };
+}
+
+/** Bell and push copy of `vault.agent_card_first_release`. */
+export function vaultAgentCardFirstReleaseBrowserTemplate(
+  data: VaultAgentCardFirstReleaseNotificationData,
+): BrowserNotificationContent {
+  return {
+    title: 'A card was used by an app',
+    body: `${data.clientName} used ${data.secretName}${data.origin ? ` at ${data.origin}` : ''} for the first time (${agentCardAmountPhrase(data)}).`,
+    link: AGENT_ACTIVITY_SETTINGS_PATH,
+  };
+}
+
+/** Bell and push copy of `vault.agent_card_declined`: the static reason, never a card value. */
+export function vaultAgentCardDeclinedBrowserTemplate(data: VaultAgentCardDeclinedNotificationData): BrowserNotificationContent {
+  return {
+    title: 'Vault declined a card use',
+    body: `${data.clientName} could not use ${data.secretName}: ${AGENT_CARD_DECLINE_REASONS[data.reason]}.`,
+    link: AGENT_ACTIVITY_SETTINGS_PATH,
+  };
+}
+
 export const VAULT_NOTIFICATIONS: readonly NotificationRegistration[] = [
   {
     event: {
@@ -192,5 +237,41 @@ export const VAULT_NOTIFICATIONS: readonly NotificationRegistration[] = [
       kind: 'counted',
     },
     browserTemplate: (data: never) => vaultAgentCredentialUsedBrowserTemplate(data),
+  },
+  {
+    event: {
+      key: VAULT_AGENT_CARD_GRANT_REQUESTED_EVENT,
+      label: 'An app asks to use a card',
+      description:
+        'Sent right away when an agent app asks to use one of your cards at a shop. Approve or decline it on the card. It names the app, the card, the shop and the amount, never the card number.',
+      channels: ['email', 'browser'],
+      defaultEnabled: true,
+    },
+    emailTemplate: VAULT_AGENT_CARD_GRANT_REQUESTED_TEMPLATE,
+    browserTemplate: (data: never) => vaultAgentCardGrantRequestedBrowserTemplate(data),
+  },
+  {
+    event: {
+      key: VAULT_AGENT_CARD_FIRST_RELEASE_EVENT,
+      label: 'A card was used at a shop for the first time',
+      description:
+        'Sent the first time an agent app uses one of your cards at a shop you allowed. It names the app, the card, the shop and the amount, never the card number.',
+      channels: ['email', 'browser'],
+      defaultEnabled: true,
+    },
+    emailTemplate: VAULT_AGENT_CARD_FIRST_RELEASE_TEMPLATE,
+    browserTemplate: (data: never) => vaultAgentCardFirstReleaseBrowserTemplate(data),
+  },
+  {
+    event: {
+      key: VAULT_AGENT_CARD_DECLINED_EVENT,
+      label: 'Vault declined a card use',
+      description:
+        'Sent when Vault refuses to give a card to an agent app because of your limits (amount, currency, shop, security code, daily or monthly limit, expiry); at most once an hour per card, shop and reason.',
+      channels: ['email', 'browser'],
+      defaultEnabled: true,
+    },
+    emailTemplate: VAULT_AGENT_CARD_DECLINED_TEMPLATE,
+    browserTemplate: (data: never) => vaultAgentCardDeclinedBrowserTemplate(data),
   },
 ];

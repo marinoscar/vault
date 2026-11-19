@@ -72,4 +72,25 @@ export const VAULT_USER_OWNED_MODELS: readonly UserOwnedModelDef<Prisma.ModelNam
     export: 'exclude',
     rationale: 'The one system backup schedule records which administrator last changed it.',
   },
+  {
+    model: 'AgentCardGrant',
+    ownerField: 'userId',
+    ownerRelation: 'user',
+    purge: 'delete',
+    export: 'exclude',
+    rationale:
+      'A merchant grant (ADR-0003) is the owner\'s permission for agents to use one of their cards at a shop: deleted with ' +
+      'the user (and with the card). Not exported: it is access configuration tied to this deployment\'s cards, like the ' +
+      'agent-access flag.',
+  },
+  {
+    model: 'AgentCardGrantRequest',
+    ownerField: 'userId',
+    ownerRelation: 'user',
+    purge: 'delete',
+    export: 'exclude',
+    rationale:
+      'An agent\'s request that the owner allow a card at a shop (ADR-0003): deleted with the user and with the card; holds ' +
+      'no card data. Not exported (transient approval workflow).',
+  },
 ];
