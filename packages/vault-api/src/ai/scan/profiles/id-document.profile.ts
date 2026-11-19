@@ -148,11 +148,12 @@ export function createIdDocumentScanProfile(
         ? 'Image 1 is the FRONT of the document, image 2 is the BACK.'
         : 'Image 1 is the FRONT of the document; no back image was provided.',
     toRaw: (output, { model }) => toRawIdDocument(output, model),
-    normalize: (raw, { providedSlots }) =>
+    normalize: (raw, { providedSlots, hints }) =>
       normalizeIdDocumentScan(raw as RawDocumentScan, {
         providedSlots,
         slots: ['front', 'back'],
         today: now(),
+        barcode: hints?.barcode ?? null,
       }),
     recordOutcome: (metrics, outcome) => metrics.documentExtracted('id_document', outcome),
   };

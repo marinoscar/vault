@@ -130,6 +130,22 @@ describe('DocumentExtractService', () => {
     expect(metrics.calls).toEqual([{ method: 'documentExtracted', args: ['id_document', 'succeeded'] }]);
   });
 
+  it('cross-checks a decoded AAMVA barcode in the normalizer, and never sends it to the model (issue #214)', async () => {
+    respondStructured.mockResolvedValue({ parsed: ID_ANSWER, model: 'model-a' });
+    // Invented: a made-up license number and the placeholder state ZZ.
+    const barcode = { format: 'aamva', fields: { documentNumber: 'X1234567', state: 'ZZ', licenseClass: 'C' } };
+    const result = await service.extract(
+      { documentType: 'id_document', images: { front: PAGE, back: BACK }, barcode },
+      user,
+    );
+
+    expect(JSON.stringify(respondStructured.mock.calls[0][0])).not.toContain('X1234567');
+    expect(result.fields.document_number).toBe('X1234567');
+    expect(result.fields.issuing_authority).toBe('ZZ');
+    expect(result.checks).toEqual([{ id: 'aamva', ok: false, failed: ['document_number', 'issuing_authority'] }]);
+    expect(result.barcodePresent).toBe(true);
+  });
+
   describe('slot and body validation (AI_INVALID_IMAGE, as for cards)', () => {
     it.each([
       ['a passport without data_page', { documentType: 'passport', images: { back: BACK } }, 'images.data_page'],

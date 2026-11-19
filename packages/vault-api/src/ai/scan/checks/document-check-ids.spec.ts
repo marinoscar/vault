@@ -8,7 +8,7 @@ type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ?
 const sameIds: Equal<CheckId, DocumentCheckId> = true;
 
 /** Exhaustive over CheckId: a new check id fails to compile here until it is listed. */
-const IMPLEMENTED: Record<CheckId, true> = { mrz: true, ssn: true, vin: true };
+const IMPLEMENTED: Record<CheckId, true> = { mrz: true, ssn: true, vin: true, aamva: true };
 
 describe('DOCUMENT_CHECK_IDS (issue #209)', () => {
   it('equals CheckId of the check library', () => {

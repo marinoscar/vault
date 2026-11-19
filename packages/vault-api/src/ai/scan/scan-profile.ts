@@ -8,6 +8,8 @@
 
 import type { z } from 'zod';
 
+import type { DocumentBarcode } from '@marinoscar/vault-contract/secrets';
+
 import type { CARD_EXTRACTION_OUTCOMES } from '../../core/metric-labels';
 import type { VaultMetricsPort } from '../../ports';
 
@@ -24,6 +26,17 @@ export interface ScanImageSlot {
   required: boolean;
   /** Human-readable name of the slot. */
   label: string;
+}
+
+/**
+ * What the caller knows besides the images, handed to the profile's normalizer
+ * (never to the model): today the barcode values the browser decoded (#214).
+ * A profile ignores what it does not use.
+ *
+ * @stability experimental
+ */
+export interface ScanRequestHints {
+  barcode?: DocumentBarcode | null;
 }
 
 /** The outcome label of one scan (the metric label set). @stability experimental */
@@ -53,8 +66,11 @@ export interface ScanProfile<TModel = unknown, TResult = unknown> {
   userText(images: Readonly<Record<string, string>>): string;
   /** Trim and repair the validated answer; `ctx.model` is the model that answered. */
   toRaw(model: TModel, ctx: { model: string }): unknown;
-  /** The caller-facing result; `providedSlots` lists the slots actually sent, in slot order. */
-  normalize(raw: unknown, ctx: { providedSlots: string[]; model: string }): TResult;
+  /**
+   * The caller-facing result; `providedSlots` lists the slots actually sent, in slot order;
+   * `hints` is what the caller sent besides the images.
+   */
+  normalize(raw: unknown, ctx: { providedSlots: string[]; model: string; hints?: ScanRequestHints }): TResult;
   /** Backstop for a wedged provider connection, in milliseconds. */
   timeoutMs: number;
   /** Records one outcome on the metrics port (labels only: never a value, an image or a user). */

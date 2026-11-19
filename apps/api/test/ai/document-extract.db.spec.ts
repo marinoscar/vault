@@ -80,6 +80,34 @@ const MODEL_ANSWER = {
   back_box: null,
 };
 
+// A driver license (issue #214): the model's reading and the values the browser decoded from the
+// PDF417 barcode. Invented: Person A, a made-up license number, the placeholder state ZZ.
+const BARCODE_NUMBER = 'X1234567';
+const BARCODE_FAMILY = 'BARCODECANARY';
+const LICENSE_ANSWER = {
+  document_kind: 'Driver License',
+  document_kind_confidence: 0.95,
+  holder_name: 'PERSON BARCODECANARY',
+  document_number: 'X1284567',
+  issuing_country: 'USA',
+  issuing_authority: 'ZZ',
+  date_of_birth: null,
+  issue_date: null,
+  expiry_date: null,
+  attributes: [],
+  mrz_lines: null,
+  barcode_present: true,
+  confidence: { holder_name: 0.9, document_number: 0.9, issuing_country: 0.9, issuing_authority: 0.9, date_of_birth: 0, issue_date: 0, expiry_date: 0, mrz_lines: 0 },
+  warnings: [],
+  front_box: { x: 0, y: 0, width: 1, height: 1, quarter_turns: 0, confidence: 0.9 },
+  back_box: null,
+};
+const BARCODE = {
+  format: 'aamva',
+  fields: { documentNumber: BARCODE_NUMBER, familyName: BARCODE_FAMILY, givenNames: 'PERSON', birthDate: '1990-01-31', state: 'ZZ' },
+};
+let modelAnswer: object = MODEL_ANSWER;
+
 describeWithDb('document scanning over the platform AI slice (real Postgres, fake provider)', () => {
   let deployment: AppRoleDatabase;
   let prisma: PrismaClient;
@@ -188,7 +216,7 @@ describeWithDb('document scanning over the platform AI slice (real Postgres, fak
       id: 'openai',
       models: [MODEL],
       validKeys: [DEPLOYMENT_KEY],
-      responses: () => ({ outputText: JSON.stringify(MODEL_ANSWER) }),
+      responses: () => ({ outputText: JSON.stringify(modelAnswer) }),
     });
     (app.get(AiProviderRegistry, { strict: false }) as unknown as { adapters: Map<string, unknown> }).adapters.set('openai', fake);
 
@@ -235,6 +263,23 @@ describeWithDb('document scanning over the platform AI slice (real Postgres, fak
     expect(usage.at(-1)).toMatchObject({ feature: 'document_extract', provider: 'openai', modelId: MODEL });
   });
 
+  it('cross-checks a decoded driver license barcode, which never reaches the provider (issue #214)', async () => {
+    modelAnswer = LICENSE_ANSWER;
+    try {
+      const callsBefore = fake.calls.length;
+      const res = await extract('contributor', { documentType: 'id_document', images: { front: PAGE, back: BACK }, barcode: BARCODE });
+      expect(res.status).toBe(200);
+      expect(res.body.data.fields).toMatchObject({ document_number: BARCODE_NUMBER, date_of_birth: '1990-01-31' });
+      expect(res.body.data.checks).toEqual([{ id: 'aamva', ok: false, failed: ['document_number'] }]);
+      expect(res.body.data.barcodePresent).toBe(true);
+      const sent = JSON.stringify(fake.calls.slice(callsBefore).map((c) => c.request));
+      expect(sent).not.toContain(BARCODE_NUMBER);
+      expect(sent).not.toContain('1990-01-31');
+    } finally {
+      modelAnswer = MODEL_ANSWER;
+    }
+  });
+
   it('persists no image byte and no extracted value anywhere, and logs none', async () => {
     const everything = JSON.stringify({
       usage: await asSystem((tx) => tx.aiUsageEvent.findMany()),
@@ -243,7 +288,7 @@ describeWithDb('document scanning over the platform AI slice (real Postgres, fak
       credentials: await prisma.credential.findMany(),
       logs: logLines,
     });
-    for (const canary of [CANARY_NUMBER, CANARY_SURNAME, CANARY_PLACE, MRZ_LINES[1], DEPLOYMENT_KEY, 'PAGE-IMAGE-BYTES-MARKER', ...IMAGE_MARKERS, 'data:image']) {
+    for (const canary of [CANARY_NUMBER, CANARY_SURNAME, CANARY_PLACE, MRZ_LINES[1], BARCODE_NUMBER, BARCODE_FAMILY, DEPLOYMENT_KEY, 'PAGE-IMAGE-BYTES-MARKER', ...IMAGE_MARKERS, 'data:image']) {
       expect(everything).not.toContain(canary);
     }
     expect(await asSystem((tx) => tx.aiRun.count())).toBe(0);

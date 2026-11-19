@@ -50,8 +50,9 @@ export class DocumentExtractService {
       );
     }
 
-    const { documentType, images } = parsed.data;
-    return this.scanner().extract<ExtractDocumentResponse>(documentType, user, images);
+    const { documentType, images, barcode } = parsed.data;
+    // The decoded barcode only reaches the normalizer (a Driver License cross-check), never the model.
+    return this.scanner().extract<ExtractDocumentResponse>(documentType, user, images, { barcode });
   }
 
   /** The injected runner, or (built outside Nest) one over the built-in profiles and these ports. */

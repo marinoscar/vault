@@ -1,5 +1,6 @@
 // Document check library for AI document scanning (IDOC-2). Pure functions.
 
+export { AAMVA_JURISDICTIONS, jurisdictionAgrees } from './aamva';
 export {
   COUNTRY_CODES,
   COUNTRY_TABLE,
@@ -26,4 +27,4 @@ export { checkVin, vinCheckDigit, type VinCheckReason, type VinCheckResult } fro
  *
  * @stability experimental
  */
-export type CheckId = 'mrz' | 'ssn' | 'vin';
+export type CheckId = 'mrz' | 'ssn' | 'vin' | 'aamva';
