@@ -92,3 +92,7 @@ The old build needs `ai.provider/model/maxCallsPerUserPerDay`, all in the snapsh
 - **The burst limiter** (in-memory counters, nothing persistent).
 - **Usage history**: the old budget counted `audit_events` rows `ai.card.extract`; they stay in place (a purge may remove them) and are no longer read.
 - **The CVV**: extraction no longer returns one. Existing saved cards keep their stored `cvv` field.
+
+## Afterwards: a self-hosted model
+
+Since #213 card and document scanning can also run on an OpenAI-compatible server (Ollama, vLLM, LM Studio): see [onprem-vision-model.md](onprem-vision-model.md).

@@ -1785,6 +1785,25 @@ A `429`/`502` may include a `Retry-After` header (seconds). **Limits replace the
 
 ---
 
+#### GET /secrets/scan/targets
+
+The model each scan feature runs on (#213). Needs `ai:use`; not behind the kill switch (availability is "no" while AI is off anyway).
+
+```json
+{
+  "data": {
+    "card_extract": { "provider": "openai", "model": "gpt-4o-mini", "capabilities": ["responses", "structured_output", "vision_input"] },
+    "document_extract": { "provider": "openai-compatible", "model": "local-vision-model", "capabilities": null }
+  }
+}
+```
+
+- `capabilities`: what the model catalogue declares for the model, or `null` when it is not an enabled, current catalogue model.
+- A feature is `null` when no model is chosen.
+- Combined with `GET /ai/config` through `isScanAvailable` (`@marinoscar/vault-contract/secrets`) it tells whether a scan is offered. See [SECRETS.md § Which model scans](SECRETS.md#which-model-scans). Never carries a key or a provider setting.
+
+---
+
 ### System Settings `ai` namespace
 
 `GET|PUT|PATCH /system-settings` carry an `ai` object that is the **platform AI policy** extended with one Vault field:
@@ -1793,11 +1812,13 @@ A `429`/`502` may include a `Retry-After` header (seconds). **Limits replace the
 |-------|---------|
 | `enabled` | The kill switch |
 | `keyPolicy` | `byok` or `byok_with_org_fallback`; Vault runs `byok_with_org_fallback` (the deployment key serves every caller) |
-| `providers.openai.enabled` (+ other provider slots, inert) | Switches the OpenAI adapter on |
+| `providers.openai.enabled`, `providers['openai-compatible']` (+ other provider slots, inert) | Switch the OpenAI and OpenAI-compatible adapters on (the latter with its base URL, API style and `requiresKey`; [runbook](runbooks/onprem-vision-model.md)) |
 | `limits.perUser.requestsPerMinute` / `requestsPerDay`, `limits.perOrg.*` | Caps; absent = unlimited |
 | `defaults`, `hostedTools`, `logPromptContent`, `usageRetentionDays`, `deploymentKeyServesOrgs` | Platform policy (see the platform AI README) |
 | **`cardExtractModel`** | Vault's field: the model the `card_extract` feature runs on (1-128 characters, default `gpt-4o-mini`); replaces `ai.model` |
-| **`documentExtractModel`** | Vault's field (optional, #210): the model the `document_extract` feature runs on; unset means `cardExtractModel` |
+| **`cardExtractProvider`** | Vault's field (optional, #213): the provider of `cardExtractModel` (`openai`, `openai-compatible`); unset means `openai`. A `PATCH` that sets `cardExtractModel` without it drops the stored provider |
+| **`documentExtractModel`** | Vault's field (optional, #210): the model the `document_extract` feature runs on; unset means the card choice. `null` in a `PATCH` clears it and its provider ("Same as card scanning") |
+| **`documentExtractProvider`** | Vault's field (optional, #213): the provider of `documentExtractModel`; unset means `openai` |
 
 **There is no key in this block and no `apiKeyConfigured` / `apiKeyLast4` projection any more.** `ai.apiKey` in a `PATCH` is ignored (stored nowhere). Set the key through `PUT /admin/ai/config` / the Admin AI page; read whether one is stored from `GET /ai/config` (`providers[].hasOrgKey`). The old fields `provider`, `model` and `maxCallsPerUserPerDay` are rewritten by `npm run vault:migrate-ai-platform` ([runbook](runbooks/ai-platform-migration.md)); until it runs, the platform reads a legacy block as "no provider switched on" (card scanning answers `503 AI_NOT_CONFIGURED`, nothing errors). The `ai` namespace is **not required on `PUT`**.
 
