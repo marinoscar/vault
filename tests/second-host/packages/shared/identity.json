@@ -1,0 +1,8 @@
+{
+  "productName": "Host Beta",
+  "tagline": "A test fixture host that embeds the Vault packages.",
+  "repoSlug": "example/hostbeta",
+  "themeColor": "#5B3C88",
+  "backgroundColor": "#ffffff",
+  "cliName": "hostbeta"
+}
