@@ -81,6 +81,16 @@
         "default": "./dist/cjs/agent/index.js"
       }
     },
+    "./agent-testing": {
+      "import": {
+        "types": "./dist/esm/agent-testing/index.d.ts",
+        "default": "./dist/esm/agent-testing/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/agent-testing/index.d.ts",
+        "default": "./dist/cjs/agent-testing/index.js"
+      }
+    },
     "./errors": {
       "import": {
         "types": "./dist/esm/errors/index.d.ts",
