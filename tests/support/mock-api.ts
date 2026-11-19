@@ -299,6 +299,10 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}): 
     if (path === '/secrets/documents/extract' && method === 'POST') {
       return json(route, { data: DOCUMENT_EXTRACTION });
     }
+    // IDOC-9: no fixture document needs attention, so Home's documents panel stays hidden.
+    if (path === '/secrets/documents/summary' && method === 'GET') {
+      return json(route, { data: { items: [] } });
+    }
     if (path === '/secrets/cards/extract' && method === 'POST') {
       return json(route, { data: CARD_EXTRACTION });
     }

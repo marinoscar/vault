@@ -40,7 +40,7 @@ describe('secret values stay under VAULT_ENCRYPTION_KEY', () => {
     ).toThrow();
   });
 
-  it.each(['secrets', 'backups', 'media', 'secret-types', 'card-expiry'])(
+  it.each(['secrets', 'backups', 'media', 'secret-types', 'card-expiry', 'document-expiry'])(
     'packages/vault-api/src/%s never touches the platform cipher or credential store',
     (folder) => {
       const offenders = sourceFiles(join(VAULT_API_SRC, folder)).filter((file) =>

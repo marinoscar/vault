@@ -17,6 +17,8 @@ import { WelcomeHeader } from '../components/WelcomeHeader.js';
 import { QuickActions } from '../components/QuickActions.js';
 import { StatsRow, type StatTile } from '../components/StatsRow.js';
 import { ExpiringCardsPanel } from '../components/ExpiringCardsPanel.js';
+import { ExpiringDocumentsPanel } from '../components/ExpiringDocumentsPanel.js';
+import { useDocumentSummary } from '../../../documents/headless/useDocumentSummary.js';
 import { RecentSecretsPanel, RECENT_SECRETS_LIMIT } from '../components/RecentSecretsPanel.js';
 import { BackupStatusPanel, type SystemBackupStatus } from '../components/BackupStatusPanel.js';
 import { FirstRunPanel } from '../components/FirstRunPanel.js';
@@ -57,7 +59,8 @@ const asLoaded = (status: DashboardResourceStatus): LoadedStatus => (status === 
  * Requests per visit: `GET /secrets` (recent), one
  * `/secrets/cards/summary?page=1&pageSize=100` (#118: last four digits and
  * expiry decrypted server-side, soonest first; a second page only when more
- * than 100 cards need attention), `/backups/me`, `/media/folders`
+ * than 100 cards need attention), `/secrets/documents/summary` (IDOC-9: own passports and ID
+ * documents with their expiry status; the panel is hidden when none needs attention), `/backups/me`, `/media/folders`
  * (count), `/ai/config` (writers, unless the host shares one copy) and, for administrators,
  * `/admin/backups` with `/admin/backups/schedule`.
  */
@@ -80,6 +83,7 @@ export default function HomePage() {
     'Could not load the system backups.',
   );
   const media = useDashboardResource(fetchMediaCount, canReadMedia, 'Could not load media.');
+  const documents = useDocumentSummary(canReadSecrets);
 
   const cardsState = useCards();
   const { fetchCards } = cardsState;
@@ -206,6 +210,15 @@ export default function HomePage() {
                   error={cardsState.error}
                   onRetry={() => void fetchCards({ now, scope: 'attention' })}
                   canRenew={canWriteSecrets}
+                  phoneOrder={1}
+                />
+              )}
+              {canReadSecrets && !isFirstRun && documents.status !== 'idle' && (
+                <ExpiringDocumentsPanel
+                  status={documents.status}
+                  documents={documents.data?.items ?? []}
+                  error={documents.error}
+                  onRetry={documents.reload}
                   phoneOrder={1}
                 />
               )}

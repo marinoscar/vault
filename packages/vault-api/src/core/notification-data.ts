@@ -13,6 +13,10 @@
 //     message of `BACKUP_FAILURE_MESSAGES`, never a raw error, path or password;
 //   * card expiry: the secret's id and NAME, the expiry as month and year, and the
 //     threshold. NEVER a card number, last four, CVV, holder or any field value.
+//   * document expiry (IDOC-9): the secret's id and NAME, the document label (the
+//     type or the kind, catalog text), the expiry date, the days left and the
+//     threshold. NEVER a document number, date of birth, holder name or any other
+//     field value.
 //
 // Adding a field here is a security review, not a convenience.
 // =============================================================================
@@ -21,6 +25,8 @@
 export const VAULT_BACKUP_SUCCEEDED_EVENT = 'vault.backup_succeeded';
 export const VAULT_BACKUP_FAILED_EVENT = 'vault.backup_failed';
 export const VAULT_CARD_EXPIRING_EVENT = 'vault.card_expiring';
+/** A Passport or ID Document reaches one of its expiry lead days (IDOC-9). */
+export const VAULT_DOCUMENT_EXPIRING_EVENT = 'vault.document_expiring';
 /**
  * Agent notifications (E14.7). The platform's event key pattern allows exactly one dot
  * (`^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$`), hence `vault.agent_*`, not `vault.agent.*`.
@@ -37,6 +43,7 @@ export const VAULT_AGENT_CARD_DECLINED_EVENT = 'vault.agent_card_declined';
 export const VAULT_BACKUP_SUCCEEDED_TEMPLATE = 'vault-backup-succeeded';
 export const VAULT_BACKUP_FAILED_TEMPLATE = 'vault-backup-failed';
 export const VAULT_CARD_EXPIRING_TEMPLATE = 'vault-card-expiring';
+export const VAULT_DOCUMENT_EXPIRING_TEMPLATE = 'vault-document-expiring';
 export const VAULT_AGENT_CREDENTIAL_CHANGED_TEMPLATE = 'vault-agent-credential-changed';
 export const VAULT_AGENT_NEW_APP_TEMPLATE = 'vault-agent-new-app';
 export const VAULT_AGENT_CARD_GRANT_REQUESTED_TEMPLATE = 'vault-agent-card-grant-requested';
@@ -125,6 +132,36 @@ export function cardExpiryPhrase(threshold: CardExpiryThreshold, expiry: string)
 }
 
 export const cardLinkFor = (secretId: string): string => `/secrets/${secretId}`;
+
+/**
+ * The payload of `vault.document_expiring` (IDOC-9). No document number, date of birth, holder
+ * name or other field value, ever: the only facts read from the document are its kind and its
+ * expiry date.
+ */
+export interface VaultDocumentExpiringNotificationData {
+  secretId: string;
+  /** The secret's name (what the owner called the document). */
+  secretName: string;
+  /** `Passport`, or the ID Document's kind from the catalog (`Driver License`, ...). */
+  documentLabel: string;
+  /** `YYYY-MM-DD`. */
+  expiry: string;
+  /** Whole days from the scan day to the expiry day: 0 on the day, negative once expired. */
+  daysLeft: number;
+  /** The lead day this reminder is for (one of the kind's `expiryLeadDays`). */
+  threshold: number;
+  /** The deployment base URL, for the email CTA. */
+  appUrl?: string;
+}
+
+/** `expires in 30 days`, `expires tomorrow`, `expires today`, `has expired`. */
+export function documentExpiryPhrase(daysLeft: number): string {
+  if (daysLeft < 0) return 'has expired';
+  if (daysLeft === 0) return 'expires today';
+  return `expires in ${plural(daysLeft, 'day', 'days')}`;
+}
+
+export const documentLinkFor = (secretId: string): string => `/secrets/${secretId}`;
 
 /** Where the agent notifications link: the owner's trail (`userSettingsSections.tsx`). */
 export const AGENT_ACTIVITY_SETTINGS_PATH = '/settings/agent-activity';

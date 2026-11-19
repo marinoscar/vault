@@ -55,6 +55,10 @@
       "types": "./dist/card-expiry/index.d.ts",
       "default": "./dist/card-expiry/index.js"
     },
+    "./document-expiry": {
+      "types": "./dist/document-expiry/index.d.ts",
+      "default": "./dist/document-expiry/index.js"
+    },
     "./agent": {
       "types": "./dist/agent/index.d.ts",
       "default": "./dist/agent/index.js"
