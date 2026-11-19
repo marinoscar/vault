@@ -57,17 +57,21 @@ export class AgentController {
   @Get('whoami')
   @Auth({ permissions: [PERMISSIONS.SECRETS_READ] })
   @ApiOperation({
-    summary: 'Who the agent token acts as and which scopes it carries',
-    description: 'Answers 403 AGENT_ACCESS_DISABLED while the deployment switch `agentAccess.enabled` is off.',
+    summary: 'Who the agent token acts as, which scopes it carries and which contract this Vault speaks',
+    description:
+      'Returns userId, scopes, clientId and contract { version, features } (contract 1.2; features: logins, totp, and ' +
+      'cards and identity while their switches are on). Answers 403 AGENT_ACCESS_DISABLED while the deployment switch ' +
+      '`agentAccess.enabled` is off.',
   })
-  @ApiResponse({ status: 200, description: 'The caller, its scopes and its OAuth client' })
+  @ApiResponse({ status: 200, description: 'The caller, its scopes, its OAuth client and the contract block' })
   @ApiResponse({ status: 403, description: 'AGENT_ACCESS_DISABLED, or the scope is missing (insufficient_scope)' })
   async whoami(@CurrentUser() user: RequestUser, @OAuthGrant() grant: OAuthPrincipalInfo | null) {
-    await this.agent.assertEnabled();
+    const contract = await this.agent.contractInfo();
     return {
       userId: user.id,
       scopes: grant ? [...grant.scopes] : [],
       clientId: grant?.clientId ?? null,
+      contract,
     };
   }
 

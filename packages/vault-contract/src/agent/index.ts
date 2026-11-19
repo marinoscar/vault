@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { agentContractInfoSchema } from './contract-version.js';
+
 /**
  * The agent credential API (`/api/agent/v1`, the `agent` OAuth protected resource): the provider
  * contract an external agent runtime (a browser fabric, an MCP host) codes against. A runtime finds
@@ -11,17 +13,26 @@ import { z } from 'zod';
  * is the API's; the error codes are in {@link AGENT_ERROR_CODES}. The path carries the version: an
  * incompatible change is `/api/agent/v2`.
  *
+ * Stability: **beta** (issue #196). Inside `/api/agent/v1` the route paths, the required request
+ * fields, the meaning of each error code, the scope names and the one-secret-field-per-response rule
+ * do not change. New optional request fields, new response fields, new error codes and scopes for
+ * new routes and stricter rate-limit defaults may arrive without a new version: ignore unknown
+ * response fields and unknown enum values, and never branch on `message`. Anything else is
+ * `/api/agent/v2`, and `v1` keeps working for two minor releases of the packages after `v2` ships.
+ * The tag becomes `stable` at 1.0. Changes are listed under "Changes" in
+ * `docs/agent-credential-api.md`; {@link AGENT_CONTRACT_VERSION} is the current version.
+ *
  * @packageDocumentation
  */
 
-/** The API's base path (the `agent` protected resource). @stability experimental */
+/** The API's base path (the `agent` protected resource). @stability beta */
 export const AGENT_API_BASE_PATH = '/api/agent/v1' as const;
 
 /**
  * The OAuth scope ids of the agent resource (permanent: clients persist them). The platform's scope
  * id pattern rules out dots, so they are `vault:items_*`.
  *
- * @stability experimental
+ * @stability beta
  */
 export const AGENT_SCOPES = {
   ITEMS_READ: 'vault:items_read',
@@ -41,7 +52,7 @@ export const AGENT_SCOPES = {
  * Error codes of the agent API, as they appear in `{ code }`. They are also in
  * `VAULT_ERROR_CODES` (`@marinoscar/vault-contract/errors`) with their statuses.
  *
- * @stability experimental
+ * @stability beta
  */
 export const AGENT_ERROR_CODES = {
   /** 403: the `origin` is not exactly one of the credential's origins. */
@@ -78,37 +89,37 @@ export const AGENT_ERROR_CODES = {
   OWNER_SESSION_REQUIRED: 'OWNER_SESSION_REQUIRED',
 } as const;
 
-/** @stability experimental */
+/** @stability beta */
 export type AgentErrorCode = (typeof AGENT_ERROR_CODES)[keyof typeof AGENT_ERROR_CODES];
 
 /**
  * Why the agent is asking: stored in the audit row of fill, totp, create and rotate.
  *
- * @stability experimental
+ * @stability beta
  */
 export const agentPurposeSchema = z.enum(['login', 'signup', 'password_change', 'mfa']);
 
-/** @stability experimental */
+/** @stability beta */
 export type AgentPurpose = z.infer<typeof agentPurposeSchema>;
 
-/** The one field a fill call returns. @stability experimental */
+/** The one field a fill call returns. @stability beta */
 export const agentFillFieldSchema = z.enum(['username', 'password']);
 
-/** @stability experimental */
+/** @stability beta */
 export type AgentFillField = z.infer<typeof agentFillFieldSchema>;
 
-/** An origin as the agent sees it: a URL or bare host, normalized by the API. @stability experimental */
+/** An origin as the agent sees it: a URL or bare host, normalized by the API. @stability beta */
 export const agentOriginSchema = z.string().trim().min(1).max(2048);
 
-/** Query of `GET /api/agent/v1/credentials`. @stability experimental */
+/** Query of `GET /api/agent/v1/credentials`. @stability beta */
 export const agentLookupQuerySchema = z.object({
   origin: agentOriginSchema,
 });
 
-/** @stability experimental */
+/** @stability beta */
 export type AgentLookupQuery = z.infer<typeof agentLookupQuerySchema>;
 
-/** One credential found for an origin. Never carries a sensitive value. @stability experimental */
+/** One credential found for an origin. Never carries a sensitive value. @stability beta */
 export const agentCredentialSummarySchema = z.object({
   id: z.string().uuid(),
   name: z.string(),
@@ -121,44 +132,44 @@ export const agentCredentialSummarySchema = z.object({
   updatedAt: z.string(),
 });
 
-/** @stability experimental */
+/** @stability beta */
 export type AgentCredentialSummary = z.infer<typeof agentCredentialSummarySchema>;
 
-/** Response of `GET /api/agent/v1/credentials`. Exact matches first. @stability experimental */
+/** Response of `GET /api/agent/v1/credentials`. Exact matches first. @stability beta */
 export const agentLookupResponseSchema = z.object({ data: z.array(agentCredentialSummarySchema) });
 
-/** Body of `POST /api/agent/v1/credentials/:id/fill`. @stability experimental */
+/** Body of `POST /api/agent/v1/credentials/:id/fill`. @stability beta */
 export const agentFillRequestSchema = z.object({
   field: agentFillFieldSchema,
   origin: agentOriginSchema,
   purpose: agentPurposeSchema,
 });
 
-/** @stability experimental */
+/** @stability beta */
 export type AgentFillRequest = z.infer<typeof agentFillRequestSchema>;
 
-/** Response of the fill route: one value. Type it, never show it to a model. @stability experimental */
+/** Response of the fill route: one value. Type it, never show it to a model. @stability beta */
 export const agentFillResponseSchema = z.object({ data: z.object({ value: z.string() }) });
 
-/** Body of `POST /api/agent/v1/credentials/:id/totp`. @stability experimental */
+/** Body of `POST /api/agent/v1/credentials/:id/totp`. @stability beta */
 export const agentTotpRequestSchema = z.object({
   origin: agentOriginSchema,
   purpose: agentPurposeSchema,
 });
 
-/** @stability experimental */
+/** @stability beta */
 export type AgentTotpRequest = z.infer<typeof agentTotpRequestSchema>;
 
-/** Response of the totp route. `expiresAt` is an ISO timestamp. @stability experimental */
+/** Response of the totp route. `expiresAt` is an ISO timestamp. @stability beta */
 export const agentTotpResponseSchema = z.object({
   data: z.object({ code: z.string(), expiresAt: z.string() }),
 });
 
-/** Smallest and largest generated password length. @stability experimental */
+/** Smallest and largest generated password length. @stability beta */
 export const AGENT_GENERATED_PASSWORD_MIN_LENGTH = 12;
-/** @stability experimental */
+/** @stability beta */
 export const AGENT_GENERATED_PASSWORD_MAX_LENGTH = 128;
-/** Length of a generated password when `generate.length` is omitted. @stability experimental */
+/** Length of a generated password when `generate.length` is omitted. @stability beta */
 export const AGENT_GENERATED_PASSWORD_DEFAULT_LENGTH = 24;
 
 /**
@@ -166,7 +177,7 @@ export const AGENT_GENERATED_PASSWORD_DEFAULT_LENGTH = 24;
  * The result has at least one lower-case letter, upper-case letter and digit, and one symbol when
  * `symbols` is on.
  *
- * @stability experimental
+ * @stability beta
  */
 export const agentGeneratePasswordSchema = z.object({
   length: z
@@ -178,12 +189,12 @@ export const agentGeneratePasswordSchema = z.object({
   symbols: z.boolean().default(true),
 });
 
-/** @stability experimental */
+/** @stability beta */
 export type AgentGeneratePassword = z.infer<typeof agentGeneratePasswordSchema>;
 
 const passwordValueSchema = z.string().min(1).max(1024);
 
-/** Body of `POST /api/agent/v1/credentials`: exactly one of `password` and `generate`. @stability experimental */
+/** Body of `POST /api/agent/v1/credentials`: exactly one of `password` and `generate`. @stability beta */
 export const agentCreateCredentialRequestSchema = z
   .object({
     name: z.string().trim().min(1).max(255),
@@ -199,14 +210,14 @@ export const agentCreateCredentialRequestSchema = z
     path: ['password'],
   });
 
-/** @stability experimental */
+/** @stability beta */
 export type AgentCreateCredentialRequest = z.infer<typeof agentCreateCredentialRequestSchema>;
 
 /**
  * Response of the create route. `generatedPassword` is present only when `generate` was sent, and
  * only in this response: Vault never returns it again.
  *
- * @stability experimental
+ * @stability beta
  */
 export const agentCreateCredentialResponseSchema = z.object({
   data: z.object({
@@ -218,7 +229,7 @@ export const agentCreateCredentialResponseSchema = z.object({
   }),
 });
 
-/** Body of `POST /api/agent/v1/credentials/:id/password`: exactly one of `password` and `generate`. @stability experimental */
+/** Body of `POST /api/agent/v1/credentials/:id/password`: exactly one of `password` and `generate`. @stability beta */
 export const agentRotatePasswordRequestSchema = z
   .object({
     origin: agentOriginSchema,
@@ -231,10 +242,10 @@ export const agentRotatePasswordRequestSchema = z
     path: ['password'],
   });
 
-/** @stability experimental */
+/** @stability beta */
 export type AgentRotatePasswordRequest = z.infer<typeof agentRotatePasswordRequestSchema>;
 
-/** Response of the rotate route: the new version number, and the generated value once. @stability experimental */
+/** Response of the rotate route: the new version number, and the generated value once. @stability beta */
 export const agentRotatePasswordResponseSchema = z.object({
   data: z.object({
     id: z.string().uuid(),
@@ -243,20 +254,30 @@ export const agentRotatePasswordResponseSchema = z.object({
   }),
 });
 
-/** Response of `GET /api/agent/v1/whoami`. @stability experimental */
+/**
+ * Response of `GET /api/agent/v1/whoami`. `contract` (since contract 1.2) is the contract version
+ * and the features this Vault offers now; it is absent on an older Vault, so treat a missing block
+ * as version `1.0` with `logins` and `totp`.
+ *
+ * @stability beta
+ */
 export const agentWhoamiResponseSchema = z.object({
   data: z.object({
     userId: z.string(),
     scopes: z.array(z.string()),
     clientId: z.string().nullable(),
+    contract: agentContractInfoSchema.optional(),
   }),
 });
+
+/** @stability beta */
+export type AgentWhoamiResponse = z.infer<typeof agentWhoamiResponseSchema>;
 
 /**
  * The audit actions the agent API writes (`audit_events.action`), one per route. The `result` of
  * the row's meta is `ok` or `denied:<reason>`.
  *
- * @stability experimental
+ * @stability beta
  */
 export const AGENT_AUDIT_ACTIONS = {
   LOOKUP: 'agent.credential.lookup',
@@ -271,14 +292,14 @@ export const AGENT_AUDIT_ACTIONS = {
   IDENTITY_FILL: 'agent.identity.fill',
 } as const;
 
-/** @stability experimental */
+/** @stability beta */
 export type AgentAuditAction = (typeof AGENT_AUDIT_ACTIONS)[keyof typeof AGENT_AUDIT_ACTIONS];
 
 /**
  * The card part of the `agentAccess` settings (ADR-0003): the card kill switch (default off), the
  * `card_fill` bucket's per-minute limit and the per-card daily cap of releases (`number` fills).
  *
- * @stability experimental
+ * @stability beta
  */
 export const agentCardAccessSettingsSchema = z.object({
   enabled: z.boolean(),
@@ -286,21 +307,21 @@ export const agentCardAccessSettingsSchema = z.object({
   releasesPerCardPerDay: z.number().int().min(1).max(1_000),
 });
 
-/** @stability experimental */
+/** @stability beta */
 export type AgentCardAccessSettings = z.infer<typeof agentCardAccessSettingsSchema>;
 
 /**
  * The identity part of the `agentAccess` settings (ADR-0003): the identity kill switch (default off)
  * and the `identity_fill` bucket's per-minute limit.
  *
- * @stability experimental
+ * @stability beta
  */
 export const agentIdentityAccessSettingsSchema = z.object({
   enabled: z.boolean(),
   fillPerMinute: z.number().int().min(1).max(10_000),
 });
 
-/** @stability experimental */
+/** @stability beta */
 export type AgentIdentityAccessSettings = z.infer<typeof agentIdentityAccessSettingsSchema>;
 
 /**
@@ -309,7 +330,7 @@ export type AgentIdentityAccessSettings = z.infer<typeof agentIdentityAccessSett
  * route answers `403 AGENT_ACCESS_DISABLED`. Each limit counts per token (or OAuth grant) and user.
  * `cards` and `identity` are separate switches (default off) for card and identity release.
  *
- * @stability experimental
+ * @stability beta
  */
 export const agentAccessSettingsSchema = z.object({
   enabled: z.boolean(),
@@ -321,7 +342,7 @@ export const agentAccessSettingsSchema = z.object({
   identity: agentIdentityAccessSettingsSchema,
 });
 
-/** @stability experimental */
+/** @stability beta */
 export type AgentAccessSettings = z.infer<typeof agentAccessSettingsSchema>;
 
 /**
@@ -329,7 +350,7 @@ export type AgentAccessSettings = z.infer<typeof agentAccessSettingsSchema>;
  * minute; cards off, 10 card fills per minute, 5 releases per card per day; identity off, 20
  * identity fills per minute.
  *
- * @stability experimental
+ * @stability beta
  */
 export const AGENT_ACCESS_SETTINGS_DEFAULTS: AgentAccessSettings = Object.freeze({
   enabled: false,
@@ -345,7 +366,7 @@ export const AGENT_ACCESS_SETTINGS_DEFAULTS: AgentAccessSettings = Object.freeze
  * A stored (possibly older, partial) `agentAccess` value merged over the defaults, nested blocks
  * included. A row written before ADR-0003 has no `cards` or `identity`: both stay off.
  *
- * @stability experimental
+ * @stability beta
  */
 export function resolveAgentAccessSettings(stored: unknown): AgentAccessSettings {
   const source = stored && typeof stored === 'object' && !Array.isArray(stored) ? (stored as Record<string, unknown>) : {};
@@ -363,17 +384,17 @@ export function resolveAgentAccessSettings(stored: unknown): AgentAccessSettings
 // Agent activity (`GET /api/agent-activity`, E14.7)
 // -----------------------------------------------------------------------------
 
-/** The path of the owner's agent activity list (session or PAT, never an OAuth token). @stability experimental */
+/** The path of the owner's agent activity list (session or PAT, never an OAuth token). @stability beta */
 export const AGENT_ACTIVITY_PATH = '/api/agent-activity' as const;
 
-/** The audit action of the per-secret agent access toggle (`secret.agent_access.update`). @stability experimental */
+/** The audit action of the per-secret agent access toggle (`secret.agent_access.update`). @stability beta */
 export const AGENT_ACCESS_TOGGLE_AUDIT_ACTION = 'secret.agent_access.update' as const;
 
 /**
  * The actions an activity item carries: the agent routes (logins, cards, identity), the owner's
  * toggle and the owner's grant decisions (`card_grant`: created, revoked, approved, declined).
  *
- * @stability experimental
+ * @stability beta
  */
 export const agentActivityActionSchema = z.enum([
   'lookup',
@@ -390,23 +411,23 @@ export const agentActivityActionSchema = z.enum([
   'card_grant',
 ]);
 
-/** @stability experimental */
+/** @stability beta */
 export type AgentActivityAction = z.infer<typeof agentActivityActionSchema>;
 
-/** The kind of credential a call authenticated with. @stability experimental */
+/** The kind of credential a call authenticated with. @stability beta */
 export const agentActivityCredentialKindSchema = z.enum(['oauth', 'pat', 'session', 'embedded']);
 
-/** @stability experimental */
+/** @stability beta */
 export type AgentActivityCredentialKind = z.infer<typeof agentActivityCredentialKindSchema>;
 
-/** The largest `pageSize` of the activity list. @stability experimental */
+/** The largest `pageSize` of the activity list. @stability beta */
 export const AGENT_ACTIVITY_MAX_PAGE_SIZE = 100;
 
 /**
  * Query of `GET /api/agent-activity`. `action` is one of {@link agentActivityActionSchema};
  * `from` and `to` are ISO 8601 instants (inclusive); `clientId` is the OAuth client's id as on its grants (`OAuthGrant.clientId`, not the public client_id string).
  *
- * @stability experimental
+ * @stability beta
  */
 export const agentActivityQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -418,14 +439,14 @@ export const agentActivityQuerySchema = z.object({
   to: z.string().datetime({ offset: true }).optional(),
 });
 
-/** @stability experimental */
+/** @stability beta */
 export type AgentActivityQuery = z.infer<typeof agentActivityQuerySchema>;
 
 /**
  * One event of the owner's agent trail. Never carries a value, a code, a seed or a password.
  * `reason` is present on a denial (`origin_mismatch`, `rate_limited`, `not_found`, ...).
  *
- * @stability experimental
+ * @stability beta
  */
 export const agentActivityItemSchema = z.object({
   id: z.string(),
@@ -450,10 +471,10 @@ export const agentActivityItemSchema = z.object({
   currency: z.string().nullable().optional(),
 });
 
-/** @stability experimental */
+/** @stability beta */
 export type AgentActivityItem = z.infer<typeof agentActivityItemSchema>;
 
-/** Response of `GET /api/agent-activity`. @stability experimental */
+/** Response of `GET /api/agent-activity`. @stability beta */
 export const agentActivityResponseSchema = z.object({
   data: z.array(agentActivityItemSchema),
   meta: z.object({
@@ -463,7 +484,8 @@ export const agentActivityResponseSchema = z.object({
   }),
 });
 
-/** @stability experimental */
+/** @stability beta */
 export type AgentActivityResponse = z.infer<typeof agentActivityResponseSchema>;
 
 export * from './cards-identity.js';
+export * from './contract-version.js';
