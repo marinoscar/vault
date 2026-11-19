@@ -3,8 +3,12 @@ import { useAiConfig } from '@marinoscar/platform-web/ai/headless';
 import type { AiPublicConfig } from '@marinoscar/platform-web/ai/headless';
 import { usePermissions } from '@marinoscar/platform-web/identity/headless';
 
+import { useCallback, useEffect, useState } from 'react';
+import type { ScanTargets } from '@marinoscar/vault-contract/secrets';
+
 import { api } from './http.js';
-import { isCardScanAvailable, isDocumentScanAvailable } from './cardScanAvailability.js';
+import { getScanTargets } from './api.js';
+import { isDocumentScanAvailable, isScanAvailable } from './cardScanAvailability.js';
 
 /**
  * The package's own transport for `GET /api/ai/config` when no shared copy is
@@ -24,15 +28,16 @@ interface UseAiStatusResult {
   error: string | null;
   /**
    * True only when card extraction is actually usable BY THIS VIEWER: card
-   * scanning is available (`isCardScanAvailable`: AI on, the deployment's OpenAI
-   * key serving everyone) and the viewer holds `ai:use` (the extract route needs
-   * it; a Viewer does not hold it, so the scan entry points stay hidden).
+   * scanning is available (`isScanAvailable(config, 'card_extract', targets)`: AI
+   * on, the card model able to read images on an enabled provider whose call can
+   * be paid) and the viewer holds `ai:use` (the extract route needs it; a Viewer
+   * does not hold it, so the scan entry points stay hidden).
    */
   cardExtractEnabled: boolean;
   /**
    * True only when document scanning (Passport and ID Document, ADR-0004) is
-   * usable by this viewer: `isDocumentScanAvailable` and `ai:use`, failing
-   * closed like `cardExtractEnabled`.
+   * usable by this viewer: the same rule for `document_extract` (its own model,
+   * or the card model when none is chosen, #213), and `ai:use`.
    */
   documentScanEnabled: boolean;
   /** The viewer holds `ai:use` (independent of whether AI is switched on). */
@@ -47,8 +52,10 @@ interface UseAiStatusResult {
  * (`@marinoscar/platform-web/ai/headless`): the shell's shared copy when the host
  * mounts an `AiConfigContext` provider (apps/web's `VaultAiConfigProvider`), so no
  * second request is made; otherwise its own fetch through this package's client.
- * Card-scan availability is derived on the client with the server's rule
- * (`isCardScanAvailable`).
+ * Scan availability is derived on the client with the server's rule
+ * (`isScanAvailable` of `@marinoscar/vault-contract/secrets`) over that config and
+ * `GET /api/secrets/scan/targets` (the model each scan feature runs on, #213),
+ * which is asked only when the viewer holds `ai:use` and AI is on.
  *
  * FAILS CLOSED. A network error, a 500, or a malformed body all resolve to
  * "not enabled". Gating an entry point on this hook must never open the gate
@@ -61,14 +68,56 @@ interface UseAiStatusResult {
 export function useAiStatus(): UseAiStatusResult {
   const { hasPermission } = usePermissions();
   const canUseAi = hasPermission('ai:use');
-  const { config, isLoading, error, refresh } = useAiConfig({ api: vaultAiApi });
+  const { config, isLoading, error, refresh: refreshConfig } = useAiConfig({ api: vaultAiApi });
+
+  const wantTargets = canUseAi && !isLoading && error === null && config.enabled === true;
+  // `settledFor` is the request tick whose answer (or failure) is in `targets`: until the
+  // current tick settles the status is loading, so no render reports "not available" for
+  // the moment between the config arriving and the targets call starting.
+  const [targets, setTargets] = useState<ScanTargets | null>(null);
+  const [targetsTick, setTargetsTick] = useState(0);
+  const [settledFor, setSettledFor] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!wantTargets) {
+      setTargets(null);
+      setSettledFor(null);
+      return;
+    }
+    let cancelled = false;
+    const tick = targetsTick;
+    getScanTargets()
+      .then((next) => {
+        if (!cancelled) setTargets(next);
+      })
+      .catch(() => {
+        // Fails closed: no targets, no scan.
+        if (!cancelled) setTargets(null);
+      })
+      .finally(() => {
+        if (!cancelled) setSettledFor(tick);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [wantTargets, targetsTick]);
+
+  const targetsLoading = wantTargets && settledFor !== targetsTick;
+
+  const refresh = useCallback(async () => {
+    await refreshConfig();
+    setTargetsTick((tick) => tick + 1);
+  }, [refreshConfig]);
+
+  // `null` targets (not asked, in flight, failed) is "no" for both features.
+  const ready = canUseAi && error === null && targets !== null;
 
   return {
     config,
-    isLoading,
+    isLoading: isLoading || targetsLoading,
     error,
-    cardExtractEnabled: canUseAi && error === null && isCardScanAvailable(config),
-    documentScanEnabled: canUseAi && error === null && isDocumentScanAvailable(config),
+    cardExtractEnabled: ready && isScanAvailable(config, 'card_extract', targets),
+    documentScanEnabled: ready && isDocumentScanAvailable(config, targets),
     canUseAi,
     refresh,
   };

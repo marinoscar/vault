@@ -1,4 +1,5 @@
 import { http, HttpResponse } from 'msw';
+import { SCAN_TARGETS_OPENAI } from './aiConfig.js';
 
 // Use wildcard pattern to match relative URLs
 const API_BASE = '*/api';
@@ -205,6 +206,13 @@ export const handlers = [
         providers: [{ id: 'openai', displayName: 'OpenAI', enabled: true, hasOrgKey: true }],
       },
     });
+  }),
+
+  // The model each scan feature runs on (`GET /api/secrets/scan/targets`, #213), which
+  // `useAiStatus` combines with the AI config above. An OpenAI vision model for both
+  // features, so the default set keeps scanning available.
+  http.get(`${API_BASE}/secrets/scan/targets`, () => {
+    return HttpResponse.json({ data: SCAN_TARGETS_OPENAI });
   }),
 
   // Health endpoints

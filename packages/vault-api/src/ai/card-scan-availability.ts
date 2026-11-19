@@ -1,22 +1,39 @@
 import type { AiConfigService } from '@marinoscar/platform-api/ai';
-
-import { AI_PROVIDER_ID } from './ai.constants';
+import {
+  isScanAvailable as isScanAvailableRule,
+  type ScanAiFeature,
+  type ScanTargets,
+} from '@marinoscar/vault-contract/secrets';
 
 /** The public AI config of one organization (`AiConfigService.describePublic`). */
 export type PublicAiConfig = Awaited<ReturnType<AiConfigService['describePublic']>>;
 
 /**
- * Whether card scanning is usable by the caller: the organization has AI on, the OpenAI provider is
- * switched on, and the deployment key is stored AND serves everyone (`keyPolicy:
- * 'byok_with_org_fallback'`: Vault users hold no key of their own). The one rule behind
- * the onboarding step "Scan a card" (the web applies the same rule to `GET /api/ai/config`).
+ * Whether a scan feature (`card_extract`, `document_extract`) is usable by the caller's
+ * organization: AI on, the model the target resolver picks for the feature is an enabled
+ * catalogue model on an enabled provider declaring `vision_input`, `structured_output` and
+ * `responses`, and its call can be paid (a keyless OpenAI-compatible server, or the deployment
+ * key under `byok_with_org_fallback`). The rule is `isScanAvailable` of
+ * `@marinoscar/vault-contract/secrets`, shared with the web's `useAiStatus` (#213).
+ *
+ * `targets` comes from `ScanTargetsService.targets()`; without it the pre-#213 assumption
+ * (an OpenAI model that can scan) applies.
+ */
+export function isScanAvailable(
+  config: PublicAiConfig | null | undefined,
+  feature: ScanAiFeature,
+  targets?: ScanTargets,
+): boolean {
+  return isScanAvailableRule(targets === undefined ? config : { config, targets }, feature);
+}
+
+/**
+ * Whether card scanning is usable, from the public config alone (AI on, the `openai`
+ * provider on with its deployment key, `byok_with_org_fallback`).
+ *
+ * @deprecated Since #213 availability depends on the chosen model, not on the vendor: use
+ *   `isScanAvailable(config, 'card_extract', targets)`. Kept for one release.
  */
 export function isCardScanAvailable(config: PublicAiConfig): boolean {
-  const provider = config.providers.find((p) => p.id === AI_PROVIDER_ID);
-  return (
-    config.enabled &&
-    config.keyPolicy === 'byok_with_org_fallback' &&
-    provider?.enabled === true &&
-    provider.hasOrgKey === true
-  );
+  return isScanAvailable(config, 'card_extract');
 }

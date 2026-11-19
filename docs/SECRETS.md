@@ -992,9 +992,24 @@ The checks below run on what the model read and are returned in `checks` (`{ id,
 
 A warning never carries a value, only a field name; a model warning that repeats an extracted value is dropped. The model is `ai.documentExtractModel`, or `ai.cardExtractModel` when unset (`VaultAiTargetResolver`). Request, response and errors: [API.md](API.md#post-secretsdocumentsextract).
 
+### Which model scans
+
+Card scanning and document scanning each run on a model an administrator chooses in the **Scanning models** section of the Console AI page (`/admin/settings/ai`, the `AfterContent` slot of the packaged AI page; #213):
+
+| Feature | Setting (system settings, `ai` namespace) | Default |
+|---|---|---|
+| `card_extract` | `ai.cardExtractModel` on provider `ai.cardExtractProvider` | `gpt-4o-mini` on `openai` |
+| `document_extract` | `ai.documentExtractModel` on provider `ai.documentExtractProvider` | unset: the card choice ("Same as card scanning") |
+
+A provider left unset means `openai`. The model may be on **any** mounted provider: `openai`, or `openai-compatible` for a self-hosted server such as Ollama or vLLM ([runbooks/onprem-vision-model.md](runbooks/onprem-vision-model.md)). `VaultAiTargetResolver` (`apps/api/src/platform/ai/`) routes each feature to its choice with `resolveScanModelRef` of `@marinoscar/vault-contract/secrets`; the platform then enforces model enablement, the capability match, the caps and key resolution, and writes the usage row.
+
+Both pickers list the enabled models of every enabled provider that declare `vision_input`, `structured_output` and `responses` (`SCAN_MODEL_NEEDS`), showing provider and model. Reading the choice needs `system_settings:read`; changing it needs `ai_config:write` (and the settings route's `system_settings:write`).
+
+**Availability is about the model, not the vendor.** A scan feature is offered (the scan entry points in the web, the onboarding step "Scan a card") only when AI is on, the feature's model is an enabled catalogue model on an enabled provider and declares the three needs, and its call can be paid (a keyless OpenAI-compatible server, or the deployment key under `byok_with_org_fallback`). The rule is one pure function, `isScanAvailable` in `@marinoscar/vault-contract/secrets`, called by the API (`ScanTargetsService`) and by the web (`useAiStatus`, over `GET /api/ai/config` and `GET /api/secrets/scan/targets`), and it fails closed. `GET /api/secrets/scan/targets` (`ai:use`) returns each feature's provider, model and the capabilities the catalogue declares (`null` when the model is not an enabled catalogue model); it never returns a key or any provider setting.
+
 #### Scanning in the web app ("Scan an ID")
 
-The flow is `/documents/scan?type=passport|id_document` (`DocumentScanPage` of `@marinoscar/vault-web/documents/ui`). It is reached from Home ("Scan an ID" quick action), from the Secrets list when its type filter is Passport or ID Document, and from the new-secret form's "Scan it instead" hint for those types. Every entry point, and the page itself, is gated on `useAiStatus().documentScanEnabled` (for now the card rule: AI on, the deployment OpenAI key, and `ai:use`).
+The flow is `/documents/scan?type=passport|id_document` (`DocumentScanPage` of `@marinoscar/vault-web/documents/ui`). It is reached from Home ("Scan an ID" quick action), from the Secrets list when its type filter is Passport or ID Document, and from the new-secret form's "Scan it instead" hint for those types. Every entry point, and the page itself, is gated on `useAiStatus().documentScanEnabled` (`isDocumentScanAvailable` over the scan targets, see "Which model scans", and `ai:use`).
 
 1. **Capture.** A toggle picks ID document (default) or Passport. The photos follow the type's image slots: front then the optional back, or the data page then the optional other page, each framed at the slot's ratio (ID-1 or 125/88). A notice above the camera button says the full photos go to the configured AI model.
 2. **Processing.** For an ID document with a back photo, the browser first decodes its PDF417 barcode from the original full-resolution file (see [Document checks](#document-checks)). The prepared full frames, plus the parsed barcode values when there are any, are sent to `POST /api/secrets/documents/extract`; Cancel abandons the flow.
