@@ -12,10 +12,13 @@ export class ConformanceKitInProductionError extends Error {
 }
 
 /**
- * Throws {@link ConformanceKitInProductionError} when `NODE_ENV` is `production`.
+ * Throws {@link ConformanceKitInProductionError} when `NODE_ENV` is `production`. `env` defaults to
+ * the process environment: this is the one place the packages read it, and only to refuse to run
+ * (a safety stop, never configuration).
  *
  * @stability beta
  */
-export function assertNotProduction(what: string, env: Record<string, string | undefined> = process.env): void {
-  if ((env.NODE_ENV ?? '').trim().toLowerCase() === 'production') throw new ConformanceKitInProductionError(what);
+export function assertNotProduction(what: string, env?: Record<string, string | undefined>): void {
+  const source = env ?? process.env;
+  if ((source.NODE_ENV ?? '').trim().toLowerCase() === 'production') throw new ConformanceKitInProductionError(what);
 }

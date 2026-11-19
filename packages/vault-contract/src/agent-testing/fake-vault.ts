@@ -92,7 +92,7 @@ export interface FakeVaultOptions {
   accessTokenTtlSeconds?: number;
   /** The clock (milliseconds); tests replace it. */
   now?: () => number;
-  /** The environment the production guard reads (default `process.env`). */
+  /** The environment the production guard reads (default: the process environment). */
   env?: Record<string, string | undefined>;
 }
 
@@ -227,7 +227,7 @@ const SEED_IDS = {
  * @stability beta
  */
 export function createFakeVault(options: FakeVaultOptions = {}): FakeVault {
-  const env = options.env ?? process.env;
+  const env = options.env;
   assertNotProduction('The fake Vault', env);
   const now = options.now ?? (() => Date.now());
   const seed = options.seed ?? createConformanceSeed();
