@@ -88,7 +88,7 @@ Secret types define the schema of a secret's data fields. There are two categori
 
 ### System Types
 
-Six system types are created during database seeding. They cannot be modified or deleted. Source of truth: `apps/api/prisma/system-secret-types.ts`.
+System types are created during database seeding (`seedSecretTypes()` in `apps/api/prisma/seed.ts` upserts them by name, so a re-run is a no-op and a new type needs no migration). They cannot be modified or deleted (`PUT` and `DELETE /api/secret-types/:id` answer 400). Source of truth: `SYSTEM_SECRET_TYPES` in `@marinoscar/vault-contract/secret-types`; the list is append-only, and so are each type's fields.
 
 | Type | Icon | Fields | Attachments |
 |------|------|--------|-------------|
@@ -98,6 +98,9 @@ Six system types are created during database seeding. They cannot be modified or
 | Token | Token | `token` (sensitive), `provider`, `notes` | No |
 | Note | Description | `content` | No |
 | Document | AttachFile | `title`, `notes` | Yes |
+| Identity | Badge | see [Cards and identity](#cards-and-identity-adr-0003) | No |
+| Passport | TravelExplore | see [Identity documents](#identity-documents-passport-and-id-document) | **Yes** |
+| ID Document | AssignmentInd | see [Identity documents](#identity-documents-passport-and-id-document) | **Yes** |
 
 Fields marked as sensitive are masked in the UI and require a deliberate reveal action.
 
@@ -131,6 +134,65 @@ A field's `type` is `string`, `number`, `date`, `select` or `keyvalue` (`FIELD_T
 | `notes` | `string` | No | No | |
 
 `card_network` and `card_kind` are `required: false` even though they are always shown in the UI. This is deliberate and permanent: `validateDataAgainstType` rejects unknown keys, and a secret type's fields are append-only, so a `required: true` field added after cards already exist would make every pre-existing card permanently unsaveable on its next edit (there is no way to back-fill a value into an already-encrypted, per-version blob). Do not "fix" this by making them required.
+
+#### Identity documents: Passport and ID Document
+
+Two system types hold identity documents ([ADR-0004](decisions/0004-identity-documents.md), issue #209). They are separate from `Identity`, which is a form-fill profile released to agents. Both take document images ([Roles](#roles-document-image-slots)). **Neither is available to agents or MCP:** opening one to agents answers `422 AGENT_ACCESS_UNSUPPORTED_TYPE`, MCP's `list_secret_types` does not list them, `create_secret` refuses them (`TYPE_NOT_SUPPORTED`) and `get_secret`/`update_secret` answer as for a missing secret (`isMcpExcludedType`, as for a card).
+
+**Passport** ("Passport details and data page photo"):
+
+| Field | Label | Type | Required | Sensitive | Format / mask |
+|---|---|---|---|---|---|
+| `surname` | Surname | `string` | Yes | No | |
+| `given_names` | Given Names | `string` | No | No | |
+| `passport_number` | Passport Number | `string` | Yes | Yes | `mask: last4` |
+| `passport_type` | Type | `string` | No | No | e.g. `P` |
+| `issuing_country` | Issuing Country | `string` | No | No | `format: country` |
+| `nationality` | Nationality | `string` | No | No | `format: country` |
+| `date_of_birth` | Date of Birth | `date` | No | Yes | |
+| `place_of_birth` | Place of Birth | `string` | No | No | |
+| `sex` | Sex | `select` (`M`, `F`, `X`) | No | No | |
+| `issue_date` | Date of Issue | `date` | No | No | |
+| `expiry_date` | Date of Expiry | `date` | Yes | No | |
+| `issuing_authority` | Authority | `string` | No | No | |
+| `personal_number` | Personal Number | `string` | No | Yes | |
+| `mrz` | Machine Readable Zone | `string` | No | Yes | `format: multiline` |
+| `notes` | Notes | `string` | No | No | `format: multiline` |
+
+**ID Document** ("Driver license, ID card, Green Card, Global Entry, Social Security, insurance and other ID documents"): one generic type for every other document.
+
+| Field | Label | Type | Required | Sensitive | Format / mask |
+|---|---|---|---|---|---|
+| `document_kind` | Document Kind | `select` (`ID_DOCUMENT_KINDS`) | Yes | No | |
+| `holder_name` | Holder Name | `string` | Yes | No | |
+| `document_number` | Document Number | `string` | No | Yes | `mask: last4` |
+| `issuing_country` | Issuing Country | `string` | No | No | `format: country` |
+| `issuing_authority` | Issuing Authority / State | `string` | No | No | |
+| `date_of_birth` | Date of Birth | `date` | No | Yes | |
+| `issue_date` | Issue Date | `date` | No | No | |
+| `expiry_date` | Expiry Date | `date` | No | No | |
+| `attributes` | Details | `keyvalue` | No | per entry | |
+| `notes` | Notes | `string` | No | No | `format: multiline` |
+
+`date_of_birth` is sensitive in both, as in `Identity`.
+
+**The document-kind catalog** (`ID_DOCUMENT_KIND_CATALOG` in `@marinoscar/vault-contract/secret-types`) gives each kind its standard `attributes` keys (the form suggests them once a kind is chosen; the scan asks the model for them), the deterministic checks that apply (`DOCUMENT_CHECK_IDS`: `ssn` on `document_number`, `vin` on `attributes.vin`, `mrz` on `attributes.mrz`; a check only warns, it never blocks a save) and the expiry reminder lead days. 🔒 marks a sensitive key.
+
+| Kind | Standard `attributes` keys | Checks | Expiry lead days |
+|---|---|---|---|
+| Driver License | `license_class`, `restrictions`, `endorsements`, `address`, `sex`, `height`, `eye_color`, `organ_donor` | none | 90, 30, 7, 0 |
+| National ID | `address`, `sex`, `nationality`, `mrz` 🔒 | `mrz` | 90, 30, 7, 0 |
+| Permanent Resident Card | `uscis_number` 🔒, `category`, `resident_since`, `country_of_birth`, `sex`, `mrz` 🔒 | `mrz` | 180, 90, 30, 0 |
+| Trusted Traveler Card | `ktn` 🔒, `program`, `mrz` 🔒 | `mrz` | 180, 90, 30, 0 |
+| Social Security Card | none (the number is `document_number`) | `ssn` | none |
+| Health Insurance Card | `member_id` 🔒, `group_number`, `payer`, `plan`, `rx_bin`, `rx_pcn`, `rx_group`, `phone_member_services`, `phone_provider` | none | 30, 0 |
+| Visa | `visa_type`, `entries`, `annotation`, `control_number`, `mrz` 🔒 | `mrz` | 90, 30, 7, 0 |
+| Work Permit, Residence Permit | `category`, `card_number`, `mrz` 🔒 | `mrz` | 90, 30, 7, 0 |
+| Vehicle Registration | `vin`, `plate`, `make`, `model`, `year`, `registered_owner` | `vin` | 30, 7, 0 |
+| Military ID, Student ID | `rank_or_program`, `institution` | none | 30, 0 |
+| Other | none | none | 30, 0 |
+
+A passport's lead days are `PASSPORT_EXPIRY_LEAD_DAYS` (270, 180, 90, 30, 0). The kind list is append-only: a stored secret keeps its kind.
 
 #### Card summary endpoint
 
@@ -237,7 +299,7 @@ Which roles a secret accepts is decided by its type's **image slots**, `DOCUMENT
 | Passport | `data_page`: Data page (required), `back`: Other page | ID-3, 125 x 88 mm |
 | ID Document | `front`: Front (required), `back`: Back | ID-1, 85.6 x 53.98 mm |
 
-A custom type has no slots (even one named like a system type). The slot order is the display and export order; the label appears in the UI, the export's `secrets.html` titles ("Card front", "Passport data page") and the conflict message. Passport and ID Document slots take effect once those system types exist (IDOC-6); the database column is free text, so new roles need no migration.
+A custom type has no slots (even one named like a system type). The slot order is the display and export order; the label appears in the UI, the export's `secrets.html` titles ("Card front", "Passport data page") and the conflict message. The Passport and ID Document system types exist since issue #209 ([Identity documents](#identity-documents-passport-and-id-document)); the database column is free text, so new roles need no migration.
 
 **A role must be one of the type's slots.** `POST /secrets/:id/attachments` and the `attachments` of `POST /secrets/:id/renew` answer `422 ATTACHMENT_ROLE_NOT_ALLOWED` for a role the secret's type has no slot for: `card_front` on a Passport, `front` on a Card, any role on a custom type. Omitting the role links a generic attachment, as before. Card summaries, card expiry and renewal semantics stay card-only.
 
@@ -282,7 +344,7 @@ Agent access is a per-secret opt-in that decides whether an AI agent (an OAuth c
 |---|---|
 | Values | `none` (default) or `fill`. `fill` means an agent may have the fabric type the login into a matching site; the agent never reads the value |
 | Default | `none` for every secret, including every secret that existed before the column was added (migration `20261118164725_add_secret_agent_access`). Nothing is exposed to agents until the owner turns it on |
-| Which secrets | The system `Credential`, `Card` and `Identity` types may be set to `fill` (cards and identity since [ADR-0003](decisions/0003-agent-cards-identity.md)); any other type answers `422 AGENT_ACCESS_UNSUPPORTED_TYPE`. Setting `none` is always allowed. Opening a Card or an Identity, or changing an Identity's allowed origins, needs the owner's browser session (`403 OWNER_SESSION_REQUIRED` for a PAT) |
+| Which secrets | The system `Credential`, `Card` and `Identity` types may be set to `fill` (cards and identity since [ADR-0003](decisions/0003-agent-cards-identity.md)); any other type, the identity documents `Passport` and `ID Document` included ([ADR-0004](decisions/0004-identity-documents.md)), answers `422 AGENT_ACCESS_UNSUPPORTED_TYPE`. Setting `none` is always allowed. Opening a Card or an Identity, or changing an Identity's allowed origins, needs the owner's browser session (`403 OWNER_SESSION_REQUIRED` for a PAT) |
 | Storage | `secrets.agent_access` (enum `secret_agent_access`, NOT NULL, default `none`) and `secrets.agent_access_changed_at` (timestamptz, null until first changed). It is a property of the secret, not of a version: rollback, renew and update do not change it |
 | Who can change it | `PATCH /api/secrets/:id/agent-access` with `secrets:write` and the same ownership rule as `PUT /api/secrets/:id` (own secrets, or `secrets:write_any`). An OAuth (`oat_`) credential is refused with 403, so an agent can never widen its own access. Setting the current value is a no-op (no write, no audit row) |
 | Audit | `secret.agent_access.update` with `{ secretId, from, to }`; see [Audit Trail](#audit-trail) |
