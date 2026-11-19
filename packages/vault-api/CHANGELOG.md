@@ -1,5 +1,11 @@
 # @marinoscar/vault-api
 
+## 0.1.0-next.3
+
+### Patch Changes
+
+- d16fe7b: The package READMEs say how to install from npm (the `next` dist-tag, the peers, provenance) for the first published release (#192). No code change.
+
 ## 0.1.0-next.2
 
 ### Minor Changes
