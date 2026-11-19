@@ -4,6 +4,9 @@ export * from './card-extract.service';
 export * from './card-extraction.types';
 export * from './card-normalizer';
 export * from './card-scan-availability';
+// Scan model choice and availability (#213, IDOC-10).
+export * from './scan-targets.controller';
+export * from './scan-targets.service';
 // Identity-document scanning (#210, IDOC-7).
 export * from './document-extract.controller';
 export * from './document-extract.service';
