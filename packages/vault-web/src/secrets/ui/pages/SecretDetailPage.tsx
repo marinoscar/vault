@@ -45,6 +45,8 @@ import { TotpCodeCard } from '../components/TotpCodeCard.js';
 import { CardAgentAccessPanel } from '../../../agent/ui/components/CardAgentAccessPanel.js';
 import { IdentityAgentAccessPanel } from '../../../agent/ui/components/IdentityAgentAccessPanel.js';
 import { SecretVersionDrawer } from '../components/SecretVersionDrawer.js';
+import { DocumentExpiryBadge } from '../../../documents/ui/components/DocumentExpiryBadge.js';
+import { documentExpiryLeadDays, documentExpiryStatus, parseDocumentDate } from '@marinoscar/vault-contract/secrets';
 import { useSecretDetail } from '../../headless/useSecretDetail.js';
 import { usePermissions } from '@marinoscar/platform-web/identity/headless';
 import { deleteSecret, unlinkSecretAttachment } from '../../../core/headless/api.js';
@@ -296,6 +298,17 @@ export default function SecretDetailPage() {
                   label={secret.type.name}
                   size="small"
                   variant="outlined"
+                />
+              )}
+              {(isSystemType(secret.type, 'Passport') || isSystemType(secret.type, 'ID Document')) && (
+                // IDOC-9: the same status the reminders and the Home panel use (the kind's lead days).
+                <DocumentExpiryBadge
+                  status={documentExpiryStatus(
+                    secret.values?.expiry_date,
+                    documentExpiryLeadDays(secret.type?.name, secret.values?.document_kind),
+                    new Date(),
+                  )}
+                  expiryDate={parseDocumentDate(secret.values?.expiry_date)}
                 />
               )}
               <Tooltip title={new Date(secret.updatedAt).toLocaleString()}>

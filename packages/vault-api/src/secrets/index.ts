@@ -1,4 +1,5 @@
 export * from './card-summary.service';
+export * from './document-summary.service';
 export * from './export/secrets-export.service';
 export * from './export/secrets-export.types';
 export * from './secrets.controller';

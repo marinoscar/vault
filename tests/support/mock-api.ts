@@ -294,6 +294,10 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}): 
       const cards = empty ? [] : CARD_SUMMARIES;
       return json(route, { data: page_(cards, 1, Number(url.searchParams.get('pageSize') ?? 20)) });
     }
+    // IDOC-9: no fixture document needs attention, so Home's documents panel stays hidden.
+    if (path === '/secrets/documents/summary' && method === 'GET') {
+      return json(route, { data: { items: [] } });
+    }
     if (path === '/secrets/cards/extract' && method === 'POST') {
       return json(route, { data: CARD_EXTRACTION });
     }

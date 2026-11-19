@@ -405,6 +405,27 @@ A daily tick (`CardExpiryTask`, 05:37 UTC, enqueue-only) queues the server-only 
 - **What the message says:** the secret's name, the expiry as `MM/YYYY`, and a link to `/secrets/:id`. Never the number, last four, CVV, holder, notes or any other field value; the payload type has no field for them, and a test renders a card whose fields carry distinctive markers and asserts none appears in the payload, the email, the bell text, the inbox rows or the audit trail.
 - **Failure modes:** a version that cannot be decrypted is skipped and logged by secret id; if every card is unreadable the job fails (a rotated key must fail loudly). Users can mute the event per channel in their notification preferences.
 
+## Document expiry reminders
+
+Identity documents (ADR-0004) carry a full `expiry_date` and a lead time that depends on what they are, so they have their own daily scan beside the card one (IDOC-9, #212). A tick (`DocumentExpiryTask`, 05:43 UTC, enqueue-only) queues the server-only job `vault.documents.expiry_scan` (`@marinoscar/vault-api/document-expiry`). The job pages the Passport and ID Document secrets of active owners (200 at a time), decrypts the current version **in memory**, keeps only `expiry_date` and `document_kind`, and tells the owner through the `vault.document_expiring` event (email and bell, on by default).
+
+| Document | Reminders (days before `expiry_date`) |
+|---|---|
+| Passport | 270, 180, 90, 30, 0 |
+| Permanent Resident Card, Trusted Traveler Card | 180, 90, 30, 0 |
+| Driver License, National ID, Visa, Work Permit, Residence Permit | 90, 30, 7, 0 |
+| Vehicle Registration | 30, 7, 0 |
+| Health Insurance Card, Military ID, Student ID, Other (and a kind the catalog does not know) | 30, 0 |
+| Social Security Card | none |
+
+The table is `PASSPORT_EXPIRY_LEAD_DAYS` and `ID_DOCUMENT_KIND_CATALOG[kind].expiryLeadDays` of `@marinoscar/vault-contract/secret-types`; `documentExpiryLeadDays` picks the row.
+
+- **When:** days are UTC calendar days; 0 is the expiry day (a document is valid through it). The reminder due is the smallest lead day at or above the days left. A document saved inside several windows at once (say 20 days before expiry) gets one message, for the most urgent lead day (30), and the skipped ones are never replayed. A document that expired less than 30 days ago gets the "has expired" message once (a scan that missed the day still tells the owner); one that lapsed longer ago is not notified.
+- **Once:** each (document, expiry, lead day) is recorded as an `audit_events` row `vault.document.expiry_notified` (target = the secret, meta `{ threshold, expiry }`). Renewing the document changes the expiry and re-arms the reminders. Notify first, record second.
+- **What the message says:** the subject is "Your <Passport or kind> expires in N days", "expires today" or "has expired"; the body names the secret, the kind and the expiry date and links to `/secrets/:id`. The payload is `{ secretId, secretName, documentLabel, expiry, daysLeft, threshold, appUrl? }`: never the document number, date of birth, holder name, MRZ or any other field. `documentLabel` is catalog text (`Passport` or a catalog kind; an unknown kind reads `ID Document`).
+- **Failure modes:** an unreadable version is skipped and logged by secret id; if every document is unreadable the job fails.
+- **On the web:** `GET /api/secrets/documents/summary` returns the caller's own documents with a status (`expired`, `expiring_soon` within the largest lead day of the kind, `valid`, `no_expiry`). Home shows "Documents needing attention" next to the cards panel (hidden when none), and the secret detail page shows the same badge.
+
 ## Backup and export
 
 Any user with `secrets:read` can download a password-protected copy of their own data, from **Settings > Back up my data** in the web app or with [`vault backup`](../apps/cli/README.md#backup--password-protected-backup). Both call `POST /api/secrets/export` ([API.md](API.md#post-secretsexport)), so the web app and the CLI produce the identical format. In the web app you can also [save the backup to the storage account](#saved-user-backups) instead of downloading it. The CLI adds local conveniences around that one call: saved settings, retention of old backup files, and a guided terminal menu; see the [vault backup guide](../apps/cli/README.md#backup--password-protected-backup). Retention only deletes local files that match the CLI's output template and never changes what the server exports.

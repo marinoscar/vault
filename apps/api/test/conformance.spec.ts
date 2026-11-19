@@ -113,7 +113,7 @@ runPlatformConformance({
 
     // The email slice (E7.1, #85): the platform templates are registered, every sampled template
     // renders a complete document and escapes markup in its data, and no email settings shape carries
-    // a secret. Vault's three templates (E7.2, #86) are sampled with markup in every text field.
+    // a secret. Vault's templates (E7.2, #86; IDOC-9) are sampled with markup in every text field.
     email: {
       samples: {
         'vault-backup-succeeded': {
@@ -145,6 +145,15 @@ runPlatformConformance({
           secretId: '8d1c1f0e-1111-4222-8333-444455556666',
           secretName: '<script>alert(1)</script>',
           expiry: '07/2027',
+          threshold: 7,
+        },
+        // IDOC-9: the document expiry reminder, with markup in the name and the label.
+        'vault-document-expiring': {
+          secretId: '8d1c1f0e-1111-4222-8333-444455556666',
+          secretName: '<script>alert(1)</script>',
+          documentLabel: '<b>Passport</b>',
+          expiry: '2027-07-10',
+          daysLeft: 7,
           threshold: 7,
         },
         // ADR-0003: the agent card events, with markup in every text field (the reason is the app's own text).

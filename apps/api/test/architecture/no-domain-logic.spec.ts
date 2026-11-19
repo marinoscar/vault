@@ -30,7 +30,7 @@ const SRC = join(API, 'src');
 const PACKAGE_JSON = resolve(API, '..', '..', 'packages', 'vault-api', 'package.json');
 
 /** Folders that held domain logic before E12.2. */
-const MOVED_DIRS = ['secrets', 'secret-types', 'media', 'backups', 'card-expiry'] as const;
+const MOVED_DIRS = ['secrets', 'secret-types', 'media', 'backups', 'card-expiry', 'document-expiry'] as const;
 
 /** What stays in `src/ai`: one-off migration commands (`npm run vault:migrate-ai-*`), not request-path code. */
 const AI_HOST_FILES = new Set([

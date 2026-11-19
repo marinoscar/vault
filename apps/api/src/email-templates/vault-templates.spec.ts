@@ -8,6 +8,7 @@ import {
   vaultBackupFailedBrowserTemplate,
   vaultBackupSucceededBrowserTemplate,
   vaultCardExpiringBrowserTemplate,
+  vaultDocumentExpiringBrowserTemplate,
   vaultAgentCredentialUsedBrowserTemplate,
   vaultAgentCardDeclinedBrowserTemplate,
   vaultAgentCardFirstReleaseBrowserTemplate,
@@ -18,6 +19,7 @@ import type {
   VaultAgentNewAppNotificationData,
   VaultBackupNotificationData,
   VaultCardExpiringNotificationData,
+  VaultDocumentExpiringNotificationData,
 } from '@marinoscar/vault-api/core';
 
 const backup = (over: Partial<VaultBackupNotificationData> = {}): VaultBackupNotificationData => ({
@@ -57,6 +59,7 @@ describe('Vault notification events and templates (issue #86)', () => {
       'vault.agent_card_grant_requested',
       'vault.agent_card_first_release',
       'vault.agent_card_declined',
+      'vault.document_expiring',
     ]);
     for (const event of Object.values(byKey)) {
       expect(event.channels).toEqual(event.key === 'vault.agent_credential_used' ? ['browser'] : ['email', 'browser']);
@@ -67,6 +70,7 @@ describe('Vault notification events and templates (issue #86)', () => {
     expect(byKey['vault.backup_succeeded'].defaultEnabled).toBe(false);
     expect(byKey['vault.backup_failed'].defaultEnabled).toBe(true);
     expect(byKey['vault.card_expiring'].defaultEnabled).toBe(true);
+    expect(byKey['vault.document_expiring'].defaultEnabled).toBe(true);
   });
 
   describe('vault-backup-succeeded', () => {
@@ -131,6 +135,47 @@ describe('Vault notification events and templates (issue #86)', () => {
       expect(email.html).toContain('https://vault.example.test/secrets/8d1c1f0e-1111-4222-8333-444455556666');
       expect(email.html).not.toContain('<b>Mine</b>');
       expect(vaultCardExpiringBrowserTemplate(expiring()).link).toBe('/secrets/8d1c1f0e-1111-4222-8333-444455556666');
+    });
+  });
+
+  describe('vault-document-expiring (IDOC-9)', () => {
+    const doc = (over: Partial<VaultDocumentExpiringNotificationData> = {}): VaultDocumentExpiringNotificationData => ({
+      secretId: '8d1c1f0e-1111-4222-8333-444455556666',
+      secretName: 'Passport A',
+      documentLabel: 'Passport',
+      expiry: '2027-07-10',
+      daysLeft: 90,
+      threshold: 90,
+      appUrl: 'https://vault.example.test',
+      ...over,
+    });
+
+    it.each([
+      [90, 'Your Passport expires in 90 days', 'A document is expiring'],
+      [1, 'Your Passport expires in 1 day', 'A document is expiring'],
+      [0, 'Your Passport expires today', 'A document is expiring'],
+      [-2, 'Your Passport has expired', 'A document has expired'],
+    ] as const)('%i day(s) left reads "%s"', (daysLeft, subject, title) => {
+      const email = renderEmailTemplate('vault-document-expiring', doc({ daysLeft, threshold: Math.max(daysLeft, 0) }));
+      expect(email.subject).toBe(subject);
+      expect(email.text).toContain('2027-07-10');
+      expect(vaultDocumentExpiringBrowserTemplate(doc({ daysLeft })).title).toBe(title);
+    });
+
+    it('names the kind of an ID Document, links to the secret and escapes the name', () => {
+      const email = renderEmailTemplate(
+        'vault-document-expiring',
+        doc({ documentLabel: 'Permanent Resident Card', daysLeft: 180, threshold: 180, secretName: '<b>Mine</b> & "co"' }),
+      );
+      expect(email.subject).toBe('Your Permanent Resident Card expires in 180 days');
+      expect(email.html).toContain('https://vault.example.test/secrets/8d1c1f0e-1111-4222-8333-444455556666');
+      expect(email.html).not.toContain('<b>Mine</b>');
+      expect(email.text).toContain('never includes the document number');
+      expect(vaultDocumentExpiringBrowserTemplate(doc())).toEqual({
+        title: 'A document is expiring',
+        body: 'Passport A (Passport) expires in 90 days (2027-07-10).',
+        link: '/secrets/8d1c1f0e-1111-4222-8333-444455556666',
+      });
     });
   });
 

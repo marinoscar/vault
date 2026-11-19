@@ -1653,6 +1653,33 @@ Sorted by expiry, soonest first; cards with an unknown expiry year last; ties by
 
 ---
 
+#### GET /secrets/documents/summary
+
+The caller's own Passport and ID Document secrets with their expiry status, for Home and the reminders (IDOC-9). Permission `secrets:read`. Always the caller's own documents: `secrets:read_any` does not widen it. No query.
+
+Decrypted server-side; only `document_kind` and `expiry_date` are read. Sorted by expiry date, soonest first, documents with no expiry last; ties by name.
+
+```json
+{
+  "data": {
+    "items": [
+      {
+        "id": "uuid",
+        "name": "Passport A",
+        "typeName": "Passport",
+        "documentKind": null,
+        "expiryDate": "2027-07-10",
+        "status": "expiring_soon"
+      }
+    ]
+  }
+}
+```
+
+`typeName` is `Passport` or `ID Document`; `documentKind` is the ID Document's catalog kind (`null` for a passport, or a kind outside the catalog); `expiryDate` is `YYYY-MM-DD` or `null`. `status` is `expired` (after the expiry day), `expiring_soon` (within the largest reminder lead day of the kind, the expiry day included), `valid`, or `no_expiry` (no valid date, or an unreadable version). The number, the date of birth, the holder name and every other field are never returned (`documentSummaryItemSchema` of `@marinoscar/vault-contract/secrets` is strict). The route is registered before `GET /secrets/:id`.
+
+---
+
 #### POST /secrets/cards/extract
 
 **Requires Authentication** (`secrets:write` **and** `ai:use`), and the platform kill switch (`AiEnabledGuard`: `403` with `details.reason: "AI_DISABLED"` while AI is off). It runs after authentication, so an anonymous caller still gets `401`. Extracts candidate card field values from one or two card face images.

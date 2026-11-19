@@ -17,7 +17,7 @@
 import { ApiError } from '@marinoscar/platform-web/core';
 import type { PlatformHttpBlobWithHeaders, PlatformHttpRequestOptions } from '@marinoscar/platform-web/core';
 
-import type { ScanTargets } from '@marinoscar/vault-contract/secrets';
+import type { DocumentSummaryResponse, ScanTargets } from '@marinoscar/vault-contract/secrets';
 
 import { api } from './http.js';
 
@@ -213,6 +213,14 @@ export async function getCardSummaries(params?: {
   searchParams.set('page', String(params?.page ?? 1));
   searchParams.set('pageSize', String(params?.pageSize ?? 20));
   return api.get<CardSummaryResponse>(`/secrets/cards/summary?${searchParams}`);
+}
+
+/**
+ * The caller's own Passport and ID Document secrets with their expiry status (IDOC-9,
+ * `GET /secrets/documents/summary`): id, name, type, kind, expiry date and status only.
+ */
+export async function getDocumentSummary(): Promise<DocumentSummaryResponse> {
+  return api.get<DocumentSummaryResponse>('/secrets/documents/summary');
 }
 
 export async function getSecret(id: string): Promise<SecretDetail> {

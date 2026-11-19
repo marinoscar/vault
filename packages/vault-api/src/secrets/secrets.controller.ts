@@ -37,6 +37,7 @@ import { PERMISSIONS } from '../core/roles.constants';
 
 import { SecretsService } from './secrets.service';
 import { CardSummaryService } from './card-summary.service';
+import { DocumentSummaryService } from './document-summary.service';
 import {
   CardSummaryQueryDto,
   cardSummaryQuerySchema,
@@ -67,6 +68,7 @@ export class SecretsController {
     private readonly secretsService: SecretsService,
     private readonly secretsExportService: SecretsExportService,
     private readonly cardSummaryService: CardSummaryService,
+    private readonly documentSummaryService: DocumentSummaryService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -196,6 +198,20 @@ export class SecretsController {
     @CurrentUser() user: RequestUser,
   ) {
     const result = await this.cardSummaryService.list(query, user.id, user.permissions);
+    return { data: result };
+  }
+
+  @Get('documents/summary')
+  @Auth({ permissions: [PERMISSIONS.SECRETS_READ] })
+  @ApiOperation({
+    summary: 'Your Passport and ID Document secrets with their expiry status, decrypted server-side',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'id, name, type, kind, expiry date and status per document; never a number or date of birth',
+  })
+  async documentSummary(@CurrentUser() user: RequestUser) {
+    const result = await this.documentSummaryService.list(user.id);
     return { data: result };
   }
 
