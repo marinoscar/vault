@@ -1006,6 +1006,18 @@ Both pickers list the enabled models of every enabled provider that declare `vis
 
 **Availability is about the model, not the vendor.** A scan feature is offered (the scan entry points in the web, the onboarding step "Scan a card") only when AI is on, the feature's model is an enabled catalogue model on an enabled provider and declares the three needs, and its call can be paid (a keyless OpenAI-compatible server, or the deployment key under `byok_with_org_fallback`). The rule is one pure function, `isScanAvailable` in `@marinoscar/vault-contract/secrets`, called by the API (`ScanTargetsService`) and by the web (`useAiStatus`, over `GET /api/ai/config` and `GET /api/secrets/scan/targets`), and it fails closed. `GET /api/secrets/scan/targets` (`ai:use`) returns each feature's provider, model and the capabilities the catalogue declares (`null` when the model is not an enabled catalogue model); it never returns a key or any provider setting.
 
+#### Scanning in the web app ("Scan an ID")
+
+The flow is `/documents/scan?type=passport|id_document` (`DocumentScanPage` of `@marinoscar/vault-web/documents/ui`). It is reached from Home ("Scan an ID" quick action), from the Secrets list when its type filter is Passport or ID Document, and from the new-secret form's "Scan it instead" hint for those types. Every entry point, and the page itself, is gated on `useAiStatus().documentScanEnabled` (`isDocumentScanAvailable` over the scan targets, see "Which model scans", and `ai:use`).
+
+1. **Capture.** A toggle picks ID document (default) or Passport. The photos follow the type's image slots: front then the optional back, or the data page then the optional other page, each framed at the slot's ratio (ID-1 or 125/88). A notice above the camera button says the full photos go to the configured AI model.
+2. **Processing.** The prepared full frames are sent to `POST /api/secrets/documents/extract`; Cancel abandons the flow.
+3. **Crop.** Each stored image is cropped from the model's box at the slot's ratio (the centred auto-fit when no box came back) and can be adjusted by hand. Only the crops are ever uploaded.
+4. **Review.** The type's own editors (country picker, key/value details, dates). Values read by the AI carry an "AI" chip; values with a confidence of 0.7 or less carry "Check" and an amber outline, as do low-confidence detail rows. The document kind shows "AI guessed" with its confidence; choosing another kind offers that kind's standard details as suggestions and keeps the entries already there. Failed checks and warnings share one alert at the top; a partial or failed read opens an empty form with the photos kept.
+5. **Save.** The secret is created, then each crop is uploaded and linked under its role (`data_page`, `front`, `back`). A failed image keeps the secret and says which photo is missing; an image upload that could not be linked is deleted, and walking away deletes anything half made.
+
+When scanning is unavailable the page explains why (no `ai:use`, AI off, not set up) and offers "Add manually", which opens `/secrets/new?type=<typeId>` with the type preselected.
+
 ### Document checks
 
 Identity documents carry data that can be checked without AI, so a misread character from the vision model (O for 0, 1 for I, a dropped `<` filler) can be caught. The check library (`@marinoscar/vault-api/ai`, `src/ai/scan/checks/`, pure functions with no I/O) covers:

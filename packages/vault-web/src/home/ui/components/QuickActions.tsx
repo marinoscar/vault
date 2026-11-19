@@ -4,6 +4,7 @@ import {
   Add as AddIcon,
   DocumentScannerOutlined as ScanIcon,
   Backup as BackupIcon,
+  BadgeOutlined as IdIcon,
 } from '@mui/icons-material';
 import { Link as RouterLink } from 'react-router-dom';
 import { HOME_LINKS } from '../../headless/homeLinks.js';
@@ -21,6 +22,8 @@ interface QuickActionsProps {
   canCreateSecret: boolean;
   /** `secrets:write` and card scanning available (`useAiStatus`, from `GET /api/ai/config`). */
   canScanCard: boolean;
+  /** `secrets:write` and document scanning available (`useAiStatus().documentScanEnabled`). */
+  canScanDocument?: boolean;
   /** `secrets:read` (`/api/backups/me`). */
   canBackUp: boolean;
 }
@@ -29,13 +32,16 @@ interface QuickActionsProps {
  * The few things people come to Home to start. Each is a link (the work
  * happens on its own page) and appears only for a user who may do it.
  */
-export function QuickActions({ canCreateSecret, canScanCard, canBackUp }: QuickActionsProps) {
+export function QuickActions({ canCreateSecret, canScanCard, canScanDocument = false, canBackUp }: QuickActionsProps) {
   const actions: QuickAction[] = [];
   if (canCreateSecret) {
     actions.push({ key: 'new-secret', label: 'New secret', to: HOME_LINKS.newSecret, icon: <AddIcon />, primary: true });
   }
   if (canScanCard) {
     actions.push({ key: 'scan-card', label: 'Scan a card', to: HOME_LINKS.scanCard, icon: <ScanIcon /> });
+  }
+  if (canScanDocument) {
+    actions.push({ key: 'scan-document', label: 'Scan an ID', to: HOME_LINKS.scanDocument, icon: <IdIcon /> });
   }
   if (canBackUp) {
     actions.push({ key: 'back-up', label: 'Back up now', to: HOME_LINKS.myBackups, icon: <BackupIcon /> });
@@ -48,9 +54,13 @@ export function QuickActions({ canCreateSecret, canScanCard, canBackUp }: QuickA
       aria-label="Quick actions"
       sx={{
         display: 'grid',
-        // Phone: equal columns, icon over label, so three actions fit 390px
-        // without wrapping. Wider: a compact row of ordinary buttons.
-        gridTemplateColumns: { xs: `repeat(${actions.length}, minmax(0, 1fr))`, sm: `repeat(${actions.length}, auto)` },
+        // Phone: equal columns, icon over label, so up to three actions fit
+        // 390px without wrapping; four take two equal rows of two. Wider: a
+        // compact row of ordinary buttons.
+        gridTemplateColumns: {
+          xs: `repeat(${actions.length > 3 ? 2 : actions.length}, minmax(0, 1fr))`,
+          sm: `repeat(${actions.length}, auto)`,
+        },
         gap: 1,
         justifyContent: { sm: 'end' },
       }}

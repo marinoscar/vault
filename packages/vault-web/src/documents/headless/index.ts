@@ -1,3 +1,4 @@
-// Identity documents (Passport, ID Document): the expiry summary hook and its status helper. No component.
+// Identity documents (Passport, ID Document): the scan flow's hook, the expiry summary hook and their pure helpers. No component.
 
+export * from './useDocumentScan.js';
 export * from './useDocumentSummary.js';

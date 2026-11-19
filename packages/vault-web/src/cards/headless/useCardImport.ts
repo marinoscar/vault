@@ -1,20 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
+import { extractCardFromImages, getSecretTypes } from '../../core/headless/api.js';
 import {
-  createSecret,
-  deleteSecret,
-  deleteStorageObject,
-  extractCardFromImages,
-  getSecretTypes,
-  linkSecretAttachment,
-  simpleStorageUpload,
-} from '../../core/headless/api.js';
-import { ApiError } from '../../core/headless/api.js';
+  AI_SETTINGS_PATH,
+  CARD_SCAN_SUBJECT,
+  describeScanError,
+  scanDisabledMessage,
+  scanForbiddenMessage,
+  scanNotConfiguredMessage,
+  type ScanErrorMessage,
+} from '../../core/headless/scanErrors.js';
+import { compactSecretData, useSaveSecretWithImages } from '../../core/headless/saveWithImages.js';
 import {
-  AI_DISABLED_REASON,
-  AI_ERROR_CODES,
   EXTRACTED_CARD_FIELD_NAMES,
-  type AiErrorCode,
   type AttachmentRole,
   type CardExtractionResult,
   type ExtractCardRequest,
@@ -49,201 +47,28 @@ export interface CapturedCardSide {
 }
 
 /**
- * A failure rendered for a human.
- *
- * `detail` is written to tell the user what to do next, which is why the
- * per-code branches exist at all — "Too many requests" is true for both the
- * burst limiter and the daily budget, and useless for either.
+ * A failure rendered for a human: the shared scan message
+ * ({@link ScanErrorMessage}), under its card-era name.
  */
-export interface CardExtractionMessage {
-  title: string;
-  detail: string;
-  /** True when only an administrator can clear the condition. */
-  adminActionRequired: boolean;
-  /** True when retrying the same images could plausibly succeed. */
-  retryable: boolean;
-  /**
-   * Where an administrator fixes it, when the page should offer a link there
-   * (shown only to a viewer who can open it: `ai_config:read`).
-   */
-  adminLink?: { label: string; to: string };
-}
+export type CardExtractionMessage = ScanErrorMessage;
 
-/** The Console's AI page, where AI is switched on and set up. */
-export const AI_SETTINGS_PATH = '/admin/settings/ai';
-
-const AI_SETTINGS_LINK = { label: 'Open Console → AI', to: AI_SETTINGS_PATH } as const;
+export { AI_SETTINGS_PATH };
 
 /** AI switched off by an administrator (the platform kill switch's 403). */
-export const AI_DISABLED_MESSAGE: CardExtractionMessage = {
-  title: 'AI is off',
-  detail: 'AI is off — an admin can turn it on in Console → AI. You can still enter the card details yourself.',
-  adminActionRequired: true,
-  retryable: false,
-  adminLink: AI_SETTINGS_LINK,
-};
+export const AI_DISABLED_MESSAGE: CardExtractionMessage = scanDisabledMessage(CARD_SCAN_SUBJECT);
 
 /** AI on, but the provider, model or key is not set up (503 `AI_NOT_CONFIGURED`). */
-export const AI_NOT_CONFIGURED_MESSAGE: CardExtractionMessage = {
-  title: 'AI is not set up yet',
-  detail:
-    'AI is not set up yet — an administrator needs to add the OpenAI key and choose the card scanning model in Console → AI. You can still enter the card details yourself.',
-  adminActionRequired: true,
-  retryable: false,
-  adminLink: AI_SETTINGS_LINK,
-};
+export const AI_NOT_CONFIGURED_MESSAGE: CardExtractionMessage = scanNotConfiguredMessage(CARD_SCAN_SUBJECT);
 
 /** The caller may not use AI (a `403` without `AI_DISABLED`: no `ai:use`). */
-export const AI_FORBIDDEN_MESSAGE: CardExtractionMessage = {
-  title: 'Card scanning is not available to you',
-  detail: 'Your role does not include AI features. Enter the card details yourself, or ask an administrator.',
-  adminActionRequired: true,
-  retryable: false,
-};
-
-/** `details.reason` of an API error, when it is a string. */
-function detailReason(error: ApiError | null): string | undefined {
-  const reason = (error?.details as { reason?: unknown } | null | undefined)?.reason;
-  return typeof reason === 'string' ? reason : undefined;
-}
-
-const AI_ERROR_CODE_VALUES: readonly string[] = Object.values(AI_ERROR_CODES);
-
-function isAiErrorCode(code: string | undefined): code is AiErrorCode {
-  return code !== undefined && AI_ERROR_CODE_VALUES.includes(code);
-}
+export const AI_FORBIDDEN_MESSAGE: CardExtractionMessage = scanForbiddenMessage(CARD_SCAN_SUBJECT);
 
 /**
- * Map an extraction failure to an actionable message.
- *
- * AI switched off is checked first: the platform kill switch answers `403` with
- * top-level code `FORBIDDEN` and `details.reason: 'AI_DISABLED'` (E8.1; it was a
- * 503 before). Any other 403 means the caller lacks `ai:use`. Then the API's
- * `AI_*` `code`, then the HTTP status. Codes are matched against the known
- * `AI_*` set rather than trusted blindly, so a status-derived stand-in
- * ('TOO_MANY_REQUESTS', 'BAD_REQUEST') falls through to the status branch.
- * Message text is never parsed: it is copy, and it will be reworded.
+ * Map a card extraction failure to an actionable message: the shared
+ * {@link describeScanError} worded for a card.
  */
 export function describeCardExtractionError(error: unknown): CardExtractionMessage {
-  const apiError = error instanceof ApiError ? error : null;
-  const code = isAiErrorCode(apiError?.code) ? apiError.code : undefined;
-  const status = apiError?.status;
-
-  if (detailReason(apiError) === AI_DISABLED_REASON || apiError?.code === AI_DISABLED_REASON) {
-    return AI_DISABLED_MESSAGE;
-  }
-  if (status === 403) return AI_FORBIDDEN_MESSAGE;
-
-  switch (code) {
-    case AI_ERROR_CODES.NOT_CONFIGURED:
-      return AI_NOT_CONFIGURED_MESSAGE;
-    case AI_ERROR_CODES.INVALID_IMAGE:
-      return {
-        title: 'Those photos could not be sent',
-        detail:
-          'The images were not accepted. Retake the photos and try again.',
-        adminActionRequired: false,
-        retryable: true,
-      };
-    case AI_ERROR_CODES.RATE_LIMITED:
-      return {
-        title: 'Too many scans just now',
-        detail:
-          'You have scanned several cards in a short period. Wait a moment and try again shortly.',
-        adminActionRequired: false,
-        retryable: true,
-      };
-    case AI_ERROR_CODES.QUOTA_EXCEEDED:
-      return {
-        title: 'Daily scan limit reached',
-        detail:
-          'You have used your daily card scan allowance. Try again tomorrow, or ask an administrator to raise the limit.',
-        adminActionRequired: false,
-        retryable: false,
-      };
-    case AI_ERROR_CODES.UPSTREAM_AUTH:
-      return {
-        title: 'Card scanning is unavailable',
-        detail:
-          'The AI provider rejected the configured API key. An administrator needs to check it in Console → AI.',
-        adminActionRequired: true,
-        retryable: false,
-        adminLink: AI_SETTINGS_LINK,
-      };
-    case AI_ERROR_CODES.UPSTREAM_RATE_LIMITED:
-      return {
-        title: 'The AI provider is busy',
-        detail: 'The provider is rate limiting requests. Try again shortly.',
-        adminActionRequired: false,
-        retryable: true,
-      };
-    case AI_ERROR_CODES.UPSTREAM_UNAVAILABLE:
-      return {
-        title: 'The AI provider is unavailable',
-        detail:
-          'The provider could not be reached. Try again shortly, or enter the card details yourself.',
-        adminActionRequired: false,
-        retryable: true,
-      };
-    case AI_ERROR_CODES.EXTRACTION_FAILED:
-      return {
-        title: 'The card could not be read',
-        detail:
-          'Try again with a sharper, better-lit photo, or enter the details yourself below.',
-        adminActionRequired: false,
-        retryable: true,
-      };
-    default:
-      break;
-  }
-
-  switch (status) {
-    case 400:
-      return {
-        title: 'Those photos could not be sent',
-        detail: 'The images were not accepted. Retake the photos and try again.',
-        adminActionRequired: false,
-        retryable: true,
-      };
-    case 422:
-      return {
-        title: 'The card could not be read',
-        detail:
-          'Try again with a sharper, better-lit photo, or enter the details yourself below.',
-        adminActionRequired: false,
-        retryable: true,
-      };
-    case 429:
-      // A 429 without a recognised code: the wording covers both the burst limit
-      // and the daily cap without claiming either.
-      return {
-        title: 'Scan limit reached',
-        detail:
-          'You have hit a card scan limit — either too many scans in a short period, or your daily allowance. Wait a few minutes and try again; if it persists you are out of scans for today.',
-        adminActionRequired: false,
-        retryable: true,
-      };
-    case 502:
-      return {
-        title: 'The AI provider is unavailable',
-        detail:
-          'The provider could not be reached, or rejected the configured API key. Try again shortly, or enter the card details yourself.',
-        adminActionRequired: false,
-        retryable: true,
-      };
-    case 503:
-      return AI_NOT_CONFIGURED_MESSAGE;
-    default:
-      return {
-        title: 'The card could not be read',
-        detail:
-          error instanceof Error && error.message
-            ? error.message
-            : 'Something went wrong reading the card. Enter the details yourself below.',
-        adminActionRequired: false,
-        retryable: true,
-      };
-  }
+  return describeScanError(error, CARD_SCAN_SUBJECT);
 }
 
 /**
@@ -364,12 +189,8 @@ export function useCardImport(): UseCardImportResult {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Everything this flow has created but not yet committed. Held in refs, not
-  // state, because the unmount cleanup below has to see the CURRENT values —
-  // a stale closure over state would leak exactly the objects it exists to
-  // delete.
-  const orphanObjectIdsRef = useRef<Set<string>>(new Set());
-  const uncommittedSecretIdRef = useRef<string | null>(null);
+  // The secret, the uploads and their cleanup (on failure and on unmount).
+  const { saveSecretWithImages, cleanup } = useSaveSecretWithImages();
 
   useEffect(() => {
     let cancelled = false;
@@ -403,34 +224,6 @@ export function useCardImport(): UseCardImportResult {
     };
   }, []);
 
-  /**
-   * Best effort, never throws. Cleanup runs on paths that are already failing
-   * or already unmounting; a rejection here would replace a useful error with a
-   * useless one, or reject inside an effect teardown.
-   */
-  const cleanup = useCallback(async () => {
-    const objectIds = [...orphanObjectIdsRef.current];
-    orphanObjectIdsRef.current.clear();
-    const secretId = uncommittedSecretIdRef.current;
-    uncommittedSecretIdRef.current = null;
-
-    await Promise.allSettled([
-      ...objectIds.map((id) => deleteStorageObject(id)),
-      // Deleting the secret also deletes the storage objects behind its linked
-      // attachments, so linked ids are removed from the orphan set as they are
-      // linked and are not double-deleted here.
-      ...(secretId ? [deleteSecret(secretId)] : []),
-    ]);
-  }, []);
-
-  // Walking away — back button, browser navigation, closing the wizard — must
-  // not leave an image sitting in storage that nothing points at.
-  useEffect(() => {
-    return () => {
-      void cleanup();
-    };
-  }, [cleanup]);
-
   const runExtraction = useCallback(
     async (photos: ExtractCardRequest): Promise<CardExtractionResult | null> => {
       setIsExtracting(true);
@@ -463,64 +256,31 @@ export function useCardImport(): UseCardImportResult {
           throw new Error('The Card secret type is unavailable.');
         }
 
-        // Empty strings are dropped rather than stored: a blank optional field
-        // should be absent, not an empty value the detail view renders as ''.
-        const data: Record<string, string> = {};
-        for (const [key, value] of Object.entries(values)) {
-          const trimmed = value.trim();
-          if (trimmed !== '') data[key] = trimmed;
-        }
-
-        const secret = await createSecret({
-          name: name.trim(),
+        const { secretId, failedRoles } = await saveSecretWithImages({
+          name,
           typeId: cardType.id,
-          data,
+          // Empty strings are dropped rather than stored.
+          data: compactSecretData(values),
+          images: images.map((side) => ({ role: side.role, file: side.image.file })),
         });
-        uncommittedSecretIdRef.current = secret.id;
-
-        const failedSides: string[] = [];
-        for (const side of images) {
-          try {
-            const object = await simpleStorageUpload(side.image.file);
-            orphanObjectIdsRef.current.add(object.id);
-            await linkSecretAttachment(
-              secret.id,
-              object.id,
-              side.image.file.name,
-              side.role,
-            );
-            // Now owned by the secret: deleting the secret would delete it too,
-            // so it is no longer an orphan and must not be deleted twice.
-            orphanObjectIdsRef.current.delete(object.id);
-          } catch {
-            failedSides.push(side.role === 'card_front' ? 'front' : 'back');
-          }
-        }
-
-        // Committed. Clearing these is what stops the unmount cleanup from
-        // deleting the secret the user just saved.
-        uncommittedSecretIdRef.current = null;
-        const orphans = [...orphanObjectIdsRef.current];
-        orphanObjectIdsRef.current.clear();
-        await Promise.allSettled(orphans.map((id) => deleteStorageObject(id)));
+        const failedSides = failedRoles.map((role) => (role === 'card_front' ? 'front' : 'back'));
 
         return {
-          secretId: secret.id,
+          secretId,
           attachmentWarning:
             failedSides.length > 0
               ? `The card was saved, but the ${failedSides.join(' and ')} photo could not be attached.`
               : null,
         };
       } catch (err) {
-        // The secret itself failed, so nothing of value exists to keep.
-        await cleanup();
+        // The secret itself failed; the saver has already removed what it made.
         setSaveError(err instanceof Error ? err.message : 'Failed to save the card');
         return null;
       } finally {
         setIsSaving(false);
       }
     },
-    [cardType, cleanup],
+    [cardType, saveSecretWithImages],
   );
 
   const abandonImport = useCallback(async () => {

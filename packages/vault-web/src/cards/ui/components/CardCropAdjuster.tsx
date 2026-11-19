@@ -44,12 +44,18 @@ const INITIAL_ADJUSTMENTS: ResolvedAdjustments = {
  * which is where this flow mostly runs.
  */
 const PREVIEW_WIDTH = 960;
-const PREVIEW_HEIGHT = Math.round(PREVIEW_WIDTH / CARD_ASPECT_RATIO);
 
 interface CardCropAdjusterProps {
   /** The raw capture, exactly as picked. Never uploaded — only drawn locally. */
   file: File;
-  side: 'front' | 'back';
+  /** The slot being cropped (`front`, `back`, `data_page`); names the test id. */
+  side: string;
+  /** The slot's label as people read it. Defaults to the side. */
+  slotLabel?: string;
+  /** What is cropped, as a noun ("card", "document"). Defaults to `card`. */
+  subjectNoun?: string;
+  /** Width to height of the crop frame. Defaults to the card's ID-1 ratio. */
+  aspectRatio?: number;
   /** Fired with the final adjustments when the user accepts the framing. */
   onConfirm: (adjustments: CardAdjustments) => void;
   /** The user backed out; the caller reopens the picker (or closes the stage). */
@@ -90,6 +96,9 @@ interface CardCropAdjusterProps {
 export function CardCropAdjuster({
   file,
   side,
+  slotLabel,
+  subjectNoun = 'card',
+  aspectRatio = CARD_ASPECT_RATIO,
   onConfirm,
   onRetake,
   isProcessing = false,
@@ -99,6 +108,8 @@ export function CardCropAdjuster({
   retakeLabel = 'Retake',
 }: CardCropAdjusterProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const previewHeight = Math.round(PREVIEW_WIDTH / aspectRatio);
+  const label = (slotLabel ?? side.replace(/_/g, ' ')).toLowerCase();
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [adjust, setAdjust] = useState<ResolvedAdjustments>(INITIAL_ADJUSTMENTS);
@@ -107,12 +118,12 @@ export function CardCropAdjuster({
   // keeps them out of that effect's dependencies: pages pass fresh object
   // literals every render, and re-running the decode on each would reset the
   // user's in-progress adjustment.
-  const seedRef = useRef({ initialAdjustments, initialBox });
-  seedRef.current = { initialAdjustments, initialBox };
+  const seedRef = useRef({ initialAdjustments, initialBox, aspectRatio });
+  seedRef.current = { initialAdjustments, initialBox, aspectRatio };
 
   /** Resolve the starting knobs for a freshly decoded image. */
   const resolveSeed = (element: HTMLImageElement): ResolvedAdjustments => {
-    const { initialAdjustments: seedAdjust, initialBox: seedBox } = seedRef.current;
+    const { initialAdjustments: seedAdjust, initialBox: seedBox, aspectRatio: ratio } = seedRef.current;
     if (seedAdjust) {
       return {
         zoom: clamp(seedAdjust.zoom ?? 1, 1, CARD_IMAGE_MAX_ZOOM),
@@ -127,6 +138,7 @@ export function CardCropAdjuster({
           element.naturalWidth || element.width,
           element.naturalHeight || element.height,
           seedBox,
+          ratio,
         );
       } catch {
         // A degenerate box seeds nothing; fall through to the auto-fit start.
@@ -193,6 +205,7 @@ export function CardCropAdjuster({
         adjust.zoom,
         adjust.panX,
         adjust.panY,
+        aspectRatio,
       );
       drawCardCrop(
         context,
@@ -205,7 +218,7 @@ export function CardCropAdjuster({
       );
     });
     return () => cancelAnimationFrame(frame);
-  }, [image, adjust]);
+  }, [image, adjust, aspectRatio]);
 
   /** Clamp a pan against the slack available at the given zoom/rotation. */
   const clampPan = useCallback(
@@ -214,13 +227,13 @@ export function CardCropAdjuster({
       const sourceWidth = image.naturalWidth || image.width;
       const sourceHeight = image.naturalHeight || image.height;
       const effective = effectiveSourceSize(sourceWidth, sourceHeight, quarterTurns);
-      const max = computeMaxPan(effective.width, effective.height, zoom);
+      const max = computeMaxPan(effective.width, effective.height, zoom, aspectRatio);
       return {
         panX: clamp(panX, -max.x, max.x),
         panY: clamp(panY, -max.y, max.y),
       };
     },
-    [image],
+    [image, aspectRatio],
   );
 
   const handleRotate = () => {
@@ -281,6 +294,7 @@ export function CardCropAdjuster({
         prev.zoom,
         prev.panX,
         prev.panY,
+        aspectRatio,
       );
       // Dragging moves the PICTURE under a fixed viewport, so the crop rect
       // moves the opposite way, scaled from CSS pixels to source pixels.
@@ -327,18 +341,18 @@ export function CardCropAdjuster({
         <canvas
           ref={canvasRef}
           width={PREVIEW_WIDTH}
-          height={PREVIEW_HEIGHT}
+          height={previewHeight}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={endDrag}
           onPointerCancel={endDrag}
-          aria-label={`Adjust the crop of the ${side} photo`}
+          aria-label={`Adjust the crop of the ${label} photo`}
           data-testid={`card-${side}-adjuster`}
           style={{
             display: 'block',
             width: '100%',
             height: 'auto',
-            aspectRatio: String(CARD_ASPECT_RATIO),
+            aspectRatio: String(aspectRatio),
             // Without this, a touch drag scrolls the page instead of panning.
             touchAction: 'none',
             cursor: isDragging ? 'grabbing' : 'grab',
@@ -363,9 +377,7 @@ export function CardCropAdjuster({
         <Box
           sx={{ mb: 1.5, typography: 'body2', color: 'text.secondary' }}
         >
-          Zoom and drag until the card fills the frame — this crop is what gets
-          stored with the card. Rotate if the card is on its side or upside
-          down.
+          {`Zoom and drag until the ${subjectNoun} fills the frame — this crop is what gets stored with the ${subjectNoun}. Rotate if the ${subjectNoun} is on its side or upside down.`}
         </Box>
 
         <Stack

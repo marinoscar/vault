@@ -98,13 +98,16 @@ export const DESTINATIONS: readonly Destination[] = [
  * - `settings` also owns `/secret-types`: since E10.3 the secret types pages
  *   live under their card (`/settings/secret-types/*`) and the old routes are
  *   redirects kept for bookmarks; they still light up Settings.
+ * - `secrets` also owns `/documents`: the "Scan an ID" flow
+ *   (`/documents/scan`) saves a Passport or ID Document secret (issue #211);
+ *   it is not a destination of its own.
  * - `console` navigates to `/admin/settings` but owns all of `/admin` (the
  *   `/admin` and `/admin/users` redirects too), which is also the prefix of
  *   the rail's Console mode.
  */
 export const DESTINATION_ROUTES: Readonly<Record<DestinationKey, readonly string[]>> = {
   home: ['/'],
-  secrets: ['/secrets'],
+  secrets: ['/secrets', '/documents'],
   cards: ['/cards'],
   media: ['/media'],
   settings: ['/settings', '/secret-types'],

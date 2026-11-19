@@ -1,14 +1,19 @@
 import { useEffect } from 'react';
-import { Link as RouterLink, useNavigate } from 'react-router-dom';
+import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom';
 import { Box, Button, CircularProgress, Typography } from '@mui/material';
 import { ArrowBack as BackIcon } from '@mui/icons-material';
 import { SecretForm } from '../components/SecretForm.js';
 import { useSecretTypes } from '../../headless/useSecretTypes.js';
 import { createSecret } from '../../../core/headless/api.js';
 
-/** New secret (E10.4, issue #95): `POST /api/secrets` with the type's fields. */
+/**
+ * New secret (E10.4, issue #95): `POST /api/secrets` with the type's fields.
+ * `?type=<typeId>` preselects the type (the scan flows' "Add manually").
+ */
 export default function CreateSecretPage() {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const presetTypeId = params.get('type') ?? '';
   const { types, isLoading, fetchTypes } = useSecretTypes();
 
   useEffect(() => {
@@ -37,6 +42,7 @@ export default function CreateSecretPage() {
         <SecretForm
           mode="create"
           types={types}
+          initial={presetTypeId ? { name: '', description: '', typeId: presetTypeId, data: {} } : undefined}
           submitLabel="Create secret"
           submittingLabel="Creating…"
           onCancel={() => navigate('/secrets')}

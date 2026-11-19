@@ -16,7 +16,28 @@ import {
 import { CARD_ASPECT_RATIO } from '../../headless/cardImage.js';
 
 interface CardCaptureStepProps {
-  side: 'front' | 'back';
+  /**
+   * The slot being captured: `front` or `back` for a card, any image slot
+   * role (`data_page`, `front`, `back`) for a document. It names the inputs'
+   * test ids (`<testIdPrefix>-<side>-input`).
+   */
+  side: string;
+  /**
+   * The slot's label as people read it ("Front", "Data page"). Defaults to
+   * the side, capitalised.
+   */
+  slotLabel?: string;
+  /**
+   * What is photographed, as a noun phrase ("the passport"). Omitted for a
+   * card, which keeps the card wording.
+   */
+  subject?: string;
+  /** Width to height of the empty frame. Defaults to the card's ID-1 ratio. */
+  aspectRatio?: number;
+  /** Prefix of the inputs' test ids. Defaults to `card`. */
+  testIdPrefix?: string;
+  /** Whether the shot is optional ("(optional)" in the generic heading). */
+  optional?: boolean;
   /**
    * The captured photo, set by the caller once the pick has been prepared.
    * Only the preview matters here; the caller owns the file and the object
@@ -54,7 +75,7 @@ interface CardCaptureStepProps {
 }
 
 
-const COPY = {
+const CARD_COPY: Record<string, { heading: string; help: string; action: string }> = {
   front: {
     heading: 'Photograph the front of the card',
     help: 'Make sure every corner of the card is in the shot and the text is readable.',
@@ -65,7 +86,17 @@ const COPY = {
     help: 'Make sure every corner of the card is in the shot and the text is readable. Skip it if you would rather not photograph the signature strip.',
     action: 'Take a photo of the back',
   },
-} as const;
+};
+
+/** The copy of a capture step for a slot of a non-card `subject`. */
+function slotCopy(label: string, subject: string, optional: boolean) {
+  const lower = label.toLowerCase();
+  return {
+    heading: `Photograph the ${lower} of ${subject}${optional ? ' (optional)' : ''}`,
+    help: 'Make sure every corner of the document is in the shot and the text is readable.',
+    action: `Take a photo of the ${lower}`,
+  };
+}
 
 /**
  * One capture step of the import wizard.
@@ -87,6 +118,11 @@ const COPY = {
  */
 export function CardCaptureStep({
   side,
+  slotLabel,
+  subject,
+  aspectRatio = CARD_ASPECT_RATIO,
+  testIdPrefix = 'card',
+  optional,
   photo,
   onFileSelected,
   onRetake,
@@ -102,7 +138,10 @@ export function CardCaptureStep({
 }: CardCaptureStepProps) {
   const cameraRef = useRef<HTMLInputElement>(null);
   const libraryRef = useRef<HTMLInputElement>(null);
-  const copy = COPY[side];
+  const label = slotLabel ?? side.charAt(0).toUpperCase() + side.slice(1).replace(/_/g, ' ');
+  const isCard = subject === undefined && side in CARD_COPY;
+  const copy = isCard ? CARD_COPY[side] : slotCopy(label, subject ?? 'the document', optional ?? Boolean(onSkip));
+  const what = subject ?? 'the card';
 
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -140,7 +179,7 @@ export function CardCaptureStep({
         capture="environment"
         onChange={handleChange}
         style={{ display: 'none' }}
-        data-testid={`card-${side}-input`}
+        data-testid={`${testIdPrefix}-${side}-input`}
         aria-label={copy.action}
       />
       <input
@@ -149,8 +188,8 @@ export function CardCaptureStep({
         accept="image/*"
         onChange={handleChange}
         style={{ display: 'none' }}
-        data-testid={`card-${side}-library-input`}
-        aria-label={`Choose a photo of the ${side}`}
+        data-testid={`${testIdPrefix}-${side}-library-input`}
+        aria-label={`Choose a photo of the ${label.toLowerCase()}`}
       />
 
       {photo ? (
@@ -168,7 +207,7 @@ export function CardCaptureStep({
           <Box
             component="img"
             src={photo.previewUrl}
-            alt={`Photo of the ${side} of the card`}
+            alt={`Photo of the ${label.toLowerCase()} of ${what}`}
             sx={{ display: 'block', width: '100%', height: 'auto', maxHeight: 360, objectFit: 'contain' }}
           />
         </Box>
@@ -182,7 +221,7 @@ export function CardCaptureStep({
             mb: 2,
             mx: { xs: 'auto', sm: 0 },
             maxWidth: 480,
-            aspectRatio: String(CARD_ASPECT_RATIO),
+            aspectRatio: String(aspectRatio),
             border: 1,
             borderStyle: 'dashed',
             borderColor: 'divider',
@@ -214,7 +253,7 @@ export function CardCaptureStep({
             <>
               <CameraIcon sx={{ fontSize: 36, color: 'text.disabled' }} />
               <Typography variant="body2">
-                {side === 'front' ? 'Front of the card' : 'Back of the card'}
+                {`${label} of ${what}`}
               </Typography>
             </>
           )}

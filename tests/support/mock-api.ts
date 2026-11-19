@@ -17,6 +17,7 @@ import {
   ACCESS_TOKEN,
   BACKUP_RUN,
   CARD_EXTRACTION,
+  DOCUMENT_EXTRACTION,
   CARD_SUMMARIES,
   FROZEN_NOW,
   CARD_GRANTS,
@@ -25,6 +26,7 @@ import {
   DETAIL_ONLY_SECRETS,
   SECRETS,
   SECRET_TYPES,
+  TYPE_ID_DOCUMENT,
   makeUser,
   type FixtureSecret,
 } from './fixtures';
@@ -190,6 +192,16 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}): 
         },
       });
     }
+    if (path === '/secrets/scan/targets') {
+      // #213: both scan features run on an enabled vision model that fits the needs,
+      // so card and document scanning stay available and the screens are unchanged.
+      const target = {
+        provider: 'openai',
+        model: 'mock-vision-model',
+        capabilities: ['vision_input', 'structured_output', 'responses'],
+      };
+      return json(route, { data: { card_extract: target, document_extract: target } });
+    }
     if (path === '/ai/config') {
       // Card scanning available (vault-web `isCardScanAvailable`): AI on, the deployment
       // key serving everyone and the openai provider on with its key stored.
@@ -225,7 +237,7 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}): 
     }
 
     // ---- secret types ------------------------------------------------------
-    if (path === '/secret-types') return json(route, { data: SECRET_TYPES });
+    if (path === '/secret-types') return json(route, { data: [...SECRET_TYPES, TYPE_ID_DOCUMENT] });
     const typeMatch = path.match(/^\/secret-types\/([^/]+)$/);
     if (typeMatch) {
       const t = SECRET_TYPES.find((x) => x.id === typeMatch[1]);
@@ -293,6 +305,9 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}): 
     if (path === '/secrets/cards/summary') {
       const cards = empty ? [] : CARD_SUMMARIES;
       return json(route, { data: page_(cards, 1, Number(url.searchParams.get('pageSize') ?? 20)) });
+    }
+    if (path === '/secrets/documents/extract' && method === 'POST') {
+      return json(route, { data: DOCUMENT_EXTRACTION });
     }
     // IDOC-9: no fixture document needs attention, so Home's documents panel stays hidden.
     if (path === '/secrets/documents/summary' && method === 'GET') {
