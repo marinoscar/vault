@@ -101,7 +101,7 @@ export function vaultMcpTools(service: McpSecretsService): McpToolDefinition[] {
     ...read,
     name: 'list_secret_types',
     title: 'List secret types',
-    description: 'The secret types Vault has and their field definitions (name, label, type, required, sensitive). Use it before create_secret. Card types are not listed.',
+    description: 'The secret types Vault has and their field definitions (name, label, type, required, sensitive). Use it before create_secret. Card and identity-document types are not listed.',
     input: listSecretTypesInput,
     handler: async () => ({ data: { types: await service.listTypes() } }),
   };

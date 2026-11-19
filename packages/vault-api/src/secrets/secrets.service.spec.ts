@@ -30,7 +30,7 @@ import {
   type VaultCryptoPort,
   type VaultObjectStorePort,
 } from '../ports';
-import { auditOverPrisma } from '../testing';
+import { CountingMetrics, auditOverPrisma } from '../testing';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -336,11 +336,30 @@ describe('SecretsService', () => {
       expect(metrics.secretCreated).toHaveBeenCalledTimes(1);
       expect(metrics.secretVersionCreated).toHaveBeenCalledWith('create');
       // Whatever the type row says, the label is one of the closed kinds, never a name or id.
-      expect(['credential', 'api_key', 'card', 'token', 'note', 'document', 'custom']).toContain(
+      expect(['credential', 'api_key', 'card', 'token', 'note', 'document', 'custom', 'passport', 'id_document']).toContain(
         metrics.secretCreated.mock.calls[0][0],
       );
       expect(JSON.stringify(metrics.secretCreated.mock.calls)).not.toContain(userId);
       expect(JSON.stringify(metrics.secretCreated.mock.calls)).not.toContain(createDto.name);
+    });
+
+    it.each([
+      ['Passport', 'passport', { surname: 'PERSON', passport_number: 'X1234567', expiry_date: '2031-01-01' }],
+      ['ID Document', 'id_document', { document_kind: 'Driver License', holder_name: 'Person A' }],
+    ])('labels a %s secret %s on create (issue #209)', async (name, kind, data) => {
+      const definition = SYSTEM_SECRET_TYPES.find((t) => t.name === name)!;
+      const type = { ...mockSecretType, name, isSystem: true, fields: definition.fields };
+      mockPrisma.secretType.findUnique.mockResolvedValue(type as any);
+      mockPrisma.secret.create.mockResolvedValue({ ...mockSecret, type } as any);
+      const metrics = new CountingMetrics();
+      (service as unknown as { vaultMetrics: CountingMetrics }).vaultMetrics = metrics;
+
+      await service.create({ ...createDto, data } as CreateSecretDto, userId, ownerPerms);
+
+      expect(metrics.calls).toEqual([
+        { method: 'secretCreated', args: [kind] },
+        { method: 'secretVersionCreated', args: ['create'] },
+      ]);
     });
 
     it('should throw NotFoundException when the secret type does not exist', async () => {

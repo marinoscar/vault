@@ -1,6 +1,10 @@
 import { SYSTEM_SECRET_TYPES } from '@marinoscar/vault-contract/secret-types';
-import { CARD_NETWORKS, CARD_KINDS } from '@marinoscar/vault-contract/secret-types';
+import { CARD_NETWORKS, CARD_KINDS, secretTypeFieldsSchema } from '@marinoscar/vault-contract/secret-types';
 import { createSecretTypeSchema } from './dto/create-secret-type.dto';
+
+// A system type is a custom type's shape, except that it may declare `keyvalue` fields (reserved for
+// system types, issue #206): validate its fields with the system-level fields schema.
+const systemSecretTypeSchema = createSecretTypeSchema.extend({ fields: secretTypeFieldsSchema });
 
 // =============================================================================
 // System Secret Type regression guards
@@ -84,15 +88,15 @@ describe('SYSTEM_SECRET_TYPES', () => {
 
   describe('schema validity', () => {
     it.each(SYSTEM_SECRET_TYPES.map((t) => [t.name, t] as const))(
-      '%s should pass createSecretTypeSchema',
+      '%s should pass the secret type schema',
       (_name, type) => {
-        const result = createSecretTypeSchema.safeParse(type);
+        const result = systemSecretTypeSchema.safeParse(type);
 
         if (!result.success) {
           // Surface the Zod issues directly in the failure message so a
           // malformed field definition is easy to diagnose.
           throw new Error(
-            `${type.name} failed createSecretTypeSchema: ${JSON.stringify(result.error.issues, null, 2)}`,
+            `${type.name} failed the secret type schema: ${JSON.stringify(result.error.issues, null, 2)}`,
           );
         }
 
@@ -134,6 +138,35 @@ describe('SYSTEM_SECRET_TYPES', () => {
     Token: ['token', 'provider', 'notes'],
     Note: ['content'],
     Document: ['title', 'notes'],
+    Passport: [
+      'surname',
+      'given_names',
+      'passport_number',
+      'passport_type',
+      'issuing_country',
+      'nationality',
+      'date_of_birth',
+      'place_of_birth',
+      'sex',
+      'issue_date',
+      'expiry_date',
+      'issuing_authority',
+      'personal_number',
+      'mrz',
+      'notes',
+    ],
+    'ID Document': [
+      'document_kind',
+      'holder_name',
+      'document_number',
+      'issuing_country',
+      'issuing_authority',
+      'date_of_birth',
+      'issue_date',
+      'expiry_date',
+      'attributes',
+      'notes',
+    ],
   });
 
   describe('append-only field guard', () => {
