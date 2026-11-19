@@ -15,6 +15,7 @@ import {
   exportArchiveFileName,
   isAlreadyCompressed,
 } from './attachment-file-name';
+import { attachmentRank } from './document-image-slots';
 import { renderSecretsHtml } from './secrets-export-html.renderer';
 import { renderUserBackupReadme } from './secrets-export-readme.renderer';
 import {
@@ -261,12 +262,15 @@ export interface SecretsExportResult {
 
 export type DecryptVersion = (version: ExportVersionRow) => Record<string, unknown>;
 
-const ROLE_ORDER: Readonly<Record<string, number>> = { card_front: 0, card_back: 1 };
-
-function sortAttachments(rows: ExportAttachmentRow[]): ExportAttachmentRow[] {
+/**
+ * Document images first, in the slot order of `DOCUMENT_IMAGE_SLOTS` (a card's
+ * front then back, a passport's data page then other page), then any other
+ * role-bearing file, then generic attachments; ties by creation time.
+ */
+function sortAttachments(typeName: string, rows: ExportAttachmentRow[]): ExportAttachmentRow[] {
   return rows.slice().sort((a, b) => {
-    const ra = a.role ? (ROLE_ORDER[a.role] ?? 2) : 3;
-    const rb = b.role ? (ROLE_ORDER[b.role] ?? 2) : 3;
+    const ra = attachmentRank(typeName, a.role);
+    const rb = attachmentRank(typeName, b.role);
     if (ra !== rb) {
       return ra - rb;
     }
@@ -354,7 +358,7 @@ export function buildExportPlan(
     }
 
     const buildAttachments = (version: ExportVersionRow): ExportAttachmentEntry[] =>
-      sortAttachments(attachmentsByVersion.get(version.id) ?? []).map((row) => {
+      sortAttachments(secret.type.name, attachmentsByVersion.get(version.id) ?? []).map((row) => {
         const object = row.storageObject;
         const entry: ExportAttachmentEntry = {
           file: null,

@@ -21,6 +21,10 @@ import {
   normalizeTotpSecret,
   parseTotpSecret,
   registrableDomainOfOrigin,
+  documentNoun,
+  imageSlotFor,
+  imageSlotsFor,
+  isDocumentImageRole,
 } from '@marinoscar/vault-contract/secrets';
 import { generateTotp, TotpCode } from './totp';
 import { defaultOrgClient, runInDefaultOrg } from '../core/default-org';
@@ -75,7 +79,10 @@ import {
  * heic/heif are included because iOS cameras produce them by default; a user
  * photographing a card from an iPhone would otherwise be rejected.
  *
- * This list gates the DECLARED type. `enforceCardImageConstraints` separately
+ * The same list gates every document image role (card faces, passport pages,
+ * ID document faces): they are all photographs rendered by the same UI.
+ *
+ * This list gates the DECLARED type. `enforceDocumentImageConstraints` separately
  * verifies the file's leading bytes against the same set, so a declaration on
  * this list has to be backed up by the contents.
  */
@@ -399,11 +406,33 @@ export class SecretsService {
   }
 
   /**
-   * True for the roles that render as a card face image in the UI. Generic
-   * attachments (role omitted) are untouched by the image constraints.
+   * True for the roles that render as a document image in the UI (any role of
+   * any `DOCUMENT_IMAGE_SLOTS` entry). Generic attachments (role omitted) are
+   * untouched by the image constraints.
    */
-  private isCardImageRole(role?: AttachmentRole): boolean {
-    return role === 'card_front' || role === 'card_back';
+  private isDocumentImageRole(role?: AttachmentRole): boolean {
+    return isDocumentImageRole(role);
+  }
+
+  /**
+   * Refuse a role the secret's type has no image slot for, with a 422
+   * `ATTACHMENT_ROLE_NOT_ALLOWED`: `card_front` on a Passport, `front` on a
+   * Card, any role on a custom type. A role-less (generic) attachment passes.
+   */
+  private assertRoleAllowedForType(
+    type: { name: string; isSystem?: boolean },
+    role?: AttachmentRole | null,
+  ): void {
+    if (!role) return;
+    if (imageSlotFor(type, role)) return;
+    const allowed = imageSlotsFor(type).map((slot) => slot.role);
+    throw new UnprocessableEntityException({
+      code: 'ATTACHMENT_ROLE_NOT_ALLOWED',
+      message:
+        allowed.length > 0
+          ? `The role "${role}" is not an image slot of this secret type; allowed: ${allowed.join(', ')}`
+          : `This secret type has no image slots, so an attachment cannot carry the role "${role}"`,
+    });
   }
 
   /**
@@ -510,7 +539,7 @@ export class SecretsService {
   }
 
   /**
-   * Enforce the card-face image constraints on a StorageObject before it is
+   * Enforce the document image constraints on a StorageObject before it is
    * linked: a declared mime type from a fixed allowlist, a size cap, and — the
    * part that makes the other two mean something — a magic-number check that
    * the bytes are actually one of the accepted formats.
@@ -521,11 +550,16 @@ export class SecretsService {
    * and a control with a documented bypass is not a control. The cost is one
    * `download` call whose stream is destroyed as soon as the first chunk lands.
    */
-  private async enforceCardImageConstraints(
+  private async enforceDocumentImageConstraints(
     storageObject: { mimeType: string; size: bigint | number; storageKey: string },
     secretId: string,
     role: AttachmentRole,
   ): Promise<void> {
+    // Card faces keep their historical wording; every other document role
+    // gets the same rule under a neutral noun.
+    const noun = role === 'card_front' || role === 'card_back' ? 'Card images' : 'Document images';
+    const kind = noun === 'Card images' ? 'card image' : 'document image';
+
     // Normalize `image/jpeg; charset=binary` and casing before comparing.
     const mimeType = (storageObject.mimeType ?? '')
       .split(';')[0]
@@ -535,10 +569,10 @@ export class SecretsService {
     if (!CARD_IMAGE_MIME_TYPES.includes(mimeType)) {
       this.logger.warn(
         `Rejected ${role} attachment on secret ${secretId}: ` +
-          `mime type "${storageObject.mimeType}" is not an accepted card image type`,
+          `mime type "${storageObject.mimeType}" is not an accepted ${kind} type`,
       );
       throw new BadRequestException(
-        `Card images must be one of ${CARD_IMAGE_MIME_TYPES.join(', ')}; ` +
+        `${noun} must be one of ${CARD_IMAGE_MIME_TYPES.join(', ')}; ` +
           `received "${storageObject.mimeType}"`,
       );
     }
@@ -562,10 +596,10 @@ export class SecretsService {
     if (actualSize > maxBytes) {
       this.logger.warn(
         `Rejected ${role} attachment on secret ${secretId}: ` +
-          `${actualSize} bytes exceeds the ${maxBytes} byte card image limit`,
+          `${actualSize} bytes exceeds the ${maxBytes} byte ${kind} limit`,
       );
       throw new BadRequestException(
-        `Card images must be ${maxBytes} bytes or smaller`,
+        `${noun} must be ${maxBytes} bytes or smaller`,
       );
     }
 
@@ -1840,6 +1874,10 @@ export class SecretsService {
 
     this.assertReplacementsAreDistinct(replacements);
 
+    for (const replacement of replacements) {
+      this.assertRoleAllowedForType(secret.type, replacement.role);
+    }
+
     // Validate EVERY replacement before opening the transaction. The card image
     // check streams the object back from the storage provider to read its
     // signature (and, when the recorded size is unknown, to measure it), and
@@ -1855,8 +1893,8 @@ export class SecretsService {
       );
       replacementOrgIds.set(replacement.storageObjectId, storageObject.orgId);
 
-      if (this.isCardImageRole(replacement.role)) {
-        await this.enforceCardImageConstraints(
+      if (this.isDocumentImageRole(replacement.role)) {
+        await this.enforceDocumentImageConstraints(
           storageObject,
           secretId,
           replacement.role as AttachmentRole,
@@ -1919,7 +1957,7 @@ export class SecretsService {
     } catch (error) {
       // Same wording as the link endpoint. A P2002 here means two clients
       // renewed the same secret concurrently; the loser gets a 409, not a 500.
-      throw this.translateAttachmentConflict(error, replacements[0] ?? {});
+      throw this.translateAttachmentConflict(error, replacements[0] ?? {}, secret.type);
     }
 
     // One event for one user action. The replacements inserted above are NOT
@@ -2012,6 +2050,9 @@ export class SecretsService {
       );
     }
 
+    // A role is an image slot of the type, or nothing (a generic attachment).
+    this.assertRoleAllowedForType(secret.type, dto.role);
+
     // Verify the storage object exists and the caller can use it
     const storageObject = await this.resolveUsableStorageObject(
       dto.storageObjectId,
@@ -2019,11 +2060,12 @@ export class SecretsService {
       userPermissions,
     );
 
-    // Card faces are rendered as images in the UI and carried forward onto
-    // every future version, so the type/size gate belongs here — before the
-    // attachment row exists — rather than at render time.
-    if (this.isCardImageRole(dto.role)) {
-      await this.enforceCardImageConstraints(
+    // Document images (card faces, passport pages, ID document faces) are
+    // rendered as images in the UI and carried forward onto every future
+    // version, so the type/size gate belongs here — before the attachment row
+    // exists — rather than at render time.
+    if (this.isDocumentImageRole(dto.role)) {
+      await this.enforceDocumentImageConstraints(
         storageObject,
         secretId,
         dto.role as AttachmentRole,
@@ -2066,7 +2108,7 @@ export class SecretsService {
         });
       });
     } catch (error) {
-      throw this.translateAttachmentConflict(error, dto);
+      throw this.translateAttachmentConflict(error, dto, secret.type);
     }
 
     // Outside the transaction, after it has committed — the same placement every
@@ -2107,6 +2149,7 @@ export class SecretsService {
   private translateAttachmentConflict(
     error: unknown,
     dto: { role?: AttachmentRole },
+    type: { name: string; isSystem?: boolean },
   ): unknown {
     if (!this.isUniqueConstraintViolation(error)) {
       return error;
@@ -2123,9 +2166,12 @@ export class SecretsService {
       : targetText === '' && Boolean(dto.role);
 
     if (isRoleConflict && dto.role) {
-      const side = dto.role === 'card_front' ? 'front' : 'back';
+      // "This card already has a front image", "This passport already has a
+      // data page image": the type name and the slot label, in lower case
+      // (an all-capital word such as "ID" is kept).
+      const slotLabel = imageSlotFor(type, dto.role)?.label ?? dto.role;
       return new ConflictException(
-        `This card already has a ${side} image for the current version`,
+        `This ${documentNoun(type.name)} already has a ${slotLabel.toLowerCase()} image for the current version`,
       );
     }
 
