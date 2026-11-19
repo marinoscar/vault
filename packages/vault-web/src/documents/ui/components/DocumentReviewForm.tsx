@@ -36,6 +36,7 @@ const CHECK_TEXT: Record<DocumentCheckResult['id'], string> = {
   mrz: 'The machine readable zone did not pass its check digits',
   ssn: 'The number does not look like a valid Social Security number',
   vin: 'The vehicle identification number did not pass its check digit',
+  aamva: 'The barcode on the back disagreed with the printed values; the barcode was used',
 };
 
 const LOW_CONFIDENCE_HELPER = 'The photo was hard to read here. Check this against the document.';

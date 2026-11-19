@@ -8,6 +8,7 @@ import {
 } from '@marinoscar/vault-contract/secrets';
 
 import { extractDocument } from '../../core/headless/api.js';
+import { readDriverLicenseBarcode } from './barcode.js';
 import {
   DOCUMENT_SCAN_SUBJECT,
   describeScanError,
@@ -129,6 +130,25 @@ export function buildDefaultDocumentName(
   return firstName ? `${kind} · ${firstName}` : kind;
 }
 
+/**
+ * What became of the back photo's barcode in the last extraction: `decoded`
+ * (sent with the request), `failed` (none could be read) or `skipped` (no back
+ * photo, or a passport).
+ *
+ * @stability experimental
+ */
+export type DocumentBarcodeOutcome = 'decoded' | 'failed' | 'skipped';
+
+/** Options of {@link UseDocumentScanResult.runExtraction}. @stability experimental */
+export interface RunDocumentExtractionOptions {
+  /**
+   * The ORIGINAL back photo (full resolution, before any crop): an ID
+   * document's PDF417 (AAMVA) barcode is decoded from it in the browser and
+   * only the parsed values travel with the request.
+   */
+  backPhoto?: File | null;
+}
+
 export interface SaveDocumentInput {
   name: string;
   values: Record<string, unknown>;
@@ -159,12 +179,23 @@ export interface UseDocumentScanResult {
   extraction: ExtractDocumentResponse | null;
   extractionError: ScanErrorMessage | null;
   isExtracting: boolean;
+  /** The back photo's barcode in the last extraction. */
+  barcodeOutcome: DocumentBarcodeOutcome;
   /**
-   * Read the prepared FULL photos (data URLs by slot). NEVER REJECTS: a failure
-   * resolves to `null` and lands in `extractionError`, so the caller always
-   * advances to review.
+   * The model saw a barcode but the browser could not decode it: the page
+   * suggests a closer, sharper back photo.
    */
-  runExtraction: (images: Partial<Record<DocumentScanSlot, string>>) => Promise<ExtractDocumentResponse | null>;
+  barcodeUnread: boolean;
+  /**
+   * Read the prepared FULL photos (data URLs by slot). For an ID document with
+   * `options.backPhoto`, the back's PDF417 barcode is decoded first and its
+   * parsed values sent along. NEVER REJECTS: a failure resolves to `null` and
+   * lands in `extractionError`, so the caller always advances to review.
+   */
+  runExtraction: (
+    images: Partial<Record<DocumentScanSlot, string>>,
+    options?: RunDocumentExtractionOptions,
+  ) => Promise<ExtractDocumentResponse | null>;
 
   isSaving: boolean;
   saveError: string | null;
@@ -192,6 +223,7 @@ export function useDocumentScan(initialType: ScannableDocumentType = 'id_documen
   const [extraction, setExtraction] = useState<ExtractDocumentResponse | null>(null);
   const [extractionError, setExtractionError] = useState<ScanErrorMessage | null>(null);
   const [isExtracting, setIsExtracting] = useState(false);
+  const [barcodeOutcome, setBarcodeOutcome] = useState<DocumentBarcodeOutcome>('skipped');
 
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -225,6 +257,7 @@ export function useDocumentScan(initialType: ScannableDocumentType = 'id_documen
     setPhotos({});
     setExtraction(null);
     setExtractionError(null);
+    setBarcodeOutcome('skipped');
   }, []);
 
   const setPhoto = useCallback((slot: DocumentScanSlot, photo: CapturedDocumentPhoto | null) => {
@@ -237,12 +270,23 @@ export function useDocumentScan(initialType: ScannableDocumentType = 'id_documen
   }, []);
 
   const runExtraction = useCallback(
-    async (images: Partial<Record<DocumentScanSlot, string>>): Promise<ExtractDocumentResponse | null> => {
+    async (
+      images: Partial<Record<DocumentScanSlot, string>>,
+      options: RunDocumentExtractionOptions = {},
+    ): Promise<ExtractDocumentResponse | null> => {
       setIsExtracting(true);
       setExtractionError(null);
       setExtraction(null);
       try {
-        const result = await extractDocument({ documentType, images });
+        // The barcode stays in memory: parsed values only, in this one request.
+        const barcode =
+          documentType === 'id_document' && options.backPhoto
+            ? await readDriverLicenseBarcode(options.backPhoto)
+            : null;
+        setBarcodeOutcome(
+          documentType === 'id_document' && options.backPhoto ? (barcode ? 'decoded' : 'failed') : 'skipped',
+        );
+        const result = await extractDocument(barcode ? { documentType, images, barcode } : { documentType, images });
         setExtraction(result);
         return result;
       } catch (err) {
@@ -305,6 +349,8 @@ export function useDocumentScan(initialType: ScannableDocumentType = 'id_documen
     extraction,
     extractionError,
     isExtracting,
+    barcodeOutcome,
+    barcodeUnread: barcodeOutcome === 'failed' && extraction?.barcodePresent === true,
     runExtraction,
     isSaving,
     saveError,

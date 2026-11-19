@@ -42,6 +42,10 @@ vi.mock('../../src/cards/headless/cardImage.js', async () => {
   };
 });
 
+// The PDF417 decoder (issue #214) is mocked: no barcode unless a test says so.
+const decodePdf417Image = vi.hoisted(() => vi.fn<(file: Blob) => Promise<string | null>>());
+vi.mock('../../src/documents/headless/pdf417Decoder.js', () => ({ decodePdf417Image }));
+
 vi.mock('../../src/cards/ui/components/CardCropAdjuster.js', () => ({
   CardCropAdjuster: () => null,
 }));
@@ -88,6 +92,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  decodePdf417Image.mockResolvedValue(null);
 });
 
 describe('DocumentScanPage — gating', () => {
@@ -161,6 +166,56 @@ describe('DocumentScanPage — ID document', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Save document' }));
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/secrets/secret-9'));
+  });
+
+  it('decodes the back photo’s barcode and sends only its parsed values (issue #214)', async () => {
+    // Invented: Person A, a made-up number, the placeholder jurisdiction ZZ.
+    decodePdf417Image.mockResolvedValue('@\n\u001e\rANSI 999999100002DL00410278DLDAQX1234567\nDCSA\nDACPERSON\nDAJZZ\nDCGUSA\r');
+    const bodies: unknown[] = [];
+    server.use(aiStatus(true), types(), extracting({ ...ID_EXTRACTION, barcodePresent: true }, bodies));
+    render(<DocumentScanPage />);
+
+    expect(await screen.findByRole('heading', { name: 'Photograph the front of the document' })).toBeInTheDocument();
+    pick('front');
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
+    pick('back');
+    fireEvent.click(await screen.findByRole('button', { name: 'Read the document' }));
+    expect(await screen.findByRole('heading', { name: 'Check the crop' })).toBeInTheDocument();
+
+    // The ORIGINAL back file, never a crop.
+    expect(decodePdf417Image).toHaveBeenCalledTimes(1);
+    expect((decodePdf417Image.mock.calls[0][0] as File).name).toBe('back.png');
+    expect(bodies).toEqual([
+      {
+        documentType: 'id_document',
+        images: { front: 'data:image/jpeg;base64,PREPARED9', back: 'data:image/jpeg;base64,PREPARED8' },
+        barcode: { format: 'aamva', fields: { documentNumber: 'X1234567', familyName: 'A', givenNames: 'PERSON', state: 'ZZ', country: 'USA' } },
+      },
+    ]);
+    expect(JSON.stringify(bodies)).not.toContain('ANSI');
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to details' }));
+    expect(await screen.findByRole('heading', { name: 'Check the details' })).toBeInTheDocument();
+    expect(screen.queryByText(/Couldn't read the barcode/)).not.toBeInTheDocument();
+  });
+
+  it('suggests a retake when the model saw a barcode the browser could not read, dismissibly', async () => {
+    const bodies: unknown[] = [];
+    server.use(aiStatus(true), types(), extracting({ ...ID_EXTRACTION, barcodePresent: true }, bodies));
+    render(<DocumentScanPage />);
+
+    expect(await screen.findByRole('heading', { name: 'Photograph the front of the document' })).toBeInTheDocument();
+    pick('front');
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
+    pick('back');
+    fireEvent.click(await screen.findByRole('button', { name: 'Read the document' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue to details' }));
+
+    const hint = await screen.findByText(
+      "Couldn't read the barcode. Retake the back photo closer and in focus to double-check the values.",
+    );
+    expect(bodies[0]).not.toHaveProperty('barcode');
+    fireEvent.click(within(hint.closest('[role="alert"]') as HTMLElement).getByRole('button', { name: /close/i }));
+    await waitFor(() => expect(screen.queryByText(/Couldn't read the barcode/)).not.toBeInTheDocument());
   });
 
   it('adds the new kind’s suggestions on a kind change and keeps the entered details', async () => {
