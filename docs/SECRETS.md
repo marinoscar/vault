@@ -867,3 +867,15 @@ The `vault sync` command automates this for local `.env` files (or any UTF-8 tex
 **`card_kind` may be classified instead of read, within limits.** When a card doesn't print "Credit", "Debit", or "Prepaid" (American Express never does), the model may infer `card_kind` from unambiguous product knowledge rather than returning `null`. It is the only field allowed to work that way: `number`, `exp_month`, `exp_year`, `cardholder_name`, and `security_code_2` must always be transcribed from the images, never guessed. The inference is fenced — a printed `card_kind` carries high confidence, while an inferred one carries moderate confidence (around `0.6`, not a hard cap) with a warning always attached — so the review screen presents an inferred `card_kind` as a suggestion, not a confirmed reading.
 
 **No real OpenAI call has ever been exercised.** The end-to-end tests (`test/ai/card-extract.db.spec.ts`) run the whole platform pipeline against the AI test kit's fake provider; the OpenAI adapter itself is the platform's (`@marinoscar/platform-ai-providers`, with its own conformance kit). Treat the first production scan as the live test and review the result before relying on it.
+
+### Document checks
+
+Identity documents carry data that can be checked without AI, so a misread character from the vision model (O for 0, 1 for I, a dropped `<` filler) can be caught. The check library (`@marinoscar/vault-api/ai`, `src/ai/scan/checks/`, pure functions with no I/O) covers:
+
+- **MRZ** (ICAO 9303): the TD1 (3×30, ID-1 cards), TD2 (2×36) and TD3 (2×44, passports) zones, with the document number, birth date, expiry date, personal number and composite check digits. Only numeric positions are OCR-repaired (`O`→`0`, `I`→`1`, `B`→`8`, `S`→`5`); names never are.
+- **US Social Security number**: structure only (format, area not `000`, `666` or `900`–`999`, group not `00`, serial not `0000`). It never says a number was issued.
+- **VIN**: 17 characters without `I`, `O`, `Q`, and the ISO 3779 check digit at position 9.
+- **Country codes**: ISO 3166-1 plus the ICAO-specific codes (`D`, `GBD`, `UNO`, `XXA`, the `UTO` specimen state, ...); the table is `@marinoscar/vault-contract/common`.
+- **Dates**: printed dates normalised to `YYYY-MM-DD`; an ambiguous `03/04/2025` is left empty rather than guessed. MRZ two-digit years resolve so that a birth date is never in the future and an expiry date falls between 10 years before and 20 years after today.
+
+A failed check only produces a warning for the user to review; it never blocks saving the secret. The checks see the extracted values in server memory only and log nothing.
