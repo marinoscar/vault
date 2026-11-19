@@ -23,7 +23,7 @@ import { ShellRoot } from '@marinoscar/platform-web/shell/ui';
 import { configureVaultWeb, getVaultHttp } from '@marinoscar/vault-web/core/headless';
 import { CreateSecretPage, SecretDetailPage, SecretsPage } from '@marinoscar/vault-web/secrets/ui';
 import { CardsPage } from '@marinoscar/vault-web/cards/ui';
-import { AgentAccessSettingsPage } from '@marinoscar/vault-web/agent/ui';
+import { AgentActivityPage } from '@marinoscar/vault-web/agent/ui';
 import { ProfileSettingsPage } from '@marinoscar/vault-web/settings/ui';
 
 import identity from '../../packages/shared/identity.json';
@@ -90,7 +90,7 @@ export function HostBetaRoutes(): ReactElement {
           <Route path="/secrets/new" element={<CreateSecretPage />} />
           <Route path="/secrets/:id" element={<SecretDetailPage />} />
           <Route path="/cards" element={<CardsPage />} />
-          <Route path="/settings/agent-access" element={<AgentAccessSettingsPage />} />
+          <Route path="/settings/agent-activity" element={<AgentActivityPage />} />
           <Route path="/settings/profile" element={<ProfileSettingsPage />} />
         </Routes>
       </Box>

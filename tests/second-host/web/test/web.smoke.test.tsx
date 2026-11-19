@@ -55,6 +55,7 @@ function api() {
       HttpResponse.json({ data: { theme: 'system', profile: { displayName: null, useProviderImage: true, customImageUrl: null }, updatedAt: '2030-01-01T00:00:00Z', version: 1 } }),
     ),
     http.get(`${API}/system-settings`, () => HttpResponse.json({ data: { ui: { allowUserThemeOverride: true }, features: {}, version: 1 } })),
+    http.get(`${API}/agent-activity`, () => HttpResponse.json({ data: [], meta: { page: 1, pageSize: 25, total: 0 } })),
     http.get(`${API}/ai/config`, () => HttpResponse.json({ data: { enabled: false, providers: [], keyPolicy: 'byok_with_org_fallback' } })),
   );
 }
@@ -96,6 +97,12 @@ describe('Host Beta, web', () => {
     renderAt('/secrets/new');
     expect(await screen.findByRole('textbox', { name: /name/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /create|save/i })).toBeInTheDocument();
+  });
+
+  it('renders the Vault agent activity page (the agent slice)', async () => {
+    api();
+    renderAt('/settings/agent-activity');
+    expect(await screen.findByText("No agent activity yet. Agents only see logins you allow on the secret's page.")).toBeInTheDocument();
   });
 
   it('names the host, not Vault, in the slices’ copy', async () => {
