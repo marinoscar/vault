@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import type { CallHandler, ExecutionContext } from '@nestjs/common';
 import { of } from 'rxjs';
+import { AGENT_CONTRACT_VERSION, agentWhoamiResponseSchema } from '@marinoscar/vault-contract/agent';
 
 import { AgentCredentialsService } from './agent-credentials.service';
 import { AgentNoStoreInterceptor } from './agent-no-store.interceptor';
@@ -28,15 +29,44 @@ describe('AgentNoStoreInterceptor', () => {
 });
 
 describe('AgentController', () => {
-  it('whoami honours the kill switch and returns the caller, scopes and client', async () => {
-    const service = { assertEnabled: jest.fn().mockResolvedValue(undefined) };
+  const contract = { version: AGENT_CONTRACT_VERSION, features: ['logins', 'totp'] };
+
+  it('whoami honours the kill switch and returns the caller, scopes, client and contract block', async () => {
+    const service = { contractInfo: jest.fn().mockResolvedValue(contract) };
     const controller = new AgentController(service as unknown as AgentCredentialsService, {} as never);
     const user = { id: 'u1' } as never;
     await expect(
       controller.whoami(user, { clientId: 'c1', grantId: 'g', resourceId: 'agent', scopes: ['vault:items_read'] }),
-    ).resolves.toEqual({ userId: 'u1', scopes: ['vault:items_read'], clientId: 'c1' });
-    await expect(controller.whoami(user, null)).resolves.toEqual({ userId: 'u1', scopes: [], clientId: null });
-    service.assertEnabled.mockRejectedValue(new Error('disabled'));
+    ).resolves.toEqual({ userId: 'u1', scopes: ['vault:items_read'], clientId: 'c1', contract });
+    await expect(controller.whoami(user, null)).resolves.toEqual({ userId: 'u1', scopes: [], clientId: null, contract });
+    service.contractInfo.mockRejectedValue(new Error('disabled'));
     await expect(controller.whoami(user, null)).rejects.toThrow('disabled');
+  });
+
+  it('whoami keeps every field an older client reads (an additive change) and parses with the contract schema', async () => {
+    const service = { contractInfo: jest.fn().mockResolvedValue(contract) };
+    const controller = new AgentController(service as unknown as AgentCredentialsService, {} as never);
+    const data = await controller.whoami({ id: 'u1' } as never, null);
+    const parsed = agentWhoamiResponseSchema.parse({ data });
+    expect(parsed.data).toMatchObject({ userId: 'u1', scopes: [], clientId: null });
+    // A client built before contract 1.2 parses its own shape and ignores the new block.
+    const legacy = agentWhoamiResponseSchema.shape.data.omit({ contract: true });
+    expect(legacy.parse(data)).toEqual({ userId: 'u1', scopes: [], clientId: null });
+  });
+
+  it('contractInfo reports cards and identity only while their switches are on, and refuses while agent access is off', async () => {
+    const settings = { enabled: true, cards: { enabled: false }, identity: { enabled: true } };
+    const pipeline = {
+      loadSettings: jest.fn(async () => settings),
+      assertEnabled: jest.fn(async () => { throw new Error('AGENT_ACCESS_DISABLED'); }),
+    };
+    const service = new AgentCredentialsService({} as never, pipeline as never, {} as never);
+    await expect(service.contractInfo()).resolves.toEqual({ version: AGENT_CONTRACT_VERSION, features: ['logins', 'totp', 'identity'] });
+    settings.cards.enabled = true;
+    await expect(service.contractInfo()).resolves.toEqual({
+      version: AGENT_CONTRACT_VERSION, features: ['logins', 'totp', 'cards', 'identity'],
+    });
+    settings.enabled = false;
+    await expect(service.contractInfo()).rejects.toThrow('AGENT_ACCESS_DISABLED');
   });
 });

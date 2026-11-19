@@ -2,7 +2,9 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import {
   AGENT_AUDIT_ACTIONS,
   AGENT_ERROR_CODES,
+  agentContractInfoFor,
   type AgentAuditAction,
+  type AgentContractInfo,
   type AgentCreateCredentialRequest,
   type AgentCredentialSummary,
   type AgentFillRequest,
@@ -47,6 +49,16 @@ export class AgentCredentialsService {
   /** Kill switch only (whoami): no credential restriction, no rate limit, no audit. */
   async assertEnabled(): Promise<void> {
     await this.pipeline.assertEnabled();
+  }
+
+  /**
+   * `whoami`'s `contract` block (contract 1.2): the version and the features on now. Kill switch
+   * only, like {@link assertEnabled}: no credential restriction, no rate limit, no audit.
+   */
+  async contractInfo(): Promise<AgentContractInfo> {
+    const settings = await this.pipeline.loadSettings();
+    if (!settings.enabled) await this.pipeline.assertEnabled();
+    return agentContractInfoFor(settings);
   }
 
   private run<T>(
