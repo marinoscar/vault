@@ -23,8 +23,8 @@ vi.mock('@marinoscar/platform-web/ai/ui/config-page', () => ({
     );
   },
 }));
-vi.mock('../../src/cards/ui/components/CardScanModelSection.js', () => ({
-  CardScanModelSection: () => <div data-testid="card-scan-model-section" />,
+vi.mock('../../src/cards/ui/components/ScanModelsSection.js', () => ({
+  ScanModelsSection: () => <div data-testid="scan-models-section" />,
 }));
 
 const readOnlyAdmin = { ...mockAdminUser, permissions: ['system_settings:read'] };
@@ -32,12 +32,12 @@ const readOnlyAdmin = { ...mockAdminUser, permissions: ['system_settings:read'] 
 describe('AI card page (/admin/settings/ai, the packaged AiConfigPage, E8.2)', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('renders the packaged AI page with Vault\'s card scanning model section in its AfterContent slot', () => {
+  it('renders the packaged AI page with Vault\'s scanning models section in its AfterContent slot', () => {
     render(<AiSettingsPage />, { wrapperOptions: { user: mockAdminUser } });
 
     expect(screen.getByTestId('packaged-ai-config-page')).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 1, name: 'AI' })).toBeInTheDocument();
-    expect(screen.getByTestId('card-scan-model-section')).toBeInTheDocument();
+    expect(screen.getByTestId('scan-models-section')).toBeInTheDocument();
   });
 });
 

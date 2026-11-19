@@ -36,7 +36,9 @@ export interface UserSettings {
 /**
  * The `ai` namespace of `GET /api/system-settings` (E8.1, #87): the platform AI
  * slice's policy (`enabled`, `keyPolicy`, `providers`, `limits`, `defaults`, ...)
- * plus Vault's one extension, `cardExtractModel`, the model `card_extract` runs on.
+ * plus Vault's extension: `cardExtractModel` (and its provider), the model
+ * `card_extract` runs on, and `documentExtractModel` (and its provider), the model
+ * `document_extract` runs on, unset meaning the card model (#210, #213).
  *
  * Only the two fields Vault's own UI reads are typed; the rest of the policy is
  * edited on the packaged AI page (`PUT /api/admin/ai/config`) and passed through
@@ -46,6 +48,12 @@ export interface UserSettings {
 export interface VaultAiPolicy {
   enabled: boolean;
   cardExtractModel: string;
+  /** The provider of `cardExtractModel`; unset means `openai`. */
+  cardExtractProvider?: string;
+  /** The model document scanning runs on; unset means `cardExtractModel`. */
+  documentExtractModel?: string;
+  /** The provider of `documentExtractModel`; unset means `openai`. */
+  documentExtractProvider?: string;
   [field: string]: unknown;
 }
 

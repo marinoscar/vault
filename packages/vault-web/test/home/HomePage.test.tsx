@@ -260,9 +260,10 @@ describe('HomePage', () => {
         '/api/admin/backups/schedule': 1,
         '/api/media/folders': 1,
         '/api/ai/config': 1,
+        '/api/secrets/scan/targets': 1, // the scan models, for the scan action (#213)
       });
       // No detail request for any secret, card or not: Home decrypts nothing in the browser.
-      expect(requests.some((r) => /^\/api\/secrets\/(?!cards\/summary)[^/?]+/.test(r))).toBe(false);
+      expect(requests.some((r) => /^\/api\/secrets\/(?!cards\/summary|scan\/targets)[^/?]+/.test(r))).toBe(false);
       expect(requests).toContain('/api/secrets/cards/summary?page=1&pageSize=100');
       // Small pages: the recent list, and a single row for each "latest"/count.
       expect(requests).toContain('/api/secrets?page=1&pageSize=5&sortBy=updatedAt&sortOrder=desc');

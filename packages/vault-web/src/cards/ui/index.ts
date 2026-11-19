@@ -9,6 +9,7 @@ export * from './components/CardFieldDiff.js';
 export * from './components/CardFlowStepper.js';
 export * from './components/CardReviewForm.js';
 export * from './components/CardScanModelSection.js';
+export * from './components/ScanModelsSection.js';
 export * from './components/CardTile.js';
 export { default as AiSettingsPage } from './pages/AiSettingsPage.js';
 export { default as CardsPage } from './pages/CardsPage.js';
