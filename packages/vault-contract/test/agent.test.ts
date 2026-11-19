@@ -9,6 +9,7 @@ import {
   agentCreateCredentialRequestSchema,
   agentFillRequestSchema,
   agentGeneratePasswordSchema,
+  agentPurposeSchema,
   agentRotatePasswordRequestSchema,
   agentTotpRequestSchema,
 } from '../src/agent/index.js';
@@ -43,6 +44,13 @@ describe('agent contract', () => {
     expect(agentRotatePasswordRequestSchema.safeParse({ ...rotate, generate: { length: 30 } }).success).toBe(true);
     expect(agentRotatePasswordRequestSchema.safeParse(rotate).success).toBe(false);
     expect(agentRotatePasswordRequestSchema.safeParse({ ...rotate, password: 'a', generate: {} }).success).toBe(false);
+  });
+
+  it('accepts the purpose save_login with a supplied password and rejects an unknown purpose', () => {
+    const base = { name: 'Shop', username: 'person-a', origin: 'https://shop.example.test', password: 'pw' };
+    expect(agentCreateCredentialRequestSchema.safeParse({ ...base, purpose: 'save_login' }).success).toBe(true);
+    expect(agentCreateCredentialRequestSchema.safeParse({ ...base, purpose: 'recovery' }).success).toBe(false);
+    expect(agentPurposeSchema.options).toEqual(['login', 'signup', 'password_change', 'mfa', 'save_login']);
   });
 
   it('a validation message never echoes the submitted password', () => {

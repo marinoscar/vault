@@ -55,12 +55,13 @@ Send the origin of the page you are actually on, taken from the browser (the top
 
 ### Purpose
 
-`purpose` is required on fill, code, create and rotate and is shown to the owner.
+`purpose` is required on fill, code, create and rotate and is shown to the owner. The value set is shared by every route, so `save_login` is accepted wherever `purpose` is, as `signup` is; its meaning is create.
 
 | Value | Use |
 |---|---|
 | `login` | Signing in |
 | `signup` | Creating an account (with `POST /credentials`) |
+| `save_login` | Saving a login the owner typed in by hand and that worked (with `POST /credentials`; contract 1.3). Not signup (no account was created) and not `login` |
 | `password_change` | Changing a password (with rotate) |
 | `mfa` | Entering a one-time code |
 
@@ -85,10 +86,10 @@ Scope `vault:items_read`. Returns `{ "data": { "userId", "scopes": [...], "clien
 
 ```json
 { "data": { "userId": "...", "scopes": ["vault:items_read", "vault:items_fill"], "clientId": "...",
-  "contract": { "version": "1.2", "features": ["logins", "totp", "cards"] } } }
+  "contract": { "version": "1.3", "features": ["logins", "totp", "save_login", "cards"] } } }
 ```
 
-`contract.version` is the contract this Vault speaks (`<path major>.<minor>`, [section 8](#8-changes)); `features` lists what is on now: `logins` and `totp` always, `cards` and `identity` only while their switches are on ([section 7](#7-cards-and-identity-adr-0003)). Ignore a feature id you do not know. A Vault older than contract 1.2 sends no `contract`: treat it as `1.0` with `logins` and `totp`.
+`contract.version` is the contract this Vault speaks (`<path major>.<minor>`, [section 8](#8-changes)); `features` lists what is on now: `logins` and `totp` always, `save_login` always from contract 1.3, then `cards` and `identity` only while their switches are on ([section 7](#7-cards-and-identity-adr-0003)), in that order. Ignore a feature id you do not know. A Vault older than contract 1.3 sends no `save_login`: it rejects the purpose `save_login` with a `400` validation error, so check that `save_login` is in `contract.features` before you offer "Save this login". A Vault older than contract 1.2 sends no `contract`: treat it as `1.0` with `logins` and `totp`.
 
 ### GET /api/agent/v1/credentials?origin=
 
@@ -134,6 +135,19 @@ Scope `vault:items_write`. Saves a new login, owned by the user, already opened 
 ```
 
 `generate`: `length` 12 to 128 (default 24), `symbols` default true; the result has a lower-case letter, an upper-case letter and a digit, and a symbol when `symbols` is on. `additionalUrls`: at most 19. Response `201 { "data": { "id", "name", "username", "origins", "generatedPassword"? } }`. `generatedPassword` is present only when you sent `generate`, and **only in this response**; Vault never returns it again except through `fill`. A password you supplied is never echoed. Errors: `400` (both or neither of `password`/`generate`, invalid origin), `409` the user already has a secret with that name, `403`, `429`.
+
+#### Saving a login the owner already uses
+
+Contract 1.3. When the owner typed a login in by hand and it worked, send it with `purpose: "save_login"` and the `password` the owner typed (hold it in memory only, [section 4](#4-holding-a-value)), so the next visit needs no question. Check that `save_login` is in `contract.features` first. The owner sees `save_login` in Agent activity.
+
+```json
+{ "name": "Shop login", "username": "person-a@example.test", "origin": "https://app.example.test",
+  "purpose": "save_login", "password": "<the value the owner typed>" }
+```
+
+- The request is the same as any create: exactly one of `password` and `generate`. `generate` has no meaning for `save_login`, but the schema allows it.
+- The login is opened to agents by default, like every login created here. The scope `vault:items_write`, the per-login opt-in and the kill switch apply as before.
+- A name the owner already uses answers `409` with the message `A secret named "<name>" already exists` and no `code`. Ask the owner for another name and send the request again.
 
 ### POST /api/agent/v1/credentials/{id}/password
 
@@ -266,6 +280,16 @@ A host that embeds the Vault packages calls `AgentReleasePort` (`@marinoscar/vau
 ## 8. Changes
 
 One entry per change to the contract of `/api/agent/v1` and `@marinoscar/vault-contract/agent`, newest first, marked **additive** or **breaking** ([section 9](#9-stability)). `AGENT_CONTRACT_VERSION` and `whoami`'s `contract.version` carry the newest entry's version. The package test `packages/vault-contract/test/agent-contract-snapshot.test.ts` reads this section: a breaking entry must say `ACCEPT_BREAKING` in its heading, and only a new path version may carry one.
+
+### 1.3 (additive)
+
+Issue #233. The contract is **beta**.
+
+- `purpose` gains the value `save_login`: the owner typed this login in by hand, it worked, and the runtime saves exactly that login in Vault. It is meant for `POST /credentials`; the value set is shared, so other routes accept it syntactically, as they do `signup`.
+- `GET /whoami` `contract.features` gains the id `save_login`, always present, in the order `logins`, `totp`, `save_login`, then `cards` and `identity` while their switches are on. A client checks for it before offering "Save this login", because a Vault older than 1.3 rejects the unknown purpose with a `400`. Ignoring unknown feature ids is unchanged.
+- No route, scope or error code changes. The saved login is opened to agents by default, and a duplicate name is the same `409` as any create.
+
+Decisions on #233: a new purpose was chosen over a separate import route because it reuses the create route's authentication, audit and validation. The login is opened to agents by default, as today. The `409` is unchanged.
 
 ### 1.2 (additive)
 

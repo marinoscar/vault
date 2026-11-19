@@ -2207,7 +2207,7 @@ The wire shapes are the provider contract an agent runtime codes against: `@mari
 - **Kill switch:** the system setting `agentAccess.enabled` (default `false`). While off, **every** route including `whoami` answers `403 AGENT_ACCESS_DISABLED`. Set it with `PATCH /api/system-settings { "agentAccess": { "enabled": true } }` (`system_settings:write`); the General settings page has no switch for it yet.
 - **Opt-in:** only the caller's own `Credential` secrets with `agentAccess = fill` are reachable. A secret that is missing, someone else's, not opened to agents or not a Credential is `404` with one and the same body.
 - **Origin binding:** fill, totp and rotate need `origin` to equal one of the secret's origins exactly (scheme, host, port, after normalization); otherwise `403 ORIGIN_MISMATCH`. A same-site (`matchKind: site`) lookup hit is informational and never fillable.
-- **`purpose`** (`login | signup | password_change | mfa`) is required on fill, totp, create and rotate and is stored in the audit row.
+- **`purpose`** (`login | signup | password_change | mfa | save_login`) is required on fill, totp, create and rotate and is stored in the audit row. `save_login` (contract 1.3, #233) means the owner typed a login in by hand and the runtime saves it with create; it is not signup and not login.
 - **Headers:** `Cache-Control: no-store`, `Pragma: no-cache` on every response, errors included. Request and response bodies are never logged.
 - **Rate limits** per OAuth grant (or PAT) and user: lookup 60, fill 30, totp 10, write (create and rotate together) 10 per minute; `agentAccess.lookupPerMinute|fillPerMinute|totpPerMinute|writePerMinute` change them. Over the limit: `429 RATE_LIMITED` with `Retry-After`. The counters are in process memory (one API instance); replace `AgentRateLimiter` to share them.
 - **Audit:** every call, allowed or refused, writes `agent.credential.lookup|fill|totp|create|rotate` with `{ result: 'ok' | 'denied:<reason>', credential, clientId/grantId or tokenId, secretId, field, origin, purpose }`; never a value, code or password. The audit write precedes a successful response, so an unwritable trail fails the call.
@@ -2215,7 +2215,7 @@ The wire shapes are the provider contract an agent runtime codes against: `@mari
 
 #### GET /agent/v1/whoami
 
-Requires `secrets:read` (scope `vault:items_read` or wider). Returns `{ "data": { "userId", "scopes", "clientId", "contract": { "version", "features" } } }`; for a session JWT `scopes` is `[]` and `clientId` is `null`. `contract` (since contract 1.2, #196) is the agent contract version (`AGENT_CONTRACT_VERSION`) and the features on now: `logins` and `totp` always, `cards` and `identity` while their switches are on. Subject to the kill switch. Stability promise and changelog: [agent-credential-api.md](agent-credential-api.md#9-stability).
+Requires `secrets:read` (scope `vault:items_read` or wider). Returns `{ "data": { "userId", "scopes", "clientId", "contract": { "version", "features" } } }`; for a session JWT `scopes` is `[]` and `clientId` is `null`. `contract` (since contract 1.2, #196) is the agent contract version (`AGENT_CONTRACT_VERSION`) and the features on now: `logins` and `totp` always, `save_login` always from contract 1.3 (#233), then `cards` and `identity` while their switches are on. Subject to the kill switch. Stability promise and changelog: [agent-credential-api.md](agent-credential-api.md#9-stability).
 
 #### GET /agent/v1/credentials?origin=
 
@@ -2231,7 +2231,7 @@ Scope `vault:items_fill`. Body `{ "origin", "purpose" }` returns `{ "data": { "c
 
 #### POST /agent/v1/credentials
 
-Scope `vault:items_write`, permission `secrets:write`. Body `{ "name", "username", "origin", "additionalUrls"?, "purpose", "password" | "generate": { "length": 12..128 (24), "symbols": true } }` (exactly one of `password` and `generate`). Creates a `Credential` owned by the caller with `agentAccess = fill`. Returns `201 { "data": { "id", "name", "username", "origins", "generatedPassword"? } }`; a generated password is returned **once**, only here (a supplied one is never echoed). `409` when the caller already has a secret of that name.
+Scope `vault:items_write`, permission `secrets:write`. Body `{ "name", "username", "origin", "additionalUrls"?, "purpose", "password" | "generate": { "length": 12..128 (24), "symbols": true } }` (exactly one of `password` and `generate`). Creates a `Credential` owned by the caller with `agentAccess = fill`. Returns `201 { "data": { "id", "name", "username", "origins", "generatedPassword"? } }`; a generated password is returned **once**, only here (a supplied one is never echoed). `409` when the caller already has a secret of that name. With `purpose: "save_login"` (contract 1.3) the same request saves a login the owner typed in by hand, sent as `password`; it is opened to agents like any login created here.
 
 #### POST /agent/v1/credentials/{id}/password
 

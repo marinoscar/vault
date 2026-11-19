@@ -95,9 +95,12 @@ export type AgentErrorCode = (typeof AGENT_ERROR_CODES)[keyof typeof AGENT_ERROR
 /**
  * Why the agent is asking: stored in the audit row of fill, totp, create and rotate.
  *
+ * `save_login` (contract 1.3) means saving a login the owner already uses on a site: send it with
+ * `POST /credentials`. It is accepted wherever a purpose is, like every other value.
+ *
  * @stability beta
  */
-export const agentPurposeSchema = z.enum(['login', 'signup', 'password_change', 'mfa']);
+export const agentPurposeSchema = z.enum(['login', 'signup', 'password_change', 'mfa', 'save_login']);
 
 /** @stability beta */
 export type AgentPurpose = z.infer<typeof agentPurposeSchema>;

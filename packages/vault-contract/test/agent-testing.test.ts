@@ -163,7 +163,7 @@ describe('agent-testing: the fake Vault', () => {
     const res = await get('/whoami');
     expect(res.status).toBe(200);
     const data = agentWhoamiResponseSchema.parse(res.body).data;
-    expect(data.contract).toEqual({ version: AGENT_CONTRACT_VERSION, features: ['logins', 'totp', 'cards', 'identity'] });
+    expect(data.contract).toEqual({ version: AGENT_CONTRACT_VERSION, features: ['logins', 'totp', 'save_login', 'cards', 'identity'] });
     expect(res.headers.get('cache-control')).toBe('no-store');
     expect((await get('/credentials?origin=')).headers.get('cache-control')).toBe('no-store');
   });
@@ -202,6 +202,17 @@ describe('agent-testing: the fake Vault', () => {
     const rotated = await post(`/credentials/${created.body.data.id}/password`, { origin: 'https://new.example.test', purpose: 'password_change', password: createCanary('rotated') });
     expect(rotated.body.data).toEqual({ id: created.body.data.id, version: 2 });
     expect((await post('/credentials', { name: 'New login', username: 'x', origin: 'https://new.example.test', purpose: 'signup', password: 'p' })).status).toBe(409);
+  });
+
+  it('saves a login the owner already uses (purpose save_login), then looks it up and fills it', async () => {
+    const origin = 'https://saved.example.test';
+    const created = await post('/credentials', { name: 'Saved login', username: 'person-c@example.test', origin, purpose: 'save_login', password: 'saved-pw-canary' });
+    expect(created.status).toBe(201);
+    expect(created.body.data.generatedPassword).toBeUndefined();
+    const found = agentLookupResponseSchema.parse((await get(`/credentials?origin=${encodeURIComponent(origin)}`)).body).data;
+    expect(found.map((r) => r.id)).toContain(created.body.data.id);
+    const filled = await post(`/credentials/${created.body.data.id}/fill`, { field: 'password', origin, purpose: 'login' });
+    expect(filled.body).toEqual({ data: { value: 'saved-pw-canary' } });
   });
 
   it('enforces scopes with insufficient_scope, and a revoked or unknown token is 401', async () => {
