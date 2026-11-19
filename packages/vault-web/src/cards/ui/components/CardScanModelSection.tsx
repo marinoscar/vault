@@ -17,6 +17,7 @@ import { useAiModels } from '@marinoscar/platform-web/ai/headless';
 import type { AiModel } from '@marinoscar/platform-web/ai/headless';
 
 import { useSystemSettings } from '../../../core/headless/useSystemSettings.js';
+import { getVaultProductName } from '../../../core/headless/http.js';
 
 /**
  * What the `card_extract` AI feature needs from a model (`app-registrations/ai.ts`
@@ -100,7 +101,7 @@ export function CardScanModelSection() {
         Card scanning model
       </Typography>
       <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
-        The model Vault reads card photos with. It must be enabled on{' '}
+        The model {getVaultProductName()} reads card photos with. It must be enabled on{' '}
         <Link component={RouterLink} to={MODELS_PATH}>
           AI models
         </Link>{' '}
