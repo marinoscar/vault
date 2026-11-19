@@ -548,6 +548,8 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
         'MyBackupsController',
         'AgentController',
         'AgentActivityController',
+        'AgentCardsController',
+        'CardGrantsController',
         'McpController',
         'OAuthConsentController',
         'OAuthGrantsController',
