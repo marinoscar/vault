@@ -61,7 +61,7 @@ The pages expect what the host mounts above them: a router, `ShellRoot` with `VA
 
 ## Configuration
 
-`configureVaultWeb({ http, apiBaseUrl? })` is the only configuration. `http` is the host's `PlatformHttpClient` (the same instance the platform's `AuthProvider` drives, so the bearer token and the refresh are shared); `apiBaseUrl` (default `/api`) is read only by the two raw `fetch` calls that stream an attachment. A slice that calls the API before it is configured throws `VaultWebNotConfiguredError`. The package reads no environment or build-time variable.
+`configureVaultWeb({ http, apiBaseUrl?, productName? })` is the only configuration. `http` is the host's `PlatformHttpClient` (the same instance the platform's `AuthProvider` drives, so the bearer token and the refresh are shared); `apiBaseUrl` (default `/api`) is read only by the two raw `fetch` calls that stream an attachment; `productName` (default `Vault`) is the name the pages' copy shows (`getVaultProductName()`), so a second host shows its own ([docs/EMBEDDING.md](../../docs/EMBEDDING.md#web-slices)). A slice that calls the API before it is configured throws `VaultWebNotConfiguredError`. The package reads no environment or build-time variable.
 
 ## Extension-point catalog
 
