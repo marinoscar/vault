@@ -741,4 +741,22 @@ describe('FieldDefinitionBuilder', () => {
       expect(handleValidityChange).toHaveBeenLastCalledWith(true);
     });
   });
+
+  // -------------------------------------------------------------------------
+  // keyvalue is reserved for system types (issue #207)
+  // -------------------------------------------------------------------------
+
+  describe('Reserved field types', () => {
+    it('never offers keyvalue: custom types cannot use it', async () => {
+      const user = userEvent.setup();
+
+      render(<FieldDefinitionBuilder fields={[fieldA]} onChange={vi.fn()} />);
+
+      await user.click(screen.getByRole('combobox', { name: /type/i }));
+
+      const options = screen.getAllByRole('option').map((o) => o.textContent);
+      expect(options).toEqual(['String', 'Number', 'Date', 'Select (list)']);
+      expect(screen.queryByRole('option', { name: /key.?value|details/i })).not.toBeInTheDocument();
+    });
+  });
 });

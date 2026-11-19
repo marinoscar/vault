@@ -5,6 +5,7 @@ import { render } from '../utils/test-utils.js';
 import { SecretVersionDrawer } from '../../src/secrets/ui/components/SecretVersionDrawer.js';
 import { MASK } from '../../src/secrets/ui/components/SecretValueField.js';
 import type { SecretDetail, SecretType, SecretVersion } from '../../src/core/headless/types.js';
+import { mockDocumentSecret } from '../mocks/data.js';
 
 const LOGIN: SecretType = {
   id: 'type-login',
@@ -162,5 +163,32 @@ describe('SecretVersionDrawer', () => {
   it('shows an empty history', () => {
     setup({ versions: [] });
     expect(screen.getByText('No version history available.')).toBeInTheDocument();
+  });
+
+  it('masks sensitive keyvalue entries until "Show values" is switched on (issue #207)', async () => {
+    const user = userEvent.setup();
+    const details = mockDocumentSecret.values.details as Array<Record<string, unknown>>;
+    const oldDetails = [details[0], { ...details[1], value: 'old-pin-placeholder' }];
+    setup({
+      secret: { ...mockDocumentSecret, currentVersion: 3 },
+      loadVersion: vi.fn().mockResolvedValue({
+        ...VERSIONS[1],
+        values: { ...mockDocumentSecret.values, details: oldDetails },
+        attachments: [],
+      }),
+    });
+    await user.click(screen.getByRole('button', { name: 'Compare version 2 with current' }));
+
+    const row = within(await screen.findByTestId('diff-details'));
+    expect(screen.getByTestId('diff-details')).toHaveAttribute('data-change', 'changed');
+    expect(screen.getByTestId('diff-holder')).toHaveAttribute('data-change', 'unchanged');
+    expect(row.getAllByText('B')).toHaveLength(2);
+    expect(row.getAllByText(MASK)).toHaveLength(2);
+    expect(row.queryByText('old-pin-placeholder')).not.toBeInTheDocument();
+    expect(row.queryByText('0000-placeholder')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('switch', { name: 'Show values' }));
+    expect(row.getByText('old-pin-placeholder')).toBeInTheDocument();
+    expect(row.getByText('0000-placeholder')).toBeInTheDocument();
   });
 });

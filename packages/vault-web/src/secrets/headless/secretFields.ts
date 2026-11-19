@@ -6,8 +6,10 @@
  */
 
 import { parseTotpSecret } from '@marinoscar/vault-contract/secrets';
-import { standardAttributeKeysFor, type StandardAttributeKey } from '@marinoscar/vault-contract/secret-types';
-import type { FieldDefinition, SecretType } from '../../core/headless/types.js';
+import { isCountryCode } from '@marinoscar/vault-contract/common';
+import { standardAttributeKeysFor } from '@marinoscar/vault-contract/secret-types';
+import type { FieldDefinition, KeyValueEntry, SecretType } from '../../core/headless/types.js';
+import type { KeyValueSuggestion } from './keyValue.js';
 import { CARD_TYPE_NAME } from '../../cards/headless/useCards.js';
 import {
   formatCardNumberForCopy,
@@ -15,6 +17,12 @@ import {
   formatExpiryMonthForCopy,
   formatExpiryYearShortForCopy,
 } from '../../cards/headless/cardFormat.js';
+import {
+  cleanKeyValueEntries,
+  formatKeyValueEntriesForCopy,
+  keyValueEntriesEqual,
+  toKeyValueEntries,
+} from './keyValue.js';
 
 /** Bounds of `createSecretSchema` / `updateSecretSchema` in the API. */
 export const SECRET_NAME_MAX = 255;
@@ -58,9 +66,6 @@ export function documentScanPath(param: DocumentScanTypeParam): string {
   return `/documents/scan?type=${param}`;
 }
 
-/** A row the key/value editor of a `keyvalue` field offers to add. */
-export type KeyValueSuggestion = StandardAttributeKey;
-
 /**
  * The suggested entries of each `keyvalue` field of `type`, keyed by field
  * name: for the system ID Document, the catalog's standard keys of the chosen
@@ -77,6 +82,7 @@ export function keyValueSuggestionsFor(
 }
 
 function isBlank(value: unknown): boolean {
+  if (Array.isArray(value)) return value.length === 0;
   return value === undefined || value === null || String(value).trim() === '';
 }
 
@@ -114,8 +120,10 @@ export function fieldErrorsFromApiError(
  * Validate field values against the type's field definitions, with the same
  * rules `SecretsService.validateDataAgainstType` applies on the server: a
  * required field is non-empty, a number parses, a date is a real date and a
- * select value is one of its options (when options exist). Empty optional
- * fields are fine.
+ * select value is one of its options (when options exist). A `country` value
+ * is an alpha-3 code of the contract's table. A `keyvalue` value counts as
+ * empty without an entry that has a label or a value, and every entry with a
+ * value needs a label. Empty optional fields are fine.
  *
  * @returns field name to message; empty when valid.
  */
@@ -126,12 +134,23 @@ export function validateSecretFields(
   const errors: Record<string, string> = {};
   for (const field of fields) {
     const value = data[field.name];
+    if (field.type === 'keyvalue') {
+      const entries = cleanKeyValueEntries(value);
+      if (entries.length === 0) {
+        if (field.required) errors[field.name] = `${field.label} is required`;
+      } else if (entries.some((entry) => entry.label === '')) {
+        errors[field.name] = `Every ${field.label} entry needs a label`;
+      }
+      continue;
+    }
     if (isBlank(value)) {
       if (field.required) errors[field.name] = `${field.label} is required`;
       continue;
     }
     if (field.name === TOTP_FIELD_NAME && field.sensitive) {
       if (parseTotpSecret(String(value)) === null) errors[field.name] = TOTP_FIELD_HELP;
+    } else if (field.format === 'country' && !isCountryCode(String(value).trim().toUpperCase())) {
+      errors[field.name] = `${field.label} must be a country code from the list`;
     } else if (field.type === 'number' && Number.isNaN(Number(value))) {
       errors[field.name] = `${field.label} must be a number`;
     } else if (field.type === 'date' && Number.isNaN(new Date(String(value)).getTime())) {
@@ -178,7 +197,9 @@ export function validateSecretForm(input: {
 
 /**
  * Drop keys the type does not declare and empty optional values, so the body
- * never carries a field the API would refuse as unknown.
+ * never carries a field the API would refuse as unknown. `keyvalue` rows are
+ * trimmed and a row with neither a label nor a value is dropped (a missing key
+ * is derived from the label).
  */
 export function cleanSecretData(
   fields: FieldDefinition[],
@@ -187,6 +208,11 @@ export function cleanSecretData(
   const out: Record<string, unknown> = {};
   for (const field of fields) {
     const value = data[field.name];
+    if (field.type === 'keyvalue') {
+      const entries = cleanKeyValueEntries(value);
+      if (entries.length > 0) out[field.name] = entries;
+      continue;
+    }
     if (!isBlank(value)) out[field.name] = value;
   }
   return out;
@@ -201,10 +227,21 @@ const CARD_COPY_FORMATTERS: Record<string, (value: unknown) => string> = {
   exp_year: formatExpiryYearShortForCopy,
 };
 
-/** The text a field's copy button puts on the clipboard. */
-export function formatSecretValueForCopy(value: string, fieldName?: string): string {
+/** Digits and the separators a card value may be typed with. */
+const CARD_COPY_SHAPE = /^[\d\s./-]*$/;
+
+/**
+ * The text a field's copy button puts on the clipboard. A `keyvalue` value
+ * (an array of entries) copies as one `Label: value` line per entry; a single
+ * entry's own copy button copies just its value.
+ */
+export function formatSecretValueForCopy(value: unknown, fieldName?: string): string {
+  if (Array.isArray(value)) return formatKeyValueEntriesForCopy(value);
+  if (typeof value !== 'string') return asText(value);
   const formatter = fieldName ? CARD_COPY_FORMATTERS[fieldName] : undefined;
-  if (!formatter) return value;
+  // The card formatters keep digits only; a value with letters (a passport's
+  // `number`, say) is not a card value and copies as stored.
+  if (!formatter || !CARD_COPY_SHAPE.test(value)) return value;
   const formatted = formatter(value);
   // Formatters return '' for values they cannot parse; the stored value is
   // more useful than nothing.
@@ -220,16 +257,24 @@ export interface FieldDiff {
   version: string;
   /** The value in the current version ('' when absent). */
   current: string;
+  /** `keyvalue` fields only: the inspected version's entries. */
+  versionEntries?: KeyValueEntry[];
+  /** `keyvalue` fields only: the current version's entries. */
+  currentEntries?: KeyValueEntry[];
 }
 
 function asText(value: unknown): string {
+  if (Array.isArray(value)) return formatKeyValueEntriesForCopy(value);
   return value === undefined || value === null ? '' : String(value);
 }
 
 /**
  * Compare a historical version's values with the current ones, field by
  * field, in the type's field order. "added" means the current version has a
- * value the inspected one lacks; "removed" the reverse.
+ * value the inspected one lacks; "removed" the reverse. `keyvalue` values are
+ * compared structurally (entries matched by key, then label, value and the
+ * sensitive flag), and carry their entries in `versionEntries` and
+ * `currentEntries`; their `version` and `current` texts are the copy text.
  */
 export function diffSecretValues(
   fields: FieldDefinition[],
@@ -237,6 +282,24 @@ export function diffSecretValues(
   currentValues: Record<string, unknown>,
 ): FieldDiff[] {
   return fields.map((field) => {
+    if (field.type === 'keyvalue') {
+      const versionEntries = toKeyValueEntries(versionValues[field.name]);
+      const currentEntries = toKeyValueEntries(currentValues[field.name]);
+      let change: FieldChange = 'unchanged';
+      if (!keyValueEntriesEqual(versionEntries, currentEntries)) {
+        if (versionEntries.length === 0) change = 'added';
+        else if (currentEntries.length === 0) change = 'removed';
+        else change = 'changed';
+      }
+      return {
+        field,
+        change,
+        version: formatKeyValueEntriesForCopy(versionEntries),
+        current: formatKeyValueEntriesForCopy(currentEntries),
+        versionEntries,
+        currentEntries,
+      };
+    }
     const version = asText(versionValues[field.name]);
     const current = asText(currentValues[field.name]);
     let change: FieldChange = 'unchanged';
