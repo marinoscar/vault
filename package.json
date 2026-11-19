@@ -32,8 +32,9 @@
     "check:package-pack": "node scripts/vault-packages/check-package-pack.mjs",
     "test:package-scripts": "node --test \"scripts/vault-packages/test/*.test.mjs\"",
     "smoke:packages": "node scripts/vault-packages/smoke-install.mjs",
+    "check:platform-compat": "node scripts/vault-packages/platform-compat.mjs && node --test scripts/vault-packages/test/platform-compat.test.mjs",
     "changeset": "changeset",
-    "version-packages": "changeset version && npm install --package-lock-only",
+    "version-packages": "changeset version && node scripts/vault-packages/platform-compat.mjs --release && npm install --package-lock-only",
     "release": "npm run build:packages && changeset publish"
   },
   "overrides": {
@@ -42,8 +43,8 @@
     "@marinoscar/platform-contract": "$@marinoscar/platform-contract"
   },
   "devDependencies": {
-    "@marinoscar/platform-contract": "0.1.0-next.37",
-    "@marinoscar/platform-infra": "0.1.0-next.37",
+    "@marinoscar/platform-contract": "0.1.0-next.39",
+    "@marinoscar/platform-infra": "0.1.0-next.39",
     "@changesets/cli": "^2.31.1",
     "@stoplight/spectral-cli": "^6.16.3",
     "ajv": "^8.18.0"
