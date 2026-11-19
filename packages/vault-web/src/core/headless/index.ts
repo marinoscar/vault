@@ -5,6 +5,8 @@ export * from './cardScanAvailability.js';
 export * from './clipboard.js';
 export * from './http.js';
 export * from './relativeTime.js';
+export * from './saveWithImages.js';
+export * from './scanErrors.js';
 export * from './saveBlob.js';
 export * from './types.js';
 export * from './useAiStatus.js';

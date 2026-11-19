@@ -15,6 +15,8 @@ export const HOME_LINKS = {
    */
   cardsNeedingAttention: '/cards?filter=attention',
   scanCard: '/cards/import',
+  /** The "Scan an ID" flow (Passport and ID Document). */
+  scanDocument: '/documents/scan',
   renewCard: (id: string) => `/cards/${encodeURIComponent(id)}/renew`,
   media: '/media',
   /** The user's My backups card (`USER_SETTINGS_SECTIONS`). */

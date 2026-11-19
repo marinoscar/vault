@@ -8,6 +8,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { installMockApi } from '../../support/mock-api';
 import { settle, stabilizePage, type Theme } from '../../support/stabilize';
+import { PIXEL_PNG_BASE64 } from '../../support/fixtures';
 
 const SCREENS: { name: string; path: string; ready: RegExp }[] = [
   { name: 'home', path: '/', ready: /Home|Welcome|Secrets/i },
@@ -48,6 +49,31 @@ for (const viewport of VIEWPORTS) {
           expect(api.unhandled).toEqual([]);
         });
       }
+    });
+  }
+}
+
+/**
+ * #211: the review step of "Scan an ID" — an invented specimen licence read by
+ * the mocked extraction (AI and Check chips, the kind guess, an outlined
+ * detail row), from a generated 1x1 placeholder image.
+ */
+for (const viewport of VIEWPORTS) {
+  for (const theme of THEMES) {
+    test.describe(`${viewport.name} ${theme} document scan`, () => {
+      test.use({ viewport: { width: viewport.width, height: viewport.height } });
+      test('document-scan-review', async ({ page }) => {
+        const api = await open(page, '/documents/scan', theme, /Scan an ID/);
+        const photo = { name: 'front.png', mimeType: 'image/png', buffer: Buffer.from(PIXEL_PNG_BASE64, 'base64') };
+        await page.getByTestId('document-front-library-input').setInputFiles(photo);
+        await page.getByRole('button', { name: 'Continue' }).click();
+        await page.getByRole('button', { name: /Skip/ }).click();
+        await page.getByRole('button', { name: 'Continue to details' }).click();
+        await expect(page.getByText(/AI guessed/)).toBeVisible();
+        await settle(page);
+        await expect(page).toHaveScreenshot(`document-scan-review-${viewport.name}-${theme}.png`, { fullPage: true });
+        expect(api.unhandled).toEqual([]);
+      });
     });
   }
 }

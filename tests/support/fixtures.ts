@@ -417,6 +417,67 @@ export const MEDIA_FOLDERS = [
   },
 ];
 
+/**
+ * The ID Document system type (ADR-0004) for the "Scan an ID" flow (#211).
+ * Served by `/secret-types` only, outside `SECRET_TYPES`, so no list baseline moves.
+ */
+export const TYPE_ID_DOCUMENT = systemType(
+  'type-id-document',
+  'ID Document',
+  'Driver license, ID card and other ID documents',
+  'AssignmentInd',
+  [
+    field('document_kind', 'Document Kind', true, false, {
+      type: 'select',
+      options: ['Driver License', 'National ID', 'Permanent Resident Card', 'Other'],
+    }),
+    field('holder_name', 'Holder Name', true, false),
+    field('document_number', 'Document Number', false, true, { mask: 'last4' }),
+    field('issuing_country', 'Issuing Country', false, false, { format: 'country' }),
+    field('issuing_authority', 'Issuing Authority / State', false, false),
+    field('date_of_birth', 'Date of Birth', false, true, { type: 'date' }),
+    field('issue_date', 'Issue Date', false, false, { type: 'date' }),
+    field('expiry_date', 'Expiry Date', false, false, { type: 'date' }),
+    field('attributes', 'Details', false, false, { type: 'keyvalue' }),
+    field('notes', 'Notes', false, false, { format: 'multiline' }),
+  ],
+  true,
+);
+
+/** What the mocked document extraction answers: an invented specimen licence. */
+export const DOCUMENT_EXTRACTION = {
+  documentType: 'id_document',
+  fields: {
+    holder_name: 'PERSON A EXAMPLE',
+    document_number: 'D0000000',
+    issuing_country: 'UTO',
+    issuing_authority: 'Specimen State',
+    date_of_birth: '1980-01-01',
+    issue_date: '2024-02-02',
+    expiry_date: '2032-02-02',
+    notes: null,
+  },
+  confidence: {
+    holder_name: 0.97,
+    document_number: 0.55,
+    issuing_country: 0.95,
+    issuing_authority: 0.9,
+    date_of_birth: 0.93,
+    issue_date: 0.9,
+    expiry_date: 0.94,
+  },
+  documentKind: { value: 'Driver License', confidence: 0.92 },
+  attributes: [
+    { key: 'license_class', label: 'Class', value: 'C', sensitive: false, confidence: 0.95 },
+    { key: 'restrictions', label: 'Restrictions', value: 'NONE', sensitive: false, confidence: 0.45 },
+  ],
+  checks: [],
+  warnings: ['The document number was hard to read.'],
+  crops: { front: { x: 0.05, y: 0.1, width: 0.9, height: 0.8, quarterTurns: 0, confidence: 0.95 } },
+  model: 'mock-vision-model',
+  partial: false,
+};
+
 /** A 1x1 transparent PNG, enough for an `<img>` that must decode. */
 export const PIXEL_PNG_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';

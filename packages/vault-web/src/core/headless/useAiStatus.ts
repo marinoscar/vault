@@ -4,7 +4,7 @@ import type { AiPublicConfig } from '@marinoscar/platform-web/ai/headless';
 import { usePermissions } from '@marinoscar/platform-web/identity/headless';
 
 import { api } from './http.js';
-import { isCardScanAvailable } from './cardScanAvailability.js';
+import { isCardScanAvailable, isDocumentScanAvailable } from './cardScanAvailability.js';
 
 /**
  * The package's own transport for `GET /api/ai/config` when no shared copy is
@@ -31,8 +31,8 @@ interface UseAiStatusResult {
   cardExtractEnabled: boolean;
   /**
    * True only when document scanning (Passport and ID Document, ADR-0004) is
-   * usable by this viewer. Always `false` until the scan flow ships (IDOC-8,
-   * issue #211), so no entry point links to a page that does not exist yet.
+   * usable by this viewer: `isDocumentScanAvailable` and `ai:use`, failing
+   * closed like `cardExtractEnabled`.
    */
   documentScanEnabled: boolean;
   /** The viewer holds `ai:use` (independent of whether AI is switched on). */
@@ -68,7 +68,7 @@ export function useAiStatus(): UseAiStatusResult {
     isLoading,
     error,
     cardExtractEnabled: canUseAi && error === null && isCardScanAvailable(config),
-    documentScanEnabled: false,
+    documentScanEnabled: canUseAi && error === null && isDocumentScanAvailable(config),
     canUseAi,
     refresh,
   };

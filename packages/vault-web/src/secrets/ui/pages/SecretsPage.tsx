@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Alert, Box, Button, Snackbar, Typography } from '@mui/material';
-import { Add as AddIcon } from '@mui/icons-material';
+import { Add as AddIcon, BadgeOutlined as IdIcon } from '@mui/icons-material';
 import {
   DataTablePreferencesProvider,
   useDataTablePreferencesPort,
@@ -15,6 +15,8 @@ import {
   type SecretSortField,
 } from '../components/SecretsTable.js';
 import { useSecretTypes } from '../../headless/useSecretTypes.js';
+import { documentScanPath, documentScanTypeParam } from '../../headless/secretFields.js';
+import { useAiStatus } from '../../../core/headless/useAiStatus.js';
 import { usePermissions } from '@marinoscar/platform-web/identity/headless';
 import { deleteSecret, getSecrets } from '../../../core/headless/api.js';
 import type { SecretAgentAccess, SecretListItem } from '../../../core/headless/types.js';
@@ -125,6 +127,9 @@ export default function SecretsPage() {
   const canDelete = hasPermission('secrets:delete');
 
   const { types, fetchTypes } = useSecretTypes();
+  const { documentScanEnabled } = useAiStatus();
+  // Filtered to Passport or ID Document: offer the scan flow for that type.
+  const scanType = documentScanTypeParam(types.find((t) => t.id === query.typeId));
   const [rows, setRows] = useState<SecretListItem[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -231,14 +236,26 @@ export default function SecretsPage() {
           </Typography>
         </Box>
         {canWrite && (
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={createSecret}
-            sx={{ flexShrink: 0, whiteSpace: 'nowrap', minHeight: 40 }}
-          >
-            New secret
-          </Button>
+          <Box sx={{ display: 'flex', gap: 1, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            {documentScanEnabled && scanType !== null && (
+              <Button
+                variant="outlined"
+                startIcon={<IdIcon />}
+                onClick={() => navigate(documentScanPath(scanType))}
+                sx={{ whiteSpace: 'nowrap', minHeight: 40 }}
+              >
+                Scan an ID
+              </Button>
+            )}
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={createSecret}
+              sx={{ flexShrink: 0, whiteSpace: 'nowrap', minHeight: 40 }}
+            >
+              New secret
+            </Button>
+          </Box>
         )}
       </Box>
 

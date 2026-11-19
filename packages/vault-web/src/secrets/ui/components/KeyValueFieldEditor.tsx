@@ -33,6 +33,11 @@ export interface KeyValueFieldEditorProps {
   /** The field's label, shown as the heading. */
   label?: string;
   required?: boolean;
+  /**
+   * Keys of rows to mark for checking (an AI scan read them with low
+   * confidence): an amber outline and a "Check" chip, never an error.
+   */
+  flaggedKeys?: ReadonlySet<string>;
 }
 
 /**
@@ -51,6 +56,7 @@ export function KeyValueFieldEditor({
   error,
   label,
   required,
+  flaggedKeys,
 }: KeyValueFieldEditorProps) {
   // Rows added with "Add detail" keep their key in step with their label;
   // loaded and suggested rows keep the key they came with. Kept by index and
@@ -120,21 +126,32 @@ export function KeyValueFieldEditor({
         {value.map((row, index) => {
           const name = row.label.trim() !== '' ? row.label.trim() : `detail ${index + 1}`;
           const shown = visible.has(index);
+          const flagged = row.key !== '' && (flaggedKeys?.has(row.key) ?? false);
           return (
             <Box
               key={index}
               data-testid={`keyvalue-row-${index}`}
+              data-flagged={flagged ? 'true' : undefined}
               sx={{
                 display: 'flex',
                 flexDirection: { xs: 'column', sm: 'row' },
                 alignItems: { xs: 'stretch', sm: 'flex-start' },
                 gap: 1,
-                p: { xs: 1.5, sm: 0 },
-                border: { xs: 1, sm: 0 },
-                borderColor: 'divider',
+                p: flagged ? 1 : { xs: 1.5, sm: 0 },
+                border: flagged ? 2 : { xs: 1, sm: 0 },
+                borderColor: flagged ? 'secondary.main' : 'divider',
                 borderRadius: 2,
               }}
             >
+              {flagged && (
+                <Chip
+                  label="Check"
+                  size="small"
+                  color="secondary"
+                  aria-label={`Check ${name}: hard to read`}
+                  sx={{ alignSelf: { xs: 'flex-start', sm: 'center' }, height: 18, fontSize: 11, fontWeight: 600 }}
+                />
+              )}
               <TextField
                 label="Label"
                 size="small"
