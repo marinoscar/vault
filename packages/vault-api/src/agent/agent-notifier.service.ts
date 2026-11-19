@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import type { AuthCredentialInfo } from '@marinoscar/platform-api/identity';
 
 import {
@@ -16,7 +16,15 @@ import {
   type VaultAgentCardGrantRequestedNotificationData,
   type VaultAgentCardNotificationData,
 } from '../core/notification-data';
-import { VAULT_NOTIFY, VAULT_PRISMA, type VaultNotifyPort, type VaultPrismaClient } from '../ports';
+import {
+  hostAppUrl,
+  VAULT_HOST,
+  VAULT_NOTIFY,
+  VAULT_PRISMA,
+  type VaultHostConfig,
+  type VaultNotifyPort,
+  type VaultPrismaClient,
+} from '../ports';
 
 /** The name shown for a personal access token (it has no client). */
 export const PAT_ACTOR_NAME = 'Personal access token';
@@ -75,6 +83,7 @@ export class AgentNotifier {
   constructor(
     @Inject(VAULT_PRISMA) private readonly prisma: VaultPrismaClient,
     @Inject(VAULT_NOTIFY) private readonly notifications: VaultNotifyPort,
+    @Optional() @Inject(VAULT_HOST) private readonly host?: VaultHostConfig,
   ) {}
 
   /** The stable key of the calling app: the OAuth client's row id (as on its grants), or the PAT id. */
@@ -125,8 +134,9 @@ export class AgentNotifier {
     }
   }
 
+  /** The call-to-action base URL from the host's `VAULT_HOST` binding, read on every use; none when unbound. */
   private appUrl(): { appUrl?: string } {
-    return process.env.APP_URL ? { appUrl: process.env.APP_URL } : {};
+    return hostAppUrl(this.host);
   }
 
   /** `vault.agent_credential_changed`: a login was saved (`created`) or its password changed (`rotated`). */
