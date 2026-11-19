@@ -35,11 +35,13 @@ Published to npm under the `next` dist-tag until 1.0, with a provenance attestat
 
 | Package | Range | Needed by |
 |---|---|---|
-| `@marinoscar/platform-api`, `@marinoscar/platform-contract` | the exact version in `peerDependencies` (the platform release the package is built against) | decorators, guards and types (`@Auth`, `AiEnabledGuard`, `JobHandler`), `runInOrg` |
+| `@marinoscar/platform-api`, `@marinoscar/platform-contract` | `>=0.1.0-next.36 <=0.1.0-next.39`, the tested range in `peerDependencies` ([PACKAGES.md](../../docs/PACKAGES.md#platform-compatibility)) | decorators, guards and types (`@Auth`, `AiEnabledGuard`, `JobHandler`), `runInOrg` |
 | `@marinoscar/vault-contract` | `>=0.0.0-0 \|\| >=0.1.0-0` (install the same version as `vault-api`) | wire schemas, error codes, system secret types |
 | `@nestjs/common`, `@nestjs/core`, `@nestjs/platform-fastify`, `@nestjs/schedule`, `@nestjs/swagger` | `^11` | the Nest providers and controllers |
 | `@prisma/client`, `@prisma/client-runtime-utils` | `^7.8.0` | the host's generated client (the package types against it) |
 | `nestjs-zod`, `zod`, `fastify`, `reflect-metadata`, `rxjs` | see `package.json` | DTOs and request types |
+
+The platform range is the one CI tested at both ends ([PACKAGES.md, Platform compatibility](../../docs/PACKAGES.md#platform-compatibility)). `VaultApiModule.forRoot` checks the installed `@marinoscar/platform-api` against it at boot and throws one error naming the installed and the supported versions when it is outside; `SUPPORTED_PLATFORM_RANGE` and `assertSupportedPlatform` are exported from `@marinoscar/vault-api/core`.
 
 `@zip.js/zip.js` is a dependency (the export zip). The host generates the Prisma client from the platform fragments plus `@marinoscar/vault-db`; build order is contract, db, `prisma generate`, api.
 

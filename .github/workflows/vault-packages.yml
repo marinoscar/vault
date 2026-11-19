@@ -20,6 +20,8 @@ on:
       - 'tsconfig.base.json'
       - 'package.json'
       - 'package-lock.json'
+      - 'apps/*/package.json'
+      - 'docs/PACKAGES.md'
       - '.github/workflows/vault-packages.yml'
   push:
     branches: [main]
@@ -30,6 +32,8 @@ on:
       - 'tsconfig.base.json'
       - 'package.json'
       - 'package-lock.json'
+      - 'apps/*/package.json'
+      - 'docs/PACKAGES.md'
       - '.github/workflows/vault-packages.yml'
 
 concurrency:
@@ -95,6 +99,89 @@ jobs:
 
       # Node built-ins only: no install needed.
       - run: npm run check:package-docs
+
+  platform-compat:
+    name: Platform compatibility
+    # docs/PACKAGES.md, "Platform compatibility": the compatibility table, the
+    # @marinoscar/platform-* peers of the four packages, vault-api's
+    # SUPPORTED_PLATFORM_RANGE and the workspace pins must agree. Its output is
+    # the matrix of the next job, so the range tested is the range declared.
+    runs-on: ubuntu-latest
+    outputs:
+      versions: ${{ steps.range.outputs.versions }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      # Node built-ins only: no install needed.
+      - run: npm run check:platform-compat
+
+      - id: range
+        run: echo "versions=$(node scripts/vault-packages/platform-compat.mjs --matrix)" >> "$GITHUB_OUTPUT"
+
+  platform-range:
+    name: Platform range (${{ matrix.platform }})
+    # Installs the lowest and the highest platform version of the declared range
+    # and runs the package build, typecheck, tests and the vault-api conformance
+    # spec on each. A failing cell narrows the range in the peers; it is never
+    # skipped or allowed to fail.
+    needs: platform-compat
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: ${{ fromJSON(needs.platform-compat.outputs.versions) }}
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - run: npm ci
+
+      # Re-pin every workspace @marinoscar/platform-* dependency (root, apps,
+      # packages; never a peer) to this cell's version, then let npm resolve it.
+      - name: Install @marinoscar/platform-* ${{ matrix.platform }}
+        run: |
+          node scripts/vault-packages/platform-compat.mjs --use "${{ matrix.platform }}"
+          npm install --no-audit --no-fund
+          npm ls @marinoscar/platform-api @marinoscar/platform-contract @marinoscar/platform-web @marinoscar/platform-db
+          # What each package resolves (npm may nest instead of hoisting).
+          test "$(cd packages/vault-api && node -p "require('@marinoscar/platform-api/package.json').version")" = "${{ matrix.platform }}"
+          test "$(cd packages/vault-web && node -p "require('@marinoscar/platform-web/package.json').version")" = "${{ matrix.platform }}"
+
+      - run: npm run build:packages
+
+      - run: npm run typecheck:packages
+
+      # vault-db's apply.db.test.ts uses the Postgres service; vault-api's specs
+      # (the forRoot platform check included) use fakes for every port.
+      - name: Test the packages
+        run: npm run test:packages
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+
+      - name: Conformance over fake ports
+        working-directory: packages/vault-api
+        run: npx jest --config ./test/jest.config.js --ci test/conformance.spec.ts
 
   changeset-status:
     name: Changeset status

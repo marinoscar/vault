@@ -53,7 +53,7 @@ node apps/cli/dist/cli.js --help  # or: npm run vault -- --help
 ### Version
 
 ```bash
-vault --version      # e.g. 2.1.0 (platform 0.1.0-next.37)
+vault --version      # e.g. 2.1.0 (platform 0.1.0-next.39)
 ```
 
 ### Environment Variables
