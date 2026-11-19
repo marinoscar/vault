@@ -71,18 +71,21 @@ export function useAiStatus(): UseAiStatusResult {
   const { config, isLoading, error, refresh: refreshConfig } = useAiConfig({ api: vaultAiApi });
 
   const wantTargets = canUseAi && !isLoading && error === null && config.enabled === true;
+  // `settledFor` is the request tick whose answer (or failure) is in `targets`: until the
+  // current tick settles the status is loading, so no render reports "not available" for
+  // the moment between the config arriving and the targets call starting.
   const [targets, setTargets] = useState<ScanTargets | null>(null);
-  const [targetsLoading, setTargetsLoading] = useState(false);
   const [targetsTick, setTargetsTick] = useState(0);
+  const [settledFor, setSettledFor] = useState<number | null>(null);
 
   useEffect(() => {
     if (!wantTargets) {
       setTargets(null);
-      setTargetsLoading(false);
+      setSettledFor(null);
       return;
     }
     let cancelled = false;
-    setTargetsLoading(true);
+    const tick = targetsTick;
     getScanTargets()
       .then((next) => {
         if (!cancelled) setTargets(next);
@@ -92,12 +95,14 @@ export function useAiStatus(): UseAiStatusResult {
         if (!cancelled) setTargets(null);
       })
       .finally(() => {
-        if (!cancelled) setTargetsLoading(false);
+        if (!cancelled) setSettledFor(tick);
       });
     return () => {
       cancelled = true;
     };
   }, [wantTargets, targetsTick]);
+
+  const targetsLoading = wantTargets && settledFor !== targetsTick;
 
   const refresh = useCallback(async () => {
     await refreshConfig();
