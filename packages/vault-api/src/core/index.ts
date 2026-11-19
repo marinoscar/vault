@@ -5,3 +5,4 @@ export * from './names';
 export * from './notification-data';
 export * from './permissions';
 export * from './roles.constants';
+export * from './settings-defaults';
