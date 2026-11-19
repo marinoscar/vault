@@ -12,6 +12,7 @@ import { VAULT_MCP_OPTIONS } from './mcp/mcp-options';
 import { McpSecretsService } from './mcp/mcp-secrets.service';
 import { VaultMcpToolsBootstrap } from './mcp/vault-mcp-tools';
 import { McpToolRegistry } from './mcp/protocol/mcp-tool';
+import { assertSupportedPlatform } from './core/platform-compat';
 import { CardExtractController } from './ai/card-extract.controller';
 import { CardExtractService } from './ai/card-extract.service';
 import { BackupArchiveService } from './backups/backup-archive.service';
@@ -149,11 +150,16 @@ function toProvider(provide: symbol, binding: VaultPortBinding): Provider {
  * The controllers are the package's (routes, permissions and wire shapes are unchanged); the host
  * adds only what has no meaning outside this deployment.
  *
+ * `forRoot` first checks the installed `@marinoscar/platform-api` against
+ * `SUPPORTED_PLATFORM_RANGE` and throws one error naming both when it is outside the tested range
+ * (docs/PACKAGES.md, "Platform compatibility").
+ *
  * @stability experimental
  */
 @Module({})
 export class VaultApiModule {
   static forRoot(options: VaultApiOptions): DynamicModule {
+    assertSupportedPlatform();
     const ports = TOKENS.flatMap(([key, token]) => {
       const binding = options.bindings[key];
       return binding ? [toProvider(token, binding)] : [];

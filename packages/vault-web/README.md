@@ -40,7 +40,7 @@ Everything React and MUI is a peer, so the host keeps one copy of each (two Reac
 | `react`, `react-dom` | `^19.2.7` | every slice |
 | `react-router-dom` | `^7.17.0` | pages and navigation |
 | `@mui/material`, `@mui/icons-material`, `@mui/utils` | `^9.1.0` / `^9.0.0` | every `ui` subpath and `brand` |
-| `@marinoscar/platform-web` | the exact version in `peerDependencies` (the platform release the package is built against) | the shell, identity, data table, settings and AI pieces the pages use |
+| `@marinoscar/platform-web` | `>=0.1.0-next.36 <=0.1.0-next.39`, the tested range in `peerDependencies` ([PACKAGES.md](../../docs/PACKAGES.md#platform-compatibility)) | the shell, identity, data table, settings and AI pieces the pages use |
 | `@marinoscar/vault-contract` | `>=0.0.0-0 \|\| >=0.1.0-0` | wire constants and types |
 
 The host's bundler must understand an image import (Vite does): `BrandLockup` imports the PNG next to it.

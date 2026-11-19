@@ -88,8 +88,8 @@
     "@zip.js/zip.js": "2.23.0"
   },
   "peerDependencies": {
-    "@marinoscar/platform-api": "0.1.0-next.39",
-    "@marinoscar/platform-contract": "0.1.0-next.39",
+    "@marinoscar/platform-api": ">=0.1.0-next.36 <=0.1.0-next.39",
+    "@marinoscar/platform-contract": ">=0.1.0-next.36 <=0.1.0-next.39",
     "@marinoscar/vault-contract": ">=0.0.0-0 || >=0.1.0-0",
     "@nestjs/common": "^11.1.12",
     "@nestjs/core": "^11.1.12",
@@ -105,6 +105,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@marinoscar/platform-api": "0.1.0-next.39",
+    "@marinoscar/platform-contract": "0.1.0-next.39",
     "@marinoscar/vault-contract": "0.1.0-next.3",
     "@nestjs/testing": "^11.1.12",
     "@types/jest": "^29.x",

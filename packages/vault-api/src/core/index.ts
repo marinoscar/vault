@@ -4,3 +4,4 @@ export * from './metric-labels';
 export * from './notification-data';
 export * from './permissions';
 export * from './roles.constants';
+export * from './platform-compat';
