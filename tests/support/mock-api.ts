@@ -192,6 +192,16 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}): 
         },
       });
     }
+    if (path === '/secrets/scan/targets') {
+      // #213: both scan features run on an enabled vision model that fits the needs,
+      // so card and document scanning stay available and the screens are unchanged.
+      const target = {
+        provider: 'openai',
+        model: 'mock-vision-model',
+        capabilities: ['vision_input', 'structured_output', 'responses'],
+      };
+      return json(route, { data: { card_extract: target, document_extract: target } });
+    }
     if (path === '/ai/config') {
       // Card scanning available (vault-web `isCardScanAvailable`): AI on, the deployment
       // key serving everyone and the openai provider on with its key stored.

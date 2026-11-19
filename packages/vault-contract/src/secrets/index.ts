@@ -210,4 +210,5 @@ export * from './document-scan.js';
 export * from './image-slots.js';
 export * from './origins.js';
 export * from './totp.js';
+export * from './scan-availability.js';
 export * from './document-summary.js';

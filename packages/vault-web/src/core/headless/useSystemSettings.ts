@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { api, ApiError, patchCardExtractModel } from './api.js';
+import { api, ApiError, patchCardExtractModel, patchDocumentExtractModel } from './api.js';
 import type { SystemSettings } from './types.js';
 
 const CONFLICT_MESSAGE =
@@ -15,7 +15,12 @@ interface UseSystemSettingsReturn {
    * Set `ai.cardExtractModel`, the model card scanning runs on (E8.2). The rest
    * of the `ai` namespace is the platform's AI page's (`/api/admin/ai/*`).
    */
-  updateCardExtractModel: (model: string) => Promise<void>;
+  updateCardExtractModel: (model: string, provider?: string) => Promise<void>;
+  /**
+   * Set `ai.documentExtractModel` and its provider, the model document scanning
+   * runs on (#213); `null` clears both, so documents run on the card model.
+   */
+  updateDocumentExtractModel: (choice: { model: string; provider: string } | null) => Promise<void>;
   replaceSettings: (settings: Omit<SystemSettings, 'updatedAt' | 'updatedBy' | 'version'>) => Promise<void>;
   refresh: () => Promise<void>;
 }
@@ -78,15 +83,16 @@ export function useSystemSettings(): UseSystemSettingsReturn {
     [settings, fetchSettings],
   );
 
-  const updateCardExtractModel = useCallback(
-    async (model: string) => {
+  /** One `ai` extension write: `If-Match`, a 409 refetches and says so. */
+  const saveAiExtension = useCallback(
+    async (write: (version: number) => Promise<SystemSettings>) => {
       if (!settings) return;
 
       try {
         setIsSaving(true);
         setError(null);
 
-        const data = await patchCardExtractModel(model, settings.version);
+        const data = await write(settings.version);
 
         setSettings(data);
       } catch (err) {
@@ -102,6 +108,17 @@ export function useSystemSettings(): UseSystemSettingsReturn {
       }
     },
     [settings, fetchSettings],
+  );
+
+  const updateCardExtractModel = useCallback(
+    (model: string, provider?: string) => saveAiExtension((version) => patchCardExtractModel(model, version, provider)),
+    [saveAiExtension],
+  );
+
+  const updateDocumentExtractModel = useCallback(
+    (choice: { model: string; provider: string } | null) =>
+      saveAiExtension((version) => patchDocumentExtractModel(choice, version)),
+    [saveAiExtension],
   );
 
   const replaceSettings = useCallback(
@@ -130,6 +147,7 @@ export function useSystemSettings(): UseSystemSettingsReturn {
     isSaving,
     updateSettings,
     updateCardExtractModel,
+    updateDocumentExtractModel,
     replaceSettings,
     refresh: fetchSettings,
   };

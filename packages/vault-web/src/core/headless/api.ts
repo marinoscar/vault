@@ -17,7 +17,7 @@
 import { ApiError } from '@marinoscar/platform-web/core';
 import type { PlatformHttpBlobWithHeaders, PlatformHttpRequestOptions } from '@marinoscar/platform-web/core';
 
-import type { DocumentSummaryResponse } from '@marinoscar/vault-contract/secrets';
+import type { DocumentSummaryResponse, ScanTargets } from '@marinoscar/vault-contract/secrets';
 
 import { api } from './http.js';
 import type { ExtractDocumentRequest, ExtractDocumentResponse } from '@marinoscar/vault-contract/secrets';
@@ -103,10 +103,11 @@ export async function extractDocument(
 
 /**
  * Set the model card scanning runs on: `PATCH /api/system-settings` with
- * `{ ai: { cardExtractModel } }` (Vault's extension of the platform AI policy,
- * E8.2 #88). Everything else in the `ai` namespace is the platform's and is
- * edited on the packaged AI page (`/api/admin/ai/*`); the provider key is never
- * sent through system settings (the API ignores `ai.apiKey`).
+ * `{ ai: { cardExtractModel, cardExtractProvider } }` (Vault's extension of the
+ * platform AI policy, E8.2 #88; the provider since #213). Everything else in the
+ * `ai` namespace is the platform's and is edited on the packaged AI page
+ * (`/api/admin/ai/*`); the provider key is never sent through system settings.
+ * Without `provider` the stored provider is dropped and `openai` applies.
  *
  * `version` goes as `If-Match`; the API answers 409 when the settings changed
  * underneath us.
@@ -114,12 +115,38 @@ export async function extractDocument(
 export async function patchCardExtractModel(
   cardExtractModel: string,
   version: number,
+  provider?: string,
 ): Promise<SystemSettings> {
   return api.patch<SystemSettings>(
     '/system-settings',
-    { ai: { cardExtractModel } },
+    { ai: { cardExtractModel, ...(provider ? { cardExtractProvider: provider } : {}) } },
     { headers: { 'If-Match': version.toString() } },
   );
+}
+
+/**
+ * Set the model document scanning runs on (#213): `{ ai: { documentExtractModel,
+ * documentExtractProvider } }`, or `null` to clear both ("Same as card scanning":
+ * documents then run on the card model). `version` goes as `If-Match`.
+ */
+export async function patchDocumentExtractModel(
+  choice: { model: string; provider: string } | null,
+  version: number,
+): Promise<SystemSettings> {
+  const ai =
+    choice === null
+      ? { documentExtractModel: null }
+      : { documentExtractModel: choice.model, documentExtractProvider: choice.provider };
+  return api.patch<SystemSettings>('/system-settings', { ai }, { headers: { 'If-Match': version.toString() } });
+}
+
+/**
+ * The model card and document scanning run on, with the capabilities the model
+ * catalogue declares for it (`GET /api/secrets/scan/targets`, needs `ai:use`, #213).
+ * `useAiStatus` combines it with `GET /api/ai/config` through `isScanAvailable`.
+ */
+export async function getScanTargets(): Promise<ScanTargets> {
+  return api.get<ScanTargets>('/secrets/scan/targets');
 }
 
 // Secret Types API

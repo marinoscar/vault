@@ -263,7 +263,8 @@ describe('ImportCardPage — availability gating', () => {
     );
     render(<ImportCardPage />);
 
-    expect(await screen.findByText('AI is not set up yet')).toBeInTheDocument();
+    // Two reads (the config, then the scan targets, #213): allow for a loaded machine.
+    expect(await screen.findByText('AI is not set up yet', {}, { timeout: 3000 })).toBeInTheDocument();
   });
 
   it('points an administrator at Console → AI', async () => {

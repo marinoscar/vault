@@ -1,7 +1,6 @@
 import type { OnboardingFactDef } from '@marinoscar/platform-api/onboarding';
-import { AiConfigService } from '@marinoscar/platform-api/ai';
 
-import { CARD_EXTRACT_FEATURE, isCardScanAvailable } from '@marinoscar/vault-api/ai';
+import { CARD_EXTRACT_FEATURE, ScanTargetsService } from '@marinoscar/vault-api/ai';
 import { PrismaService } from '../../prisma/prisma.service';
 
 // =============================================================================
@@ -30,7 +29,10 @@ export const VAULT_ONBOARDING_FACTS = {
 } as const;
 
 export interface VaultCardScanFact {
-  /** Card scanning is usable by this caller (AI on, provider on, deployment key stored). */
+  /**
+   * Card scanning is usable in the caller's organization: AI on, the card model an enabled catalogue
+   * model declaring the scan needs on an enabled provider, and its call payable (#213).
+   */
   available: boolean;
   /** Successful `card_extract` calls the caller has made. */
   count: number;
@@ -53,7 +55,7 @@ export const CARD_SCAN_FACT: OnboardingFactDef<VaultCardScanFact> = {
   resolve: async (ctx) => {
     const orgId = ctx.caller.activeOrgId;
     if (!orgId) return { available: false, count: 0 };
-    const available = isCardScanAvailable(await ctx.get(AiConfigService).describePublic(orgId));
+    const available = await ctx.get(ScanTargetsService).isAvailable(orgId, CARD_EXTRACT_FEATURE);
     // `ai_usage_events` forces row-level security on `org_id`: read it inside the caller's organization.
     const count = await ctx
       .get(PrismaService)

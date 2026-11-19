@@ -11,7 +11,10 @@
 // purpose `ai` is registered by `platform/credentials/credential-purposes.manifest.ts`
 // from the platform's own `AI_CREDENTIAL_PURPOSE_DEF` (the slice does not register it).
 //
-// `providers: ['openai']`: Vault has one vendor; the other four provider modules
+// `providers: ['openai', 'openai-compatible']`: OpenAI, and any server speaking its
+// wire protocol at an administrator-chosen base URL (Ollama, vLLM, LM Studio: an
+// on-prem vision model, #213, docs/runbooks/onprem-vision-model.md). The platform
+// ships both adapters; Vault imports no provider SDK. The other provider modules
 // stay out of the graph (their settings slots stay, inert).
 // `perUserDefaultModel: false`: the model is chosen per FEATURE by
 // `VaultAiTargetResolver`, so the per-user default-model picker is hidden.
@@ -33,6 +36,6 @@ import { AiHostModule } from './ai-host.module';
 
 export const aiModule = AiModule.forRoot({
   imports: [AiHostModule],
-  providers: ['openai'],
+  providers: ['openai', 'openai-compatible'],
   perUserDefaultModel: false,
 });

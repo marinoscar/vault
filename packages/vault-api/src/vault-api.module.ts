@@ -25,6 +25,8 @@ import { CardExtractController } from './ai/card-extract.controller';
 import { CardExtractService } from './ai/card-extract.service';
 import { DocumentExtractController } from './ai/document-extract.controller';
 import { DocumentExtractService } from './ai/document-extract.service';
+import { ScanTargetsController } from './ai/scan-targets.controller';
+import { ScanTargetsService } from './ai/scan-targets.service';
 import { DocumentScanService } from './ai/scan/document-scan.service';
 import { createScanProfileRegistry, ScanProfileRegistry } from './ai/scan/scan-profile.registry';
 import { BackupArchiveService } from './backups/backup-archive.service';
@@ -195,6 +197,7 @@ export class VaultApiModule {
         MediaController,
         CardExtractController,
         DocumentExtractController,
+        ScanTargetsController,
         BackupsController,
         MyBackupsController,
         AgentController,
@@ -225,6 +228,7 @@ export class VaultApiModule {
         MediaService,
         CardExtractService,
         DocumentExtractService,
+        ScanTargetsService,
         // The scan-profile registry with the built-in profiles (the card), and its runner (#204).
         { provide: ScanProfileRegistry, useFactory: createScanProfileRegistry },
         DocumentScanService,
@@ -255,6 +259,8 @@ export class VaultApiModule {
         SecretsExportService,
         SecretTypesService,
         MediaService,
+        // The scan targets and availability (#213): the host's onboarding fact reads them.
+        ScanTargetsService,
         // ADR-0003: the in-process agent release port for a host that embeds the packages (#194).
         AgentReleaseService,
         AGENT_RELEASE_PORT,
