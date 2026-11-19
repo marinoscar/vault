@@ -28,7 +28,8 @@ import { VaultAiTargetResolver } from './vault-ai-target-resolver';
 //                          transaction-local `app.rls_bypass` the platform sets.
 //   AI_OBJECT_STORE     -> AiObjectStoreAdapter   the active STORAGE_PROVIDER (platform storage slice, E6.1)
 //   AI_METRICS          -> AppMetricsService      the host core's instruments
-//   AI_TARGET_RESOLVER  -> VaultAiTargetResolver  `card_extract` runs on `ai.cardExtractModel`
+//   AI_TARGET_RESOLVER  -> VaultAiTargetResolver  `card_extract` runs on `ai.cardExtractModel`,
+//                          `document_extract` on `ai.documentExtractModel ?? ai.cardExtractModel`
 //
 // `@Global()` because every sub-module of the AI slice injects the ports.
 // =============================================================================

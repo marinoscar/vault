@@ -23,6 +23,8 @@ import { McpToolRegistry } from './mcp/protocol/mcp-tool';
 import { assertSupportedPlatform } from './core/platform-compat';
 import { CardExtractController } from './ai/card-extract.controller';
 import { CardExtractService } from './ai/card-extract.service';
+import { DocumentExtractController } from './ai/document-extract.controller';
+import { DocumentExtractService } from './ai/document-extract.service';
 import { DocumentScanService } from './ai/scan/document-scan.service';
 import { createScanProfileRegistry, ScanProfileRegistry } from './ai/scan/scan-profile.registry';
 import { BackupArchiveService } from './backups/backup-archive.service';
@@ -192,6 +194,7 @@ export class VaultApiModule {
         SecretsController,
         MediaController,
         CardExtractController,
+        DocumentExtractController,
         BackupsController,
         MyBackupsController,
         AgentController,
@@ -221,6 +224,7 @@ export class VaultApiModule {
         DocumentSummaryService,
         MediaService,
         CardExtractService,
+        DocumentExtractService,
         // The scan-profile registry with the built-in profiles (the card), and its runner (#204).
         { provide: ScanProfileRegistry, useFactory: createScanProfileRegistry },
         DocumentScanService,

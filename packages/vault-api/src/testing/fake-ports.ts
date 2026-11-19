@@ -137,6 +137,7 @@ export class CountingMetrics implements VaultMetricsPort {
   secretVersionCreated = (...args: Parameters<VaultMetricsPort['secretVersionCreated']>) => void this.calls.push({ method: 'secretVersionCreated', args });
   backupFinished = (...args: Parameters<VaultMetricsPort['backupFinished']>) => void this.calls.push({ method: 'backupFinished', args });
   cardExtracted = (...args: Parameters<VaultMetricsPort['cardExtracted']>) => void this.calls.push({ method: 'cardExtracted', args });
+  documentExtracted = (...args: Parameters<VaultMetricsPort['documentExtracted']>) => void this.calls.push({ method: 'documentExtracted', args });
 }
 
 /** The set of fakes behind {@link createFakeBindings}, kept so a test can inspect them. */

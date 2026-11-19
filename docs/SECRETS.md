@@ -974,6 +974,23 @@ The `vault sync` command automates this for local `.env` files (or any UTF-8 tex
 
 **No real OpenAI call has ever been exercised.** The end-to-end tests (`test/ai/card-extract.db.spec.ts`) run the whole platform pipeline against the AI test kit's fake provider; the OpenAI adapter itself is the platform's (`@marinoscar/platform-ai-providers`, with its own conformance kit). Treat the first production scan as the live test and review the result before relying on it.
 
+### Document scanning
+
+`POST /api/secrets/documents/extract` (#210) does for the **Passport** and **ID Document** types what card scanning does for cards: the photos go to the platform AI under the feature `document_extract`, the model returns candidate values with confidences, warnings and one crop box per image, and the user reviews everything before saving. **Nothing is persisted**: no image byte or extracted value reaches a secret, `ai_usage_events` (one row with token counts), `ai_runs`, `audit_events` or a log (`apps/api/test/ai/document-extract.db.spec.ts`). The same egress applies as for cards: the full frames, background included, reach the configured provider. The route has the card's guards (`secrets:write` + `ai:use`, the platform kill switch) and the platform caps (`ai.limits`).
+
+What is read:
+
+- **Passport** (images `data_page`, required, and `back`, optional): every Passport field except `notes`. The model transcribes the machine-readable zone verbatim; the joined lines become `mrz`. Dates are `YYYY-MM-DD`, `issuing_country` and `nationality` the ICAO alpha-3 code (an unknown country keeps the printed text, with a warning), `sex` `M`, `F` or `X`.
+- **ID Document** (images `front`, required, and `back`, optional): the model first classifies `document_kind` from the catalog (an inferred kind gets moderate confidence and a warning; an unknown kind becomes `null` with a warning), then the core fields (holder name, document number, issuing country and authority, dates) and `attributes`: the kind's standard keys from `ID_DOCUMENT_KIND_CATALOG`, then any other printed field under a key derived from its label. An attribute's `sensitive` flag comes from the catalog (default `false`; the `mrz` attribute is always sensitive); the document number, the date of birth and the name are never attributes.
+
+The checks below run on what the model read and are returned in `checks` (`{ id, ok, failed }`, field names only):
+
+- **MRZ** (passport, and any ID document with a zone): when every check digit is valid, the MRZ wins over a different printed document number, birth date, expiry date, sex, nationality or name; the field gets a confidence of at least 0.9 and the warning "Read from the machine-readable zone; the printed value looked different". A failed check digit warns, naming the field, and caps that field's confidence at 0.5.
+- **SSN** (Social Security Card): `document_number` is normalised to `###-##-####`; a structural failure warns.
+- **VIN** (Vehicle Registration): the `vin` attribute is upper-cased and checked; a bad check digit or format warns.
+
+A warning never carries a value, only a field name; a model warning that repeats an extracted value is dropped. The model is `ai.documentExtractModel`, or `ai.cardExtractModel` when unset (`VaultAiTargetResolver`). Request, response and errors: [API.md](API.md#post-secretsdocumentsextract).
+
 ### Document checks
 
 Identity documents carry data that can be checked without AI, so a misread character from the vision model (O for 0, 1 for I, a dropped `<` filler) can be caught. The check library (`@marinoscar/vault-api/ai`, `src/ai/scan/checks/`, pure functions with no I/O) covers:

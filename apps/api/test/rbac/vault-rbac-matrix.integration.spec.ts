@@ -215,6 +215,8 @@ const ROUTES: readonly Route[] = [
   ['POST', '/api/secrets/export', 'secrets:read'],
   // Also needs `ai:use` and the platform kill switch (a class guard that runs first).
   ['POST', '/api/secrets/cards/extract', 'secrets:write'],
+  // Document scanning (#210): the same guards as the card route.
+  ['POST', '/api/secrets/documents/extract', 'secrets:write'],
   // The agent API root (E14.2; the `agent` OAuth protected resource)
   ['GET', '/api/agent/v1/whoami', 'secrets:read'],
   // E14.6: the credential routes. The scopes vault:items_read / _fill / _write narrow to exactly these permissions.
@@ -558,6 +560,7 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
         'OAuthAdminHintsController',
         'OAuthGrantsAdminController',
         'CardExtractController',
+        'DocumentExtractController',
         'ObjectsController',
         'StorageStatusController',
         'StorageConfigController',
@@ -649,7 +652,7 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
         (typeof permission === 'string' ? held.includes(permission) : permission.some((p) => held.includes(p)));
       const response = await call(method, path, tokenFor(USERS[role], role));
 
-      if (allowed && path === '/api/secrets/cards/extract') {
+      if (allowed && (path === '/api/secrets/cards/extract' || path === '/api/secrets/documents/extract')) {
         // Past authentication and permissions the route meets the platform kill switch; the mocked
         // settings have AI off, so the proof of access is the AI slice's own refusal.
         expect(response.status).not.toBe(401);

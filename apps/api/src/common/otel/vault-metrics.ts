@@ -27,6 +27,7 @@ export {
   BACKUP_SCOPES,
   BACKUP_TRIGGERS,
   CARD_EXTRACTION_OUTCOMES,
+  DOCUMENT_EXTRACTION_TYPES,
   SECRET_TYPE_KINDS,
   SECRET_VERSION_SOURCES,
   type SecretTypeKind,
@@ -37,6 +38,7 @@ import {
   BACKUP_SCOPES,
   BACKUP_TRIGGERS,
   CARD_EXTRACTION_OUTCOMES,
+  DOCUMENT_EXTRACTION_TYPES,
   SECRET_TYPE_KINDS,
   SECRET_VERSION_SOURCES,
 } from '@marinoscar/vault-api/core';
@@ -88,6 +90,15 @@ export const VAULT_APP_METRICS: readonly AppMetricDef[] = [
     description: 'Card-photo extractions requested, by outcome. Never records the card, its numbers or the user.',
     attributes: { outcome: oneOf(...CARD_EXTRACTION_OUTCOMES) },
   },
+  {
+    key: 'vaultDocumentExtractions',
+    name: 'app.vault.documents.extractions',
+    kind: 'counter',
+    unit: '{extraction}',
+    description:
+      'Identity-document scans requested (#210), by document type and outcome. Never records the document, its values or the user.',
+    attributes: { document_type: oneOf(...DOCUMENT_EXTRACTION_TYPES), outcome: oneOf(...CARD_EXTRACTION_OUTCOMES) },
+  },
 ];
 
 declare module '@marinoscar/platform-api/otel-core' {
@@ -97,6 +108,7 @@ declare module '@marinoscar/platform-api/otel-core' {
     vaultBackupRuns: true;
     vaultBackupDuration: true;
     vaultCardExtractions: true;
+    vaultDocumentExtractions: true;
   }
 }
 

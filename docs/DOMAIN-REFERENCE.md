@@ -93,11 +93,12 @@ The platform settings slice serves these (E4.1); Vault's namespaces are `ui`, `f
 - `PUT /api/secret-types/{id}` - Update a custom secret type
 - `DELETE /api/secret-types/{id}` - Delete a custom secret type (409 if secrets reference it)
 
-### AI (Card Scanning)
+### AI (Card and Document Scanning)
 - `GET /api/ai/config` - The platform's public AI capabilities for the current user (no permission required, open while AI is off); the web derives card-scan availability from it
 - `GET /api/secrets/documents/summary` - The caller's own Passport and ID Document secrets with their expiry status (`secrets:read`; id, name, type, kind, expiry date, status; never a number or date of birth). IDOC-9; see `docs/API.md`
 - Document expiry reminders (IDOC-9): the server-only job `vault.documents.expiry_scan` (daily tick 05:43 UTC, enqueue-only), the notification event `vault.document_expiring` (template `vault-document-expiring`, email + bell), dedup audit action `vault.document.expiry_notified`. See `docs/SECRETS.md#document-expiry-reminders`
 - `POST /api/secrets/cards/extract` - Extract candidate card fields from card photos through the platform AI slice (`secrets:write` + `ai:use`, behind the platform kill switch). Persists nothing; the CVV is never requested or returned. Disabled by default - see `docs/SECRETS.md` and `docs/API.md`.
+- `POST /api/secrets/documents/extract` - Extract candidate Passport (`documentType: passport`, images `data_page` + optional `back`) or ID Document (`documentType: id_document`, images `front` + optional `back`) fields, the document kind, attributes and the MRZ/SSN/VIN checks through the platform AI slice, feature `document_extract` (#210; `secrets:write` + `ai:use`, behind the platform kill switch, the card route's guards). Persists nothing. See `docs/SECRETS.md#document-scanning` and `docs/API.md`.
 - `GET /api/ai/config`, `/api/ai/*`, `/api/admin/ai/*` (`ai_config:*`, `org_ai_config:*`) - the platform AI slice: policy, deployment key, model catalogue, usage. See `docs/API.md` (AI card extraction).
 
 ### Admin Backups
@@ -153,6 +154,7 @@ Off until an administrator enables it at `/admin/settings/oauth-clients`. Served
 - `secrets:read/write/delete` - Secret access (own secrets)
 - `secrets:read_any/write_any/delete_any` - Secret access (all secrets, Admin only)
 - `secret_types:read/write/delete` - Secret type management (system types are always read-only regardless of permission)
+- `secrets:write` + `ai:use` - card and document scanning (`POST /api/secrets/cards/extract`, `POST /api/secrets/documents/extract`), also behind the platform AI kill switch
 - `secrets:fill` - read one sensitive field of an agent-accessible secret through the agent API (org scope; `org_admin`, `contributor`, `viewer`, the same roles as `secrets:read`). Reached only by an OAuth token holding `vault:items_fill`
 - `agent_cards:read`, `agent_cards:fill`, `agent_identity:read`, `agent_identity:fill` - the card and identity agent routes (ADR-0003; org scope, the same roles as `secrets:read`), bundled in `vault:cards_*` and `vault:identity_*`
 - `oauth_clients:read/write` - OAuth client and grant administration (the platform identity slice, system scope, Admin only)
