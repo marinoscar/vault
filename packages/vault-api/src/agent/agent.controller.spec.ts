@@ -5,6 +5,7 @@ import { of } from 'rxjs';
 import { AgentCredentialsService } from './agent-credentials.service';
 import { AgentNoStoreInterceptor } from './agent-no-store.interceptor';
 import { AgentController } from './agent.controller';
+import { AgentCardsController } from './agent-cards.controller';
 
 describe('AgentNoStoreInterceptor', () => {
   it('sets Cache-Control: no-store and Pragma: no-cache before the handler runs', () => {
@@ -18,16 +19,18 @@ describe('AgentNoStoreInterceptor', () => {
     expect(ranHandler).toBe(true);
   });
 
-  it('is applied to the whole agent controller', () => {
-    const interceptors = Reflect.getMetadata('__interceptors__', AgentController) as unknown[];
-    expect(interceptors).toContain(AgentNoStoreInterceptor);
+  it('is applied to the whole agent controller and to the cards and identity controller', () => {
+    for (const controller of [AgentController, AgentCardsController]) {
+      const interceptors = Reflect.getMetadata('__interceptors__', controller) as unknown[];
+      expect(interceptors).toContain(AgentNoStoreInterceptor);
+    }
   });
 });
 
 describe('AgentController', () => {
   it('whoami honours the kill switch and returns the caller, scopes and client', async () => {
     const service = { assertEnabled: jest.fn().mockResolvedValue(undefined) };
-    const controller = new AgentController(service as unknown as AgentCredentialsService);
+    const controller = new AgentController(service as unknown as AgentCredentialsService, {} as never);
     const user = { id: 'u1' } as never;
     await expect(
       controller.whoami(user, { clientId: 'c1', grantId: 'g', resourceId: 'agent', scopes: ['vault:items_read'] }),

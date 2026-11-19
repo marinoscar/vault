@@ -26,6 +26,8 @@ const secretId = 'secret-111';
 const credentialType = { id: 't1', name: 'Credential', isSystem: true, fields: [] };
 const apiKeyType = { id: 't2', name: 'API Key', isSystem: true, fields: [] };
 const customType = { id: 't3', name: 'Credential', isSystem: false, fields: [] };
+const cardType = { id: 't4', name: 'Card', isSystem: true, fields: [] };
+const identityType = { id: 't5', name: 'Identity', isSystem: true, fields: [] };
 
 const secretRow = (over: Record<string, unknown> = {}) => ({
   id: secretId,
@@ -117,6 +119,44 @@ describe('SecretsService agent access', () => {
       expect(prisma.secret.update).not.toHaveBeenCalled();
     });
 
+    it.each([cardType, identityType])('opens a system %p only with the owner\'s browser session (ADR-0003)', async (type) => {
+      prisma.secret.findUnique.mockResolvedValue(secretRow({ type }) as any);
+      const err = await service.updateAgentAccess(secretId, 'fill', userId, write).catch((e) => e);
+      expect(err).toBeInstanceOf(ForbiddenException);
+      expect(err.getResponse().code).toBe('OWNER_SESSION_REQUIRED');
+      expect(prisma.secret.update).not.toHaveBeenCalled();
+      await service.updateAgentAccess(secretId, 'fill', userId, write, undefined, true);
+      expect((prisma.secret.update as jest.Mock).mock.calls[0][0].data.agentAccess).toBe('fill');
+    });
+
+    it('closes a card without a session (closing only narrows access)', async () => {
+      prisma.secret.findUnique.mockResolvedValue(secretRow({ type: cardType, agentAccess: 'fill' }) as any);
+      await service.updateAgentAccess(secretId, 'none', userId, write);
+      expect((prisma.secret.update as jest.Mock).mock.calls[0][0].data.agentAccess).toBe('none');
+    });
+
+    it('stores normalized, deduplicated allowed origins on an Identity and audits only their count', async () => {
+      prisma.secret.findUnique.mockResolvedValue(secretRow({ type: identityType, agentAccess: 'fill', agentOrigins: [] }) as any);
+      await service.updateAgentAccess(
+        secretId, 'fill', userId, write, ['HTTPS://Form.Example.Test/apply', 'form.example.test', 'https://b.example.test'], true,
+      );
+      expect((prisma.secret.update as jest.Mock).mock.calls[0][0].data).toEqual({
+        agentOrigins: ['https://b.example.test', 'https://form.example.test'],
+      });
+      expect((prisma.auditEvent.create as jest.Mock).mock.calls[0][0].data.meta).toEqual({
+        secretId, from: 'fill', to: 'fill', allowedOrigins: 2,
+      });
+    });
+
+    it('refuses allowed origins on another type, an invalid origin, and without a session', async () => {
+      prisma.secret.findUnique.mockResolvedValue(secretRow({ type: cardType }) as any);
+      await expect(service.updateAgentAccess(secretId, 'fill', userId, write, ['https://a.example.test'], true)).rejects.toThrow('Identity');
+      prisma.secret.findUnique.mockResolvedValue(secretRow({ type: identityType }) as any);
+      await expect(service.updateAgentAccess(secretId, 'fill', userId, write, ['ftp://a.example.test'], true)).rejects.toThrow('invalid');
+      await expect(service.updateAgentAccess(secretId, 'none', userId, write, [], false)).rejects.toThrow(ForbiddenException);
+      expect(prisma.secret.update).not.toHaveBeenCalled();
+    });
+
     it('mirrors update: 404 when missing, 403 for another user without write_any', async () => {
       prisma.secret.findUnique.mockResolvedValue(null);
       await expect(service.updateAgentAccess(secretId, 'fill', userId, write)).rejects.toThrow(NotFoundException);
@@ -202,6 +242,11 @@ describe('SecretsController agent-access route', () => {
   it.each([{ kind: 'jwt' }, { kind: 'pat', tokenId: 'p' }, null])('allows %p', async (cred) => {
     const out = await controller.updateAgentAccess(secretId, { agentAccess: 'fill' }, user, cred as any);
     expect(out).toEqual({ data: { id: secretId, agentAccess: 'fill' } });
-    expect(svc.updateAgentAccess).toHaveBeenCalledWith(secretId, 'fill', userId, user.permissions);
+    expect(svc.updateAgentAccess).toHaveBeenCalledWith(secretId, 'fill', userId, user.permissions, undefined, (cred as { kind?: string } | null)?.kind === 'jwt');
+  });
+
+  it('passes allowedOrigins and whether the caller is a browser session', async () => {
+    await controller.updateAgentAccess(secretId, { agentAccess: 'fill', allowedOrigins: ['https://form.example.test'] }, user, { kind: 'pat', tokenId: 'p' } as any);
+    expect(svc.updateAgentAccess).toHaveBeenCalledWith(secretId, 'fill', userId, user.permissions, ['https://form.example.test'], false);
   });
 });

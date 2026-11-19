@@ -13,7 +13,14 @@ import {
   BACKUP_RUN_JOB_TYPE,
   USER_BACKUP_RUN_JOB_TYPE,
 } from '../src/backups';
-import { AgentActivityController, AgentController } from '../src/agent';
+import {
+  AGENT_RELEASE_PORT,
+  AgentActivityController,
+  AgentCardsController,
+  AgentController,
+  AgentReleaseService,
+  CardGrantsController,
+} from '../src/agent';
 import { McpController } from '../src/mcp';
 import { CardExpiryScanHandler, CARD_EXPIRY_SCAN_JOB_TYPE } from '../src/card-expiry';
 import { CardExtractController } from '../src/ai';
@@ -71,6 +78,8 @@ const CONTROLLERS = [
   BackupsController,
   MyBackupsController,
   AgentController,
+  AgentCardsController,
+  CardGrantsController,
   AgentActivityController,
   McpController,
 ];
@@ -127,6 +136,13 @@ describe('vault-api conformance (fake ports)', () => {
     for (const controller of CONTROLLERS) {
       expect(moduleRef.get(controller, { strict: false })).toBeInstanceOf(controller);
     }
+  });
+
+  it('exports the in-process agent release port (ADR-0003) bound to the one implementation', () => {
+    const port = moduleRef.get(AGENT_RELEASE_PORT, { strict: false });
+    expect(port).toBeInstanceOf(AgentReleaseService);
+    expect(port).toBe(moduleRef.get(AgentReleaseService, { strict: false }));
+    expect(AGENT_RELEASE_PORT).toBe(Symbol.for('@marinoscar/vault/AGENT_RELEASE_PORT'));
   });
 
   it('registers the four job handlers through the jobs port, under their permanent types', () => {

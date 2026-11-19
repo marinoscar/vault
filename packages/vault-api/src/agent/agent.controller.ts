@@ -24,8 +24,10 @@ import {
 import type { OAuthPrincipalInfo } from '@marinoscar/platform-api/core';
 
 import { PERMISSIONS } from '../core/roles.constants';
+import { httpReleaseContext } from './agent-cards.controller';
 import { AgentCredentialsService } from './agent-credentials.service';
 import { AgentNoStoreInterceptor } from './agent-no-store.interceptor';
+import { AgentReleaseService } from './agent-release.service';
 import {
   AgentCreateCredentialDto,
   AgentFillDto,
@@ -38,7 +40,8 @@ import {
  * The agent credential API (`/api/agent/v1`, the `agent` OAuth protected resource; E14.2 and E14.6).
  * Accepts `oat_` and `pat_` credentials only. Contract: `@marinoscar/vault-contract/agent`. Every
  * response carries `Cache-Control: no-store` and `Pragma: no-cache`; request and response bodies are
- * never logged. Behaviour lives in `AgentCredentialsService`.
+ * never logged. Lookup, fill and totp go through `AgentReleaseService` (the same implementation an
+ * embedded host calls in process); create and rotate through `AgentCredentialsService`.
  *
  * @stability experimental
  */
@@ -46,7 +49,10 @@ import {
 @Controller('agent/v1')
 @UseInterceptors(AgentNoStoreInterceptor)
 export class AgentController {
-  constructor(private readonly agent: AgentCredentialsService) {}
+  constructor(
+    private readonly agent: AgentCredentialsService,
+    private readonly release: AgentReleaseService,
+  ) {}
 
   @Get('whoami')
   @Auth({ permissions: [PERMISSIONS.SECRETS_READ] })
@@ -84,7 +90,7 @@ export class AgentController {
     @CurrentUser() user: RequestUser,
     @AuthCredential() credential: AuthCredentialInfo | null,
   ) {
-    return { data: await this.agent.lookup({ userId: user.id, credential }, query.origin) };
+    return { data: await this.release.lookup({ ...httpReleaseContext(user, credential), origin: query.origin }) };
   }
 
   @Post('credentials/:id/fill')
@@ -108,7 +114,7 @@ export class AgentController {
     @CurrentUser() user: RequestUser,
     @AuthCredential() credential: AuthCredentialInfo | null,
   ) {
-    return { data: await this.agent.fill({ userId: user.id, credential }, id, dto) };
+    return { data: await this.release.fill({ ...httpReleaseContext(user, credential), secretId: id, ...dto }) };
   }
 
   @Post('credentials/:id/totp')
@@ -132,7 +138,7 @@ export class AgentController {
     @CurrentUser() user: RequestUser,
     @AuthCredential() credential: AuthCredentialInfo | null,
   ) {
-    return { data: await this.agent.totp({ userId: user.id, credential }, id, dto) };
+    return { data: await this.release.totp({ ...httpReleaseContext(user, credential), secretId: id, ...dto }) };
   }
 
   @Post('credentials')
@@ -155,7 +161,7 @@ export class AgentController {
     @CurrentUser() user: RequestUser,
     @AuthCredential() credential: AuthCredentialInfo | null,
   ) {
-    return { data: await this.agent.create({ userId: user.id, credential }, dto) };
+    return { data: await this.agent.create({ userId: user.id, credential: credential ?? null }, dto) };
   }
 
   @Post('credentials/:id/password')
@@ -180,6 +186,6 @@ export class AgentController {
     @CurrentUser() user: RequestUser,
     @AuthCredential() credential: AuthCredentialInfo | null,
   ) {
-    return { data: await this.agent.rotate({ userId: user.id, credential }, id, dto) };
+    return { data: await this.agent.rotate({ userId: user.id, credential: credential ?? null }, id, dto) };
   }
 }

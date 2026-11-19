@@ -59,6 +59,32 @@ export const VAULT_PERMISSIONS = {
     scope: 'org',
     defaultGrants: ['org_admin', 'contributor', 'viewer'],
   },
+  // Agent release of cards and identity (ADR-0003): what the vault:cards_* and vault:identity_*
+  // scopes bundle. Separate from secrets:read/secrets:fill so a login token reaches no card.
+  AGENT_CARDS_READ: {
+    id: 'agent_cards:read',
+    description: 'List the cards opened to agents that have a merchant grant, through the agent API',
+    scope: 'org',
+    defaultGrants: ['org_admin', 'contributor', 'viewer'],
+  },
+  AGENT_CARDS_FILL: {
+    id: 'agent_cards:fill',
+    description: 'Read one field of a granted card, and ask its owner for a grant, through the agent API',
+    scope: 'org',
+    defaultGrants: ['org_admin', 'contributor', 'viewer'],
+  },
+  AGENT_IDENTITY_READ: {
+    id: 'agent_identity:read',
+    description: 'List the identity items opened to agents and the labels of their fields, through the agent API',
+    scope: 'org',
+    defaultGrants: ['org_admin', 'contributor', 'viewer'],
+  },
+  AGENT_IDENTITY_FILL: {
+    id: 'agent_identity:fill',
+    description: 'Read one field of an identity item opened to agents through the agent API',
+    scope: 'org',
+    defaultGrants: ['org_admin', 'contributor', 'viewer'],
+  },
   SECRETS_WRITE: {
     id: 'secrets:write',
     description: 'Create and update own secrets',

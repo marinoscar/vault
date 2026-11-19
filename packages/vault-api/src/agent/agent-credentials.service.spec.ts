@@ -5,7 +5,8 @@ import type { AuthCredentialInfo } from '@marinoscar/platform-api/identity';
 import { FakeSettings, InMemoryAudit, RecordingNotify } from '../testing';
 import { AgentNotifier } from './agent-notifier.service';
 import { SecretsService } from '../secrets/secrets.service';
-import { AgentCredentialsService, type AgentCaller } from './agent-credentials.service';
+import { AgentCredentialsService } from './agent-credentials.service';
+import { AgentCallPipeline, type AgentCaller } from './agent-pipeline';
 import { InMemoryAgentRateLimiter } from './agent-rate-limiter';
 
 const USER = 'user-aaa';
@@ -56,7 +57,9 @@ function build(settings: Record<string, unknown> = { enabled: true }) {
   };
   const notifier = new AgentNotifier(prisma as never, notify as never);
   const service = new AgentCredentialsService(
-    secrets as unknown as SecretsService, limiter, new FakeSettings({ agentAccess: settings }), audit, notifier,
+    secrets as unknown as SecretsService,
+    new AgentCallPipeline(limiter, new FakeSettings({ agentAccess: settings }), audit),
+    notifier,
   );
   return { service, secrets, audit, limiter, notify, prisma };
 }
