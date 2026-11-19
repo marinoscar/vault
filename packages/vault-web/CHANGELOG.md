@@ -1,5 +1,7 @@
 # @marinoscar/vault-web
 
+## 0.1.0-next.6
+
 ## 0.1.0-next.5
 
 ### Minor Changes
