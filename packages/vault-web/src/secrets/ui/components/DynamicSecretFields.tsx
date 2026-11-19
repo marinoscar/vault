@@ -19,7 +19,11 @@ import { Tooltip } from '@mui/material';
 import { visuallyHidden } from '@mui/utils';
 import type { FieldDefinition } from '../../../core/headless/types.js';
 import { useCopyToClipboard } from '../../../core/headless/useCopyToClipboard.js';
-import { TOTP_FIELD_NAME, formatSecretValueForCopy } from '../../headless/secretFields.js';
+import {
+  TOTP_FIELD_NAME,
+  formatSecretValueForCopy,
+  type KeyValueSuggestion,
+} from '../../headless/secretFields.js';
 
 interface DynamicSecretFieldsProps {
   fields: FieldDefinition[];
@@ -27,6 +31,11 @@ interface DynamicSecretFieldsProps {
   onChange: (data: Record<string, unknown>) => void;
   readOnly?: boolean;
   errors?: Record<string, string>;
+  /**
+   * Suggested entries per `keyvalue` field name (`keyValueSuggestionsFor`), handed
+   * to that field's key/value editor as its `suggestions`.
+   */
+  suggestions?: Readonly<Record<string, readonly KeyValueSuggestion[]>>;
 }
 
 interface SensitiveDisplayProps {

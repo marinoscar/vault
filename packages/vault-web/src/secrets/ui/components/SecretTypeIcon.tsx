@@ -6,6 +6,9 @@ import {
   Description as DescriptionIcon,
   AttachFile as AttachFileIcon,
   Category as CategoryIcon,
+  Badge as BadgeIcon,
+  TravelExplore as TravelExploreIcon,
+  AssignmentInd as AssignmentIndIcon,
 } from '@mui/icons-material';
 
 const iconMap: Record<string, React.ElementType> = {
@@ -16,6 +19,10 @@ const iconMap: Record<string, React.ElementType> = {
   Description: DescriptionIcon,
   AttachFile: AttachFileIcon,
   Category: CategoryIcon,
+  // Identity (ADR-0003), Passport and ID Document (ADR-0004).
+  Badge: BadgeIcon,
+  TravelExplore: TravelExploreIcon,
+  AssignmentInd: AssignmentIndIcon,
 };
 
 interface SecretTypeIconProps {

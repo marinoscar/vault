@@ -29,6 +29,12 @@ interface UseAiStatusResult {
    * it; a Viewer does not hold it, so the scan entry points stay hidden).
    */
   cardExtractEnabled: boolean;
+  /**
+   * True only when document scanning (Passport and ID Document, ADR-0004) is
+   * usable by this viewer. Always `false` until the scan flow ships (IDOC-8,
+   * issue #211), so no entry point links to a page that does not exist yet.
+   */
+  documentScanEnabled: boolean;
   /** The viewer holds `ai:use` (independent of whether AI is switched on). */
   canUseAi: boolean;
   refresh: () => Promise<void>;
@@ -62,6 +68,7 @@ export function useAiStatus(): UseAiStatusResult {
     isLoading,
     error,
     cardExtractEnabled: canUseAi && error === null && isCardScanAvailable(config),
+    documentScanEnabled: false,
     canUseAi,
     refresh,
   };
