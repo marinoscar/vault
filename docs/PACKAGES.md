@@ -121,12 +121,12 @@ What moved in E12.2 (no re-exports are left behind in `apps/api`; the callers im
 | `VAULT_OBJECTS` | `VaultObjectsPort` (`delete`, `getDownloadUrl`) | the platform `ObjectsService` | media |
 | `VAULT_JOBS` | `VaultJobsPort` (`enqueue`, `enqueueWithin`, `registerHandler`) | `VaultJobsAdapter` over `JobsService` + `JobHandlerRegistry` | backups, card expiry |
 | `VAULT_NOTIFY` | `VaultNotifyPort` (`notify`, `notifyNow`, `notifyPermissionHolders`) | the platform `NotificationsService` | backups, card expiry |
-| `VAULT_AI` | `VaultAiPort` (`forUser`) | the platform `AiService` | card extraction |
+| `VAULT_AI` | `VaultAiPort` (`forUser`) | the platform `AiService` | card extraction, document scanning |
 | `VAULT_AI_CONFIG` | `VaultAiConfigPort` (`describePublic`) | the platform `AiConfigService` | the onboarding step "Scan a card" (`isCardScanAvailable`) |
 | `VAULT_AI_KEY_PRESENCE` | `VaultAiKeyPresencePort` (`isConfigured`) | `AiKeyPresence` | backup archive `system/settings.json` |
 | `VAULT_AUDIT` | `VaultAuditPort` (`record`) | `VaultAuditAdapter` over `audit_events` | secrets, secret types, export, backups, card expiry |
 | `VAULT_SETTINGS` | `VaultSettingsPort` (`getNamespace`, `getSettings`) | `VaultSettingsAdapter` over `SystemSettingsService` | secrets, backups, card extraction |
-| `VAULT_METRICS` (optional) | `VaultMetricsPort` | `VaultMetricsService` | secrets, backups, card extraction |
+| `VAULT_METRICS` (optional) | `VaultMetricsPort` | `VaultMetricsService` | secrets, backups, card extraction, document scanning (`documentExtracted`) |
 
 The package still imports the platform's decorators and pure helpers (`@Auth`, `CurrentUser`, `JobHandler` and `Job` types, `isActiveDedupConflict`, `enqueueHousekeepingJob`, `AiError`, `AiEnabledGuard`, `runInOrg`): those are types and request-path decorators, not services, so they are peers (`@marinoscar/platform-api`, `@marinoscar/platform-contract`) rather than ports. Every service the slices call goes through a port, which is what lets `src/testing` run the whole module over fakes.
 
