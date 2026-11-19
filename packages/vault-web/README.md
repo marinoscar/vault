@@ -28,8 +28,10 @@ Entry points (`<slice>/headless` holds hooks, calls and helpers; `<slice>/ui` ho
 ## Install and peer dependencies
 
 ```bash
-npm install @marinoscar/vault-web@next
+npm install @marinoscar/vault-web@next @marinoscar/vault-contract@next
 ```
+
+Published to npm under the `next` dist-tag until 1.0, with a provenance attestation; the install, the dist-tag policy and the current publication status are in [docs/PACKAGES.md](../../docs/PACKAGES.md#installing-from-npm). npm 7 or later installs the peers below by itself; list them in the host's `package.json` to choose their versions. The package is ESM only.
 
 Everything React and MUI is a peer, so the host keeps one copy of each (two Reacts or two MUI theme contexts break hooks and theming):
 
@@ -38,7 +40,7 @@ Everything React and MUI is a peer, so the host keeps one copy of each (two Reac
 | `react`, `react-dom` | `^19.2.7` | every slice |
 | `react-router-dom` | `^7.17.0` | pages and navigation |
 | `@mui/material`, `@mui/icons-material`, `@mui/utils` | `^9.1.0` / `^9.0.0` | every `ui` subpath and `brand` |
-| `@marinoscar/platform-web` | `0.1.0-next.21` | the shell, identity, data table, settings and AI pieces the pages use |
+| `@marinoscar/platform-web` | the exact version in `peerDependencies` (the platform release the package is built against) | the shell, identity, data table, settings and AI pieces the pages use |
 | `@marinoscar/vault-contract` | `>=0.0.0-0 \|\| >=0.1.0-0` | wire constants and types |
 
 The host's bundler must understand an image import (Vite does): `BrandLockup` imports the PNG next to it.
