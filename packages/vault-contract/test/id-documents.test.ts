@@ -36,7 +36,7 @@ describe('the document kind catalog (issue #209)', () => {
   });
 
   it('pins the check ids', () => {
-    expect(DOCUMENT_CHECK_IDS).toEqual(['mrz', 'ssn', 'vin']);
+    expect(DOCUMENT_CHECK_IDS).toEqual(['mrz', 'ssn', 'vin', 'aamva']);
   });
 
   it('pins the standard keys of every kind; 🔒 marks the sensitive ones', () => {
@@ -87,7 +87,7 @@ describe('the document kind catalog (issue #209)', () => {
   it('pins the checks of every kind, all of them known check ids', () => {
     const checks = Object.fromEntries(ID_DOCUMENT_KINDS.map((kind) => [kind, [...ID_DOCUMENT_KIND_CATALOG[kind].checks]]));
     expect(checks).toEqual({
-      'Driver License': [],
+      'Driver License': ['aamva'],
       'National ID': ['mrz'],
       'Permanent Resident Card': ['mrz'],
       'Trusted Traveler Card': ['mrz'],

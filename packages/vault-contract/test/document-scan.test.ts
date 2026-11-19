@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  AAMVA_BARCODE_FIELDS,
+  DOCUMENT_BARCODE_FIELD_MAX_LENGTH,
   MAX_IMAGE_DATA_URL_LENGTH,
   SCANNABLE_DOCUMENT_TYPES,
   extractDocumentRequestSchema,
@@ -43,6 +45,59 @@ describe('extractDocumentRequestSchema', () => {
   });
 });
 
+describe('extractDocumentRequestSchema barcode (issue #214)', () => {
+  // Invented values only: Person A, a made-up number, the placeholder state ZZ.
+  const barcode = {
+    format: 'aamva',
+    fields: {
+      documentNumber: 'X1234567',
+      familyName: 'A',
+      givenNames: 'PERSON',
+      birthDate: '1990-01-31',
+      expiryDate: '2030-01-31',
+      issueDate: '2022-01-31',
+      state: 'ZZ',
+      country: 'USA',
+      sex: 'F',
+      licenseClass: 'C',
+      restrictions: 'NONE',
+      endorsements: 'NONE',
+    },
+  };
+  const body = (b: unknown) => ({ documentType: 'id_document', images: { front: IMG, back: IMG }, barcode: b });
+
+  it('is optional, and every field inside it is optional', () => {
+    expect(paths({ documentType: 'id_document', images: { front: IMG } })).toEqual([]);
+    expect(paths(body(barcode))).toEqual([]);
+    expect(paths(body({ format: 'aamva', fields: {} }))).toEqual([]);
+    expect(AAMVA_BARCODE_FIELDS).toEqual(Object.keys(barcode.fields));
+  });
+
+  it('caps every field at 200 characters', () => {
+    expect(DOCUMENT_BARCODE_FIELD_MAX_LENGTH).toBe(200);
+    for (const name of AAMVA_BARCODE_FIELDS) {
+      const at = { format: 'aamva', fields: { [name]: 'A'.repeat(200) } };
+      const over = { format: 'aamva', fields: { [name]: 'A'.repeat(201) } };
+      expect(paths(body(at))).toEqual([]);
+      expect(paths(body(over))).toEqual([`barcode.fields.${name}`]);
+    }
+  });
+
+  it('refuses another format or a non-string value', () => {
+    expect(paths(body({ ...barcode, format: 'qr' }))).toEqual(['barcode.format']);
+    expect(paths(body({ format: 'aamva', fields: { documentNumber: 1234 } }))).toEqual(['barcode.fields.documentNumber']);
+    expect(paths(body({ format: 'aamva' }))).toEqual(['barcode.fields']);
+  });
+
+  it('strips anything else, so a raw barcode string never passes through', () => {
+    const parsed = extractDocumentRequestSchema.parse(
+      body({ ...barcode, raw: '@ANSI 636000', fields: { ...barcode.fields, raw: '@ANSI 636000' } }),
+    );
+    expect(parsed.barcode).toEqual(barcode);
+    expect(JSON.stringify(parsed)).not.toContain('ANSI');
+  });
+});
+
 describe('extractDocumentResponseSchema', () => {
   it('accepts an ID document answer and refuses an unknown kind or check', () => {
     const answer = {
@@ -60,5 +115,22 @@ describe('extractDocumentResponseSchema', () => {
     expect(extractDocumentResponseSchema.parse(answer)).toEqual(answer);
     expect(extractDocumentResponseSchema.safeParse({ ...answer, documentKind: { value: 'Library Card', confidence: 1 } }).success).toBe(false);
     expect(extractDocumentResponseSchema.safeParse({ ...answer, checks: [{ id: 'luhn', ok: true, failed: [] }] }).success).toBe(false);
+  });
+
+  it('accepts the aamva check and the optional barcodePresent flag (issue #214)', () => {
+    const base = {
+      documentType: 'id_document',
+      fields: {},
+      confidence: {},
+      documentKind: { value: 'Driver License', confidence: 0.9 },
+      attributes: [],
+      checks: [{ id: 'aamva', ok: false, failed: ['document_number'] }],
+      warnings: [],
+      crops: {},
+      model: null,
+      partial: true,
+    };
+    expect(extractDocumentResponseSchema.safeParse(base).success).toBe(true);
+    expect(extractDocumentResponseSchema.parse({ ...base, barcodePresent: true }).barcodePresent).toBe(true);
   });
 });
