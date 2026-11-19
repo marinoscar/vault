@@ -58,3 +58,14 @@ export function isDocumentScanAvailable(
 ): boolean {
   return isScanAvailable(config, 'document_extract', targets);
 }
+
+/**
+ * Whether document scanning (Passport and ID Document) is usable, read from the
+ * same `GET /api/ai/config`. For now it is exactly the card rule
+ * ({@link isCardScanAvailable}): the document scan runs on the same provider and
+ * deployment key. Kept as its own helper so the scan-model choice (IDOC-10,
+ * issue #213) can change it in one place.
+ */
+export function isDocumentScanAvailable(config: AiPublicConfig | null | undefined): boolean {
+  return isCardScanAvailable(config);
+}
