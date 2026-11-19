@@ -151,6 +151,19 @@ export interface CardExtractionResult {
   };
 }
 
+/** The card block of `agentAccess` (ADR-0003): its own switch, fill limit and per-card daily cap. */
+export interface AgentCardAccessSettings {
+  enabled: boolean;
+  fillPerMinute: number;
+  releasesPerCardPerDay: number;
+}
+
+/** The identity block of `agentAccess` (ADR-0003): its own switch and fill limit. */
+export interface AgentIdentityAccessSettings {
+  enabled: boolean;
+  fillPerMinute: number;
+}
+
 /** The `agentAccess` system settings namespace (same shape as `@marinoscar/vault-contract/agent`). */
 export interface AgentAccessSettings {
   enabled: boolean;
@@ -158,15 +171,21 @@ export interface AgentAccessSettings {
   fillPerMinute: number;
   totpPerMinute: number;
   writePerMinute: number;
+  /** Absent from an API older than ADR-0003. */
+  cards?: AgentCardAccessSettings;
+  /** Absent from an API older than ADR-0003. */
+  identity?: AgentIdentityAccessSettings;
 }
 
-/** What the API answers until an administrator changes it: off, with the default limits. */
+/** What the API answers until an administrator changes it: everything off, with the default limits. */
 export const AGENT_ACCESS_DEFAULTS: AgentAccessSettings = {
   enabled: false,
   lookupPerMinute: 60,
   fillPerMinute: 30,
   totpPerMinute: 10,
   writePerMinute: 10,
+  cards: { enabled: false, fillPerMinute: 10, releasesPerCardPerDay: 5 },
+  identity: { enabled: false, fillPerMinute: 20 },
 };
 
 export interface SystemSettings {
@@ -226,6 +245,8 @@ export interface SecretListItem {
   /** Whether agents may use this secret (`none` by default). */
   agentAccess: SecretAgentAccess;
   agentAccessChangedAt: string | null;
+  /** Identity only (ADR-0003): the exact origins its sensitive fields may be filled on. */
+  agentOrigins?: string[];
 }
 
 /**

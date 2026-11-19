@@ -9,7 +9,8 @@
     "20261102140000_backup_runs_job_id",
     "20261103090000_attachments_composite_fk_media_rls",
     "20261118164725_add_secret_agent_access",
-    "20261118171757_add_secret_origins"
+    "20261118171757_add_secret_origins",
+    "20261119005617_add_agent_card_grants"
   ],
   "deviations": [
     {
@@ -122,6 +123,31 @@
       ],
       "id": "vault:secrets-origins",
       "reason": "Column secrets.origins (text[]) and the raw-SQL partial GIN index secrets_origins_gin_idx (app migration 20261118171757_add_secret_origins, #176). The diff prints secrets whole with the column, and the index, only once that migration is applied, i.e. in a dry run AFTER prisma:migrate; the pre-migration shape stays declared by vault:domain-schema and vault:secrets-agent-access."
+    },
+    {
+      "expectDiff": [
+        "CREATE TYPE \"agent_card_grant_period\" AS ENUM ('day', 'month');",
+        "CREATE TYPE \"agent_card_grant_request_status\" AS ENUM ('pending', 'approved', 'declined');",
+        "CREATE TABLE \"agent_card_grant_requests\" ( \"id\" UUID NOT NULL, \"secret_id\" UUID NOT NULL, \"user_id\" UUID NOT NULL, \"origin\" TEXT NOT NULL, \"merchant_site\" TEXT NOT NULL, \"amount_minor\" INTEGER NOT NULL, \"currency\" VARCHAR(3) NOT NULL, \"reason\" TEXT NOT NULL, \"status\" \"agent_card_grant_request_status\" NOT NULL DEFAULT 'pending', \"client_id\" TEXT, \"client_label\" TEXT, \"grant_id\" UUID, \"created_at\" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP, \"decided_at\" TIMESTAMPTZ(6), CONSTRAINT \"agent_card_grant_requests_pkey\" PRIMARY KEY (\"id\") );",
+        "CREATE TABLE \"agent_card_grants\" ( \"id\" UUID NOT NULL, \"secret_id\" UUID NOT NULL, \"user_id\" UUID NOT NULL, \"merchant_origin\" TEXT NOT NULL, \"merchant_site\" TEXT NOT NULL, \"frame_origins\" TEXT[] DEFAULT ARRAY[]::TEXT[], \"max_amount_minor\" INTEGER NOT NULL, \"currency\" VARCHAR(3) NOT NULL, \"period\" \"agent_card_grant_period\", \"period_max_releases\" INTEGER, \"period_max_amount_minor\" INTEGER, \"include_security_code\" BOOLEAN NOT NULL DEFAULT false, \"expires_at\" TIMESTAMPTZ(6), \"revoked_at\" TIMESTAMPTZ(6), \"created_at\" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP, \"updated_at\" TIMESTAMPTZ(6) NOT NULL, CONSTRAINT \"agent_card_grants_pkey\" PRIMARY KEY (\"id\") );",
+        "CREATE TABLE \"agent_card_releases\" ( \"id\" UUID NOT NULL, \"grant_id\" UUID NOT NULL, \"secret_id\" UUID NOT NULL, \"amount_minor\" INTEGER NOT NULL, \"currency\" VARCHAR(3) NOT NULL, \"created_at\" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT \"agent_card_releases_pkey\" PRIMARY KEY (\"id\") );",
+        "CREATE TABLE \"secrets\" ( \"id\" UUID NOT NULL, \"name\" TEXT NOT NULL, \"description\" TEXT, \"type_id\" UUID NOT NULL, \"created_by_id\" UUID, \"created_at\" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP, \"updated_at\" TIMESTAMPTZ(6) NOT NULL, \"agent_access\" \"secret_agent_access\" NOT NULL DEFAULT 'none', \"agent_access_changed_at\" TIMESTAMPTZ(6), \"origins\" TEXT[] DEFAULT ARRAY[]::TEXT[], \"agent_origins\" TEXT[] DEFAULT ARRAY[]::TEXT[], CONSTRAINT \"secrets_pkey\" PRIMARY KEY (\"id\") );",
+        "CREATE INDEX \"agent_card_grant_requests_secret_id_status_idx\" ON \"agent_card_grant_requests\"(\"secret_id\" ASC, \"status\" ASC);",
+        "CREATE INDEX \"agent_card_grant_requests_user_id_status_idx\" ON \"agent_card_grant_requests\"(\"user_id\" ASC, \"status\" ASC);",
+        "CREATE INDEX \"agent_card_grants_secret_id_merchant_site_idx\" ON \"agent_card_grants\"(\"secret_id\" ASC, \"merchant_site\" ASC);",
+        "CREATE INDEX \"agent_card_grants_user_id_idx\" ON \"agent_card_grants\"(\"user_id\" ASC);",
+        "CREATE INDEX \"agent_card_releases_grant_id_created_at_idx\" ON \"agent_card_releases\"(\"grant_id\" ASC, \"created_at\" ASC);",
+        "CREATE INDEX \"agent_card_releases_secret_id_created_at_idx\" ON \"agent_card_releases\"(\"secret_id\" ASC, \"created_at\" ASC);",
+        "ALTER TABLE \"agent_card_grant_requests\" ADD CONSTRAINT \"agent_card_grant_requests_grant_id_fkey\" FOREIGN KEY (\"grant_id\") REFERENCES \"agent_card_grants\"(\"id\") ON DELETE SET NULL ON UPDATE CASCADE;",
+        "ALTER TABLE \"agent_card_grant_requests\" ADD CONSTRAINT \"agent_card_grant_requests_secret_id_fkey\" FOREIGN KEY (\"secret_id\") REFERENCES \"secrets\"(\"id\") ON DELETE CASCADE ON UPDATE CASCADE;",
+        "ALTER TABLE \"agent_card_grant_requests\" ADD CONSTRAINT \"agent_card_grant_requests_user_id_fkey\" FOREIGN KEY (\"user_id\") REFERENCES \"users\"(\"id\") ON DELETE CASCADE ON UPDATE CASCADE;",
+        "ALTER TABLE \"agent_card_grants\" ADD CONSTRAINT \"agent_card_grants_secret_id_fkey\" FOREIGN KEY (\"secret_id\") REFERENCES \"secrets\"(\"id\") ON DELETE CASCADE ON UPDATE CASCADE;",
+        "ALTER TABLE \"agent_card_grants\" ADD CONSTRAINT \"agent_card_grants_user_id_fkey\" FOREIGN KEY (\"user_id\") REFERENCES \"users\"(\"id\") ON DELETE CASCADE ON UPDATE CASCADE;",
+        "ALTER TABLE \"agent_card_releases\" ADD CONSTRAINT \"agent_card_releases_grant_id_fkey\" FOREIGN KEY (\"grant_id\") REFERENCES \"agent_card_grants\"(\"id\") ON DELETE CASCADE ON UPDATE CASCADE;",
+        "ALTER TABLE \"agent_card_releases\" ADD CONSTRAINT \"agent_card_releases_secret_id_fkey\" FOREIGN KEY (\"secret_id\") REFERENCES \"secrets\"(\"id\") ON DELETE CASCADE ON UPDATE CASCADE;"
+      ],
+      "id": "vault:agent-card-grants",
+      "reason": "Enums agent_card_grant_period and agent_card_grant_request_status, tables agent_card_grants, agent_card_grant_requests and agent_card_releases, and column secrets.agent_origins (app migration 20261119005617_add_agent_card_grants, #195, ADR-0003). The diff prints them, and secrets whole with the column, only once that migration is applied, i.e. in a dry run AFTER prisma:migrate; the pre-migration shape stays declared by vault:domain-schema, vault:secrets-agent-access and vault:secrets-origins."
     }
   ],
   "lockVersion": 1,

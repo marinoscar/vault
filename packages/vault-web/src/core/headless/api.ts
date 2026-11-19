@@ -224,12 +224,20 @@ export async function updateSecret(
   return api.put<SecretDetail>(`/secrets/${id}`, data);
 }
 
-/** Opens (`fill`) or closes (`none`) a Credential secret to agents; returns the updated detail. */
+/**
+ * Opens (`fill`) or closes (`none`) a Credential, Card or Identity secret to agents; returns the
+ * updated detail. `allowedOrigins` (Identity only) replaces the origins its sensitive fields may be
+ * filled on.
+ */
 export async function updateSecretAgentAccess(
   id: string,
   agentAccess: SecretAgentAccess,
+  allowedOrigins?: string[],
 ): Promise<SecretDetail> {
-  return api.patch<SecretDetail>(`/secrets/${id}/agent-access`, { agentAccess });
+  return api.patch<SecretDetail>(`/secrets/${id}/agent-access`, {
+    agentAccess,
+    ...(allowedOrigins !== undefined ? { allowedOrigins } : {}),
+  });
 }
 
 export async function deleteSecret(id: string): Promise<void> {

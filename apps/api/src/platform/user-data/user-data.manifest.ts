@@ -39,6 +39,8 @@ import {
 //                     here every version is going. The one exception is an object an administrator
 //                     attached to ANOTHER user's secret (`secrets:write_any`): it is the uploader's, and
 //                     deleting the uploader deletes it.
+//   AgentCardGrant,   DELETED inline (category `secrets`, ADR-0003): the owner's merchant grants and the
+//   AgentCardGrantRequest  requests agents made; their release ledger (`agent_card_releases`) cascades.
 //   MediaFolder       DELETED inline (category `media`); the `media_folder_files` link rows cascade, and
 //                     the files are `storage_objects` of the `files` category.
 //   BackupRun         DELEGATED (category `backups`): a user's "My backups" runs, archive bytes first,
@@ -105,6 +107,10 @@ const purgeDelegate = {
 
 registerUserDataModels<Prisma.ModelName>([
   { model: 'Secret', category: SECRETS },
+  // ADR-0003: a card's merchant grants and the requests agents made for it are part of the card;
+  // they also go with the card (ON DELETE CASCADE) and their release ledger with the grant.
+  { model: 'AgentCardGrant', category: SECRETS },
+  { model: 'AgentCardGrantRequest', category: SECRETS },
   { model: 'MediaFolder', category: MEDIA },
   { model: 'BackupRun', category: BACKUPS, delegate: purgeDelegate },
   { model: 'SecretType', category: SECRET_TYPES, delegate: purgeDelegate },

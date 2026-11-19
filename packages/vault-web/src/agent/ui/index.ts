@@ -3,3 +3,6 @@
 export * from './components/AgentActivityTable.js';
 export { default as AgentAccessSettingsPage } from './pages/AgentAccessSettingsPage.js';
 export { default as AgentActivityPage } from './pages/AgentActivityPage.js';
+export * from './components/CardAgentAccessPanel.js';
+export * from './components/CardGrantDialog.js';
+export * from './components/IdentityAgentAccessPanel.js';

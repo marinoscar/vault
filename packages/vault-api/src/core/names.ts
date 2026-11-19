@@ -35,7 +35,7 @@ export const VAULT_RESERVED_NAMES = {
   /** Every route the packages serve starts with one of these (then `/` or the end). */
   routePrefixes: ['/secrets', '/secret-types', '/media', '/backups/me', '/admin/backups', '/agent/v1', '/agent-activity', '/mcp'],
   /** The `<resource>` part of every permission id the packages declare (`secrets:read`, ...). */
-  permissionResources: ['secrets', 'secret_types', 'media'],
+  permissionResources: ['secrets', 'secret_types', 'media', 'agent_cards', 'agent_identity'],
   /** The system-settings namespaces the packages read and a host registers for them (`ai` is the platform's). */
   settingsNamespaces: ['vaultCards', 'vaultBackups', 'agentAccess'],
   /** Every job type starts with this. */
@@ -49,7 +49,7 @@ export const VAULT_RESERVED_NAMES = {
   /** The OAuth protected resources the packages register. */
   oauthResources: ['agent', 'mcp'],
   /** Every audit action the packages write starts with one of these. */
-  auditActionPrefixes: ['secret.', 'secret_type.', 'secrets.', 'backups.', 'agent.credential.', 'mcp.', 'vault.'],
+  auditActionPrefixes: ['secret.', 'secret_type.', 'secrets.', 'backups.', 'agent.credential.', 'agent.card.', 'agent.identity.', 'mcp.', 'vault.'],
   /** The OpenAPI tags the controllers carry. */
   openApiTags: ['Secrets', 'Secret Types', 'Media', 'Backups', 'Agent', 'MCP'],
   /**

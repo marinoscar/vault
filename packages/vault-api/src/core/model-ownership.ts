@@ -73,6 +73,26 @@ export const VAULT_USER_OWNED_MODELS: readonly UserOwnedModelDef<Prisma.ModelNam
     purge: 'detach',
     export: 'exclude',
     rationale: 'The one system backup schedule records which administrator last changed it.',
+  },  {
+    model: 'AgentCardGrant',
+    ownerField: 'userId',
+    ownerRelation: 'user',
+    purge: 'delete',
+    export: 'exclude',
+    rationale:
+      'A merchant grant (ADR-0003) is the owner\'s permission for agents to use one of their cards at a shop: deleted with ' +
+      'the user (and with the card). Not exported: it is access configuration tied to this deployment\'s cards, like the ' +
+      'agent-access flag.',
+  },
+  {
+    model: 'AgentCardGrantRequest',
+    ownerField: 'userId',
+    ownerRelation: 'user',
+    purge: 'delete',
+    export: 'exclude',
+    rationale:
+      'An agent\'s request that the owner allow a card at a shop (ADR-0003): deleted with the user and with the card; holds ' +
+      'no card data. Not exported (transient approval workflow).',
   },
 ];
 
@@ -91,5 +111,7 @@ export const VAULT_MODEL_OWNERSHIP: readonly ModelOwnershipDef<Prisma.ModelName>
   { model: 'SecretVersion', kind: 'user', rationale: 'A version belongs to its secret, and so to the secret’s owner.' },
   { model: 'SecretAttachment', kind: 'user', rationale: 'An attachment belongs to its secret version, and so to the secret’s owner.' },
   { model: 'BackupSchedule', kind: 'system', rationale: 'The one system backup schedule, configured by administrators.' },
-  { model: 'BackupRun', kind: 'user', rationale: 'A backup run is system-wide or belongs to the user it was made for.' },
+  { model: 'BackupRun', kind: 'user', rationale: 'A backup run is system-wide or belongs to the user it was made for.' },  { model: 'AgentCardGrant', kind: 'user', rationale: 'A merchant grant belongs to the card owner who created it (ADR-0003).' },
+  { model: 'AgentCardGrantRequest', kind: 'user', rationale: 'A grant request belongs to the owner of the card it asks for.' },
+  { model: 'AgentCardRelease', kind: 'user', rationale: 'A release belongs to its grant and card, and so to the card owner.' },
 ];

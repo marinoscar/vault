@@ -51,9 +51,13 @@ type Role = 'admin' | 'contributor' | 'viewer';
 // The oracle: what each role may do (today's seed, by hand)
 // ---------------------------------------------------------------------------
 
+/** ADR-0003: the card and identity agent permissions; held wherever secrets:read is. */
+const AGENT_RELEASE = ['agent_cards:read', 'agent_cards:fill', 'agent_identity:read', 'agent_identity:fill'];
+
 const SECRETS_RW = [
   'secrets:read',
   'secrets:fill', // E14.2: the agent API's field fill; held wherever secrets:read is
+  ...AGENT_RELEASE,
   'secrets:write',
   'secrets:delete',
   'secret_types:read',
@@ -121,7 +125,7 @@ const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
     'oauth_clients:write',
   ],
   contributor: [...SECRETS_RW, ...USER_SETTINGS, 'storage:read', 'storage:write', 'ai:use'],
-  viewer: ['secrets:read', 'secrets:fill', 'secret_types:read', 'media:read', ...USER_SETTINGS, 'storage:read'],
+  viewer: ['secrets:read', 'secrets:fill', ...AGENT_RELEASE, 'secret_types:read', 'media:read', ...USER_SETTINGS, 'storage:read'],
 };
 
 /** The scope of every permission the oracle mentions (org permissions come from the membership). */
@@ -190,6 +194,13 @@ const ROUTES: readonly Route[] = [
   ['POST', '/api/secrets', 'secrets:write'],
   ['PUT', `/api/secrets/${ID}`, 'secrets:write'],
   ['PATCH', `/api/secrets/${ID}/agent-access`, 'secrets:write'],
+  // ADR-0003: the owner's merchant grants and grant requests (writes also need a browser session)
+  ['GET', `/api/secrets/${ID}/card-grants`, 'secrets:read'],
+  ['POST', `/api/secrets/${ID}/card-grants`, 'secrets:write'],
+  ['DELETE', `/api/secrets/${ID}/card-grants/${ID}`, 'secrets:write'],
+  ['GET', `/api/secrets/${ID}/card-grant-requests`, 'secrets:read'],
+  ['POST', `/api/secrets/${ID}/card-grant-requests/${ID}/approve`, 'secrets:write'],
+  ['POST', `/api/secrets/${ID}/card-grant-requests/${ID}/decline`, 'secrets:write'],
   ['POST', `/api/secrets/${ID}/totp`, 'secrets:read'],
   ['DELETE', `/api/secrets/${ID}`, 'secrets:delete'],
   ['GET', `/api/secrets/${ID}/versions`, 'secrets:read'],
@@ -211,6 +222,12 @@ const ROUTES: readonly Route[] = [
   ['POST', `/api/agent/v1/credentials/${ID}/totp`, 'secrets:fill'],
   ['POST', '/api/agent/v1/credentials', 'secrets:write'],
   ['POST', `/api/agent/v1/credentials/${ID}/password`, 'secrets:write'],
+  // ADR-0003: cards and identity on the agent API
+  ['GET', '/api/agent/v1/cards', 'agent_cards:read'],
+  ['POST', `/api/agent/v1/cards/${ID}/fill`, 'agent_cards:fill'],
+  ['POST', `/api/agent/v1/cards/${ID}/grant-requests`, 'agent_cards:fill'],
+  ['GET', '/api/agent/v1/identity', 'agent_identity:read'],
+  ['POST', `/api/agent/v1/identity/${ID}/fill`, 'agent_identity:fill'],
   // E14.7: the owner's agent trail (session or PAT; an OAuth token is refused by the controller).
   ['GET', '/api/agent-activity', 'secrets:read'],
   // E14.8: the MCP endpoint (the `mcp` OAuth protected resource). Every route needs secrets:read; the tools check
@@ -531,6 +548,8 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
         'MyBackupsController',
         'AgentController',
         'AgentActivityController',
+        'AgentCardsController',
+        'CardGrantsController',
         'McpController',
         'OAuthConsentController',
         'OAuthGrantsController',

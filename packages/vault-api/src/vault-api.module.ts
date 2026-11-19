@@ -6,6 +6,14 @@ import { AgentActivityController } from './agent/agent-activity.controller';
 import { AgentActivityService } from './agent/agent-activity.service';
 import { AgentNotifier } from './agent/agent-notifier.service';
 import { AgentController } from './agent/agent.controller';
+import { AgentCallPipeline } from './agent/agent-pipeline';
+import { AgentCardsController } from './agent/agent-cards.controller';
+import { AgentCardsService } from './agent/agent-cards.service';
+import { AgentIdentityService } from './agent/agent-identity.service';
+import { AGENT_RELEASE_PORT, AgentReleaseService } from './agent/agent-release.service';
+import { CardGrantStore, PrismaCardGrantStore } from './agent/card-grant-store';
+import { CardGrantsController } from './agent/card-grants.controller';
+import { CardGrantsService } from './agent/card-grants.service';
 import { McpController, McpOriginGuard } from './mcp/mcp.controller';
 import { McpDispatcher } from './mcp/mcp-dispatcher';
 import { VAULT_MCP_OPTIONS } from './mcp/mcp-options';
@@ -176,6 +184,8 @@ export class VaultApiModule {
         BackupsController,
         MyBackupsController,
         AgentController,
+        AgentCardsController,
+        CardGrantsController,
         AgentActivityController,
         McpController,
       ],
@@ -183,7 +193,14 @@ export class VaultApiModule {
         ...ports,
         SecretTypesService,
         SecretsService,
+        AgentCallPipeline,
         AgentCredentialsService,
+        AgentCardsService,
+        AgentIdentityService,
+        AgentReleaseService,
+        { provide: AGENT_RELEASE_PORT, useExisting: AgentReleaseService },
+        CardGrantsService,
+        { provide: CardGrantStore, useClass: PrismaCardGrantStore },
         AgentActivityService,
         AgentNotifier,
         // Single API instance today: in-process counters. Override this provider to share them.
@@ -217,6 +234,9 @@ export class VaultApiModule {
         SecretsExportService,
         SecretTypesService,
         MediaService,
+        // ADR-0003: the in-process agent release port for a host that embeds the packages (#194).
+        AgentReleaseService,
+        AGENT_RELEASE_PORT,
       ],
     };
   }

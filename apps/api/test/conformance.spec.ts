@@ -101,6 +101,10 @@ runPlatformConformance({
           why: 'SELECT ... FOR UPDATE on one storage object id the caller already proved it may attach.',
         },
         {
+          file: 'agent/card-grant-store.ts',
+          why: 'SELECT ... FOR UPDATE on the one card row a grant belongs to (ADR-0003): serialises the period-limit and daily-cap check with the release insert; the id is a grant\'s secret id the caller already proved it may use.',
+        },
+        {
           file: 'platform/onboarding/onboarding-data.adapter.ts',
           why: 'queryAggregate(): the activation metrics\' one developer-authored aggregate statement, run with positional values inside a SET TRANSACTION READ ONLY transaction; it takes no request-derived id.',
         },
@@ -142,6 +146,20 @@ runPlatformConformance({
           secretName: '<script>alert(1)</script>',
           expiry: '07/2027',
           threshold: 7,
+        },
+        // ADR-0003: the agent card events, with markup in every text field (the reason is the app's own text).
+        'vault-agent-card-grant-requested': {
+          clientName: '<script>alert(1)</script>', credentialKind: 'oauth', secretId: '8d1c1f0e-1111-4222-8333-444455556666',
+          secretName: '<b>Card</b>', origin: 'https://shop.example.test', amount: '42.50', currency: 'USD',
+          requestId: 'r1', reason: '<img src=x onerror=alert(1)>',
+        },
+        'vault-agent-card-first-release': {
+          clientName: '<script>alert(1)</script>', credentialKind: 'pat', secretId: '8d1c1f0e-1111-4222-8333-444455556666',
+          secretName: '<b>Card</b>', origin: 'https://shop.example.test', amount: '42.50', currency: 'USD',
+        },
+        'vault-agent-card-declined': {
+          clientName: '<script>alert(1)</script>', credentialKind: 'embedded', secretId: '8d1c1f0e-1111-4222-8333-444455556666',
+          secretName: '<b>Card</b>', origin: 'https://shop.example.test', amount: '42.50', currency: 'USD', reason: 'amount_exceeded',
         },
       },
     },

@@ -19,6 +19,8 @@ import {
   CARD_EXTRACTION,
   CARD_SUMMARIES,
   FROZEN_NOW,
+  CARD_GRANTS,
+  CARD_GRANT_REQUESTS,
   MEDIA_FOLDERS,
   SECRETS,
   SECRET_TYPES,
@@ -249,6 +251,15 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}): 
       const body = request.postDataJSON() as { agentAccess: 'none' | 'fill' };
       api.state.agentAccess[target.id] = body.agentAccess;
       return json(route, { data: { ...detail(target, accessOf(target.id)), agentAccessChangedAt: FROZEN_NOW } });
+    }
+    // ADR-0003 (#195): a card's merchant grants and the requests agents made (read-only fixtures).
+    const grantsMatch = path.match(/^\/secrets\/([^/]+)\/card-grants$/);
+    if (grantsMatch && method === 'GET') return json(route, { data: CARD_GRANTS[grantsMatch[1]] ?? [] });
+    const grantRequestsMatch = path.match(/^\/secrets\/([^/]+)\/card-grant-requests$/);
+    if (grantRequestsMatch && method === 'GET') {
+      const status = url.searchParams.get('status');
+      const rows = (CARD_GRANT_REQUESTS[grantRequestsMatch[1]] ?? []) as Array<{ status: string }>;
+      return json(route, { data: rows.filter((r) => !status || r.status === status) });
     }
     if (path === '/secrets' && method === 'GET') {
       const search = (url.searchParams.get('search') ?? '').toLowerCase();

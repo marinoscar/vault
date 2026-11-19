@@ -28,6 +28,10 @@ export const VAULT_CARD_EXPIRING_EVENT = 'vault.card_expiring';
 export const VAULT_AGENT_CREDENTIAL_CHANGED_EVENT = 'vault.agent_credential_changed';
 export const VAULT_AGENT_NEW_APP_EVENT = 'vault.agent_new_app';
 export const VAULT_AGENT_CREDENTIAL_USED_EVENT = 'vault.agent_credential_used';
+/** Agent release of cards (ADR-0003): a grant request, the first release under a grant, a declined fill. */
+export const VAULT_AGENT_CARD_GRANT_REQUESTED_EVENT = 'vault.agent_card_grant_requested';
+export const VAULT_AGENT_CARD_FIRST_RELEASE_EVENT = 'vault.agent_card_first_release';
+export const VAULT_AGENT_CARD_DECLINED_EVENT = 'vault.agent_card_declined';
 
 /** Email template names. PERSISTED by the registry bindings: never rename one. */
 export const VAULT_BACKUP_SUCCEEDED_TEMPLATE = 'vault-backup-succeeded';
@@ -35,6 +39,9 @@ export const VAULT_BACKUP_FAILED_TEMPLATE = 'vault-backup-failed';
 export const VAULT_CARD_EXPIRING_TEMPLATE = 'vault-card-expiring';
 export const VAULT_AGENT_CREDENTIAL_CHANGED_TEMPLATE = 'vault-agent-credential-changed';
 export const VAULT_AGENT_NEW_APP_TEMPLATE = 'vault-agent-new-app';
+export const VAULT_AGENT_CARD_GRANT_REQUESTED_TEMPLATE = 'vault-agent-card-grant-requested';
+export const VAULT_AGENT_CARD_FIRST_RELEASE_TEMPLATE = 'vault-agent-card-first-release';
+export const VAULT_AGENT_CARD_DECLINED_TEMPLATE = 'vault-agent-card-declined';
 
 /** Where the bell and the email CTA go (the routes `adminSections.tsx` and `userSettingsSections.tsx` declare). */
 export const USER_BACKUPS_PATH = '/settings/backups';
@@ -127,9 +134,9 @@ export const AGENT_ACTIVITY_SETTINGS_PATH = '/settings/agent-activity';
  * Never a token, a grant id or a client secret.
  */
 export interface VaultAgentActorData {
-  /** The OAuth client's name, or `Personal access token` for a PAT. */
+  /** The OAuth client's name, `Personal access token` for a PAT, or an in-process host's label. */
   clientName: string;
-  credentialKind: 'oauth' | 'pat';
+  credentialKind: 'oauth' | 'pat' | 'embedded';
 }
 
 /** The payload of `vault.agent_credential_changed`: a login was saved or its password changed by an agent. No value, ever. */
@@ -167,3 +174,60 @@ export function agentCredentialChangedPhrase(data: VaultAgentCredentialChangedNo
 }
 
 export const agentSecretLinkFor = (secretId: string): string => `/secrets/${secretId}`;
+
+// -----------------------------------------------------------------------------
+// Agent release of cards (ADR-0003). NEVER a card number, last four, security code or expiry.
+// -----------------------------------------------------------------------------
+
+/** The facts every card notification carries: the card's NAME, the merchant and the amount. */
+export interface VaultAgentCardNotificationData extends VaultAgentActorData {
+  secretId: string;
+  /** The secret's name (what the owner called the card). */
+  secretName: string;
+  /** The merchant origin the agent named. */
+  origin: string | null;
+  /** The stated amount, a two-decimal string. */
+  amount: string;
+  currency: string;
+  appUrl?: string;
+}
+
+/** The payload of `vault.agent_card_grant_requested`: an app asks to use a card at a shop. */
+export interface VaultAgentCardGrantRequestedNotificationData extends VaultAgentCardNotificationData {
+  requestId: string;
+  /** The app's stated reason (plain text the app chose; shown as a quote). */
+  reason: string;
+}
+
+/** The payload of `vault.agent_card_first_release`: the first time a card was released under a grant. */
+export type VaultAgentCardFirstReleaseNotificationData = VaultAgentCardNotificationData;
+
+/** Why a card fill was declined (the audit reason). */
+export type VaultAgentCardDeclineReason =
+  | 'amount_exceeded'
+  | 'currency_mismatch'
+  | 'period_limit'
+  | 'daily_cap'
+  | 'grant_expired'
+  | 'origin_mismatch'
+  | 'security_code_not_granted';
+
+/** The payload of `vault.agent_card_declined`. */
+export interface VaultAgentCardDeclinedNotificationData extends VaultAgentCardNotificationData {
+  reason: VaultAgentCardDeclineReason;
+}
+
+/** The owner-facing sentence of each decline reason. STATIC copy only. */
+export const AGENT_CARD_DECLINE_REASONS: Readonly<Record<VaultAgentCardDeclineReason, string>> = Object.freeze({
+  amount_exceeded: 'the amount is above the limit you set for this shop',
+  currency_mismatch: 'the currency is not the one you set for this shop',
+  period_limit: 'the limit you set for this shop for the day or month was reached',
+  daily_cap: 'the daily number of card uses allowed for this card was reached',
+  grant_expired: 'your permission for this shop has expired',
+  origin_mismatch: 'the website is not a shop you allowed for this card',
+  security_code_not_granted: 'you did not allow the security code for this shop',
+});
+
+/** `42.50 USD`. */
+export const agentCardAmountPhrase = (data: Pick<VaultAgentCardNotificationData, 'amount' | 'currency'>): string =>
+  `${data.amount} ${data.currency}`;

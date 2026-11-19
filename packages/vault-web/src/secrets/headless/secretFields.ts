@@ -222,11 +222,19 @@ export function supportsAgentAccess(type: { name: string; isSystem?: boolean } |
   return !!type && type.name === 'Credential' && type.isSystem !== false;
 }
 
-/** A friendly message for a failed agent-access toggle. */
+/** True for the system type `name` (`Card`, `Identity`): the ones with their own agent-access panel (ADR-0003). */
+export function isSystemType(type: { name: string; isSystem?: boolean } | null | undefined, name: string): boolean {
+  return !!type && type.name === name && type.isSystem !== false;
+}
+
+/** A friendly message for a failed agent-access change. */
 export function agentAccessErrorMessage(err: unknown): string {
   const code = (err as { code?: string } | null)?.code;
   if (code === 'AGENT_ACCESS_UNSUPPORTED_TYPE') {
-    return 'Only a Credential (login) secret can be opened to agents.';
+    return 'Only a login, a card or an identity item can be opened to agents.';
+  }
+  if (code === 'OWNER_SESSION_REQUIRED') {
+    return 'Sign in to Vault to change what agents may do with this item.';
   }
   const status = (err as { status?: number } | null)?.status;
   if (status === 403) {

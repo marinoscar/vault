@@ -32,6 +32,12 @@ export const CARD_KINDS = ['Credit', 'Debit', 'Prepaid', 'Other'] as const;
 /** @stability experimental */
 export type CardKind = (typeof CARD_KINDS)[number];
 
+/** Government id kinds of the Identity type. @stability experimental */
+export const IDENTITY_ID_TYPES = ['Passport', 'National ID', 'Driver Licence', 'Tax ID', 'Other'] as const;
+
+/** @stability experimental */
+export type IdentityIdType = (typeof IDENTITY_ID_TYPES)[number];
+
 const fieldDefinitionBaseSchema = z.object({
   name: z
     .string()
@@ -229,6 +235,8 @@ export const SYSTEM_SECRET_TYPES: SystemSecretType[] = [
       },
       { name: 'issuing_bank', label: 'Issuing Bank', type: 'string', required: false, sensitive: false },
       { name: 'notes', label: 'Notes', type: 'string', required: false, sensitive: false },
+      // Appended (add-only rule, ADR-0003): the postal code of the billing address, released to an agent as `postalCode`.
+      { name: 'billing_postal_code', label: 'Billing Postal Code', type: 'string', required: false, sensitive: false },
     ],
     allowAttachments: true,
   },
@@ -248,6 +256,30 @@ export const SYSTEM_SECRET_TYPES: SystemSecretType[] = [
     description: 'Secure notes',
     icon: 'Description',
     fields: [{ name: 'content', label: 'Content', type: 'string', required: true, sensitive: false }],
+    allowAttachments: false,
+  },
+  {
+    // ADR-0003: a person's identity details for forms. `date_of_birth` and `id_number` are sensitive:
+    // an agent receives them only on an origin the owner allowed for the item.
+    name: 'Identity',
+    description: 'Identity details for forms: legal name, date of birth, a government id, address and phone',
+    icon: 'Badge',
+    fields: [
+      { name: 'full_name', label: 'Full Legal Name', type: 'string', required: true, sensitive: false },
+      { name: 'date_of_birth', label: 'Date of Birth', type: 'date', required: false, sensitive: true },
+      { name: 'id_type', label: 'ID Type', type: 'select', required: false, sensitive: false, options: [...IDENTITY_ID_TYPES] },
+      { name: 'id_number', label: 'ID Number', type: 'string', required: false, sensitive: true },
+      { name: 'id_issuing_country', label: 'ID Issuing Country', type: 'string', required: false, sensitive: false },
+      { name: 'address_line1', label: 'Address Line 1', type: 'string', required: false, sensitive: false },
+      { name: 'address_line2', label: 'Address Line 2', type: 'string', required: false, sensitive: false },
+      { name: 'city', label: 'City', type: 'string', required: false, sensitive: false },
+      { name: 'region', label: 'State / Province / Region', type: 'string', required: false, sensitive: false },
+      { name: 'postal_code', label: 'Postal Code', type: 'string', required: false, sensitive: false },
+      { name: 'country', label: 'Country', type: 'string', required: false, sensitive: false },
+      { name: 'phone', label: 'Phone', type: 'string', required: false, sensitive: false },
+      { name: 'email', label: 'Email', type: 'string', required: false, sensitive: false },
+      { name: 'notes', label: 'Notes', type: 'string', required: false, sensitive: false },
+    ],
     allowAttachments: false,
   },
   {
