@@ -38,7 +38,7 @@ import {
   MoreVert as MoreIcon,
 } from '@mui/icons-material';
 import { SecretAttachments } from '../components/SecretAttachments.js';
-import { CardImages, supportsCardImages } from '../components/CardImages.js';
+import { DocumentImages, supportsDocumentImages } from '../components/DocumentImages.js';
 import { SecretTypeIcon } from '../components/SecretTypeIcon.js';
 import { SecretValueField } from '../components/SecretValueField.js';
 import { TotpCodeCard } from '../components/TotpCodeCard.js';
@@ -239,7 +239,7 @@ export default function SecretDetailPage() {
   const fields = secret.type?.fields ?? [];
   const attachments = secret.attachments ?? [];
   const showAttachments = secret.type?.allowAttachments ?? false;
-  const showCardImages = supportsCardImages(secret.type, attachments);
+  const showDocumentImages = supportsDocumentImages(secret.type, attachments);
   const isCard = isCardType(secret.type);
   const currentTab: TabKey = showAttachments ? activeTab : 'details';
   const pendingDeleteAttachment = attachments.find((a) => a.id === pendingDeleteAttachmentId);
@@ -510,10 +510,11 @@ export default function SecretDetailPage() {
 
       {currentTab === 'attachments' && (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-          {showCardImages && (
-            <CardImages
+          {showDocumentImages && (
+            <DocumentImages
               secretId={secret.id}
               attachments={attachments}
+              type={secret.type}
               onChange={refresh}
               readOnly={!canWrite}
             />

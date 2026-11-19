@@ -10,7 +10,7 @@ Status: experimental, except the agent contract (`./agent` and `./agent-testing`
 
 Entry points (every schema and constant is in a slice; the root exports only `VAULT_CONTRACT_PACKAGE`):
 
-- `@marinoscar/vault-contract/secrets`: create, update, list, renew, attachment and card-summary bodies and queries, `attachmentRoleSchema`, the attachment response.
+- `@marinoscar/vault-contract/secrets`: create, update, list, renew, attachment and card-summary bodies and queries, `attachmentRoleSchema`, the document image slots (`DOCUMENT_IMAGE_SLOTS`, `imageSlotsFor`, `ID1_ASPECT_RATIO`, `ID3_ASPECT_RATIO`), the attachment response.
 - `@marinoscar/vault-contract/secret-types`: field definitions, create/update/query bodies, `CARD_NETWORKS`, `CARD_KINDS`, `SYSTEM_SECRET_TYPES` (the built-in types, append-only).
 - `@marinoscar/vault-contract/backups`: content-selection rules (`BACKUP_CONTENT_*`, `contentSelectionIssues`, `resolveContentSelection`), the schedule vocabulary and validators, the user export, system export and schedule schemas, the run list query, and the backups API response types.
 - `@marinoscar/vault-contract/media`: folder and file bodies and queries.

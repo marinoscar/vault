@@ -46,7 +46,8 @@ VAULT_ENCRYPTION_KEY=<64-character-hex-string>
 # upgrade imports them once (docs/runbooks/storage-config-migration.md).
 
 # Card face image size cap in bytes (optional, default 5 MB = 5242880)
-# Applies only to card_front / card_back attachments. A non-numeric or
+# Applies to every document image role (card_front, card_back, data_page,
+# front, back). A non-numeric or
 # non-positive value is ignored (falls back to the default) rather than
 # disabling the check.
 CARD_IMAGE_MAX_BYTES=5242880
@@ -208,17 +209,29 @@ Two unique constraints replace the old single-secret constraint:
 | `[secretVersionId, storageObjectId]` | The same file cannot be linked twice to the same version. |
 | `[secretVersionId, role]` | At most one attachment per **role** per version (see below). Postgres treats `NULL` as distinct from any other `NULL`, so this does *not* limit how many role-less (generic) attachments a version can have — only how many attachments of the *same named role* it can have. |
 
-A conflict on either constraint returns `409 Conflict` with a message naming which side was duplicated (e.g. "This card already has a front image for the current version"), not a raw database error.
+A conflict on either constraint returns `409 Conflict` with a message naming the type and the slot that was duplicated (e.g. "This card already has a front image for the current version", "This passport already has a data page image for the current version"), not a raw database error.
 
-### Roles (card_front and card_back)
+### Roles (document image slots)
 
-An attachment may optionally carry a `role`, one of `card_front` or `card_back` (`apps/api/src/secrets/dto/link-attachment.dto.ts`). These identify the two card-face images the Card import flow captures and are the only roles the API currently defines. An attachment with no role (`role: null`) is a generic file — e.g. a Document's supporting attachments — and a version may have any number of them.
+An attachment may optionally carry a `role`, one of `card_front`, `card_back`, `data_page`, `front` or `back` (`attachmentRoleSchema` in `@marinoscar/vault-contract/secrets`). A role names a **document image**: a photo of the physical document the secret describes. An attachment with no role (`role: null`) is a generic file — e.g. a Document's supporting attachments — and a version may have any number of them.
 
-**Card image constraints** apply only to `card_front` / `card_back` attachments (checked by `SecretsService.enforceCardImageConstraints()`, in both `linkAttachment` and `renew`):
+Which roles a secret accepts is decided by its type's **image slots**, `DOCUMENT_IMAGE_SLOTS` / `imageSlotsFor(type)` in `packages/vault-contract/src/secrets/image-slots.ts`, keyed by system type name:
+
+| System type | Slots (role: label) | Aspect ratio |
+|---|---|---|
+| Card | `card_front`: Front (required), `card_back`: Back | ID-1, 85.6 x 53.98 mm |
+| Passport | `data_page`: Data page (required), `back`: Other page | ID-3, 125 x 88 mm |
+| ID Document | `front`: Front (required), `back`: Back | ID-1, 85.6 x 53.98 mm |
+
+A custom type has no slots (even one named like a system type). The slot order is the display and export order; the label appears in the UI, the export's `secrets.html` titles ("Card front", "Passport data page") and the conflict message. Passport and ID Document slots take effect once those system types exist (IDOC-6); the database column is free text, so new roles need no migration.
+
+**A role must be one of the type's slots.** `POST /secrets/:id/attachments` and the `attachments` of `POST /secrets/:id/renew` answer `422 ATTACHMENT_ROLE_NOT_ALLOWED` for a role the secret's type has no slot for: `card_front` on a Passport, `front` on a Card, any role on a custom type. Omitting the role links a generic attachment, as before. Card summaries, card expiry and renewal semantics stay card-only.
+
+**Document image constraints** apply to every role-bearing attachment, whatever the type (checked by `SecretsService.enforceDocumentImageConstraints()`, in both `linkAttachment` and `renew`); the size cap is still the `vaultCards.imageMaxBytes` setting:
 
 - **Allowed MIME types:** `image/jpeg`, `image/png`, `image/webp`, `image/heic`, `image/heif` (HEIC/HEIF included because iOS cameras produce them by default). The comparison strips parameters (e.g. `; charset=binary`) and lower-cases before matching.
-- **Size limit:** 5 MB by default, overridable via the `CARD_IMAGE_MAX_BYTES` environment variable. An invalid override (non-numeric or ≤ 0) is ignored and logged, falling back to the 5 MB default rather than silently disabling the check.
-- **Size is measured, not trusted, when the recorded size is 0.** The simple (`multipart/form-data`) upload path — the one the card capture UI uses — always records `size: BigInt(0)` at upload time and relies on a post-processor that does not exist to fill it in later. So for every real card image, `enforceCardImageConstraints` falls back to reading the object back from storage and counting bytes, stopping one byte past the limit. An object that cannot be read from storage is rejected (fails closed) rather than allowed through.
+- **Size limit:** 5 MB by default, overridable via the `CARD_IMAGE_MAX_BYTES` environment variable (the default of the `vaultCards.imageMaxBytes` setting). An invalid override (non-numeric or ≤ 0) is ignored and logged, falling back to the 5 MB default rather than silently disabling the check.
+- **Size is measured, not trusted, when the recorded size is 0.** The simple (`multipart/form-data`) upload path — the one the card capture UI uses — always records `size: BigInt(0)` at upload time and relies on a post-processor that does not exist to fill it in later. So for every real document image, `enforceDocumentImageConstraints` falls back to reading the object back from storage and counting bytes, stopping one byte past the limit. An object that cannot be read from storage is rejected (fails closed) rather than allowed through.
 - **The MIME type itself is taken from the client's declared `Content-Type` for that multipart part (Fastify's `file.mimetype`) — it is not sniffed from the file's actual bytes.** A client that lies about the Content-Type of a non-image file with an accepted extension/type string is not currently caught by content inspection.
 
 Generic (role-less) attachments have no MIME type or size constraint beyond whatever the Storage Objects API itself enforces.
@@ -702,7 +715,7 @@ Request body:
 | Method | Path | Permission | Description |
 |--------|------|------------|-------------|
 | `POST` | `/secrets/:id/attachments` | `secrets:write` | Link a storage object to the secret's **current** version |
-| `GET` | `/secrets/:id/attachments` | `secrets:read` | List attachments. Query: `versionId` (optional UUID, defaults to current version), `role` (optional, `card_front` \| `card_back`) |
+| `GET` | `/secrets/:id/attachments` | `secrets:read` | List attachments. Query: `versionId` (optional UUID, defaults to current version), `role` (optional, a document image role: `card_front` \| `card_back` \| `data_page` \| `front` \| `back`) |
 | `DELETE` | `/secrets/:id/attachments/:attachmentId` | `secrets:write` | Remove the attachment; the underlying storage object is deleted only if no other attachment row (any version, any secret) still references it |
 
 ### Secret Types — `/api/secret-types`
@@ -832,6 +845,8 @@ The `vault sync` command automates this for local `.env` files (or any UTF-8 tex
 **A backup file leaves the server's encryption boundary.** Everything else in this document protects data with `VAULT_ENCRYPTION_KEY`. An export (`POST /api/secrets/export`) decrypts the user's secrets and re-protects them with a password the user chose, so once downloaded the file's safety rests entirely on that password and on where the file is kept. Because zip AES uses PBKDF2-SHA1 with 1000 iterations, a weak password can be broken offline quickly. See [Backup and export](#backup-and-export). Exports are audited (`secrets.export`) but the server cannot see or limit what happens to the file afterwards.
 
 **Card images are card data, not incidental files.** A `card_front` / `card_back` attachment is a photograph of a physical payment card — it can show the full PAN, expiry, cardholder name, and (depending on framing) the CVV printed on the back. It should be handled with the same sensitivity as the `number` field itself: access to it is gated by the same secret-level ownership/`*_any` permission check as the rest of the secret, and it is refcount-deleted like any other attachment (see [Attachments](#attachments)) — but nothing about the storage layer encrypts the image bytes at rest beyond whatever the S3-compatible provider does. Unlike `number` and `cvv`, the image is not passed through `CryptoService`.
+
+**Document images are hidden until revealed.** In the web app (`DocumentImages`, `packages/vault-web/src/secrets/ui/components/DocumentImages.tsx`; `CardImages` is the same component under its old name), a card face, passport page or ID document face shows a placeholder and a **Reveal** button; the short-lived signed download URL is fetched only on Reveal. A revealed image is concealed again after the same timeout as a revealed value (`SECRET_REVEAL_TIMEOUT_MS`, 30 seconds), when the browser tab is hidden, when its attachment changes (a replacement or another version), and when the user leaves the Attachments tab or the page (the slot unmounts). A passport or ID document photo shows the holder's portrait, name, date of birth and document number, so it is as sensitive as those fields. Revealing an image writes no audit row: download URLs belong to the platform storage slice.
 
 **Clipboard exposure and auto-clear.** Copying a sensitive field value (e.g. the card number) uses the browser Clipboard API and shows a transient "copied" acknowledgement for 1.5 seconds (`COPIED_RESET_MS` in `apps/web/src/hooks/useCopyToClipboard.ts`). This resets the UI's own `copied`/`failed` indicator state — it does **not** clear the value from the OS clipboard itself. The copied plaintext therefore remains available to any other application on the user's device (or a malicious clipboard-reading page) until the user copies something else over it. There is no clipboard-clearing timer.
 
