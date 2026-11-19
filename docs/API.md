@@ -1386,6 +1386,25 @@ Base paths: `/api/secrets` and `/api/secret-types`.
 
 The backup download, [`POST /secrets/export`](#post-secretsexport), returns a raw `application/zip` stream rather than the JSON envelope.
 
+#### Secret type field definitions
+
+A secret type's `fields` (body of `POST /secret-types` and `PATCH /secret-types/:id`; the `fields` of every type in `GET /secret-types`) are field definitions ([SECRETS.md](SECRETS.md#custom-types)):
+
+```jsonc
+{
+  "name": "document_number",        // snake_case, 1-50 characters
+  "label": "Document Number",       // 1-100 characters
+  "type": "string",                 // string | number | date | select | keyvalue
+  "required": true,
+  "sensitive": true,                // default false
+  "options": ["..."],               // select only (required there)
+  "format": "country",              // optional, string only: country | multiline
+  "mask": "last4"                   // optional, sensitive string only
+}
+```
+
+`format` and `mask` are experimental (issue #206). A `keyvalue` field appears only on system types: `POST /secret-types` and `PATCH /secret-types/:id` answer `400` (`keyvalue fields are reserved for system types`) for one. A secret's value for a `keyvalue` field is a JSON array of `{ "key": "member_number", "label": "Member number", "value": "...", "sensitive": false }` entries (unique snake_case keys, at most 50); the `string` value of a `format: "country"` field is an ISO 3166-1 alpha-3 code, stored upper-case. Validation: [SECRETS.md](SECRETS.md#data-validation).
+
 #### PATCH /secrets/:id/agent-access
 
 Allows or forbids AI agents to use a secret ([SECRETS.md](SECRETS.md#agent-access)). Permission `secrets:write`; ownership follows `PUT /secrets/:id`.

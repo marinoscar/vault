@@ -14,6 +14,8 @@ import {
 
 
 
+import { isCountryCode } from '@marinoscar/vault-contract/common';
+import { keyValueValueSchema } from '@marinoscar/vault-contract/secret-types';
 import {
   originsFromCredential,
   matchOrigin,
@@ -107,6 +109,33 @@ const CARD_IMAGE_MIME_TYPES: readonly string[] = [
 interface CarryForwardExclusions {
   roles: ReadonlySet<string>;
   storageObjectIds: ReadonlySet<string>;
+}
+
+/**
+ * `data` with every `format: 'country'` string value trimmed and upper-cased
+ * (`usa` is stored as `USA`). Runs after validation; other values are untouched.
+ */
+function normalizeCountryFields(
+  data: Record<string, unknown>,
+  fields: FieldDefinition[],
+): Record<string, unknown> {
+  let out = data;
+  for (const field of fields) {
+    const value = data[field.name];
+    if (field.type !== 'string' || field.format !== 'country' || typeof value !== 'string') continue;
+    const code = value.trim().toUpperCase();
+    if (code !== value) out = { ...out, [field.name]: code };
+  }
+  return out;
+}
+
+/** JSON with object keys sorted, so two equal values serialize the same whatever their key order. */
+function stableJson(value: unknown): string {
+  return JSON.stringify(value, (_key, v: unknown) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : v,
+  );
 }
 
 /** The shape `assertAgentAccessible` reads. */
@@ -214,11 +243,17 @@ export class SecretsService {
     const errors: string[] = [];
     const fieldMap = new Map(fields.map((f) => [f.name, f]));
 
-    // Check all required fields are present and non-empty
+    // Check all required fields are present and non-empty. A required
+    // `keyvalue` field needs at least one entry.
     for (const field of fields) {
       if (field.required) {
         const value = data[field.name];
-        if (value === undefined || value === null || value === '') {
+        if (
+          value === undefined ||
+          value === null ||
+          value === '' ||
+          (field.type === 'keyvalue' && Array.isArray(value) && value.length === 0)
+        ) {
           errors.push(`Field "${field.name}" is required`);
         }
       }
@@ -243,6 +278,23 @@ export class SecretsService {
       if (field.type === 'string') {
         if (typeof value !== 'string') {
           errors.push(`Field "${key}" must be a string`);
+        } else if (field.format === 'country' && value.trim() !== '' && !isCountryCode(value.trim().toUpperCase())) {
+          // Never echo the value: name the field only.
+          errors.push(`Field "${key}" must be an ISO 3166-1 alpha-3 country code`);
+        }
+        // `format: 'multiline'` and `mask` are display only.
+      } else if (field.type === 'keyvalue') {
+        // Stored as-is inside the encrypted JSON. Issue paths and messages name
+        // the entry and the property, never a value.
+        const parsed = keyValueValueSchema.safeParse(value);
+        if (!parsed.success) {
+          const issue = parsed.error.issues[0];
+          const where = issue && issue.path.length > 0 ? ` (at ${issue.path.join('.')})` : '';
+          errors.push(
+            Array.isArray(value)
+              ? `Field "${key}" has an invalid entry${where}: ${issue?.message ?? 'invalid'}`
+              : `Field "${key}" must be a list of key/value entries`,
+          );
         }
       } else if (field.type === 'number') {
         if (typeof value !== 'number' && (typeof value !== 'string' || isNaN(Number(value)))) {
@@ -286,6 +338,7 @@ export class SecretsService {
     data: Record<string, unknown>,
   ): Record<string, unknown> {
     this.validateDataAgainstType(data, type.fields as FieldDefinition[]);
+    data = normalizeCountryFields(data, type.fields as FieldDefinition[]);
     if (!isAgentAccessibleType(type)) return data;
     const raw = data.totp;
     if (typeof raw !== 'string' || raw.trim() === '') return data;
@@ -301,6 +354,23 @@ export class SecretsService {
       });
     }
     return { ...data, totp: canonical };
+  }
+
+  /**
+   * Whether `data` equals the data of `current` (the current version). A
+   * missing version, or one that fails to decrypt, answers `false`, so the
+   * update writes a version.
+   */
+  private isCurrentData(
+    current: { encryptedData: string; iv: string; authTag: string } | undefined,
+    data: Record<string, unknown>,
+  ): boolean {
+    if (!current?.encryptedData) return false;
+    try {
+      return stableJson(this.decryptVersionData(current)) === stableJson(data);
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -1146,10 +1216,14 @@ export class SecretsService {
 
     this.logger.log(`Updating secret ${id}`);
 
-    // Fetch current type for validation if data is changing
+    // Fetch current type for validation if data is changing, and the current
+    // version to tell whether the data changed.
     const existingSecret = await this.prisma.secret.findUnique({
       where: { id },
-      include: { type: true },
+      include: {
+        type: true,
+        versions: { where: { isCurrent: true }, take: 1, select: { encryptedData: true, iv: true, authTag: true } },
+      },
     });
 
     if (!existingSecret) {
@@ -1171,8 +1245,13 @@ export class SecretsService {
     if (dto.data !== undefined) {
       newData = this.prepareData(existingSecret.type, dto.data as Record<string, unknown>);
 
-      const plaintext = JSON.stringify(newData);
-      newEncrypted = this.crypto.encrypt(plaintext);
+      // A new version only when the data changed: identical values (key order
+      // aside; arrays such as a `keyvalue` value compare entry by entry) keep
+      // the current version.
+      if (!this.isCurrentData(existingSecret.versions?.[0], newData)) {
+        const plaintext = JSON.stringify(newData);
+        newEncrypted = this.crypto.encrypt(plaintext);
+      }
     }
 
     let carriedAttachments = 0;

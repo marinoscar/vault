@@ -103,6 +103,20 @@ Six system types are created during database seeding. They cannot be modified or
 
 Fields marked as sensitive are masked in the UI and require a deliberate reveal action.
 
+#### Field types, formats and masks
+
+A field's `type` is `string`, `number`, `date`, `select` or `keyvalue` (`FIELD_TYPES` in `@marinoscar/vault-contract/secret-types`). Two optional properties shape how a `string` field is entered and shown (issue #206, experimental):
+
+| Property | Values | Allowed on | Effect |
+|----------|--------|------------|--------|
+| `format` | `country` | `string` fields | The value is an ISO 3166-1 alpha-3 code (the code a passport's MRZ prints, such as `USA`; the ICAO `UTO` specimen state is accepted). The API upper-cases it before validating and stores it upper-cased; `''` means "not set". |
+| `format` | `multiline` | `string` fields | Display only: a multi-line input. Before it, multi-line was inferred from the names `notes` and `content`. |
+| `mask` | `last4` | sensitive `string` fields | Display only: while hidden, show only the last four characters (a document number). The whole value is stored. |
+
+`format` on a non-`string` field fails validation (`format is only allowed for string fields`), as does `mask` on a field that is not a sensitive `string` (`mask is only allowed for sensitive string fields`).
+
+**`keyvalue` is for system types only.** Its value is a list of entries `{ key, label, value, sensitive }`: `key` is snake_case (`^[a-z][a-z0-9_]*$`, at most 50 characters) and unique within the list, `label` is 1-100 characters, `value` at most 2,000 characters, and at most 50 entries (`keyValueValueSchema`). It holds the long tail of kind-specific data typed fields cannot cover (a licence class, a member number). The list is stored as-is inside the version's encrypted JSON; there is no schema change. A sensitive entry is treated like a sensitive field: MCP shows it as `label: [withheld]` and never returns its value. Exports carry every value, sensitive entries included, as for any field.
+
 #### Card fields in detail
 
 | Field | Type | Required | Sensitive | Notes |
@@ -142,10 +156,12 @@ Each `FieldDefinition` has:
 |----------|-------------|
 | `name` | Snake_case identifier matching `^[a-z][a-z0-9_]*$`, 1-50 characters |
 | `label` | Display label, 1-100 characters |
-| `type` | `string` \| `number` \| `date` \| `select` |
+| `type` | `string` \| `number` \| `date` \| `select` (`keyvalue` is not available to a custom type: create and update answer `400` with `keyvalue fields are reserved for system types`) |
 | `required` | Boolean |
 | `sensitive` | Boolean, default `false` |
 | `options` | `string[]`, 1-50 entries, each 1-100 characters, no duplicates. **Required when `type` is `select`, and rejected for every other type.** |
+| `format` | Optional, `country` \| `multiline`; `string` fields only ([Field types, formats and masks](#field-types-formats-and-masks)) |
+| `mask` | Optional, `last4`; sensitive `string` fields only |
 
 A `select` field without `options` fails DTO validation (`options is required for select fields`); a non-`select` field that supplies `options` also fails validation (`options is only allowed for select fields`). This is enforced at the DTO layer (`apps/api/src/secret-types/dto/create-secret-type.dto.ts`) for every type created or updated through the API. It is not enforced at the database level: a `select` field written directly to the database (or seeded before this constraint existed) with no `options` does not brick existing secrets — `validateDataAgainstType` treats an empty/missing `options` list on a `select` field as "anything goes" rather than rejecting every value.
 
@@ -155,7 +171,7 @@ A custom type cannot be deleted if any secret currently references it. The API r
 
 ## Versioning
 
-Every change to a secret's field data creates a new `SecretVersion` record with an incremented version number. Metadata-only changes (name, description) do not create new versions.
+Every change to a secret's field data creates a new `SecretVersion` record with an incremented version number. Metadata-only changes (name, description), and a `PUT` whose `data` equals the current version's, do not create new versions.
 
 Version records store:
 
@@ -766,8 +782,13 @@ When creating or updating a secret, the provided data object is validated agains
   - `number` — numeric value; `NaN` is rejected
   - `date` — ISO 8601 date string
   - `select` — the value must appear in the field's `options` list (case-sensitive, exact match). If the field somehow has no `options` (e.g. a row written before this constraint existed), the check is skipped rather than rejecting every value — see [Custom Types](#custom-types) for why `options` is otherwise mandatory for `select` fields at the DTO layer.
+  - `string` with `format: 'country'` — `''` or an ISO 3166-1 alpha-3 code, compared upper-case and stored upper-case (`usa` is stored as `USA`; `ZZZ` is a `400`).
+  - `keyvalue` — the value must parse with `keyValueValueSchema` (a list of `{ key, label, value, sensitive }` entries, unique snake_case keys, at most 50). A required `keyvalue` field needs at least one entry: an empty list is `400`.
+- `format: 'multiline'` and `mask` are display only; the API does not validate against them.
+- An unknown field type fails closed: the value is rejected (`unsupported type`).
+- A data update whose values equal the current version's (object key order aside; arrays, a `keyvalue` list included, compare entry by entry and in order) creates no new version, and the `secret.update` audit event records `dataChanged: false`.
 
-Validation failures return `400 Bad Request` with a `details` array identifying each invalid field.
+Validation failures return `400 Bad Request` with a `details` array identifying each invalid field. The messages name the field (and, for a `keyvalue` entry, its position and property), never a value.
 
 ---
 

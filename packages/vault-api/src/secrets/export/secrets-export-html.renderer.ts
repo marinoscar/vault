@@ -37,18 +37,52 @@ export function escapeHtml(value: unknown): string {
 }
 
 /**
- * Display text for one decrypted field value. Objects and arrays (not produced
- * by the current field types, but possible in old data) are shown as JSON
- * rather than `[object Object]`.
+ * Display text for one decrypted field value. A `keyvalue` value is
+ * `label: value` lines; other objects and arrays (not produced by the field
+ * types, but possible in old data) are shown as JSON rather than
+ * `[object Object]`.
  */
 export function formatFieldValue(value: unknown): string {
   if (value === null || value === undefined || value === '') {
     return '';
   }
+  if (isKeyValueList(value)) {
+    // Plain-text form of a `keyvalue` value; the HTML cell is a table (formatFieldCell).
+    return value.map((entry) => `${entry.label}: ${formatFieldValue(entry.value)}`).join('\n');
+  }
   if (typeof value === 'object') {
     return JSON.stringify(value);
   }
   return String(value);
+}
+
+/** A `keyvalue` field value: a list of `{ label, value }` entries. */
+function isKeyValueList(value: unknown): value is Array<{ label: string; value: unknown }> {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every((entry) => !!entry && typeof entry === 'object' && typeof (entry as { label?: unknown }).label === 'string')
+  );
+}
+
+/**
+ * The escaped HTML of one value cell: a `keyvalue` value is a two-column
+ * (label, value) table; anything else is {@link formatFieldValue}, escaped.
+ * Exports carry every value, sensitive entries included, as for any field.
+ */
+export function formatFieldCell(value: unknown): string {
+  if (isKeyValueList(value)) {
+    const rows = value
+      .map((entry) => {
+        const text = formatFieldValue(entry.value);
+        const cell = text === '' ? '<span class="empty">(empty)</span>' : escapeHtml(text);
+        return `<tr><th scope="row">${escapeHtml(entry.label)}</th><td>${cell}</td></tr>`;
+      })
+      .join('');
+    return `<table class="keyvalue"><tbody>${rows}</tbody></table>`;
+  }
+  const text = formatFieldValue(value);
+  return text === '' ? '<span class="empty">(empty)</span>' : escapeHtml(text);
 }
 
 const STYLES = `
@@ -69,6 +103,7 @@ table { width: 100%; border-collapse: collapse; margin-top: 8px; }
 th, td { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom: 1px solid #eceef2; }
 th { width: 34%; font-weight: 600; color: #3b4354; }
 td { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; word-break: break-all; }
+.keyvalue { margin-top: 0; }
 .empty { color: #8a93a5; font-style: italic; font-family: inherit; }
 .attachments { list-style: none; padding: 0; margin: 8px 0 0; }
 .attachments li { margin: 0 0 12px; }
@@ -126,9 +161,7 @@ function renderFieldTable(
 }
 
 function renderFieldRow(label: string, value: unknown): string {
-  const text = formatFieldValue(value);
-  const cell = text === '' ? '<span class="empty">(empty)</span>' : escapeHtml(text);
-  return `<tr><th scope="row">${escapeHtml(label)}</th><td>${cell}</td></tr>`;
+  return `<tr><th scope="row">${escapeHtml(label)}</th><td>${formatFieldCell(value)}</td></tr>`;
 }
 
 function attachmentTitle(typeName: string, attachment: ExportAttachmentEntry): string {

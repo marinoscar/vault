@@ -1,3 +1,5 @@
+import type { SecretTypeField } from '@marinoscar/vault-contract/secret-types';
+
 import { MCP_CANARY_PASSWORD, MCP_CANARY_TOTP, MCP_CANARY_USERNAME, buildMcpHarness } from '../testing/fake-mcp';
 import { requestContext, type RpcMessage } from './protocol/mcp-protocol';
 import type { RpcResponse } from './protocol/mcp-rpc';
@@ -232,5 +234,59 @@ describe('canary: no response ever carries a secret value', () => {
     // The audit trail too.
     const trail = JSON.stringify(h.audit.events);
     for (const s of secrets) expect(trail).not.toContain(s);
+  });
+});
+
+describe('keyvalue fields (issue #206): a sensitive entry\'s value never leaves', () => {
+  const KV_SECRET = 'KvEntrySecret-8Wm4-do-not-leak';
+  const KV_SENSITIVE_FIELD_VALUE = 'KvFieldSecret-2Lp6-do-not-leak';
+
+  function setupKeyValue() {
+    const s = setup();
+    // A test-only definition: the Credential type gains a non-sensitive and a sensitive keyvalue field.
+    const credential = s.h.types.find((t) => t.name === 'Credential')!;
+    const extraFields: SecretTypeField[] = [
+      { name: 'extras', label: 'Extras', type: 'keyvalue', required: false, sensitive: false },
+      { name: 'private_extras', label: 'Private extras', type: 'keyvalue', required: false, sensitive: true },
+    ];
+    credential.fields = [...credential.fields, ...extraFields];
+    const kv = s.h.add({
+      userId: 'user-aaa', type: 'Credential', name: 'With extras', agentAccess: 'fill',
+      values: {
+        username: 'person-b@example.test', password: 'KvPw-1-do-not-leak', url: 'https://kv.example.test',
+        extras: [
+          { key: 'member_number', label: 'Member number', value: 'M-0001', sensitive: false },
+          { key: 'recovery_code', label: 'Recovery code', value: KV_SECRET, sensitive: true },
+        ],
+        private_extras: [{ key: 'plan_code', label: 'Plan code', value: KV_SENSITIVE_FIELD_VALUE, sensitive: false }],
+      },
+    });
+    return { ...s, kv };
+  }
+
+  it('renders label: value lines, a sensitive entry as [withheld], a sensitive field as [hidden]', async () => {
+    const { call, kv } = setupKeyValue();
+    const { data } = await call('get_secret', { id: kv.id });
+    expect(data.secret.fields.extras).toBe('Member number: M-0001\nRecovery code: [withheld]');
+    expect(data.secret.fields.private_extras).toBe('[hidden]');
+    const found = (await call('search_secrets', { query: 'With extras' })).data.items[0];
+    expect(found.fields.extras).toBe('Member number: M-0001\nRecovery code: [withheld]');
+    expect(found.fields).not.toHaveProperty('private_extras');
+  });
+
+  it('keeps every sensitive entry value out of every tool result and the audit trail', async () => {
+    const { call, bodies, kv, h } = setupKeyValue();
+    await call('search_secrets', {});
+    await call('search_secrets', { query: 'With extras' });
+    await call('get_secret', { id: kv.id });
+    await call('list_secret_types', {});
+    await call('update_secret', { id: kv.id, fields: { notes: 'kv notes' } });
+    await call('get_secret', { id: kv.id });
+    const all = bodies.join('\n');
+    expect(all).toContain('M-0001');
+    for (const s of [KV_SECRET, KV_SENSITIVE_FIELD_VALUE]) {
+      expect(all).not.toContain(s);
+      expect(JSON.stringify(h.audit.events)).not.toContain(s);
+    }
   });
 });

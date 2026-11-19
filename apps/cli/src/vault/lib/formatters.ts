@@ -1,8 +1,8 @@
 import chalk from 'chalk';
 import { header, keyValue, tableHeader, tableRow, blank, statusBadge, section, dim } from '../utils/output.js';
 import type {
-
   HealthResponse,
+  KeyValueEntry,
   PaginatedResponse,
   Secret,
   SecretListItem,
@@ -76,6 +76,30 @@ export function formatSecretTable(result: PaginatedResponse<SecretListItem>): vo
   blank();
 }
 
+/** One entry of a `keyvalue` field value, as the API returns it. */
+function isKeyValueEntry(entry: unknown): entry is KeyValueEntry {
+  return !!entry && typeof entry === 'object' && typeof (entry as { label?: unknown }).label === 'string';
+}
+
+/**
+ * The display lines of one field value: a `keyvalue` value (a list of
+ * `{ key, label, value, sensitive }` entries) is one indented `label: value`
+ * line per entry; other objects are JSON, never `[object Object]`.
+ */
+export function fieldValueLines(value: unknown): { inline: string; lines: string[] } {
+  if (Array.isArray(value) && value.every(isKeyValueEntry)) {
+    return { inline: value.length === 0 ? '-' : '', lines: value.map((e) => `${e.label}: ${String(e.value ?? '')}`) };
+  }
+  if (value !== null && typeof value === 'object') return { inline: JSON.stringify(value), lines: [] };
+  return { inline: String(value ?? ''), lines: [] };
+}
+
+function printFieldValue(key: string, value: unknown): void {
+  const { inline, lines } = fieldValueLines(value);
+  keyValue(`  ${key}`, inline);
+  for (const line of lines) console.log(`      ${line}`);
+}
+
 export function formatSecretDetail(secret: Secret): void {
   header('Secret');
   keyValue('ID', secret.id);
@@ -94,8 +118,7 @@ export function formatSecretDetail(secret: Secret): void {
   if (secret.values) {
     section('Data Fields');
     for (const [key, value] of Object.entries(secret.values)) {
-      const display = String(value ?? '');
-      keyValue(`  ${key}`, display);
+      printFieldValue(key, value);
     }
   }
 
@@ -158,7 +181,7 @@ export function formatVersionDetail(version: SecretVersion): void {
   if (version.values) {
     section('Data Fields');
     for (const [key, value] of Object.entries(version.values)) {
-      keyValue(`  ${key}`, String(value ?? ''));
+      printFieldValue(key, value);
     }
   }
 

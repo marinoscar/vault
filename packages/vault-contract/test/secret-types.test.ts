@@ -64,4 +64,20 @@ describe('secret type schemas', () => {
     expect(updateSecretTypeSchema.parse({ description: null }).description).toBeNull();
     expect(secretTypeQuerySchema.parse({}).includeSystem).toBe(true);
   });
+
+  it('reserves keyvalue fields for system types: create and update reject them (issue #206)', () => {
+    const kv = { name: 'extras', label: 'Extras', type: 'keyvalue', required: false, sensitive: false };
+    expect(secretTypeFieldsSchema.safeParse([field, kv]).success).toBe(true);
+
+    const created = createSecretTypeSchema.safeParse({ name: 'Custom', fields: [field, kv] });
+    expect(created.success).toBe(false);
+    expect(created.error!.issues).toEqual([
+      expect.objectContaining({ path: ['fields', 1, 'type'], message: 'keyvalue fields are reserved for system types' }),
+    ]);
+
+    const updated = updateSecretTypeSchema.safeParse({ fields: [kv] });
+    expect(updated.success).toBe(false);
+    expect(updated.error!.issues[0]!.message).toBe('keyvalue fields are reserved for system types');
+    expect(updateSecretTypeSchema.safeParse({ fields: [field] }).success).toBe(true);
+  });
 });

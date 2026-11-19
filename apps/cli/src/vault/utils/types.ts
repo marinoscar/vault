@@ -74,11 +74,24 @@ export interface SecretVersion {
 export interface FieldDefinition {
   name: string;
   label: string;
-  type: 'string' | 'number' | 'date' | 'select';
+  /** `keyvalue` is reserved for system types (a list of {@link KeyValueEntry}). */
+  type: 'string' | 'number' | 'date' | 'select' | 'keyvalue';
   required: boolean;
   sensitive: boolean;
   /** Allowed values; only meaningful when type is 'select'. */
   options?: string[];
+  /** Input and display format of a 'string' field. */
+  format?: 'country' | 'multiline';
+  /** Display mask of a sensitive 'string' field. */
+  mask?: 'last4';
+}
+
+/** One entry of a `keyvalue` field value. */
+export interface KeyValueEntry {
+  key: string;
+  label: string;
+  value: string;
+  sensitive: boolean;
 }
 
 export interface SecretType {

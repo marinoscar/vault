@@ -2847,6 +2847,210 @@ describe('SecretsService', () => {
   });
 
   // ============================================================================
+  // keyvalue fields (issue #206)
+  // ============================================================================
+
+  describe('keyvalue fields', () => {
+    const ownerPerms = [PERMISSIONS.SECRETS_WRITE];
+
+    // A test-only type definition built here, not a seeded system type.
+    const kvSecretType = {
+      ...mockSecretType,
+      name: 'KV Test Type',
+      fields: [
+        { name: 'title', label: 'Title', type: 'string', required: true, sensitive: false },
+        { name: 'extras', label: 'Extras', type: 'keyvalue', required: false, sensitive: false },
+        { name: 'required_extras', label: 'Required extras', type: 'keyvalue', required: true, sensitive: false },
+      ],
+    };
+
+    const entries = [
+      { key: 'member_number', label: 'Member number', value: 'M-0001', sensitive: false },
+      { key: 'recovery_code', label: 'Recovery code', value: 'RC-INVENTED-0001', sensitive: true },
+    ];
+    const validData = { title: 'Plan A', extras: entries, required_extras: [entries[0]] };
+
+    async function createErrors(data: Record<string, unknown>): Promise<string[]> {
+      try {
+        await service.create({ name: 'KV', typeId, data } as unknown as CreateSecretDto, userId, ownerPerms);
+      } catch (err) {
+        expect(err).toBeInstanceOf(BadRequestException);
+        return ((err as BadRequestException).getResponse() as { details: { errors: string[] } }).details.errors;
+      }
+      return [];
+    }
+
+    beforeEach(() => {
+      mockPrisma.secretType.findUnique.mockResolvedValue(kvSecretType as any);
+      mockPrisma.secret.create.mockResolvedValue(mockSecret as any);
+      mockPrisma.secretVersion.create.mockResolvedValue(mockVersion as any);
+      mockPrisma.auditEvent.create.mockResolvedValue({} as any);
+    });
+
+    it('creates with a valid keyvalue value and stores the array as-is in the encrypted JSON', async () => {
+      await expect(
+        service.create({ name: 'KV', typeId, data: validData } as unknown as CreateSecretDto, userId, ownerPerms),
+      ).resolves.toBeDefined();
+      expect(mockCrypto.encrypt).toHaveBeenCalledWith(JSON.stringify(validData));
+    });
+
+    it('rejects a non-array keyvalue value', async () => {
+      const errors = await createErrors({ ...validData, extras: 'member_number=M-0001' });
+      expect(errors).toEqual(['Field "extras" must be a list of key/value entries']);
+    });
+
+    it('rejects an entry with a missing label, naming the entry, never the value', async () => {
+      const errors = await createErrors({
+        ...validData,
+        extras: [{ key: 'member_number', value: 'M-SECRET-VALUE', sensitive: false }],
+      });
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toMatch(/^Field "extras" has an invalid entry \(at 0\.label\)/);
+      expect(errors.join(' ')).not.toContain('M-SECRET-VALUE');
+    });
+
+    it('rejects an entry with a bad key', async () => {
+      const errors = await createErrors({
+        ...validData,
+        extras: [{ key: 'Member Number', label: 'Member number', value: 'M-SECRET-VALUE', sensitive: false }],
+      });
+      expect(errors[0]).toMatch(/^Field "extras" has an invalid entry \(at 0\.key\)/);
+      expect(errors.join(' ')).not.toContain('M-SECRET-VALUE');
+    });
+
+    it('rejects duplicate keys', async () => {
+      const errors = await createErrors({ ...validData, extras: [entries[0], entries[0]] });
+      expect(errors[0]).toContain('Entry keys must be unique');
+    });
+
+    it('answers 400 for a required keyvalue field given an empty array', async () => {
+      const errors = await createErrors({ ...validData, required_extras: [] });
+      expect(errors).toEqual(['Field "required_extras" is required']);
+    });
+
+    it('accepts an empty array for an optional keyvalue field', async () => {
+      await expect(createErrors({ ...validData, extras: [] })).resolves.toEqual([]);
+    });
+
+    describe('update', () => {
+      const kvSecret = { ...mockSecret, type: kvSecretType };
+
+      function arrange(currentData: Record<string, unknown>) {
+        mockCrypto.decrypt.mockReturnValue(JSON.stringify(currentData));
+        const withCurrent = { ...kvSecret, versions: [mockVersion] };
+        mockPrisma.secret.findUnique
+          .mockResolvedValueOnce(kvSecret as any) // auth check
+          .mockResolvedValueOnce(withCurrent as any) // existingSecret (with the current version)
+          .mockResolvedValueOnce(kvSecret as any) // findOne auth check
+          .mockResolvedValueOnce({ ...withCurrent, attachments: [] } as any); // findOne detail
+        mockPrisma.secret.update.mockResolvedValue(kvSecret as any);
+        mockPrisma.secretVersion.findFirst.mockResolvedValue({ version: 1 } as any);
+        mockPrisma.secretVersion.updateMany.mockResolvedValue({ count: 1 } as any);
+        mockPrisma.secretAttachment.findMany.mockResolvedValue([] as any);
+      }
+
+      it('updates with a valid keyvalue value and creates a new version', async () => {
+        arrange({ title: 'Plan A', required_extras: [entries[0]] });
+        await service.update(secretId, { data: validData } as unknown as UpdateSecretDto, userId, ownerPerms);
+        expect(mockCrypto.encrypt).toHaveBeenCalledWith(JSON.stringify(validData));
+        expect(mockPrisma.secretVersion.create).toHaveBeenCalledTimes(1);
+      });
+
+      it('rejects an invalid keyvalue value on update', async () => {
+        arrange(validData);
+        await expect(
+          service.update(secretId, { data: { ...validData, extras: { not: 'a list' } } } as unknown as UpdateSecretDto, userId, ownerPerms),
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('creates no new version when the same array is sent again (key order aside)', async () => {
+        arrange(validData);
+        // Same values, the object keys in another order.
+        const reordered = {
+          required_extras: [{ sensitive: false, value: 'M-0001', label: 'Member number', key: 'member_number' }],
+          extras: entries.map((e) => ({ value: e.value, sensitive: e.sensitive, key: e.key, label: e.label })),
+          title: 'Plan A',
+        };
+        await service.update(secretId, { data: reordered } as unknown as UpdateSecretDto, userId, ownerPerms);
+        expect(mockCrypto.encrypt).not.toHaveBeenCalled();
+        expect(mockPrisma.secretVersion.create).not.toHaveBeenCalled();
+        expect(mockPrisma.auditEvent.create).toHaveBeenCalledWith(
+          expect.objectContaining({ data: expect.objectContaining({ meta: expect.objectContaining({ dataChanged: false }) }) }),
+        );
+      });
+
+      it('creates a new version when an entry changes, or the entries are reordered', async () => {
+        arrange(validData);
+        const changed = { ...validData, extras: [entries[0], { ...entries[1], value: 'RC-INVENTED-0002' }] };
+        await service.update(secretId, { data: changed } as unknown as UpdateSecretDto, userId, ownerPerms);
+        expect(mockPrisma.secretVersion.create).toHaveBeenCalledTimes(1);
+
+        jest.clearAllMocks();
+        arrange(validData);
+        const reordered = { ...validData, extras: [entries[1], entries[0]] };
+        await service.update(secretId, { data: reordered } as unknown as UpdateSecretDto, userId, ownerPerms);
+        expect(mockPrisma.secretVersion.create).toHaveBeenCalledTimes(1);
+      });
+    });
+  });
+
+  // ============================================================================
+  // format: 'country' fields (issue #206)
+  // ============================================================================
+
+  describe('country fields', () => {
+    const ownerPerms = [PERMISSIONS.SECRETS_WRITE];
+    // A test-only type definition built here, not a seeded system type.
+    const countryType = {
+      ...mockSecretType,
+      name: 'Country Test Type',
+      fields: [
+        { name: 'issuing_country', label: 'Issuing Country', type: 'string', required: false, sensitive: false, format: 'country' },
+        { name: 'notes', label: 'Notes', type: 'string', required: false, sensitive: false, format: 'multiline' },
+      ],
+    };
+
+    beforeEach(() => {
+      mockPrisma.secretType.findUnique.mockResolvedValue(countryType as any);
+      mockPrisma.secret.create.mockResolvedValue(mockSecret as any);
+      mockPrisma.secretVersion.create.mockResolvedValue(mockVersion as any);
+      mockPrisma.auditEvent.create.mockResolvedValue({} as any);
+    });
+
+    const create = (data: Record<string, unknown>) =>
+      service.create({ name: 'C', typeId, data } as unknown as CreateSecretDto, userId, ownerPerms);
+
+    it('stores a lower-case code upper-cased', async () => {
+      await create({ issuing_country: ' usa ', notes: 'line 1\nline 2' });
+      expect(mockCrypto.encrypt).toHaveBeenCalledWith(
+        JSON.stringify({ issuing_country: 'USA', notes: 'line 1\nline 2' }),
+      );
+    });
+
+    it('accepts the UTO specimen state and an empty value', async () => {
+      await expect(create({ issuing_country: 'UTO' })).resolves.toBeDefined();
+      await expect(create({ issuing_country: '' })).resolves.toBeDefined();
+    });
+
+    it('answers 400 for an unknown code, naming the field, never the value', async () => {
+      let caught: BadRequestException | undefined;
+      try {
+        await create({ issuing_country: 'ZZZ' });
+      } catch (err) {
+        caught = err as BadRequestException;
+      }
+      expect(caught).toBeInstanceOf(BadRequestException);
+      const errors = (caught!.getResponse() as { details: { errors: string[] } }).details.errors;
+      expect(errors).toEqual(['Field "issuing_country" must be an ISO 3166-1 alpha-3 country code']);
+      expect(mockCrypto.encrypt).not.toHaveBeenCalled();
+    });
+
+    it('rejects an alpha-2 code', async () => {
+      await expect(create({ issuing_country: 'US' })).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  // ============================================================================
   // findVersions
   // ============================================================================
 

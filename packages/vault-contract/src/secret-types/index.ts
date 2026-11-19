@@ -38,6 +38,84 @@ export const IDENTITY_ID_TYPES = ['Passport', 'National ID', 'Driver Licence', '
 /** @stability experimental */
 export type IdentityIdType = (typeof IDENTITY_ID_TYPES)[number];
 
+/**
+ * The field types a secret type may declare. `keyvalue` holds a list of
+ * {@link KeyValueEntry} rows and is reserved for system types: the create and
+ * update schemas of a custom type reject it.
+ *
+ * @stability experimental
+ */
+export const FIELD_TYPES = ['string', 'number', 'date', 'select', 'keyvalue'] as const;
+
+/** @stability experimental */
+export type FieldType = (typeof FIELD_TYPES)[number];
+
+/**
+ * Display and input formats of a `string` field. `country` takes an ISO 3166-1
+ * alpha-3 code (the code a passport's MRZ prints), stored upper-case;
+ * `multiline` renders a multi-line input. Neither changes the stored type.
+ *
+ * @stability experimental
+ */
+export const FIELD_FORMATS = ['country', 'multiline'] as const;
+
+/** @stability experimental */
+export type FieldFormat = (typeof FIELD_FORMATS)[number];
+
+/**
+ * Display masks of a sensitive `string` field. `last4` shows only the last four
+ * characters while the value is hidden. Display only: the value is stored whole.
+ *
+ * @stability experimental
+ */
+export const FIELD_MASKS = ['last4'] as const;
+
+/** @stability experimental */
+export type FieldMask = (typeof FIELD_MASKS)[number];
+
+/** Message of the create and update schemas when a custom type declares a `keyvalue` field. @stability experimental */
+export const KEYVALUE_RESERVED_MESSAGE = 'keyvalue fields are reserved for system types';
+
+/** Most entries a `keyvalue` value may hold. @stability experimental */
+export const KEYVALUE_MAX_ENTRIES = 50;
+
+/**
+ * One row of a `keyvalue` field value: a snake_case `key`, the label shown to
+ * the owner, the value and whether the value is sensitive (hidden and withheld
+ * like a sensitive field).
+ *
+ * @stability experimental
+ */
+export const keyValueEntrySchema = z.object({
+  key: z
+    .string()
+    .max(50)
+    .regex(/^[a-z][a-z0-9_]*$/, 'Entry key must be snake_case'),
+  label: z.string().min(1).max(100),
+  value: z.string().max(2000),
+  sensitive: z.boolean(),
+});
+
+/** @stability experimental */
+export type KeyValueEntry = z.infer<typeof keyValueEntrySchema>;
+
+/**
+ * The value of a `keyvalue` field: at most {@link KEYVALUE_MAX_ENTRIES} entries
+ * with unique keys.
+ *
+ * @stability experimental
+ */
+export const keyValueValueSchema = z
+  .array(keyValueEntrySchema)
+  .max(KEYVALUE_MAX_ENTRIES, `At most ${KEYVALUE_MAX_ENTRIES} entries are allowed`)
+  .refine(
+    (entries) => new Set(entries.map((entry) => entry.key)).size === entries.length,
+    { message: 'Entry keys must be unique' },
+  );
+
+/** @stability experimental */
+export type KeyValueValue = z.infer<typeof keyValueValueSchema>;
+
 const fieldDefinitionBaseSchema = z.object({
   name: z
     .string()
@@ -45,9 +123,13 @@ const fieldDefinitionBaseSchema = z.object({
     .max(50)
     .regex(/^[a-z][a-z0-9_]*$/, 'Field name must be snake_case'),
   label: z.string().min(1).max(100),
-  type: z.enum(['string', 'number', 'date', 'select']),
+  type: z.enum(FIELD_TYPES),
   required: z.boolean(),
   sensitive: z.boolean().default(false),
+  /** Input and display format; only on `string` fields. @stability experimental */
+  format: z.enum(FIELD_FORMATS).optional(),
+  /** Display mask; only on sensitive `string` fields. @stability experimental */
+  mask: z.enum(FIELD_MASKS).optional(),
   /**
    * Allowed values for `select` fields. Required (and only permitted) when
    * `type === 'select'`.
@@ -57,6 +139,22 @@ const fieldDefinitionBaseSchema = z.object({
 
 /** One field of a custom secret type. @stability experimental */
 export const fieldDefinitionSchema = fieldDefinitionBaseSchema.superRefine((field, ctx) => {
+  if (field.format !== undefined && field.type !== 'string') {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['format'],
+      message: 'format is only allowed for string fields',
+    });
+  }
+
+  if (field.mask !== undefined && (field.type !== 'string' || field.sensitive !== true)) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['mask'],
+      message: 'mask is only allowed for sensitive string fields',
+    });
+  }
+
   if (field.type === 'select') {
     if (!field.options || field.options.length === 0) {
       ctx.addIssue({
@@ -106,21 +204,33 @@ export const secretTypeFieldsSchema = z
     { message: 'Field names must be unique' },
   );
 
-/** Body of `POST /api/secret-types`. @stability experimental */
+/**
+ * The `fields` of a custom type: {@link secretTypeFieldsSchema} without
+ * `keyvalue` fields, which are reserved for system types.
+ */
+const customSecretTypeFieldsSchema = secretTypeFieldsSchema.superRefine((fields, ctx) => {
+  fields.forEach((field, index) => {
+    if (field.type === 'keyvalue') {
+      ctx.addIssue({ code: 'custom', path: [index, 'type'], message: KEYVALUE_RESERVED_MESSAGE });
+    }
+  });
+});
+
+/** Body of `POST /api/secret-types`. Rejects `keyvalue` fields. @stability experimental */
 export const createSecretTypeSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(500).optional(),
   icon: z.string().max(50).optional(),
-  fields: secretTypeFieldsSchema,
+  fields: customSecretTypeFieldsSchema,
   allowAttachments: z.boolean().default(false),
 });
 
-/** Body of `PATCH /api/secret-types/:id`. @stability experimental */
+/** Body of `PATCH /api/secret-types/:id`. Rejects `keyvalue` fields. @stability experimental */
 export const updateSecretTypeSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   description: z.string().max(500).optional().nullable(),
   icon: z.string().max(50).optional().nullable(),
-  fields: secretTypeFieldsSchema.optional(),
+  fields: customSecretTypeFieldsSchema.optional(),
   allowAttachments: z.boolean().optional(),
 });
 
@@ -142,10 +252,14 @@ export type SecretTypeQuery = z.infer<typeof secretTypeQuerySchema>;
 export interface SecretTypeField {
   name: string;
   label: string;
-  type: 'string' | 'number' | 'date' | 'select';
+  type: FieldType;
   required: boolean;
   sensitive: boolean;
   options?: readonly string[];
+  /** Only on `string` fields. @stability experimental */
+  format?: FieldFormat;
+  /** Only on sensitive `string` fields. @stability experimental */
+  mask?: FieldMask;
 }
 
 /** A built-in (`isSystem: true`) secret type definition. @stability experimental */
