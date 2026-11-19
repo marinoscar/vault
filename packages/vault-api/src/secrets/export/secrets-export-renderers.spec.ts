@@ -1,4 +1,4 @@
-import { escapeHtml, formatBytes, renderSecretsHtml } from './secrets-export-html.renderer';
+import { escapeHtml, formatBytes, formatFieldValue, renderSecretsHtml } from './secrets-export-html.renderer';
 import { renderReadme } from './secrets-export-readme.renderer';
 import { SecretsExportManifest } from './secrets-export.types';
 
@@ -147,6 +147,42 @@ describe('renderSecretsHtml', () => {
     m.secrets[0].current!.data = { gone: 'old value' };
     const html = renderSecretsHtml(m);
     expect(html).toContain('<th scope="row">gone</th><td>old value</td>');
+  });
+
+  it('renders a keyvalue value as an escaped two-column table, sensitive entries included (issue #206)', () => {
+    const m = hostileManifest();
+    m.secrets[0].type.fields = [{ name: 'extras', label: 'Extras', type: 'keyvalue' }];
+    m.secrets[0].current!.data = {
+      extras: [
+        { key: 'member_number', label: 'Member number', value: 'M-0001', sensitive: false },
+        { key: 'hostile', label: XSS_SCRIPT, value: XSS_IMG, sensitive: true },
+        { key: 'blank', label: 'Blank', value: '', sensitive: false },
+      ],
+    };
+    const html = renderSecretsHtml(m);
+    expect(html).toContain(
+      '<th scope="row">Extras</th><td><table class="keyvalue"><tbody>' +
+        '<tr><th scope="row">Member number</th><td>M-0001</td></tr>' +
+        '<tr><th scope="row">&lt;script&gt;alert(1)&lt;/script&gt;</th><td>&quot;&gt;&lt;img src=x onerror=alert(2)&gt;</td></tr>' +
+        '<tr><th scope="row">Blank</th><td><span class="empty">(empty)</span></td></tr>' +
+        '</tbody></table></td>',
+    );
+    expect(html).not.toContain('<script');
+    expect(html).not.toContain('[object Object]');
+    expect(html).not.toContain('"sensitive"');
+  });
+});
+
+describe('formatFieldValue', () => {
+  it('reads a keyvalue value as label: value lines, other objects as JSON', () => {
+    expect(
+      formatFieldValue([
+        { key: 'a', label: 'Label A', value: 'one', sensitive: false },
+        { key: 'b', label: 'Label B', value: 'two', sensitive: true },
+      ]),
+    ).toBe('Label A: one\nLabel B: two');
+    expect(formatFieldValue({ a: 1 })).toBe('{"a":1}');
+    expect(formatFieldValue([])).toBe('[]');
   });
 });
 
