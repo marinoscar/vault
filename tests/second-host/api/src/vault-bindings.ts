@@ -231,6 +231,20 @@ export class HostBetaVaultSettings implements VaultSettingsPort {
   async getSettings(): Promise<unknown> {
     return structuredClone(this.namespaces);
   }
+
+  /** Merges `patch` into one namespace (one level deep): how the host's own admin flow, or a test, flips a switch. */
+  patchNamespace(name: string, patch: Record<string, unknown>): void {
+    const current = (this.namespaces[name] ?? {}) as Record<string, unknown>;
+    const next: Record<string, unknown> = { ...current };
+    for (const [key, value] of Object.entries(patch)) {
+      const before = current[key];
+      next[key] =
+        value && typeof value === 'object' && !Array.isArray(value) && before && typeof before === 'object'
+          ? { ...(before as Record<string, unknown>), ...(value as Record<string, unknown>) }
+          : value;
+    }
+    this.namespaces[name] = next;
+  }
 }
 
 /** The host's metric names: `app.beta.*`, never a `vault` segment (it is the packages'). */
