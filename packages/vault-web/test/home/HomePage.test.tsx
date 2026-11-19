@@ -17,6 +17,7 @@ import {
   makeSecret,
 } from './homeFixtures.js';
 import { aiConfigPayload } from '../mocks/aiConfig.js';
+import type { DocumentSummaryItem } from '@marinoscar/vault-contract/secrets';
 
 const API = '*/api';
 
@@ -75,6 +76,7 @@ interface ApiOptions {
   failRecent?: boolean;
   aiEnabled?: boolean;
   systemFailed?: boolean;
+  documents?: DocumentSummaryItem[];
 }
 
 const requests: string[] = [];
@@ -89,6 +91,9 @@ function mockApi(options: ApiOptions = {}) {
       HttpResponse.json({
         data: { items: CARDS, meta: { page: 1, pageSize: 100, totalItems: CARDS.length, totalPages: 1 } },
       }),
+    ),
+    http.get(`${API}/secrets/documents/summary`, () =>
+      HttpResponse.json({ data: { items: options.documents ?? [] } }),
     ),
     http.get(`${API}/secrets`, () => {
       if (recentFailures > 0) {
@@ -255,6 +260,7 @@ describe('HomePage', () => {
       expect(countsByPath()).toEqual({
         '/api/secrets': 1, // recent page
         '/api/secrets/cards/summary': 1,
+        '/api/secrets/documents/summary': 1,
         '/api/backups/me': 1,
         '/api/admin/backups': 1,
         '/api/admin/backups/schedule': 1,
@@ -262,7 +268,7 @@ describe('HomePage', () => {
         '/api/ai/config': 1,
       });
       // No detail request for any secret, card or not: Home decrypts nothing in the browser.
-      expect(requests.some((r) => /^\/api\/secrets\/(?!cards\/summary)[^/?]+/.test(r))).toBe(false);
+      expect(requests.some((r) => /^\/api\/secrets\/(?!cards\/summary|documents\/summary)[^/?]+/.test(r))).toBe(false);
       expect(requests).toContain('/api/secrets/cards/summary?page=1&pageSize=100');
       // Small pages: the recent list, and a single row for each "latest"/count.
       expect(requests).toContain('/api/secrets?page=1&pageSize=5&sortBy=updatedAt&sortOrder=desc');
@@ -362,6 +368,36 @@ describe('HomePage', () => {
       expect(after['/api/secrets']).toBe(before['/api/secrets'] + 1);
       expect(after['/api/secrets/cards/summary']).toBe(before['/api/secrets/cards/summary']);
       expect(after['/api/backups/me']).toBe(before['/api/backups/me']);
+    });
+  });
+
+  describe('Documents needing attention (IDOC-9)', () => {
+    it('hides the panel when no document needs attention', async () => {
+      mockApi({
+        documents: [
+          { id: 'd1', name: 'Passport A', typeName: 'Passport', documentKind: null, expiryDate: '2035-01-01', status: 'valid' },
+        ],
+      });
+      renderHome(READER);
+      await settled();
+
+      expect(screen.queryByTestId('home-expiring-documents')).not.toBeInTheDocument();
+    });
+
+    it('lists the documents that need attention, each linking to its secret', async () => {
+      mockApi({
+        documents: [
+          { id: 'd1', name: 'Passport A', typeName: 'Passport', documentKind: null, expiryDate: '2027-03-01', status: 'expiring_soon' },
+          { id: 'd2', name: 'License A', typeName: 'ID Document', documentKind: 'Driver License', expiryDate: '2026-10-01', status: 'expired' },
+        ],
+      });
+      renderHome(READER);
+      await settled();
+
+      const panel = await screen.findByTestId('home-expiring-documents');
+      expect(within(panel).getByRole('link', { name: /Passport A/ })).toHaveAttribute('href', '/secrets/d1');
+      expect(within(panel).getByRole('link', { name: /License A/ })).toHaveAttribute('href', '/secrets/d2');
+      expect(within(panel).getByText('Driver License · Exp 2026-10-01')).toBeInTheDocument();
     });
   });
 

@@ -12,6 +12,7 @@
 //   vault.agent_card_grant_requested an app asks to use a card at a shop (ADR-0003; email + bell)
 //   vault.agent_card_first_release   a card was released under a grant for the first time (email + bell)
 //   vault.agent_card_declined        Vault refused a card fill by a grant rule (email + bell, throttled)
+//   vault.document_expiring  a Passport or ID Document reaches a lead day of its kind (IDOC-9; the owner)
 //
 // The platform's event key pattern allows exactly one dot, so the agent events are
 // `vault.agent_*`. The platform has no digest support, so there is no daily email digest of
@@ -19,7 +20,7 @@
 //
 // The events, their bell/push renderers and the email-template bindings live here; the
 // templates are in `email-templates/`, the call sites in `backups/backup-notifier.service.ts`
-// and `card-expiry/`. Push has no renderer of its own: it reads the browser one.
+// and `card-expiry/` / `document-expiry/`. Push has no renderer of its own: it reads the browser one.
 //
 // KEYS, CHANNEL IDS AND TEMPLATE NAMES ARE PERSISTED: never rename one.
 //
@@ -58,6 +59,11 @@ import {
   VAULT_BACKUP_SUCCEEDED_TEMPLATE,
   VAULT_CARD_EXPIRING_EVENT,
   VAULT_CARD_EXPIRING_TEMPLATE,
+  VAULT_DOCUMENT_EXPIRING_EVENT,
+  VAULT_DOCUMENT_EXPIRING_TEMPLATE,
+  documentExpiryPhrase,
+  documentLinkFor,
+  type VaultDocumentExpiringNotificationData,
   AGENT_ACTIVITY_SETTINGS_PATH,
   agentCredentialChangedPhrase,
   agentSecretLinkFor,
@@ -98,6 +104,17 @@ export function vaultCardExpiringBrowserTemplate(data: VaultCardExpiringNotifica
     title: 'A card is expiring',
     body: `${data.secretName} ${cardExpiryPhrase(data.threshold, data.expiry)}.`,
     link: cardLinkFor(data.secretId),
+  };
+}
+
+/** Bell and push copy of `vault.document_expiring`: the name, the label and the expiry; never a number. */
+export function vaultDocumentExpiringBrowserTemplate(
+  data: VaultDocumentExpiringNotificationData,
+): BrowserNotificationContent {
+  return {
+    title: data.daysLeft < 0 ? 'A document has expired' : 'A document is expiring',
+    body: `${data.secretName} (${data.documentLabel}) ${documentExpiryPhrase(data.daysLeft)} (${data.expiry}).`,
+    link: documentLinkFor(data.secretId),
   };
 }
 
@@ -273,5 +290,17 @@ export const VAULT_NOTIFICATIONS: readonly NotificationRegistration[] = [
     },
     emailTemplate: VAULT_AGENT_CARD_DECLINED_TEMPLATE,
     browserTemplate: (data: never) => vaultAgentCardDeclinedBrowserTemplate(data),
+  },
+  {
+    event: {
+      key: VAULT_DOCUMENT_EXPIRING_EVENT,
+      label: 'Document expiring',
+      description:
+        'Sent ahead of the expiry of a passport or ID document you keep, at lead days that suit its kind (a passport from 270 days before). It names the document, its kind and its expiry date, never the number.',
+      channels: ['email', 'browser'],
+      defaultEnabled: true,
+    },
+    emailTemplate: VAULT_DOCUMENT_EXPIRING_TEMPLATE,
+    browserTemplate: (data: never) => vaultDocumentExpiringBrowserTemplate(data),
   },
 ];

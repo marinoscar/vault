@@ -23,6 +23,7 @@ import {
 } from '../src/agent';
 import { McpController } from '../src/mcp';
 import { CardExpiryScanHandler, CARD_EXPIRY_SCAN_JOB_TYPE } from '../src/card-expiry';
+import { DocumentExpiryScanHandler, DOCUMENT_EXPIRY_SCAN_JOB_TYPE } from '../src/document-expiry';
 import { CardExtractController, DocumentExtractController } from '../src/ai';
 import { MediaController } from '../src/media';
 import { SecretsController } from '../src/secrets';
@@ -146,17 +147,28 @@ describe('vault-api conformance (fake ports)', () => {
     expect(AGENT_RELEASE_PORT).toBe(Symbol.for('@marinoscar/vault/AGENT_RELEASE_PORT'));
   });
 
-  it('registers the four job handlers through the jobs port, under their permanent types', () => {
-    expect([...ports.jobs.handlers.keys()].sort()).toEqual(
-      ['vault.backup.run', 'vault.cards.expiry_scan', 'vault.secrets.origins.backfill', 'vault.user_backup.run'],
-    );
+  it('registers the five job handlers through the jobs port, under their permanent types', () => {
+    expect([...ports.jobs.handlers.keys()].sort()).toEqual([
+      'vault.backup.run',
+      'vault.cards.expiry_scan',
+      'vault.documents.expiry_scan',
+      'vault.secrets.origins.backfill',
+      'vault.user_backup.run',
+    ]);
     expect(BACKUP_RUN_JOB_TYPE).toBe('vault.backup.run');
     expect(USER_BACKUP_RUN_JOB_TYPE).toBe('vault.user_backup.run');
     expect(CARD_EXPIRY_SCAN_JOB_TYPE).toBe('vault.cards.expiry_scan');
+    expect(DOCUMENT_EXPIRY_SCAN_JOB_TYPE).toBe('vault.documents.expiry_scan');
   });
 
   it('keeps every job server-only: no nodeResultSchema, no persistNodeResult', () => {
-    for (const handler of [BackupRunHandler, UserBackupRunHandler, CardExpiryScanHandler, OriginsBackfillHandler]) {
+    for (const handler of [
+      BackupRunHandler,
+      UserBackupRunHandler,
+      CardExpiryScanHandler,
+      DocumentExpiryScanHandler,
+      OriginsBackfillHandler,
+    ]) {
       const instance = moduleRef.get(handler, { strict: false }) as unknown as Record<string, unknown>;
       expect(instance.nodeResultSchema).toBeUndefined();
       expect(instance.persistNodeResult).toBeUndefined();

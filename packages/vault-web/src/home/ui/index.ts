@@ -3,6 +3,7 @@
 export * from './components/BackupStatusPanel.js';
 export * from './components/DashboardPanel.js';
 export * from './components/ExpiringCardsPanel.js';
+export * from './components/ExpiringDocumentsPanel.js';
 export * from './components/FirstRunPanel.js';
 export * from './components/QuickActions.js';
 export * from './components/RecentSecretsPanel.js';
