@@ -27,6 +27,14 @@ export const AGENT_SCOPES = {
   ITEMS_READ: 'vault:items_read',
   ITEMS_FILL: 'vault:items_fill',
   ITEMS_WRITE: 'vault:items_write',
+  /** List the opened cards that have a live grant for a merchant (ADR-0003). */
+  CARDS_READ: 'vault:cards_read',
+  /** Fill one field of a granted card, and ask the owner for a grant. */
+  CARDS_FILL: 'vault:cards_fill',
+  /** List the opened identity items and the labels of their fields. */
+  IDENTITY_READ: 'vault:identity_read',
+  /** Fill one field of an opened identity item. */
+  IDENTITY_FILL: 'vault:identity_fill',
 } as const;
 
 /**
@@ -46,6 +54,28 @@ export const AGENT_ERROR_CODES = {
   RATE_LIMITED: 'RATE_LIMITED',
   /** 403: `GET /api/agent-activity` was called with an OAuth access token; an agent cannot read its own trail. */
   AGENT_ACTIVITY_FORBIDDEN: 'AGENT_ACTIVITY_FORBIDDEN',
+  /** 403: the deployment's `agentAccess.cards.enabled` switch is off (ADR-0003). */
+  CARD_ACCESS_DISABLED: 'CARD_ACCESS_DISABLED',
+  /** 403: the deployment's `agentAccess.identity.enabled` switch is off (ADR-0003). */
+  IDENTITY_ACCESS_DISABLED: 'IDENTITY_ACCESS_DISABLED',
+  /** 403: `securityCode` was asked for under a grant that does not include it. */
+  SECURITY_CODE_NOT_GRANTED: 'SECURITY_CODE_NOT_GRANTED',
+  /** 403: the amount is above the grant's maximum. */
+  CARD_AMOUNT_EXCEEDED: 'CARD_AMOUNT_EXCEEDED',
+  /** 403: the currency is not the grant's. */
+  CARD_CURRENCY_MISMATCH: 'CARD_CURRENCY_MISMATCH',
+  /** 403: the grant's period limit (releases or total amount per day or month) was reached. */
+  CARD_PERIOD_LIMIT_REACHED: 'CARD_PERIOD_LIMIT_REACHED',
+  /** 403: the deployment's per-card daily cap of releases was reached. */
+  CARD_DAILY_CAP_REACHED: 'CARD_DAILY_CAP_REACHED',
+  /** 403: the card's grant for this merchant has expired. */
+  CARD_GRANT_EXPIRED: 'CARD_GRANT_EXPIRED',
+  /** 409: the card already has a live grant for this merchant site. */
+  CARD_GRANT_EXISTS: 'CARD_GRANT_EXISTS',
+  /** 409: the grant request was already approved or declined. */
+  CARD_GRANT_REQUEST_NOT_PENDING: 'CARD_GRANT_REQUEST_NOT_PENDING',
+  /** 403: the route changes what agents may do and needs the owner's browser session, never a token. */
+  OWNER_SESSION_REQUIRED: 'OWNER_SESSION_REQUIRED',
 } as const;
 
 /** @stability experimental */
@@ -234,15 +264,50 @@ export const AGENT_AUDIT_ACTIONS = {
   TOTP: 'agent.credential.totp',
   CREATE: 'agent.credential.create',
   ROTATE: 'agent.credential.rotate',
+  CARD_LOOKUP: 'agent.card.lookup',
+  CARD_FILL: 'agent.card.fill',
+  CARD_GRANT_REQUEST: 'agent.card.grant_request',
+  IDENTITY_LOOKUP: 'agent.identity.lookup',
+  IDENTITY_FILL: 'agent.identity.fill',
 } as const;
 
 /** @stability experimental */
 export type AgentAuditAction = (typeof AGENT_AUDIT_ACTIONS)[keyof typeof AGENT_AUDIT_ACTIONS];
 
 /**
+ * The card part of the `agentAccess` settings (ADR-0003): the card kill switch (default off), the
+ * `card_fill` bucket's per-minute limit and the per-card daily cap of releases (`number` fills).
+ *
+ * @stability experimental
+ */
+export const agentCardAccessSettingsSchema = z.object({
+  enabled: z.boolean(),
+  fillPerMinute: z.number().int().min(1).max(10_000),
+  releasesPerCardPerDay: z.number().int().min(1).max(1_000),
+});
+
+/** @stability experimental */
+export type AgentCardAccessSettings = z.infer<typeof agentCardAccessSettingsSchema>;
+
+/**
+ * The identity part of the `agentAccess` settings (ADR-0003): the identity kill switch (default off)
+ * and the `identity_fill` bucket's per-minute limit.
+ *
+ * @stability experimental
+ */
+export const agentIdentityAccessSettingsSchema = z.object({
+  enabled: z.boolean(),
+  fillPerMinute: z.number().int().min(1).max(10_000),
+});
+
+/** @stability experimental */
+export type AgentIdentityAccessSettings = z.infer<typeof agentIdentityAccessSettingsSchema>;
+
+/**
  * The `agentAccess` system settings namespace: the kill switch and the per-minute limits of the
  * agent API. `enabled` defaults to `false`: until an administrator switches it on, every agent
  * route answers `403 AGENT_ACCESS_DISABLED`. Each limit counts per token (or OAuth grant) and user.
+ * `cards` and `identity` are separate switches (default off) for card and identity release.
  *
  * @stability experimental
  */
@@ -252,19 +317,47 @@ export const agentAccessSettingsSchema = z.object({
   fillPerMinute: z.number().int().min(1).max(10_000),
   totpPerMinute: z.number().int().min(1).max(10_000),
   writePerMinute: z.number().int().min(1).max(10_000),
+  cards: agentCardAccessSettingsSchema,
+  identity: agentIdentityAccessSettingsSchema,
 });
 
 /** @stability experimental */
 export type AgentAccessSettings = z.infer<typeof agentAccessSettingsSchema>;
 
-/** Defaults of {@link agentAccessSettingsSchema}: off, lookup 60, fill 30, totp 10, write 10 per minute. @stability experimental */
+/**
+ * Defaults of {@link agentAccessSettingsSchema}: off, lookup 60, fill 30, totp 10, write 10 per
+ * minute; cards off, 10 card fills per minute, 5 releases per card per day; identity off, 20
+ * identity fills per minute.
+ *
+ * @stability experimental
+ */
 export const AGENT_ACCESS_SETTINGS_DEFAULTS: AgentAccessSettings = Object.freeze({
   enabled: false,
   lookupPerMinute: 60,
   fillPerMinute: 30,
   totpPerMinute: 10,
   writePerMinute: 10,
-});
+  cards: Object.freeze({ enabled: false, fillPerMinute: 10, releasesPerCardPerDay: 5 }),
+  identity: Object.freeze({ enabled: false, fillPerMinute: 20 }),
+}) as AgentAccessSettings;
+
+/**
+ * A stored (possibly older, partial) `agentAccess` value merged over the defaults, nested blocks
+ * included. A row written before ADR-0003 has no `cards` or `identity`: both stay off.
+ *
+ * @stability experimental
+ */
+export function resolveAgentAccessSettings(stored: unknown): AgentAccessSettings {
+  const source = stored && typeof stored === 'object' && !Array.isArray(stored) ? (stored as Record<string, unknown>) : {};
+  const block = (value: unknown): Record<string, unknown> =>
+    value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  return {
+    ...AGENT_ACCESS_SETTINGS_DEFAULTS,
+    ...source,
+    cards: { ...AGENT_ACCESS_SETTINGS_DEFAULTS.cards, ...block(source.cards) },
+    identity: { ...AGENT_ACCESS_SETTINGS_DEFAULTS.identity, ...block(source.identity) },
+  } as AgentAccessSettings;
+}
 
 // -----------------------------------------------------------------------------
 // Agent activity (`GET /api/agent-activity`, E14.7)
@@ -276,14 +369,32 @@ export const AGENT_ACTIVITY_PATH = '/api/agent-activity' as const;
 /** The audit action of the per-secret agent access toggle (`secret.agent_access.update`). @stability experimental */
 export const AGENT_ACCESS_TOGGLE_AUDIT_ACTION = 'secret.agent_access.update' as const;
 
-/** The actions an activity item carries: the five agent routes and the owner's toggle. @stability experimental */
-export const agentActivityActionSchema = z.enum(['lookup', 'fill', 'totp', 'create', 'rotate', 'agent_access']);
+/**
+ * The actions an activity item carries: the agent routes (logins, cards, identity), the owner's
+ * toggle and the owner's grant decisions (`card_grant`: created, revoked, approved, declined).
+ *
+ * @stability experimental
+ */
+export const agentActivityActionSchema = z.enum([
+  'lookup',
+  'fill',
+  'totp',
+  'create',
+  'rotate',
+  'agent_access',
+  'card_lookup',
+  'card_fill',
+  'card_grant_request',
+  'identity_lookup',
+  'identity_fill',
+  'card_grant',
+]);
 
 /** @stability experimental */
 export type AgentActivityAction = z.infer<typeof agentActivityActionSchema>;
 
 /** The kind of credential a call authenticated with. @stability experimental */
-export const agentActivityCredentialKindSchema = z.enum(['oauth', 'pat', 'session']);
+export const agentActivityCredentialKindSchema = z.enum(['oauth', 'pat', 'session', 'embedded']);
 
 /** @stability experimental */
 export type AgentActivityCredentialKind = z.infer<typeof agentActivityCredentialKindSchema>;
@@ -331,8 +442,12 @@ export const agentActivityItemSchema = z.object({
   purpose: z.string().nullable(),
   credentialKind: agentActivityCredentialKindSchema.nullable(),
   clientId: z.string().nullable(),
-  /** The OAuth client's registered name; null for a PAT, a session or an unknown client. */
+  /** The OAuth client's registered name, or an in-process host's label; null for a PAT, a session or an unknown client. */
   clientName: z.string().nullable(),
+  /** A card call's stated amount, as a decimal string (`"42.50"`); absent otherwise. */
+  amount: z.string().nullable().optional(),
+  /** A card call's currency (ISO 4217); absent otherwise. */
+  currency: z.string().nullable().optional(),
 });
 
 /** @stability experimental */
@@ -350,3 +465,5 @@ export const agentActivityResponseSchema = z.object({
 
 /** @stability experimental */
 export type AgentActivityResponse = z.infer<typeof agentActivityResponseSchema>;
+
+export * from './cards-identity.js';

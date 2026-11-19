@@ -2105,11 +2105,38 @@ Scope `vault:items_write`, permission `secrets:write`. Body `{ "name", "username
 
 Scope `vault:items_write`. Body `{ "origin", "purpose", "password" | "generate" }`. Rotates by adding a version (rollback stays possible; every other field is kept) and returns `{ "data": { "id", "version", "generatedPassword"? } }`.
 
+#### Cards and identity (ADR-0003)
+
+Decision: [ADR-0003](decisions/0003-agent-cards-identity.md); guide for runtime authors: [agent-credential-api.md §7](agent-credential-api.md#7-cards-and-identity-adr-0003). Same rules as above (credential kind, `agentAccess.enabled`, no-store, audit), plus their own switches **`agentAccess.cards.enabled`** (`403 CARD_ACCESS_DISABLED`) and **`agentAccess.identity.enabled`** (`403 IDENTITY_ACCESS_DISABLED`), both default `false`, and their own scopes. Wire shapes: `@marinoscar/vault-contract/agent` (`agentCard*`, `agentIdentity*`, `cardGrant*`).
+
+| Route | Scope (permission) | Body / query | Returns |
+|---|---|---|---|
+| `GET /agent/v1/cards?origin=` | `vault:cards_read` (`agent_cards:read`) | the top-level page origin | `{ data: [{ id, name, brand, last4, expMonth, expYear, grant: { maxAmount, currency, includesSecurityCode, expiresAt } }] }`: opened cards with a live grant for the origin's registrable domain; never a number or code |
+| `POST /agent/v1/cards/{id}/fill` | `vault:cards_fill` (`agent_cards:fill`) | `{ field: number\|expMonth\|expYear\|holderName\|securityCode\|postalCode, origin, frameOrigin?, amount, currency, purpose: "purchase" }` | `{ data: { value } }`, one field |
+| `POST /agent/v1/cards/{id}/grant-requests` | `vault:cards_fill` | `{ origin, amount, currency, reason }` | `201 { data: { id, status } }`; never card data; a pending request for the same card and merchant is returned instead of a new one |
+| `GET /agent/v1/identity?origin=` | `vault:identity_read` (`agent_identity:read`) | the form's origin | `{ data: [{ id, name, originAllowed, fields: [{ field, label, sensitive, fillable }] }] }`; never a value |
+| `POST /agent/v1/identity/{id}/fill` | `vault:identity_fill` (`agent_identity:fill`) | `{ field, origin, purpose: "form" }` | `{ data: { value } }`; a sensitive field only on an allowed origin (`403 ORIGIN_MISMATCH`) |
+
+Card fill refusals: `404` (missing, not yours, not opened, not a Card, or no live grant at all; identical), `403 CARD_GRANT_EXPIRED`, `403 ORIGIN_MISMATCH` (another merchant, or a frame not on the list), `403 CARD_CURRENCY_MISMATCH`, `403 CARD_AMOUNT_EXCEEDED`, `403 SECURITY_CODE_NOT_GRANTED`, and for a `number` fill (a release) `403 CARD_PERIOD_LIMIT_REACHED` and `403 CARD_DAILY_CAP_REACHED`. Rate limits: `agentAccess.cards.fillPerMinute` (10), `agentAccess.identity.fillPerMinute` (20), per-card releases per day `agentAccess.cards.releasesPerCardPerDay` (5); lookups use `lookupPerMinute`, grant requests `writePerMinute`. Audited as `agent.card.lookup|fill|grant_request` and `agent.identity.lookup|fill`, with `amount` and `currency` on card calls and `frameOrigin` when sent; never a value.
+
+**The owner's grants** (`/api/secrets/{id}/...`, the card's owner only, anyone else `404`; reads `secrets:read`; **writes `secrets:write` and a browser session**: a `pat_` is `403 OWNER_SESSION_REQUIRED`, an `oat_` never reaches `/api/secrets/*`):
+
+| Route | Does |
+|---|---|
+| `GET /secrets/{id}/card-grants` | every grant (active, then expired and revoked) with `usage { periodReleases, periodAmount, totalReleases, lastReleasedAt }` |
+| `POST /secrets/{id}/card-grants` | `{ merchantOrigin, frameOrigins?, maxAmount, currency, periodLimit?: { period: day\|month, maxReleases?, maxAmount? }, expiresAt?, includeSecurityCode? (false) }`; `409 CARD_GRANT_EXISTS` when the merchant site has a live grant. Audited `secret.card_grant.create` |
+| `DELETE /secrets/{id}/card-grants/{grantId}` | revoke (idempotent). Audited `secret.card_grant.revoke` |
+| `GET /secrets/{id}/card-grant-requests?status=` | the requests agents made, newest first |
+| `POST /secrets/{id}/card-grant-requests/{requestId}/approve` | creates exactly the requested grant; `409 CARD_GRANT_REQUEST_NOT_PENDING` or `CARD_GRANT_EXISTS`. Audited `secret.card_grant_request.approve` |
+| `POST /secrets/{id}/card-grant-requests/{requestId}/decline` | `409 CARD_GRANT_REQUEST_NOT_PENDING` when decided. Audited `secret.card_grant_request.decline` |
+
+`PATCH /secrets/{id}/agent-access` also opens a system `Card` or `Identity` (browser session only) and takes `allowedOrigins` (Identity only) for the sensitive identity fields; the detail carries `agentOrigins`.
+
 #### GET /agent-activity
 
 The owner's trail of what agents did with their logins (E14.7, [#179](https://github.com/marinoscar/vault/issues/179)). Permission `secrets:read`; a browser session or a personal access token. An OAuth (`oat_`) token is refused (`403 AGENT_ACTIVITY_FORBIDDEN`, and the platform's route confinement answers first), so an agent cannot read its own trail. Only the **caller's own** events are returned (`audit_events.actor_user_id` = the caller), newest first. Never a value, code, seed or password.
 
-Query: `page` (1), `pageSize` (25, max 100), `action` (`lookup`, `fill`, `totp`, `create`, `rotate` or `agent_access`), `secretId` (uuid), `clientId` (the OAuth client's id as on its grants, i.e. the `clientId` of an item), `from` and `to` (ISO 8601, inclusive). Invalid values are `400`.
+Query: `page` (1), `pageSize` (25, max 100), `action` (`lookup`, `fill`, `totp`, `create`, `rotate`, `agent_access`, and since ADR-0003 `card_lookup`, `card_fill`, `card_grant_request`, `identity_lookup`, `identity_fill`, `card_grant`), `secretId` (uuid), `clientId` (the OAuth client's id as on its grants, i.e. the `clientId` of an item), `from` and `to` (ISO 8601, inclusive). Invalid values are `400`.
 
 Response (the `{ data, meta }` envelope's own `data` is the array; `meta` is `{ page, pageSize, total }`, unlike the `{ data: { items, meta } }` of the secrets list):
 
@@ -2131,7 +2158,8 @@ Response (the `{ data, meta }` envelope's own `data` is the array; `meta` is `{ 
 - `result` is `ok` or `denied`; a denial carries `reason` (`origin_mismatch`, `not_found`, `rate_limited`, `disabled`, `credential_kind`, `invalid`, `conflict`, `forbidden`, `error`).
 - `secretName` is the secret's current name (`null` when deleted or when the event names no secret, e.g. a lookup). `clientName` is the OAuth client's registered name (`null` for a PAT, an unknown client or a toggle).
 - `agent_access` is the owner's switch (`secret.agent_access.update`): `credentialKind` is `session`, `clientId` is `null` and `field` carries the **new access level** (`fill` or `none`).
-- `credentialKind`: `oauth`, `pat`, `session` or `null`.
+- `credentialKind`: `oauth`, `pat`, `session`, `embedded` (an in-process host through `AgentReleasePort`; `clientName` is its label) or `null`.
+- Card calls carry `amount` (a two-decimal string) and `currency`; `card_grant` is the owner's grant decision (`field`: `created`, `revoked`, `approved` or `declined`; `credentialKind` `session`).
 
 Wire shapes: `agentActivityQuerySchema`, `agentActivityItemSchema`, `agentActivityResponseSchema` of `@marinoscar/vault-contract/agent`. Revoking an app is the platform's Connected apps page (`DELETE /api/oauth/grants/{id}`): the app's next agent call answers `401`.
 

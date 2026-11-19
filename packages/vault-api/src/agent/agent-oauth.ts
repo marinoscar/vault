@@ -30,6 +30,10 @@ export const VAULT_OAUTH_SCOPES = {
   ITEMS_READ: 'vault:items_read',
   ITEMS_FILL: 'vault:items_fill',
   ITEMS_WRITE: 'vault:items_write',
+  CARDS_READ: 'vault:cards_read',
+  CARDS_FILL: 'vault:cards_fill',
+  IDENTITY_READ: 'vault:identity_read',
+  IDENTITY_FILL: 'vault:identity_fill',
 } as const;
 
 /** The agent API's resource id and path. */
@@ -57,6 +61,35 @@ export const VAULT_OAUTH_SCOPE_DEFINITIONS: readonly OAuthScopeDefinition[] = [
     title: 'Save new logins and change passwords',
     description: 'Create logins and change their passwords.',
     permissions: [VAULT_PERMISSIONS.SECRETS_READ.id, VAULT_PERMISSIONS.SECRETS_WRITE.id],
+    risk: 'elevated',
+  },
+  // ADR-0003. Never `default`: a client asks for card and identity scopes explicitly.
+  {
+    id: VAULT_OAUTH_SCOPES.CARDS_READ,
+    title: 'See the cards you allowed for a shop',
+    description: 'See the name, brand, last four digits and expiry of the cards you opened to agents and granted for the shop on screen. Never the number or the security code.',
+    permissions: [VAULT_PERMISSIONS.AGENT_CARDS_READ.id],
+    risk: 'elevated',
+  },
+  {
+    id: VAULT_OAUTH_SCOPES.CARDS_FILL,
+    title: 'Use your cards at the shops you allowed, within your limits',
+    description: 'Fill the number, expiry and (when you allowed it) the security code of a granted card, one field at a time, up to the amount you set; and ask you for a new shop.',
+    permissions: [VAULT_PERMISSIONS.AGENT_CARDS_READ.id, VAULT_PERMISSIONS.AGENT_CARDS_FILL.id],
+    risk: 'elevated',
+  },
+  {
+    id: VAULT_OAUTH_SCOPES.IDENTITY_READ,
+    title: 'See which identity details you opened to agents',
+    description: 'See the names of the identity items you opened to agents and the labels of their fields. Never a value.',
+    permissions: [VAULT_PERMISSIONS.AGENT_IDENTITY_READ.id],
+    risk: 'low',
+  },
+  {
+    id: VAULT_OAUTH_SCOPES.IDENTITY_FILL,
+    title: 'Fill your identity details into forms',
+    description: 'Fill your name, address and phone into forms, one field at a time; your id number and date of birth only on the websites you allowed.',
+    permissions: [VAULT_PERMISSIONS.AGENT_IDENTITY_READ.id, VAULT_PERMISSIONS.AGENT_IDENTITY_FILL.id],
     risk: 'elevated',
   },
 ];

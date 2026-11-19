@@ -14,16 +14,16 @@ Status: experimental. Introduced in E12.2.
 |---|---|
 | `@marinoscar/vault-api` | `VaultApiModule.forRoot({ bindings, imports })`, the port tokens and types |
 | `@marinoscar/vault-api/ports` | The tokens and interfaces only |
-| `@marinoscar/vault-api/core` | `VAULT_PERMISSIONS`, `ROLES`/`PERMISSIONS` constants, `runInDefaultOrg` / `defaultOrgClient`, the metric label lists, the notification event keys and payloads, `detectImageType` |
+| `@marinoscar/vault-api/core` | `VAULT_PERMISSIONS`, `vaultPermissionDeclarations(roleMapping)` (Vault's default grants on a host's own roles), `ROLES`/`PERMISSIONS` constants, `runInDefaultOrg` / `defaultOrgClient`, the metric label lists, the notification event keys and payloads, `detectImageType`, `VAULT_RESERVED_NAMES` and `findVaultNameCollisions(hostNames)` (every name the packages own in a host), `VAULT_CARDS_SETTINGS_DEFAULTS` / `VAULT_BACKUPS_SETTINGS_DEFAULTS` |
 | `@marinoscar/vault-api/secrets` | Secrets and card-summary services, the secrets controller, the export zip service |
-| `@marinoscar/vault-api/secret-types` | The secret-types service and controller |
+| `@marinoscar/vault-api/secret-types` | The secret-types service and controller, `seedVaultSystemSecretTypes(prisma)` (the built-in types, for a host's seed) |
 | `@marinoscar/vault-api/media` | The media folders service and controller |
 | `@marinoscar/vault-api/backups` | Archive, queue, runner, schedule tick, notifier, controllers and the two job handlers |
 | `@marinoscar/vault-api/ai` | Card extraction service and controller, the AI status controller |
 | `@marinoscar/vault-api/card-expiry` | The card-expiry scan job handler and its schedule task |
-| `@marinoscar/vault-api/agent` | `registerVaultAgentOAuth()` (the OAuth scopes `vault:items_read`, `vault:items_fill`, `vault:items_write` and the `agent` protected resource at `/api/agent/v1`; the host calls it once from `app-registrations/`), the scope and resource constants, and the agent credential API (E14.6): `AgentController` (`whoami`, `GET /credentials?origin=`, `POST /credentials/:id/fill`, `.../totp`, `POST /credentials`, `POST /credentials/:id/password`; `oat_` and `pat_` only; mounted by `VaultApiModule`), `AgentCredentialsService` (the pipeline: credential kind, kill switch, rate limit, work, audit), `AgentRateLimiter` and `InMemoryAgentRateLimiter` (a DI token; the in-memory fixed window suits one API instance, override the provider to share counters), `AgentNoStoreInterceptor` and `generatePassword`. The host registers the `agentAccess` system settings namespace (switch default off, per-minute limits) from `AGENT_ACCESS_SETTINGS_DEFAULTS` of the contract; the wire contract is `@marinoscar/vault-contract/agent` |
+| `@marinoscar/vault-api/agent` | `registerVaultAgentOAuth()` (the OAuth scopes `vault:items_read`, `vault:items_fill`, `vault:items_write` and the `agent` protected resource at `/api/agent/v1`; the host calls it once from `app-registrations/`), the scope and resource constants, and the agent credential API (E14.6): `AgentController` (`whoami`, `GET /credentials?origin=`, `POST /credentials/:id/fill`, `.../totp`, `POST /credentials`, `POST /credentials/:id/password`; `oat_` and `pat_` only; mounted by `VaultApiModule`), `AgentCredentialsService` (the pipeline: credential kind, kill switch, rate limit, work, audit), `AgentRateLimiter` and `InMemoryAgentRateLimiter` (a DI token; the in-memory fixed window suits one API instance, override the provider to share counters), `AgentNoStoreInterceptor` and `generatePassword`. The host registers the `agentAccess` system settings namespace (switch default off, per-minute limits) from `AGENT_ACCESS_SETTINGS_DEFAULTS` of the contract; the wire contract is `@marinoscar/vault-contract/agent`. **Cards and identity (ADR-0003):** `AgentReleasePort` (the in-process port: `lookup`, `fill`, `totp`, `cardsLookup`, `cardFill`, `cardGrantRequest`, `identityLookup`, `identityFill`, each taking `{ userId, clientLabel, ... }`), its token `AGENT_RELEASE_PORT` and its one implementation `AgentReleaseService` (exported by `VaultApiModule`; the HTTP controllers call it too), `AgentCallPipeline` (the shared pipeline: caller kind, `agentAccess.enabled` and the `cards` / `identity` switches, the `card_fill` and `identity_fill` buckets, audit), `AgentCardsService`, `AgentIdentityService`, `AgentCardsController` (`GET /cards`, `POST /cards/:id/fill`, `POST /cards/:id/grant-requests`, `GET /identity`, `POST /identity/:id/fill`), the owner's `CardGrantsService` and `CardGrantsController` (`/api/secrets/:id/card-grants`, `/card-grant-requests`; browser session only, `requireOwnerSession`), and `CardGrantStore` (a DI token; `PrismaCardGrantStore` by default, `InMemoryCardGrantStore` in `@marinoscar/vault-api/testing`) |
 | `@marinoscar/vault-api/mcp` | The MCP server (E14.8): `McpController` (`POST /api/mcp`; `GET` and `DELETE` are 405; raw JSON-RPC, not `{ data }`), `McpDispatcher` (methods, the `tools/call` pipeline: scope step-up, kill switch, rate limit, validation, fail-closed redaction, audit `mcp.tool.call`), `McpSecretsService` and the five tools (`search_secrets`, `get_secret`, `list_secret_types`, `create_secret`, `update_secret`; none returns a secret value), `registerVaultMcpOAuth()` (the scopes `vault:mcp_read` and `vault:mcp_write` and the `mcp` protected resource at `/api/mcp`; the host calls it once from `app-registrations/`), `VAULT_MCP_OPTIONS`, and the local protocol layer `mcp/protocol/` (`McpToolRegistry`, version negotiation, the Origin rule, `assertNoSensitiveValues`), a stop-gap for the platform MCP slice (marinoscar/EnterpriseAppBase#1201; [local exceptions](../../docs/platform-adoption/local-exceptions.md)) |
-| `@marinoscar/vault-api/testing` | In-memory fakes of the ports and `createFakeBindings()` |
+| `@marinoscar/vault-api/testing` | In-memory fakes of the ports and `createFakeBindings()`; `runVaultHostConformance(options)`, the host conformance kit ([docs/EMBEDDING.md](../../docs/EMBEDDING.md#the-host-conformance-kit)) |
 
 ## Install and peer dependencies
 
@@ -76,10 +76,10 @@ export const vaultApiModule = VaultApiModule.forRoot({
 
 | Option | Required | Meaning |
 |---|---|---|
-| `bindings` | yes | A `VaultApiBindings` object: one binding per port (`prisma`, `crypto`, `objectStore`, `objects`, `jobs`, `notify`, `ai`, `aiConfig`, `aiKeyPresence`, `audit`, `settings`; `metrics` and `mcp` are optional) |
+| `bindings` | yes | A `VaultApiBindings` object: one binding per port (`prisma`, `crypto`, `objectStore`, `objects`, `jobs`, `notify`, `ai`, `aiConfig`, `aiKeyPresence`, `audit`, `settings`; `metrics`, `mcp` and `host` are optional) |
 | `imports` | no | Modules the bindings and the controllers' guards need (storage providers, the AI module that exports `AiEnabledGuard`, the credentials module) |
 
-Each binding is one of `{ useClass }`, `{ useExisting }`, `{ useValue }` or `{ useFactory, inject }`. Eleven ports are required: a slice that finds its port missing fails at bootstrap naming the token, not on first use. `metrics` and `mcp` are the optional ports; `mcp` is `{ appUrl, allowedOrigins?, ratePerMinute? }` (`VaultMcpOptions`: `appUrl` is `APP_URL`, the one origin the MCP Origin rule admits; without it every request that carries an `Origin` is refused). A host without telemetry binds no `metrics` and the slices emit nothing. The package reads no environment variable; the cipher key (`VAULT_ENCRYPTION_KEY`) belongs to the host's `VAULT_CRYPTO` binding.
+Each binding is one of `{ useClass }`, `{ useExisting }`, `{ useValue }` or `{ useFactory, inject }`. Eleven ports are required: a slice that finds its port missing fails at bootstrap naming the token, not on first use. `metrics`, `mcp` and `host` are the optional ports; `host` is `{ appUrl }` (`VaultHostConfig`: the base URL of the notification links; without it a payload carries no `appUrl`); `mcp` is `{ appUrl, allowedOrigins?, ratePerMinute? }` (`VaultMcpOptions`: `appUrl` is `APP_URL`, the one origin the MCP Origin rule admits; without it every request that carries an `Origin` is refused). A host without telemetry binds no `metrics` and the slices emit nothing. The package reads no environment variable; the cipher key (`VAULT_ENCRYPTION_KEY`) belongs to the host's `VAULT_CRYPTO` binding.
 
 ## Extension-point catalog
 
@@ -99,6 +99,7 @@ The twelve ports, one optional options token and the MCP tool registry are the e
 | `VAULT_AUDIT` | `VaultAuditPort` | `audit` | One `audit_events` row per call |
 | `VAULT_SETTINGS` | `VaultSettingsPort` | `settings` | `vaultCards`, `vaultBackups`, `ai` namespaces |
 | `VAULT_METRICS` | `VaultMetricsPort` | `metrics` | Optional; enum labels only |
+| `VAULT_HOST` | `VaultHostConfig` | `host` | Optional; the host's public base URL for notification links (the package reads no `APP_URL`) |
 | `VAULT_MCP_OPTIONS` | `VaultMcpOptions` | `mcp` | Optional; the app URL for the MCP Origin rule, extra allowed origins, the per-minute `tools/call` limit (default 60) |
 | `McpToolRegistry` | `McpToolDefinition` | none (a provider) | `register(tool)` refuses a tool without a title, a `vault:<name>` scope, a permission and an effect (`read` or `write`); the five Vault tools register at start-up. The platform slice's `registerMcpTool` replaces it |
 
@@ -112,18 +113,19 @@ To add a port: a token and interface in `src/ports/`, a field in `VaultApiBindin
 - The card CVV is never sent to AI and never persisted by extraction; AI calls run server-side through `VAULT_AI`, and keys never leave the server.
 - Backup archive passwords are never logged and never stored in plaintext (only as ciphertext in the job payload).
 - Export endpoints return a raw zip (not the `{ data }` envelope) with the `X-Vault-Export-*` headers.
-- There is no `*:read_any` bypass by accident: a read of a foreign resource answers 404, not 403.
+- There is no `*:read_any` bypass by accident: a foreign secret's content is never returned (the session routes answer 403, the agent API and MCP 404).
 - AI and backup jobs are server-only: no `nodeResultSchema`, no `persistNodeResult`, so no credential is ever brokered to a worker node.
 - The MCP tools never return a secret value: results are built from an allow-list of non-sensitive fields (sensitive fields read `"[hidden]"`), every sensitive value a tool sees is checked against the result and a leak withholds it (`REDACTION_BLOCKED`), a generated password is stored and not returned, card types are not handled, `url` and `additional_urls` cannot be changed, and only secrets opened to agents (`agentAccess = fill`) are visible. A scope or permission refusal is an HTTP 403, never a 200 result.
 - Exactly one current version per secret; attachments are version-scoped and a referenced object is never deleted (refcount); `notify()` runs after the write commits; domain reads of `storage_objects` run in the default organization's scope.
 
 ## Testing
 
-`npm run test:run -w @marinoscar/vault-api` runs the domain specs (Jest, ts-jest) and `test/conformance.spec.ts`, which boots `VaultApiModule` over `createFakeBindings()`, pins the 56-route table, the three job types and their server-only shape, and checks that a missing required port fails the boot naming its token. The bound host is proven by `apps/api`'s integration, RBAC and real-database tiers.
+`npm run test:run -w @marinoscar/vault-api` runs the domain specs (Jest, ts-jest) and `test/conformance.spec.ts`, which boots `VaultApiModule` over `createFakeBindings()`, pins the 56-route table, the three job types and their server-only shape, and checks that a missing required port fails the boot naming its token. `test/host-embedding.spec.ts` derives every route, permission, settings namespace, job type, notification key, template, OAuth scope, audit action and OpenAPI tag from the code and checks it against `VAULT_RESERVED_NAMES`, and covers the role mapping and the `VAULT_HOST` binding; `test/no-env.spec.ts` greps the built output of the four packages for `process.env`. The bound host is proven by `apps/api`'s integration, RBAC and real-database tiers, and a host that is not Vault by `tests/second-host/`, which runs `runVaultHostConformance` against a real PostgreSQL in CI.
 
 ## Links
 
 - [Package documentation standard](../../docs/PACKAGES.md#vault-api-the-ports)
 - [ADR-0001: packages first](../../docs/decisions/0001-packages-first.md)
+- [Embedding the Vault packages in another host](../../docs/EMBEDDING.md)
 - [Local exceptions](../../docs/platform-adoption/local-exceptions.md)
 - Sibling packages: [`@marinoscar/vault-contract`](../vault-contract/README.md), [`@marinoscar/vault-db`](../vault-db/README.md)

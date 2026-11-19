@@ -26,7 +26,7 @@ export interface VaultDbIo {
 export const VAULT_DB_COMMANDS: readonly string[] = ['sync', 'check', 'promote'];
 
 /**
- * The environment and working directory a run reads; defaults to the process's.
+ * The environment and working directory a run reads (the `vault-db` bin passes the process's).
  *
  * @stability experimental
  */
@@ -155,14 +155,14 @@ export function vaultDbUsage(): string {
  *
  * @param argv - The arguments after the command name.
  * @param io - Where to write.
- * @param context - The environment and working directory; defaults to the process's.
+ * @param context - The environment and working directory (the `vault-db` bin passes the process's; the library reads no environment of its own).
  * @returns The process exit code: 0 ok (also for `--help` and no arguments), 1 a failed check or a refusal, 2 a usage error or a missing `DATABASE_URL`.
  * @stability experimental
  */
 export async function runVaultDb(
   argv: readonly string[],
   io: VaultDbIo,
-  context: VaultDbContext = { env: process.env, cwd: process.cwd() },
+  context: VaultDbContext,
 ): Promise<number> {
   if (argv.length === 0) {
     io.out(vaultDbUsage());

@@ -43,6 +43,8 @@ describe('AgentActivityService', () => {
     expect(args.where.action.in).toEqual([
       'agent.credential.lookup', 'agent.credential.fill', 'agent.credential.totp',
       'agent.credential.create', 'agent.credential.rotate', 'secret.agent_access.update',
+      'agent.card.lookup', 'agent.card.fill', 'agent.card.grant_request', 'agent.identity.lookup', 'agent.identity.fill',
+      'secret.card_grant.create', 'secret.card_grant.revoke', 'secret.card_grant_request.approve', 'secret.card_grant_request.decline',
     ]);
     expect(args.orderBy).toEqual([{ createdAt: 'desc' }, { id: 'desc' }]);
     expect(prisma.auditEvent.count.mock.calls[0]![0].where.actorUserId).toBe(USER);
@@ -57,7 +59,7 @@ describe('AgentActivityService', () => {
       data: [{
         id: 'e1', at: '2030-01-02T03:04:05.000Z', action: 'fill', result: 'ok', secretId: SECRET, secretName: 'Shop login',
         field: 'password', origin: 'https://shop.example.test', purpose: 'login', credentialKind: 'oauth',
-        clientId: 'client-1', clientName: 'Agent App A',
+        clientId: 'client-1', clientName: 'Agent App A', amount: null, currency: null,
       }],
       meta: { page: 1, pageSize: 25, total: 1 },
     });
@@ -90,7 +92,7 @@ describe('AgentActivityService', () => {
     const args = prisma.auditEvent.findMany.mock.calls[0]![0];
     expect(args).toMatchObject({ skip: 20, take: 10 });
     expect(args.where).toMatchObject({
-      actorUserId: USER, action: 'secret.agent_access.update', targetType: 'secret', targetId: SECRET,
+      actorUserId: USER, action: { in: ['secret.agent_access.update'] }, targetType: 'secret', targetId: SECRET,
       meta: { path: ['clientId'], equals: 'client-1' },
       createdAt: { gte: new Date('2030-01-01T00:00:00.000Z'), lte: new Date('2030-02-01T00:00:00.000Z') },
     });
@@ -101,8 +103,30 @@ describe('AgentActivityService', () => {
     const result = await service.list(USER, query());
     expect(JSON.stringify(result)).not.toContain(CANARY);
     expect(Object.keys(result.data[0]!).sort()).toEqual(
-      ['action', 'at', 'clientId', 'clientName', 'credentialKind', 'field', 'id', 'origin', 'purpose', 'result', 'secretId', 'secretName'],
+      ['action', 'amount', 'at', 'clientId', 'clientName', 'credentialKind', 'currency', 'field', 'id', 'origin', 'purpose', 'result', 'secretId', 'secretName'],
     );
+  });
+
+  it('maps card and identity calls with the amount, an in-process host by its label, and the owner\'s grant decisions', async () => {
+    const { service, prisma } = build([
+      row({ action: 'agent.card.fill', meta: { result: 'denied:amount_exceeded', credential: 'embedded', clientLabel: 'Host A', secretId: SECRET, field: 'number', origin: 'https://shop.example.test', purpose: 'purchase', amount: '42.50', currency: 'USD' } }),
+      row({ id: 'e2', action: 'secret.card_grant.create', meta: { credential: 'session', secretId: SECRET, origin: 'https://shop.example.test', amount: '100.00', currency: 'USD' } }),
+      row({ id: 'e3', action: 'agent.identity.fill', meta: { result: 'ok', credential: 'pat', tokenId: 'p1', secretId: SECRET, field: 'full_name', origin: 'https://form.example.test', purpose: 'form' } }),
+    ]);
+    prisma.secret.findMany.mockResolvedValue([{ id: SECRET, name: 'Card A' }]);
+    const { data } = await service.list(USER, query());
+    expect(data[0]).toMatchObject({ action: 'card_fill', result: 'denied', reason: 'amount_exceeded', credentialKind: 'embedded', clientName: 'Host A', amount: '42.50', currency: 'USD' });
+    expect(data[1]).toMatchObject({ action: 'card_grant', field: 'created', credentialKind: 'session', amount: '100.00', secretName: 'Card A' });
+    expect(data[2]).toMatchObject({ action: 'identity_fill', field: 'full_name', credentialKind: 'pat', amount: null });
+    for (const item of data) expect(agentActivityItemSchema.parse(item)).toBeTruthy();
+  });
+
+  it('filters card_grant by the four owner decisions', async () => {
+    const { service, prisma } = build();
+    await service.list(USER, query({ action: 'card_grant' }));
+    expect(prisma.auditEvent.findMany.mock.calls[0]![0].where.action).toEqual({
+      in: ['secret.card_grant.create', 'secret.card_grant.revoke', 'secret.card_grant_request.approve', 'secret.card_grant_request.decline'],
+    });
   });
 
   it('skips a row whose action is not one of ours', async () => {

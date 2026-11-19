@@ -18,7 +18,7 @@ None declared. `pg` is resolved at run time from the app (then from this package
 
 ## Configuration
 
-`VaultCheckOptions` (`root`, `database`, `databaseUrl`, `packageDir`, `catalog`); `DATABASE_URL` is the default connection string.
+`VaultCheckOptions` (`root`, `database`, `databaseUrl`, `packageDir`, `catalog`); `databaseUrl` is required with `database` (the library reads no environment variable; the `vault-db` command passes its `DATABASE_URL`).
 
 ## Extension-point catalog
 

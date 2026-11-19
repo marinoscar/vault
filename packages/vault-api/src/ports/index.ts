@@ -1,6 +1,7 @@
 export * from './ai.port';
 export * from './audit.port';
 export * from './crypto.port';
+export * from './host.port';
 export * from './jobs.port';
 export * from './metrics.port';
 export * from './notify.port';

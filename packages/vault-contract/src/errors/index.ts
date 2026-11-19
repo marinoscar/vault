@@ -54,7 +54,7 @@ export const VAULT_ERROR_CODES: readonly VaultErrorCodeDef[] = Object.freeze([
   { code: 'ENCRYPTION_UNAVAILABLE', status: 503, description: 'VAULT_ENCRYPTION_KEY is not configured, so a secret value could not be stored.' },
 
   // Agent access (E14.3).
-  { code: 'AGENT_ACCESS_UNSUPPORTED_TYPE', status: 422, description: 'Only a Credential secret can be opened to agents; this secret type cannot be set to fill.' },
+  { code: 'AGENT_ACCESS_UNSUPPORTED_TYPE', status: 422, description: 'Only a Credential, Card or Identity system secret can be opened to agents; this secret type cannot be set to fill.' },
 
   // Agent credential API (E14.6). Contract: `@marinoscar/vault-contract/agent`.
   { code: 'ORIGIN_MISMATCH', status: 403, description: 'The origin sent by the agent is not exactly one of the credential origins, so nothing was filled.' },
@@ -62,6 +62,19 @@ export const VAULT_ERROR_CODES: readonly VaultErrorCodeDef[] = Object.freeze([
   { code: 'AGENT_CREDENTIAL_REQUIRED', status: 403, description: 'The agent API accepts only an OAuth access token (oat_) or a personal access token (pat_), not a browser session.' },
   { code: 'RATE_LIMITED', status: 429, description: 'The per-minute limit of an agent API call was reached; see the Retry-After header.' },
   { code: 'AGENT_ACTIVITY_FORBIDDEN', status: 403, description: 'The agent activity list is for the owner (a browser session or a personal access token); an OAuth access token cannot read it.' },
+
+  // Agent release of cards and identity (ADR-0003). Contract: `@marinoscar/vault-contract/agent`.
+  { code: 'CARD_ACCESS_DISABLED', status: 403, description: 'Card release to agents is switched off for this deployment (agentAccess.cards.enabled).' },
+  { code: 'IDENTITY_ACCESS_DISABLED', status: 403, description: 'Identity release to agents is switched off for this deployment (agentAccess.identity.enabled).' },
+  { code: 'SECURITY_CODE_NOT_GRANTED', status: 403, description: 'The security code was asked for under a merchant grant that does not include it.' },
+  { code: 'CARD_AMOUNT_EXCEEDED', status: 403, description: 'The amount is above the maximum of the merchant grant.' },
+  { code: 'CARD_CURRENCY_MISMATCH', status: 403, description: 'The currency is not the currency of the merchant grant.' },
+  { code: 'CARD_PERIOD_LIMIT_REACHED', status: 403, description: 'The period limit of the merchant grant (releases or total amount per day or month) was reached.' },
+  { code: 'CARD_DAILY_CAP_REACHED', status: 403, description: 'The per-card daily cap of card releases was reached.' },
+  { code: 'CARD_GRANT_EXPIRED', status: 403, description: 'The merchant grant of this card has expired.' },
+  { code: 'CARD_GRANT_EXISTS', status: 409, description: 'The card already has a live grant for this merchant; revoke it first.' },
+  { code: 'CARD_GRANT_REQUEST_NOT_PENDING', status: 409, description: 'The grant request was already approved or declined.' },
+  { code: 'OWNER_SESSION_REQUIRED', status: 403, description: 'Changing what agents may do needs the owner signed in to Vault; an OAuth access token or a personal access token cannot.' },
 
   // Card scanning. The platform's own `AI_*` codes are registered by the AI slice.
   { code: AI_ERROR_CODES.NOT_CONFIGURED, status: 503, description: 'AI card scanning is not set up (provider, model or deployment key missing).' },

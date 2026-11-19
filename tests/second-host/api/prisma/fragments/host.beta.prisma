@@ -1,0 +1,19 @@
+// Host Beta's own model: one table the fixture host owns next to the platform's and the Vault
+// domain's. It exists to prove that a host's schema, the platform's and @marinoscar/vault-db's
+// compose into one Prisma schema and one migration history.
+//
+// The generator is the host's own: `prisma generate --generator hostbeta` writes its client into
+// tests/second-host/api/generated/client, so the fixture never overwrites the client Vault's apps/api
+// generates into node_modules.
+generator hostbeta {
+  provider = "prisma-client-js"
+  output   = "../../generated/client"
+}
+
+model BetaNote {
+  id        String   @id @default(uuid()) @db.Uuid
+  title     String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("beta_notes")
+}

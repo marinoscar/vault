@@ -101,7 +101,7 @@ describe('AgentActivityPage', () => {
     handlers([]);
     renderPage();
     expect(
-      await screen.findByText("No agent activity yet. Agents only see logins you allow on the secret's page."),
+      await screen.findByText("No agent activity yet. Agents only see the logins, cards and identity details you allow on the secret's page."),
     ).toBeInTheDocument();
   });
 

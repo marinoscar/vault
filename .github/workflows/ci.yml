@@ -315,6 +315,60 @@ jobs:
           NODE_ENV: test
           DATABASE_URL: postgresql://postgres:p%40ss%2Fword%3Aci@localhost:5432/postgres
 
+  # Host Beta (issue #194): the Vault packages mounted in a host that is not Vault, with its own
+  # identity, roles, schema, migrations and a binding for every port, against a real Postgres 16.
+  # docs/EMBEDDING.md is the guide; this job exercises every step of it.
+  second-host:
+    name: Second host (Host Beta on Postgres 16)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: "p@ss/word:ci"
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build the Vault packages
+        run: npm run build:packages
+
+      # The host's committed schema and migration history agree with the platform and vault-db packages.
+      - name: Check the host's composed schema, platform.lock and vault.lock
+        run: npm run db:check --prefix tests/second-host
+
+      - name: Generate the host's own Prisma client
+        run: npm run prisma:generate --prefix tests/second-host
+
+      - name: Type check the host
+        run: npm run typecheck --prefix tests/second-host
+
+      # Builds its own database as an ordinary role, migrates, runs vault-db check --database, seeds,
+      # boots the host and runs runVaultHostConformance plus the host's own checks.
+      - name: API smoke suite (real Postgres)
+        run: npm run test:api --prefix tests/second-host
+        env:
+          SECOND_HOST_ADMIN_URL: postgresql://postgres:p%40ss%2Fword%3Aci@localhost:5432/postgres
+
+      - name: Web smoke test
+        run: npm run test:web --prefix tests/second-host
+
   web-check:
     name: Web Check
     runs-on: ubuntu-latest

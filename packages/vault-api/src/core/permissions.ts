@@ -59,6 +59,32 @@ export const VAULT_PERMISSIONS = {
     scope: 'org',
     defaultGrants: ['org_admin', 'contributor', 'viewer'],
   },
+  // Agent release of cards and identity (ADR-0003): what the vault:cards_* and vault:identity_*
+  // scopes bundle. Separate from secrets:read/secrets:fill so a login token reaches no card.
+  AGENT_CARDS_READ: {
+    id: 'agent_cards:read',
+    description: 'List the cards opened to agents that have a merchant grant, through the agent API',
+    scope: 'org',
+    defaultGrants: ['org_admin', 'contributor', 'viewer'],
+  },
+  AGENT_CARDS_FILL: {
+    id: 'agent_cards:fill',
+    description: 'Read one field of a granted card, and ask its owner for a grant, through the agent API',
+    scope: 'org',
+    defaultGrants: ['org_admin', 'contributor', 'viewer'],
+  },
+  AGENT_IDENTITY_READ: {
+    id: 'agent_identity:read',
+    description: 'List the identity items opened to agents and the labels of their fields, through the agent API',
+    scope: 'org',
+    defaultGrants: ['org_admin', 'contributor', 'viewer'],
+  },
+  AGENT_IDENTITY_FILL: {
+    id: 'agent_identity:fill',
+    description: 'Read one field of an identity item opened to agents through the agent API',
+    scope: 'org',
+    defaultGrants: ['org_admin', 'contributor', 'viewer'],
+  },
   SECRETS_WRITE: {
     id: 'secrets:write',
     description: 'Create and update own secrets',
@@ -127,3 +153,63 @@ export const VAULT_PERMISSIONS = {
     defaultGrants: ['admin'],
   },
 } as const satisfies Record<string, PermissionDeclaration>;
+
+/**
+ * The four roles {@link VAULT_PERMISSIONS} grants by default: the platform's `admin` (system) and
+ * `org_admin`, `contributor`, `viewer` (org).
+ */
+export type VaultDefaultGrantRole = 'admin' | 'org_admin' | 'contributor' | 'viewer';
+
+/**
+ * How a host maps Vault's default grants onto ITS roles (issue #194): for each of the four roles
+ * Vault grants by default, the host roles that receive those grants instead. A key left out keeps
+ * the platform role of the same name; an empty list grants nothing for that key (an operator then
+ * grants the permission by hand). A target role must exist in the host's registry with the same
+ * scope (`admin` maps to system roles, the other three to org roles); the platform's registry
+ * refuses anything else at registration time.
+ *
+ * @extensionPoint option
+ * @stability experimental
+ */
+export type VaultRoleMapping = Partial<Record<VaultDefaultGrantRole, readonly string[]>>;
+
+/** The keys of {@link VAULT_PERMISSIONS}. */
+export type VaultPermissionKey = keyof typeof VAULT_PERMISSIONS;
+
+/**
+ * Vault's permission declarations with the default grants mapped onto a host's roles. The ids,
+ * descriptions and scopes never change (they are persisted and enforced by the controllers); only
+ * who holds them by default does. Without a mapping it returns {@link VAULT_PERMISSIONS} itself,
+ * which is what Vault registers.
+ *
+ * @param roles - see {@link VaultRoleMapping}.
+ * @returns a declaration map for `registerPlatformPermissions({ app: { permissions: [...] } })`.
+ *
+ * @example
+ * ```ts
+ * registerPlatformPermissions({
+ *   app: {
+ *     roles: [HOST_ROLES],
+ *     permissions: [vaultPermissionDeclarations({ contributor: ['beta_editor'], viewer: ['beta_reader'] })],
+ *   },
+ * });
+ * ```
+ *
+ * @extensionPoint option
+ * @stability experimental
+ */
+export function vaultPermissionDeclarations(roles?: VaultRoleMapping): Record<VaultPermissionKey, PermissionDeclaration> {
+  if (!roles) return VAULT_PERMISSIONS;
+  const map = (grants: readonly string[]): string[] => {
+    const out: string[] = [];
+    for (const role of grants) {
+      for (const target of roles[role as VaultDefaultGrantRole] ?? [role]) {
+        if (!out.includes(target)) out.push(target);
+      }
+    }
+    return out;
+  };
+  return Object.fromEntries(
+    Object.entries(VAULT_PERMISSIONS).map(([key, declaration]) => [key, { ...declaration, defaultGrants: map(declaration.defaultGrants) }]),
+  ) as unknown as Record<VaultPermissionKey, PermissionDeclaration>;
+}

@@ -15,7 +15,8 @@
 //                           `npm run vault:migrate-ai-platform` (docs/runbooks/ai-platform-migration.md).
 //     vaultCards            card image size cap, expiry warning window
 //     vaultBackups          defaults for the admin backup schedule
-//     agentAccess           the agent API's kill switch (default off) and per-minute limits (E14.6)
+//     agentAccess           the agent API's kill switch (default off) and per-minute limits (E14.6);
+//                           `cards` and `identity` blocks: their own switches (default off) and limits (ADR-0003)
 //   user:
 //     dataTables, navigation (the platform's); profile extension `customImageUrl`
 //
@@ -25,6 +26,9 @@ import { z } from 'zod';
 import {
   AGENT_ACCESS_SETTINGS_DEFAULTS,
   agentAccessSettingsSchema,
+  agentCardAccessSettingsSchema,
+  agentIdentityAccessSettingsSchema,
+  resolveAgentAccessSettings,
   type AgentAccessSettings,
 } from '@marinoscar/vault-contract/agent';
 import { AI_SYSTEM_SETTINGS } from '@marinoscar/platform-api/ai';
@@ -166,19 +170,39 @@ export const VAULT_BACKUPS_SYSTEM_SETTINGS = {
 // agentAccess
 // -----------------------------------------------------------------------------
 
+/**
+ * A patch of `agentAccess`: every field optional, the `cards` and `identity` blocks too, so an
+ * admin can flip `cards.enabled` alone. Merged field by field into the current value.
+ */
+export const agentAccessSettingsPatchSchema = agentAccessSettingsSchema
+  .extend({
+    cards: agentCardAccessSettingsSchema.partial(),
+    identity: agentIdentityAccessSettingsSchema.partial(),
+  })
+  .partial();
+export type AgentAccessSettingsPatch = z.infer<typeof agentAccessSettingsPatchSchema>;
+
 export const VAULT_AGENT_ACCESS_SYSTEM_SETTINGS = {
   key: 'agentAccess',
   description:
-    'The agent credential API (/api/agent/v1): the deployment kill switch (off by default) and the per-minute limits of lookup, fill, totp and write calls.',
+    'The agent credential API (/api/agent/v1): the deployment kill switch (off by default), the per-minute limits of lookup, fill, totp and write calls, and the card and identity release switches (both off by default) with their own limits (ADR-0003).',
   storedSchema: agentAccessSettingsSchema,
-  patchSchema: agentAccessSettingsSchema.partial(),
-  putSchema: agentAccessSettingsSchema.partial(),
-  wirePatchSchema: agentAccessSettingsSchema.partial(),
+  patchSchema: agentAccessSettingsPatchSchema,
+  putSchema: agentAccessSettingsPatchSchema,
+  wirePatchSchema: agentAccessSettingsPatchSchema,
   responseSchema: agentAccessSettingsSchema,
-  defaults: { ...AGENT_ACCESS_SETTINGS_DEFAULTS },
+  defaults: resolveAgentAccessSettings(AGENT_ACCESS_SETTINGS_DEFAULTS),
   requiredOnPut: false,
-  merge: (current, patch) => ({ ...current, ...(patch ?? {}) }),
-} satisfies SystemSettingsNamespace<'agentAccess', AgentAccessSettings, Partial<AgentAccessSettings>>;
+  // A row stored before ADR-0003 has no `cards` or `identity`: both resolve off.
+  read: (stored) => resolveAgentAccessSettings(stored),
+  merge: (current, patch) =>
+    resolveAgentAccessSettings({
+      ...current,
+      ...(patch ?? {}),
+      cards: { ...current.cards, ...(patch?.cards ?? {}) },
+      identity: { ...current.identity, ...(patch?.identity ?? {}) },
+    }),
+} satisfies SystemSettingsNamespace<'agentAccess', AgentAccessSettings, AgentAccessSettingsPatch>;
 
 /** Vault's system namespaces, in stored key order (after the platform's). */
 export const APP_SYSTEM_SETTINGS_NAMESPACES: readonly SystemSettingsNamespace[] = [

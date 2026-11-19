@@ -23,7 +23,8 @@ export type AttachmentRole = z.infer<typeof attachmentRoleSchema>;
 /**
  * Whether agents (OAuth clients on the `agent` resource) may use a secret:
  * `none` (default) or `fill` (an agent may have the fabric type it into a
- * matching site, never read it). Only the `Credential` system type may be `fill`.
+ * matching site, never read it). Only the `Credential`, `Card` and `Identity`
+ * system types may be `fill` (a card further needs a merchant grant, ADR-0003).
  *
  * @stability experimental
  */
@@ -32,9 +33,18 @@ export const secretAgentAccessSchema = z.enum(['none', 'fill']);
 /** @stability experimental */
 export type SecretAgentAccess = z.infer<typeof secretAgentAccessSchema>;
 
-/** Body of `PATCH /api/secrets/:id/agent-access`. @stability experimental */
+/** Most allowed origins an Identity item may list. @stability experimental */
+export const MAX_AGENT_ORIGINS = 20;
+
+/**
+ * Body of `PATCH /api/secrets/:id/agent-access`. `allowedOrigins` (Identity only) replaces the
+ * origins a sensitive identity field may be filled on; omit it to keep them.
+ *
+ * @stability experimental
+ */
 export const updateAgentAccessSchema = z.object({
   agentAccess: secretAgentAccessSchema,
+  allowedOrigins: z.array(z.string().trim().min(1).max(2048)).max(MAX_AGENT_ORIGINS).optional(),
 });
 
 /** @stability experimental */
@@ -49,6 +59,8 @@ export type UpdateAgentAccess = z.infer<typeof updateAgentAccessSchema>;
 export const secretAgentAccessFieldsSchema = z.object({
   agentAccess: secretAgentAccessSchema,
   agentAccessChangedAt: z.string().nullable(),
+  /** Identity only: the origins its sensitive fields may be filled on (exact match). Absent from an older API. */
+  agentOrigins: z.array(z.string()).optional(),
 });
 
 /** @stability experimental */

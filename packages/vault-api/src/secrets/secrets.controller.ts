@@ -277,8 +277,10 @@ export class SecretsController {
   @ApiOperation({
     summary: 'Allow or forbid agents to use a secret',
     description:
-      'Sets agentAccess to none or fill. Only a Credential secret may be set to fill (422 ' +
-      'AGENT_ACCESS_UNSUPPORTED_TYPE otherwise). Refused (403) for an OAuth credential: an agent ' +
+      'Sets agentAccess to none or fill. Only a Credential, Card or Identity system secret may be set to fill (422 ' +
+      'AGENT_ACCESS_UNSUPPORTED_TYPE otherwise). `allowedOrigins` (Identity only) replaces the exact origins its ' +
+      'sensitive fields may be filled on. Opening a Card or an Identity, or changing allowedOrigins, needs the ' +
+      'owner\'s browser session (403 OWNER_SESSION_REQUIRED for a token). Refused (403) for an OAuth credential: an agent ' +
       'cannot widen its own access. Audited as secret.agent_access.update. Requires secrets:write.',
   })
   @ApiParam({ name: 'id', type: String, format: 'uuid', description: 'Secret ID' })
@@ -298,6 +300,8 @@ export class SecretsController {
       dto.agentAccess,
       user.id,
       user.permissions,
+      dto.allowedOrigins,
+      credential?.kind === 'jwt',
     );
     return { data: result };
   }

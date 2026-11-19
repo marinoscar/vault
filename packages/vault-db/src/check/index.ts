@@ -53,7 +53,10 @@ export interface VaultCheckOptions {
   root: string;
   /** Also compare a live database with the inventories (only `SELECT`s on catalogs). */
   database?: boolean;
-  /** The connection string for `database`; defaults to `process.env.DATABASE_URL`. */
+  /**
+   * The connection string for `database` (required with it unless `catalog` is given). The library
+   * reads no environment variable; the `vault-db` command passes its `DATABASE_URL`.
+   */
   databaseUrl?: string;
   /** The package folder; defaults to the installed package. */
   packageDir?: string;
@@ -587,7 +590,7 @@ export async function checkVaultInstall(opts: VaultCheckOptions): Promise<VaultC
   problems.push(...installed.problems);
   const notes = [...installed.notes];
   if (opts.database === true) {
-    const url = opts.databaseUrl ?? process.env.DATABASE_URL;
+    const url = opts.databaseUrl;
     if (opts.catalog === undefined && (url === undefined || url === '')) {
       throw new VaultCheckUsageError('check --database: DATABASE_URL is not set (the api scripts build it from POSTGRES_*)');
     }

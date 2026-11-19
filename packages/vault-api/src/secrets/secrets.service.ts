@@ -115,6 +115,27 @@ export function isAgentAccessibleType(
   return !!type && type.isSystem === true && type.name === 'Credential';
 }
 
+/** The system types an owner may open to agents (ADR-0002 logins, ADR-0003 cards and identity). */
+export const AGENT_OPENABLE_TYPE_NAMES = ['Credential', 'Card', 'Identity'] as const;
+
+/** @stability experimental */
+export type AgentOpenableTypeName = (typeof AGENT_OPENABLE_TYPE_NAMES)[number];
+
+/** Whether `type` is a system type an owner may open to agents: `Credential`, `Card` or `Identity`. */
+export function isAgentOpenableType(
+  type: { name?: string | null; isSystem?: boolean | null } | null | undefined,
+): boolean {
+  return !!type && type.isSystem === true && (AGENT_OPENABLE_TYPE_NAMES as readonly string[]).includes(type.name ?? '');
+}
+
+/** Whether `type` is the system type `name`. */
+export function isSystemTypeNamed(
+  type: { name?: string | null; isSystem?: boolean | null } | null | undefined,
+  name: AgentOpenableTypeName,
+): boolean {
+  return !!type && type.isSystem === true && type.name === name;
+}
+
 /**
  * The origins to store for `data` of a secret of `type`: derived for a Credential (an empty array
  * clears them), `undefined` for every other type (the column stays `{}`).
@@ -1165,14 +1186,18 @@ export class SecretsService {
 
   /**
    * Allow (`fill`) or forbid (`none`) agents to use a secret. Authorization
-   * mirrors `update`. Only a `Credential` system type may be `fill`. Stamps
-   * `agentAccessChangedAt` when the value changes. Audits ids and values only.
+   * mirrors `update`. Only a `Credential`, `Card` or `Identity` system type may be
+   * `fill`. `allowedOrigins` (Identity only) replaces the exact origins its
+   * sensitive fields may be filled on. Stamps `agentAccessChangedAt` when the
+   * access changes. Audits ids, values and an origin count only.
    */
   async updateAgentAccess(
     id: string,
     agentAccess: 'none' | 'fill',
     userId: string,
     userPermissions: string[],
+    allowedOrigins?: string[],
+    ownerSession = false,
   ) {
     const existing = await this.getSecretWithAuthCheck(
       id,
@@ -1181,20 +1206,51 @@ export class SecretsService {
       userPermissions,
     );
 
-    if (agentAccess === 'fill' && !isAgentAccessibleType(existing.type)) {
+    if (agentAccess === 'fill' && !isAgentOpenableType(existing.type)) {
       throw new UnprocessableEntityException({
         code: 'AGENT_ACCESS_UNSUPPORTED_TYPE',
-        message: 'Only a Credential secret can be opened to agents',
+        message: 'Only a Credential, Card or Identity secret can be opened to agents',
       });
     }
 
-    const from = (existing as { agentAccess?: string }).agentAccess ?? 'none';
+    // ADR-0003: a card or an identity item is opened (or its allowed origins changed) only by the
+    // owner signed in to Vault, never by a token. Closing one narrows access and needs no session.
+    const sessionOnly =
+      allowedOrigins !== undefined ||
+      (agentAccess === 'fill' && (isSystemTypeNamed(existing.type, 'Card') || isSystemTypeNamed(existing.type, 'Identity')));
+    if (sessionOnly && !ownerSession) {
+      throw new ForbiddenException({
+        code: 'OWNER_SESSION_REQUIRED',
+        message: 'Sign in to Vault to change what agents may do with this item',
+      });
+    }
 
-    if (from !== agentAccess) {
+    let origins: string[] | undefined;
+    if (allowedOrigins !== undefined) {
+      if (!isSystemTypeNamed(existing.type, 'Identity')) {
+        throw new BadRequestException('allowedOrigins applies to an Identity secret only');
+      }
+      const normalized = new Set<string>();
+      for (const raw of allowedOrigins) {
+        const origin = normalizeOrigin(raw);
+        if (!origin) throw new BadRequestException('allowedOrigins holds an invalid https origin');
+        normalized.add(origin);
+      }
+      origins = [...normalized].sort();
+    }
+
+    const from = (existing as { agentAccess?: string }).agentAccess ?? 'none';
+    const previousOrigins: string[] = (existing as { agentOrigins?: string[] }).agentOrigins ?? [];
+    const originsChanged = origins !== undefined && origins.join(' ') !== [...previousOrigins].sort().join(' ');
+
+    if (from !== agentAccess || originsChanged) {
       await runInDefaultOrg(this.prisma, async (tx: any) =>
         tx.secret.update({
           where: { id },
-          data: { agentAccess, agentAccessChangedAt: new Date() },
+          data: {
+            ...(from !== agentAccess ? { agentAccess, agentAccessChangedAt: new Date() } : {}),
+            ...(originsChanged ? { agentOrigins: origins } : {}),
+          },
         }),
       );
 
@@ -1202,10 +1258,35 @@ export class SecretsService {
         secretId: id,
         from,
         to: agentAccess,
+        ...(originsChanged ? { allowedOrigins: origins!.length } : {}),
       });
     }
 
     return this.findOne(id, userId, userPermissions);
+  }
+
+  /**
+   * The secret `id` of `userId` when it is opened to agents and is the system type `typeName`,
+   * else `null`. Missing, foreign, closed and other-type secrets are indistinguishable. For the
+   * card and identity agent routes (ADR-0003).
+   */
+  async findAgentOpenedSecret(userId: string, id: string, typeName: AgentOpenableTypeName) {
+    const secret = await this.prisma.secret.findFirst({
+      where: { id, createdById: userId, agentAccess: 'fill' },
+      include: { type: true },
+    });
+    if (!secret || !isSystemTypeNamed(secret.type, typeName)) return null;
+    return secret;
+  }
+
+  /** The caller's secrets of the system type `typeName` opened to agents, by name (ADR-0003). */
+  async listAgentOpenedSecrets(userId: string, typeName: AgentOpenableTypeName) {
+    return this.prisma.secret.findMany({
+      where: { createdById: userId, agentAccess: 'fill', type: { name: typeName, isSystem: true } },
+      include: { type: true },
+      orderBy: { name: 'asc' },
+      take: 100,
+    });
   }
 
   /**

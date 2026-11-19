@@ -73,6 +73,14 @@
       "requiresHostTables": [],
       "sha256": "cd21da9f9158aa43791ab0c940783ba34af8338527a6ded5d972017ee8cda5f2",
       "slice": "secrets"
+    },
+    {
+      "id": "20261119005617_add_agent_card_grants",
+      "requiresHostTables": [
+        "users"
+      ],
+      "sha256": "219c4e43192e74ea8ea527a8605539e99c9c9c50b91fa17513c8f7603c008be7",
+      "slice": "secrets"
     }
   ]
 }

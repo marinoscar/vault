@@ -6,6 +6,14 @@ import { AgentActivityController } from './agent/agent-activity.controller';
 import { AgentActivityService } from './agent/agent-activity.service';
 import { AgentNotifier } from './agent/agent-notifier.service';
 import { AgentController } from './agent/agent.controller';
+import { AgentCallPipeline } from './agent/agent-pipeline';
+import { AgentCardsController } from './agent/agent-cards.controller';
+import { AgentCardsService } from './agent/agent-cards.service';
+import { AgentIdentityService } from './agent/agent-identity.service';
+import { AGENT_RELEASE_PORT, AgentReleaseService } from './agent/agent-release.service';
+import { CardGrantStore, PrismaCardGrantStore } from './agent/card-grant-store';
+import { CardGrantsController } from './agent/card-grants.controller';
+import { CardGrantsService } from './agent/card-grants.service';
 import { McpController, McpOriginGuard } from './mcp/mcp.controller';
 import { McpDispatcher } from './mcp/mcp-dispatcher';
 import { VAULT_MCP_OPTIONS } from './mcp/mcp-options';
@@ -43,6 +51,7 @@ import {
   VAULT_AI_KEY_PRESENCE,
   VAULT_AUDIT,
   VAULT_CRYPTO,
+  VAULT_HOST,
   VAULT_JOBS,
   VAULT_METRICS,
   VAULT_NOTIFY,
@@ -106,6 +115,11 @@ export interface VaultApiBindings {
   metrics?: VaultPortBinding;
   /** The MCP endpoint's settings (`VAULT_MCP_OPTIONS`: the app URL for the Origin rule, the rate limit); optional. */
   mcp?: VaultPortBinding;
+  /**
+   * The host facts (`VAULT_HOST`: the public base URL for notification links); optional. The
+   * package reads no environment variable: a host that wants links binds its URL here.
+   */
+  host?: VaultPortBinding;
 }
 
 /** Options of {@link VaultApiModule.forRoot}. */
@@ -133,6 +147,7 @@ const TOKENS: ReadonlyArray<[keyof VaultApiBindings, symbol]> = [
   ['settings', VAULT_SETTINGS],
   ['metrics', VAULT_METRICS],
   ['mcp', VAULT_MCP_OPTIONS],
+  ['host', VAULT_HOST],
 ];
 
 function toProvider(provide: symbol, binding: VaultPortBinding): Provider {
@@ -175,6 +190,8 @@ export class VaultApiModule {
         BackupsController,
         MyBackupsController,
         AgentController,
+        AgentCardsController,
+        CardGrantsController,
         AgentActivityController,
         McpController,
       ],
@@ -182,7 +199,14 @@ export class VaultApiModule {
         ...ports,
         SecretTypesService,
         SecretsService,
+        AgentCallPipeline,
         AgentCredentialsService,
+        AgentCardsService,
+        AgentIdentityService,
+        AgentReleaseService,
+        { provide: AGENT_RELEASE_PORT, useExisting: AgentReleaseService },
+        CardGrantsService,
+        { provide: CardGrantStore, useClass: PrismaCardGrantStore },
         AgentActivityService,
         AgentNotifier,
         // Single API instance today: in-process counters. Override this provider to share them.
@@ -216,6 +240,9 @@ export class VaultApiModule {
         SecretsExportService,
         SecretTypesService,
         MediaService,
+        // ADR-0003: the in-process agent release port for a host that embeds the packages (#194).
+        AgentReleaseService,
+        AGENT_RELEASE_PORT,
       ],
     };
   }

@@ -127,6 +127,14 @@ const COLUMNS: DataTableColumn<AgentActivityItem>[] = [
     render: (row) => (row.origin ? <span>{row.origin}</span> : <Dash />),
   },
   {
+    id: 'amount',
+    label: 'Amount',
+    priority: 'detail',
+    width: 120,
+    value: (row) => (row.amount ? `${row.amount} ${row.currency ?? ''}`.trim() : ''),
+    render: (row) => (row.amount ? <span>{`${row.amount} ${row.currency ?? ''}`.trim()}</span> : <Dash />),
+  },
+  {
     id: 'purpose',
     label: 'Purpose',
     priority: 'detail',
@@ -160,7 +168,7 @@ export function AgentActivityTable(props: AgentActivityTableProps) {
       <Typography variant="body2" sx={{ color: 'text.secondary', maxWidth: 420 }}>
         {filtered
           ? 'No agent activity matches your filters.'
-          : "No agent activity yet. Agents only see logins you allow on the secret's page."}
+          : "No agent activity yet. Agents only see the logins, cards and identity details you allow on the secret's page."}
       </Typography>
     </Box>
   );

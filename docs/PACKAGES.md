@@ -1,6 +1,6 @@
 # The `@marinoscar/vault-*` packages
 
-Vault's domain code is written once, in packages, and the apps are hosts ([ADR-0001](decisions/0001-packages-first.md)). This page is the map: which packages exist, how they are laid out, built, tested and versioned. Each package README owns its own details.
+Vault's domain code is written once, in packages, and the apps are hosts ([ADR-0001](decisions/0001-packages-first.md)). This page is the map: which packages exist, how they are laid out, built, tested and versioned. Each package README owns its own details. Mounting them in a host that is not Vault: [EMBEDDING.md](EMBEDDING.md).
 
 ## Contents
 

@@ -9,6 +9,9 @@ import {
   vaultBackupSucceededBrowserTemplate,
   vaultCardExpiringBrowserTemplate,
   vaultAgentCredentialUsedBrowserTemplate,
+  vaultAgentCardDeclinedBrowserTemplate,
+  vaultAgentCardFirstReleaseBrowserTemplate,
+  vaultAgentCardGrantRequestedBrowserTemplate,
 } from '../notifications-registry/vault.notifications';
 import type {
   VaultAgentCredentialChangedNotificationData,
@@ -51,6 +54,9 @@ describe('Vault notification events and templates (issue #86)', () => {
       'vault.agent_credential_changed',
       'vault.agent_new_app',
       'vault.agent_credential_used',
+      'vault.agent_card_grant_requested',
+      'vault.agent_card_first_release',
+      'vault.agent_card_declined',
     ]);
     for (const event of Object.values(byKey)) {
       expect(event.channels).toEqual(event.key === 'vault.agent_credential_used' ? ['browser'] : ['email', 'browser']);
@@ -172,5 +178,42 @@ describe('Vault notification events and templates (issue #86)', () => {
       expect(vaultAgentCredentialUsedBrowserTemplate(base).body).toBe('Agent App A filled Shop login.');
       expect(vaultAgentCredentialUsedBrowserTemplate({ ...base, count: 4 }).body).toBe('Agent App A filled Shop login (4 times).');
     });
+  });
+});
+
+describe('agent card events (ADR-0003)', () => {
+  const base = {
+    clientName: 'Agent App A', credentialKind: 'oauth' as const, secretId: '8d1c1f0e-1111-4222-8333-444455556666',
+    secretName: 'Card A', origin: 'https://shop.example.test', amount: '42.50', currency: 'USD', appUrl: 'https://vault.example.test',
+  };
+  const CANARY = '4242424242424242';
+
+  it('renders the grant request with the app, card, shop, amount and the quoted reason, linking to the card', () => {
+    const mail = renderEmailTemplate('vault-agent-card-grant-requested', { ...base, requestId: 'r1', reason: 'Order for Person A' });
+    expect(mail.subject).toContain('Agent App A asks to use Card A at https://shop.example.test');
+    expect(mail.text).toContain('42.50 USD');
+    expect(mail.text).toContain('"Order for Person A"');
+    expect(mail.html).toContain('https://vault.example.test/secrets/8d1c1f0e-1111-4222-8333-444455556666');
+    expect(vaultAgentCardGrantRequestedBrowserTemplate({ ...base, requestId: 'r1', reason: 'x' }).link).toBe(
+      '/secrets/8d1c1f0e-1111-4222-8333-444455556666',
+    );
+  });
+
+  it('renders the first release and a decline with its static reason; no card value anywhere', () => {
+    const first = renderEmailTemplate('vault-agent-card-first-release', base);
+    expect(first.subject).toContain('used Card A at https://shop.example.test for the first time');
+    const declined = renderEmailTemplate('vault-agent-card-declined', { ...base, reason: 'amount_exceeded' });
+    expect(declined.subject).toContain('the amount is above the limit you set for this shop');
+    expect(vaultAgentCardDeclinedBrowserTemplate({ ...base, reason: 'daily_cap' }).body).toContain('daily number of card uses');
+    expect(vaultAgentCardFirstReleaseBrowserTemplate(base).link).toBe('/settings/agent-activity');
+    for (const out of [first, declined]) {
+      expect(`${out.subject}${out.html}${out.text}`).not.toContain(CANARY);
+      expect(out.text).toContain('never includes a card number');
+    }
+  });
+
+  it('escapes an app-chosen reason in the HTML', () => {
+    const mail = renderEmailTemplate('vault-agent-card-grant-requested', { ...base, requestId: 'r1', reason: '<script>x</script>' });
+    expect(mail.html).not.toContain('<script>x</script>');
   });
 });

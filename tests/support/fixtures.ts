@@ -381,3 +381,48 @@ export const MEDIA_FOLDERS = [
 /** A 1x1 transparent PNG, enough for an `<img>` that must decode. */
 export const PIXEL_PNG_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+
+/**
+ * Merchant grants and pending grant requests of the Visa card (ADR-0003, #195): one active shop
+ * and one request, so the card's Agent access panel has both sections. No card value: grants and
+ * requests never carry one.
+ */
+export const CARD_GRANTS: Record<string, unknown[]> = {
+  'secret-card-visa': [
+    {
+      id: 'grant-shop-a',
+      secretId: 'secret-card-visa',
+      merchantOrigin: 'https://shop.example.test',
+      merchantSite: 'example.test',
+      frameOrigins: ['https://pay.example.test'],
+      maxAmount: 150,
+      currency: 'USD',
+      periodLimit: { period: 'month', maxReleases: 4, maxAmount: null },
+      expiresAt: null,
+      includeSecurityCode: false,
+      status: 'active',
+      createdAt: '2026-03-01T09:00:00.000Z',
+      revokedAt: null,
+      usage: { periodReleases: 1, periodAmount: 42.5, totalReleases: 3, lastReleasedAt: '2026-03-10T09:00:00.000Z' },
+    },
+  ],
+};
+
+export const CARD_GRANT_REQUESTS: Record<string, unknown[]> = {
+  'secret-card-visa': [
+    {
+      id: 'request-books-b',
+      secretId: 'secret-card-visa',
+      origin: 'https://books.example.test',
+      merchantSite: 'example.test',
+      amount: 38,
+      currency: 'USD',
+      reason: 'Order of two books for Person A',
+      status: 'pending',
+      clientName: 'Assistant X',
+      createdAt: '2026-03-12T09:00:00.000Z',
+      decidedAt: null,
+      grantId: null,
+    },
+  ],
+};

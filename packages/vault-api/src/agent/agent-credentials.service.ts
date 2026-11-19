@@ -1,20 +1,7 @@
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import {
-  BadRequestException,
-  ForbiddenException,
-  HttpException,
-  HttpStatus,
-  Inject,
-  Injectable,
-  Logger,
-  NotFoundException,
-} from '@nestjs/common';
-import { withResponseHeaders } from '@marinoscar/platform-api/core';
-import type { AuthCredentialInfo } from '@marinoscar/platform-api/identity';
-import {
-  AGENT_ACCESS_SETTINGS_DEFAULTS,
   AGENT_AUDIT_ACTIONS,
   AGENT_ERROR_CODES,
-  type AgentAccessSettings,
   type AgentAuditAction,
   type AgentCreateCredentialRequest,
   type AgentCredentialSummary,
@@ -24,194 +11,59 @@ import {
 } from '@marinoscar/vault-contract/agent';
 import { matchOrigin, normalizeOrigin } from '@marinoscar/vault-contract/secrets';
 
-import { VAULT_AUDIT, VAULT_SETTINGS, type VaultAuditPort, type VaultSettingsPort } from '../ports';
 import { SecretsService } from '../secrets/secrets.service';
 import { AgentNotifier } from './agent-notifier.service';
-import { AgentRateLimiter } from './agent-rate-limiter';
+import {
+  AgentCallPipeline,
+  type AgentAuditContext,
+  type AgentBucket,
+  type AgentCaller,
+} from './agent-pipeline';
 import { generatePassword } from './password-generator';
 
 /** Most credentials one lookup returns. */
 const MAX_LOOKUP_RESULTS = 25;
 
-/** Who is calling: the user and how the request authenticated. */
-export interface AgentCaller {
-  userId: string;
-  credential: AuthCredentialInfo | null;
-}
-
-type Bucket = 'lookup' | 'fill' | 'totp' | 'write';
-
-/** What an audit row records about one call. Never a value, a code or a password. */
-interface AuditContext {
-  secretId?: string;
-  /** For the notifications only; never written to the audit row. */
-  secretName?: string;
-  field?: string;
-  origin?: string | null;
-  purpose?: string;
-  extra?: Record<string, unknown>;
-}
-
-const BUCKET_SETTING: Record<Bucket, keyof AgentAccessSettings> = {
-  lookup: 'lookupPerMinute',
-  fill: 'fillPerMinute',
-  totp: 'totpPerMinute',
-  write: 'writePerMinute',
-};
-
-/** The machine-readable reason of a refusal, for the audit row's `denied:<reason>`. */
-function denialReason(error: unknown): string {
-  if (!(error instanceof HttpException)) return 'error';
-  const body = error.getResponse();
-  const code = typeof body === 'object' && body !== null ? (body as { code?: unknown }).code : undefined;
-  if (code === AGENT_ERROR_CODES.ORIGIN_MISMATCH) return 'origin_mismatch';
-  if (code === AGENT_ERROR_CODES.AGENT_ACCESS_DISABLED) return 'disabled';
-  if (code === AGENT_ERROR_CODES.AGENT_CREDENTIAL_REQUIRED) return 'credential_kind';
-  if (code === AGENT_ERROR_CODES.RATE_LIMITED) return 'rate_limited';
-  switch (error.getStatus()) {
-    case 400:
-      return 'invalid';
-    case 403:
-      return 'forbidden';
-    case 404:
-      return 'not_found';
-    case 409:
-      return 'conflict';
-    default:
-      return 'error';
-  }
-}
+type AuditContext = AgentAuditContext;
 
 /**
- * The agent credential API's behaviour (`/api/agent/v1`). Every call runs through one pipeline:
- * credential kind (`oat_` or `pat_`, never a browser session), the deployment kill switch, the
- * per-(token or grant, user) rate limit, then the work, then one audit row (`ok` or
- * `denied:<reason>`). Nothing sensitive reaches a log, a span, an error or an audit row. A secret
- * that is missing, foreign, not opened to agents or not a Credential is a plain 404.
+ * The login half of the agent rules (`/api/agent/v1/credentials`, ADR-0002). Every call runs through
+ * {@link AgentCallPipeline}: credential kind (`oat_` or `pat_`, never a browser session; or an
+ * in-process host), the deployment kill switch, the rate limit, then the work, then one audit row.
+ * Nothing sensitive reaches a log, a span, an error or an audit row. A secret that is missing,
+ * foreign, not opened to agents or not a Credential is a plain 404. Callers use it through
+ * `AgentReleaseService` (the in-process port) or the HTTP controller.
  *
  * @stability experimental
  */
 @Injectable()
 export class AgentCredentialsService {
-  private readonly logger = new Logger(AgentCredentialsService.name);
-
   constructor(
     private readonly secrets: SecretsService,
-    private readonly limiter: AgentRateLimiter,
-    @Inject(VAULT_SETTINGS) private readonly settings: VaultSettingsPort,
-    @Inject(VAULT_AUDIT) private readonly audit: VaultAuditPort,
+    private readonly pipeline: AgentCallPipeline,
     private readonly notifier: AgentNotifier,
   ) {}
 
-  // ---------------------------------------------------------------------------
-  // Pipeline
-  // ---------------------------------------------------------------------------
-
-  private async loadSettings(): Promise<AgentAccessSettings> {
-    const stored = await this.settings.getNamespace<Partial<AgentAccessSettings>>('agentAccess');
-    return { ...AGENT_ACCESS_SETTINGS_DEFAULTS, ...(stored ?? {}) };
-  }
-
-  private disabled(): ForbiddenException {
-    return new ForbiddenException({
-      code: AGENT_ERROR_CODES.AGENT_ACCESS_DISABLED,
-      message: 'Agent access is switched off',
-    });
-  }
-
   /** Kill switch only (whoami): no credential restriction, no rate limit, no audit. */
   async assertEnabled(): Promise<void> {
-    if (!(await this.loadSettings()).enabled) throw this.disabled();
+    await this.pipeline.assertEnabled();
   }
 
-  private principalKey(caller: AgentCaller): string {
-    const credential = caller.credential;
-    if (credential?.kind === 'oauth') return `oauth:${credential.grantId}`;
-    if (credential?.kind === 'pat') return `pat:${credential.tokenId}`;
-    return 'other';
-  }
-
-  private auditMeta(caller: AgentCaller, ctx: AuditContext, result: string): Record<string, unknown> {
-    const credential = caller.credential;
-    return {
-      result,
-      credential: credential?.kind ?? null,
-      ...(credential?.kind === 'oauth' ? { clientId: credential.clientId, grantId: credential.grantId } : {}),
-      ...(credential?.kind === 'pat' ? { tokenId: credential.tokenId } : {}),
-      secretId: ctx.secretId ?? null,
-      field: ctx.field ?? null,
-      origin: ctx.origin ?? null,
-      purpose: ctx.purpose ?? null,
-      ...(ctx.extra ?? {}),
-    };
-  }
-
-  private async writeAudit(
+  private run<T>(
     caller: AgentCaller,
     action: AgentAuditAction,
-    ctx: AuditContext,
-    result: string,
-  ): Promise<void> {
-    await this.audit.record({
-      actorUserId: caller.userId,
-      action,
-      targetType: ctx.secretId ? 'secret' : 'user',
-      targetId: ctx.secretId ?? caller.userId,
-      meta: this.auditMeta(caller, ctx, result),
-    });
-  }
-
-  /**
-   * Runs `work` inside the pipeline. `ctx` is filled in by `work` as facts become known, so a denial
-   * late in the call (origin mismatch) still records the secret id. A success is audited BEFORE the
-   * value is returned (an unwritable trail fails the call closed); a denial is audited best effort
-   * so the refusal itself is never masked.
-   */
-  private async run<T>(
-    caller: AgentCaller,
-    action: AgentAuditAction,
-    bucket: Bucket,
+    bucket: AgentBucket,
     ctx: AuditContext,
     work: () => Promise<T>,
   ): Promise<T> {
-    let result: T;
-    try {
-      const kind = caller.credential?.kind;
-      if (kind !== 'oauth' && kind !== 'pat') {
-        throw new ForbiddenException({
-          code: AGENT_ERROR_CODES.AGENT_CREDENTIAL_REQUIRED,
-          message: 'The agent API accepts only an OAuth access token or a personal access token',
-        });
-      }
-      const settings = await this.loadSettings();
-      if (!settings.enabled) throw this.disabled();
-      const decision = this.limiter.consume(
-        `${bucket}:${this.principalKey(caller)}:${caller.userId}`,
-        settings[BUCKET_SETTING[bucket]] as number,
-      );
-      if (!decision.allowed) {
-        throw withResponseHeaders(
-          new HttpException(
-            { code: AGENT_ERROR_CODES.RATE_LIMITED, message: 'Too many agent requests; retry later' },
-            HttpStatus.TOO_MANY_REQUESTS,
-          ),
-          { 'Retry-After': String(decision.retryAfterSeconds) },
-        );
-      }
-      result = await work();
-    } catch (error) {
-      try {
-        await this.writeAudit(caller, action, ctx, `denied:${denialReason(error)}`);
-      } catch (auditError) {
-        this.logger.error(`Agent audit write failed for ${action}: ${(auditError as Error).name}`);
-      }
-      throw error;
-    }
-    // The new-app check reads the trail, so it runs BEFORE this call's own row is written.
-    const firstFill = action === AGENT_AUDIT_ACTIONS.FILL ? await this.notifier.isFirstFill(caller, action) : false;
-    await this.writeAudit(caller, action, ctx, 'ok');
-    await this.notifyOwner(caller, action, ctx, firstFill);
-    return result;
+    let firstFill = false;
+    return this.pipeline.run(caller, { action, bucket }, ctx, work, {
+      // The new-app check reads the trail, so it runs BEFORE this call's own row is written.
+      beforeAudit: async () => {
+        firstFill = action === AGENT_AUDIT_ACTIONS.FILL ? await this.notifier.isFirstFill(caller, action) : false;
+      },
+      afterAudit: () => this.notifyOwner(caller, action, ctx, firstFill),
+    });
   }
 
   /**
