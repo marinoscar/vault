@@ -1,6 +1,6 @@
 # Platform adoption
 
-Vault is migrating from the very old copy of EnterpriseAppBase (EAB) it forked from onto the published `@marinoscar/platform-*` packages (pinned `0.1.0-next.39`), the same way `kvox` was. The program is epic [#54](https://github.com/marinoscar/vault/issues/54); this documentation epic is E0 ([#55](https://github.com/marinoscar/vault/issues/55)). As of E2.1 and E2.2 Vault consumes `@marinoscar/platform-db` (composed Prisma schema, the platform migration history, `platform.lock`); the other slices were adopted by E3 onwards.
+Vault is migrating from the very old copy of EnterpriseAppBase (EAB) it forked from onto the published `@marinoscar/platform-*` packages (pinned `0.1.0-next.40`), the same way `kvox` was. The program is epic [#54](https://github.com/marinoscar/vault/issues/54); this documentation epic is E0 ([#55](https://github.com/marinoscar/vault/issues/55)). As of E2.1 and E2.2 Vault consumes `@marinoscar/platform-db` (composed Prisma schema, the platform migration history, `platform.lock`); the other slices were adopted by E3 onwards.
 
 ## Program status
 
@@ -22,7 +22,7 @@ Vault is migrating from the very old copy of EnterpriseAppBase (EAB) it forked f
 | EAB commit | `59e377cbebb60e711fe4d7b0d818715f23af8a59` |
 | Vault commit | `1b2074d` (`1b2074ddce5215ad15a05ffc7ac5071505ea7dfc`) |
 | Date | 2026-11-02 |
-| Platform packages | `0.1.0-next.21` at the baseline; `0.1.0-next.37` since [#173](https://github.com/marinoscar/vault/issues/173), `0.1.0-next.39` since [#193](https://github.com/marinoscar/vault/issues/193) (see below) |
+| Platform packages | `0.1.0-next.21` at the baseline; `0.1.0-next.37` since [#173](https://github.com/marinoscar/vault/issues/173), `0.1.0-next.39` since [#193](https://github.com/marinoscar/vault/issues/193), `0.1.0-next.40` since [#239](https://github.com/marinoscar/vault/issues/239) (see below) |
 
 ## Platform upgrades
 
@@ -31,6 +31,7 @@ Vault is migrating from the very old copy of EnterpriseAppBase (EAB) it forked f
 | 2026-11-18 | [#173](https://github.com/marinoscar/vault/issues/173) | Every `@marinoscar/platform-*` package moved from `0.1.0-next.21` to `0.1.0-next.37`. Three platform migrations installed as byte copies (0041 to 0043: `20261118160821_notifications_state_counted`, `20261118160822_add_storage_migrations`, `20261118160823_add_oauth_server`); `platform.lock` and `npm run db:check` now cover 43 platform migrations. `infra/` regenerated with `npm run platform:infra:sync` (new `infra/nginx/platform/oauth-server.conf`, not yet included by Vault). The platform OAuth 2.1 server ships in the packages but was not mounted until [#174](https://github.com/marinoscar/vault/issues/174) (next row). New routes `POST /api/notifications/:id/dismiss`, `POST /api/notifications/dismiss-all` and the multipart storage upload routes are covered by the RBAC matrix. The baseline and final drift reports stay at `next.21`. |
 | 2026-11-18 | [#174](https://github.com/marinoscar/vault/issues/174) | The platform **OAuth server sub-slice is adopted** (E14.2): `IdentityModule.forRoot({ oauthServer: {} })`, off by default, nginx include `infra/nginx/app.d/locations/oauth-server.conf`, CORS via `OAUTH_PUBLIC_CORS_PATHS`, the consent, error, Connected apps and OAuth clients pages. Vault adds the `vault:items_*` scopes, the `secrets:fill` permission and the `agent` resource (`/api/agent/v1`, `whoami` only). See [SECURITY-ARCHITECTURE.md §16](../SECURITY-ARCHITECTURE.md#16-oauth-server-agent-access). |
 | 2026-11-19 | [#193](https://github.com/marinoscar/vault/issues/193) | Every `@marinoscar/platform-*` package moved from `0.1.0-next.37` to `0.1.0-next.39` (no `next.38` of any platform package was published to the `next` tag; `next.39` carries its changes). No new platform migration (`npm run db:sync`: up to date; `platform.lock` keeps `platformVersion` `0.1.0-next.37`, the version of the last install); `infra/` regenerated (header lines only). `next.39` adds the admin view of an OAuth client's connections (`GET`/`DELETE /api/admin/oauth/grants`, already in the RBAC matrix) and `OAuthServerApi.listAdminGrants`/`revokeAdminGrant`, which Vault gets through `createOAuthServerApi`. No shim. The Vault packages now declare a tested platform range, `>=0.1.0-next.36 <=0.1.0-next.39`, instead of one version: [PACKAGES.md, Platform compatibility](../PACKAGES.md#platform-compatibility). |
+| 2026-11-23 | [#239](https://github.com/marinoscar/vault/issues/239) | Every `@marinoscar/platform-*` package moved from `0.1.0-next.39` to `0.1.0-next.40`. No platform migration and no `infra/` change. `next.40` adds an availability predicate on registered OAuth scopes (`OAuthScopeDefinition.available`), which is additive; Vault adopts nothing new from it. The Vault packages' supported platform range widened to `>=0.1.0-next.36 <=0.1.0-next.40`: [PACKAGES.md, Platform compatibility](../PACKAGES.md#platform-compatibility). |
 
 ## Regenerating the drift report
 
