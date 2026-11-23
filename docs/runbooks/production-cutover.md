@@ -4,7 +4,7 @@
 
 Audience: the owner, alone, in a maintenance window. Rehearse first (section 5), then run section 6.
 
-Source of truth for every command below: `apps/api/package.json` (scripts), `apps/api/scripts/*`, `infra/compose/*.compose.yml`, `infra/compose/.env.example`, the `vault deploy` engine of `@marinoscar/platform-cli` (pinned `0.1.0-next.39`; its runbook is EnterpriseAppBase `docs/runbooks/deploy-to-vps.md`) and `infra/deploy/*` (the legacy path). Anything not provable from those is marked **confirm on the rehearsal**.
+Source of truth for every command below: `apps/api/package.json` (scripts), `apps/api/scripts/*`, `infra/compose/*.compose.yml`, `infra/compose/.env.example`, the `vault deploy` engine of `@marinoscar/platform-cli` (pinned `0.1.0-next.40`; its runbook is EnterpriseAppBase `docs/runbooks/deploy-to-vps.md`) and `infra/deploy/*` (the legacy path). Anything not provable from those is marked **confirm on the rehearsal**.
 
 ## Contents
 
