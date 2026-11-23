@@ -1,5 +1,5 @@
 {
-  "version": "0.1.0-next.39",
+  "version": "0.1.0-next.40",
   "identity": {
     "cliName": "vault",
     "envPrefix": "VAULT_",
