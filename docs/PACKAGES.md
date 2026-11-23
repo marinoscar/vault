@@ -228,7 +228,7 @@ The compatibility table, one row per Vault packages release, newest first; an `U
 <!-- platform-compat:start -->
 | Vault packages | Platform range (`@marinoscar/platform-*`) | Date |
 |---|---|---|
-| `Unreleased` | `>=0.1.0-next.36 <=0.1.0-next.40` | 2026-11-23 |
+| `0.1.0-next.6` | `>=0.1.0-next.36 <=0.1.0-next.40` | 2026-11-23 |
 | `0.1.0-next.5` | `>=0.1.0-next.36 <=0.1.0-next.39` | 2026-11-19 |
 | `0.1.0-next.4` | `>=0.1.0-next.36 <=0.1.0-next.39` | 2026-11-19 |
 | `0.1.0-next.3` | `>=0.1.0-next.37 <=0.1.0-next.37` | 2026-11-19 |
