@@ -498,6 +498,36 @@ export default function SecretDetailPage() {
                 </Typography>
               </Paper>
             )}
+            {isSystemType(secret.type, 'Service Key') && (
+              <Paper variant="outlined" sx={{ borderRadius: 2, px: 2, py: 1.5, mt: 2 }}>
+                <FormControlLabel
+                  sx={{ alignItems: 'flex-start', m: 0, gap: 1, minWidth: 0 }}
+                  control={
+                    <Switch
+                      checked={secret.agentAccess === 'fill'}
+                      onChange={(e) => void toggleAgentAccess(e.target.checked, 'service key')}
+                      disabled={!canWrite || savingAgentAccess}
+                      slotProps={{ input: { 'aria-describedby': 'service-key-access-help' } }}
+                    />
+                  }
+                  label={
+                    <Typography variant="body2" sx={{ fontWeight: 600, pt: 0.75 }}>
+                      Allow your apps to use this service key
+                    </Typography>
+                  }
+                />
+                <Typography
+                  id="service-key-access-help"
+                  variant="caption"
+                  component="p"
+                  sx={{ color: 'text.secondary', mt: 0.5 }}
+                >
+                  Apps you connect with the service keys permission can read this key on their server, by its
+                  service and key name, to call that service for you. It is never shown to a chat assistant.
+                  You can turn this off at any time.
+                </Typography>
+              </Paper>
+            )}
             {isSystemType(secret.type, 'Card') && (
               <CardAgentAccessPanel
                 secretId={secret.id}

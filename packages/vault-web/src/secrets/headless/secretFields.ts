@@ -340,7 +340,7 @@ export function isSystemType(type: { name: string; isSystem?: boolean } | null |
 export function agentAccessErrorMessage(err: unknown): string {
   const code = (err as { code?: string } | null)?.code;
   if (code === 'AGENT_ACCESS_UNSUPPORTED_TYPE') {
-    return 'Only a login, a card or an identity item can be opened to agents.';
+    return 'Only a login, a card, an identity item or a service key can be opened to agents.';
   }
   if (code === 'OWNER_SESSION_REQUIRED') {
     return 'Sign in to Vault to change what agents may do with this item.';

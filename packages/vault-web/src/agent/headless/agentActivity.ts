@@ -1,6 +1,6 @@
 import { api } from '../../core/headless/http.js';
 
-/** What an agent did: the audit actions of the agent API (logins, cards, identity) and the owner's decisions. */
+/** What an agent did: the audit actions of the agent API (logins, cards, identity, service keys) and the owner's decisions. */
 export type AgentActivityAction =
   | 'lookup'
   | 'fill'
@@ -13,7 +13,8 @@ export type AgentActivityAction =
   | 'card_grant_request'
   | 'identity_lookup'
   | 'identity_fill'
-  | 'card_grant';
+  | 'card_grant'
+  | 'service_key';
 
 /** The credential an agent call authenticated with (`embedded`: a host that embeds Vault, by its label). */
 export type AgentCredentialKind = 'oauth' | 'pat' | 'session' | 'embedded';
@@ -45,6 +46,10 @@ export interface AgentActivityItem {
   amount?: string | null;
   /** A card call's currency. */
   currency?: string | null;
+  /** A service key call's service (`web_search`); absent otherwise. */
+  service?: string | null;
+  /** A service key call's key name; absent otherwise. */
+  keyName?: string | null;
 }
 
 export const AGENT_ACTIVITY_ACTIONS: readonly AgentActivityAction[] = [
@@ -60,6 +65,7 @@ export const AGENT_ACTIVITY_ACTIONS: readonly AgentActivityAction[] = [
   'identity_lookup',
   'identity_fill',
   'card_grant',
+  'service_key',
 ];
 
 export const AGENT_ACTION_LABELS: Record<AgentActivityAction, string> = {
@@ -75,6 +81,7 @@ export const AGENT_ACTION_LABELS: Record<AgentActivityAction, string> = {
   identity_lookup: 'Identity looked up',
   identity_fill: 'Identity filled',
   card_grant: 'Shop permission',
+  service_key: 'Service key read',
 };
 
 export interface AgentActivityQuery {

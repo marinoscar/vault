@@ -9,6 +9,7 @@ import {
   Badge as BadgeIcon,
   TravelExplore as TravelExploreIcon,
   AssignmentInd as AssignmentIndIcon,
+  Api as ApiIcon,
 } from '@mui/icons-material';
 
 const iconMap: Record<string, React.ElementType> = {
@@ -23,6 +24,8 @@ const iconMap: Record<string, React.ElementType> = {
   Badge: BadgeIcon,
   TravelExplore: TravelExploreIcon,
   AssignmentInd: AssignmentIndIcon,
+  // Service Key (#241).
+  Api: ApiIcon,
 };
 
 interface SecretTypeIconProps {
