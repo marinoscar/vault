@@ -1,5 +1,7 @@
 # @marinoscar/vault-db
 
+## 0.1.0-next.7
+
 ## 0.1.0-next.6
 
 ## 0.1.0-next.5

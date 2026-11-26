@@ -1,6 +1,6 @@
 {
   "name": "@marinoscar/vault-api",
-  "version": "0.1.0-next.6",
+  "version": "0.1.0-next.7",
   "description": "The NestJS side of the Vault domain behind ports: secrets, secret types, attachments, the export zip, backups, media and card extraction (CommonJS).",
   "license": "MIT",
   "type": "commonjs",
@@ -111,7 +111,7 @@
   "devDependencies": {
     "@marinoscar/platform-api": "0.1.0-next.40",
     "@marinoscar/platform-contract": "0.1.0-next.40",
-    "@marinoscar/vault-contract": "0.1.0-next.6",
+    "@marinoscar/vault-contract": "0.1.0-next.7",
     "@nestjs/testing": "^11.1.12",
     "@types/jest": "^29.x",
     "@types/node": "^24.x",
