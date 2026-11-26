@@ -19,7 +19,10 @@ import {
   AgentCardsController,
   AgentController,
   AgentReleaseService,
+  AgentServiceKeysController,
+  AgentServiceKeysService,
   CardGrantsController,
+  SERVICE_KEY_RELEASE_PORT,
 } from '../src/agent';
 import { McpController } from '../src/mcp';
 import { CardExpiryScanHandler, CARD_EXPIRY_SCAN_JOB_TYPE } from '../src/card-expiry';
@@ -145,6 +148,13 @@ describe('vault-api conformance (fake ports)', () => {
     expect(port).toBeInstanceOf(AgentReleaseService);
     expect(port).toBe(moduleRef.get(AgentReleaseService, { strict: false }));
     expect(AGENT_RELEASE_PORT).toBe(Symbol.for('@marinoscar/vault/AGENT_RELEASE_PORT'));
+  });
+
+  it('exports the in-process service-key release port (#241) bound to the one implementation', () => {
+    const port = moduleRef.get(SERVICE_KEY_RELEASE_PORT, { strict: false });
+    expect(port).toBeInstanceOf(AgentServiceKeysService);
+    expect(port).toBe(moduleRef.get(AgentServiceKeysService, { strict: false }));
+    expect(SERVICE_KEY_RELEASE_PORT).toBe(Symbol.for('@marinoscar/vault/SERVICE_KEY_RELEASE_PORT'));
   });
 
   it('registers the five job handlers through the jobs port, under their permanent types', () => {

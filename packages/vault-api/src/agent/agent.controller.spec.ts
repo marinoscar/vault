@@ -61,10 +61,10 @@ describe('AgentController', () => {
       assertEnabled: jest.fn(async () => { throw new Error('AGENT_ACCESS_DISABLED'); }),
     };
     const service = new AgentCredentialsService({} as never, pipeline as never, {} as never);
-    await expect(service.contractInfo()).resolves.toEqual({ version: AGENT_CONTRACT_VERSION, features: ['logins', 'totp', 'save_login', 'identity'] });
+    await expect(service.contractInfo()).resolves.toEqual({ version: AGENT_CONTRACT_VERSION, features: ['logins', 'totp', 'save_login', 'service_keys', 'identity'] });
     settings.cards.enabled = true;
     await expect(service.contractInfo()).resolves.toEqual({
-      version: AGENT_CONTRACT_VERSION, features: ['logins', 'totp', 'save_login', 'cards', 'identity'],
+      version: AGENT_CONTRACT_VERSION, features: ['logins', 'totp', 'save_login', 'service_keys', 'cards', 'identity'],
     });
     settings.enabled = false;
     await expect(service.contractInfo()).rejects.toThrow('AGENT_ACCESS_DISABLED');

@@ -20,6 +20,7 @@ export const SECRET_TYPE_KINDS = [
   'custom',
   'passport',
   'id_document',
+  'service_key',
 ] as const;
 export type SecretTypeKind = (typeof SECRET_TYPE_KINDS)[number];
 

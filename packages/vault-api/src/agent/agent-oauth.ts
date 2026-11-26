@@ -34,6 +34,7 @@ export const VAULT_OAUTH_SCOPES = {
   CARDS_FILL: 'vault:cards_fill',
   IDENTITY_READ: 'vault:identity_read',
   IDENTITY_FILL: 'vault:identity_fill',
+  SERVICE_KEYS_READ: 'vault:service_keys_read',
 } as const;
 
 /** The agent API's resource id and path. */
@@ -90,6 +91,14 @@ export const VAULT_OAUTH_SCOPE_DEFINITIONS: readonly OAuthScopeDefinition[] = [
     title: 'Fill your identity details into forms',
     description: 'Fill your name, address and phone into forms, one field at a time; your id number and date of birth only on the websites you allowed.',
     permissions: [VAULT_PERMISSIONS.AGENT_IDENTITY_READ.id, VAULT_PERMISSIONS.AGENT_IDENTITY_FILL.id],
+    risk: 'elevated',
+  },
+  // Issue #241. Never `default`: a server process asks for it explicitly.
+  {
+    id: VAULT_OAUTH_SCOPES.SERVICE_KEYS_READ,
+    title: 'Use the service keys you opened to agents',
+    description: 'Read the keys of outside services you opened to agents (for example a web search key), by service and name, for the app\'s server to call that service. Never your logins, cards or identity details.',
+    permissions: [VAULT_PERMISSIONS.AGENT_SERVICE_KEYS_READ.id],
     risk: 'elevated',
   },
 ];

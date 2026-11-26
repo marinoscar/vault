@@ -25,6 +25,7 @@ const AUDIT_ACTIONS: Record<AgentActivityAction, readonly string[]> = {
   identity_lookup: [AGENT_AUDIT_ACTIONS.IDENTITY_LOOKUP],
   identity_fill: [AGENT_AUDIT_ACTIONS.IDENTITY_FILL],
   card_grant: Object.values(CARD_GRANT_AUDIT_ACTIONS),
+  service_key: [AGENT_AUDIT_ACTIONS.SERVICE_KEY_READ],
 };
 const ACTION_OF = new Map<string, AgentActivityAction>(
   (Object.entries(AUDIT_ACTIONS) as Array<[AgentActivityAction, readonly string[]]>).flatMap(([action, audits]) =>
@@ -141,6 +142,7 @@ export class AgentActivityService {
           clientName: clientId ? (clientNames.get(clientId) ?? null) : kind === 'embedded' ? str(meta.clientLabel) : null,
           amount: str(meta.amount),
           currency: str(meta.currency),
+          ...(action === 'service_key' ? { service: str(meta.service), keyName: str(meta.keyName) } : {}),
         },
       ];
     });

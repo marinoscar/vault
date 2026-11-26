@@ -45,6 +45,7 @@ describe('AgentActivityService', () => {
       'agent.credential.create', 'agent.credential.rotate', 'secret.agent_access.update',
       'agent.card.lookup', 'agent.card.fill', 'agent.card.grant_request', 'agent.identity.lookup', 'agent.identity.fill',
       'secret.card_grant.create', 'secret.card_grant.revoke', 'secret.card_grant_request.approve', 'secret.card_grant_request.decline',
+      'agent.service_key.read',
     ]);
     expect(args.orderBy).toEqual([{ createdAt: 'desc' }, { id: 'desc' }]);
     expect(prisma.auditEvent.count.mock.calls[0]![0].where.actorUserId).toBe(USER);
@@ -119,6 +120,18 @@ describe('AgentActivityService', () => {
     expect(data[1]).toMatchObject({ action: 'card_grant', field: 'created', credentialKind: 'session', amount: '100.00', secretName: 'Card A' });
     expect(data[2]).toMatchObject({ action: 'identity_fill', field: 'full_name', credentialKind: 'pat', amount: null });
     for (const item of data) expect(agentActivityItemSchema.parse(item)).toBeTruthy();
+  });
+
+  it('maps a service key read with its service and key name, and no website (#241)', async () => {
+    const { service, prisma } = build([
+      row({ action: 'agent.service_key.read', meta: { result: 'ok', credential: 'embedded', clientLabel: 'Host A', secretId: SECRET, field: 'key', origin: null, purpose: 'service_call', service: 'web_search', keyName: 'provider_a', value: CANARY } }),
+    ]);
+    prisma.secret.findMany.mockResolvedValue([{ id: SECRET, name: 'Search key' }]);
+    const { data } = await service.list(USER, query({ action: 'service_key' }));
+    expect(prisma.auditEvent.findMany.mock.calls[0]![0].where.action).toEqual({ in: ['agent.service_key.read'] });
+    expect(data[0]).toMatchObject({ action: 'service_key', service: 'web_search', keyName: 'provider_a', origin: null, purpose: 'service_call', secretName: 'Search key', clientName: 'Host A' });
+    expect(JSON.stringify(data)).not.toContain(CANARY);
+    expect(agentActivityItemSchema.parse(data[0])).toBeTruthy();
   });
 
   it('filters card_grant by the four owner decisions', async () => {

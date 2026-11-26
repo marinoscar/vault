@@ -15,7 +15,14 @@ import {
 
 
 import { isCountryCode } from '@marinoscar/vault-contract/common';
-import { keyValueValueSchema } from '@marinoscar/vault-contract/secret-types';
+import {
+  keyValueValueSchema,
+  normalizeServiceKeyId,
+  SERVICE_KEY_NAME_FIELD,
+  SERVICE_KEY_SERVICE_FIELD,
+  SERVICE_KEY_TYPE_NAME,
+  SERVICE_KEY_VALUE_FIELD,
+} from '@marinoscar/vault-contract/secret-types';
 import {
   originsFromCredential,
   matchOrigin,
@@ -151,13 +158,13 @@ export function isAgentAccessibleType(
   return !!type && type.isSystem === true && type.name === 'Credential';
 }
 
-/** The system types an owner may open to agents (ADR-0002 logins, ADR-0003 cards and identity). */
-export const AGENT_OPENABLE_TYPE_NAMES = ['Credential', 'Card', 'Identity'] as const;
+/** The system types an owner may open to agents (ADR-0002 logins, ADR-0003 cards and identity, #241 service keys). */
+export const AGENT_OPENABLE_TYPE_NAMES = ['Credential', 'Card', 'Identity', SERVICE_KEY_TYPE_NAME] as const;
 
 /** @stability experimental */
 export type AgentOpenableTypeName = (typeof AGENT_OPENABLE_TYPE_NAMES)[number];
 
-/** Whether `type` is a system type an owner may open to agents: `Credential`, `Card` or `Identity`. */
+/** Whether `type` is a system type an owner may open to agents: `Credential`, `Card`, `Identity` or `Service Key`. */
 export function isAgentOpenableType(
   type: { name?: string | null; isSystem?: boolean | null } | null | undefined,
 ): boolean {
@@ -173,6 +180,32 @@ export function isSystemTypeNamed(
 }
 
 /**
+ * `data` of a `Service Key` secret with `service` and `key_name` normalized (trimmed, lower-cased),
+ * or a 400 naming the field when one is not a valid id (`SERVICE_KEY_ID_PATTERN`). The value itself
+ * is stored as given.
+ */
+export function normalizeServiceKeyData(data: Record<string, unknown>): Record<string, unknown> {
+  const out = { ...data };
+  const errors: string[] = [];
+  for (const field of [SERVICE_KEY_SERVICE_FIELD, SERVICE_KEY_NAME_FIELD]) {
+    const raw = data[field];
+    if (raw === undefined || raw === null || raw === '') continue; // required-field validation reports it
+    const normalized = normalizeServiceKeyId(raw);
+    if (!normalized) {
+      errors.push(
+        `Field "${field}" must be lower-case letters, digits, "_" and "-" (at most 64, starting with a letter or a digit)`,
+      );
+    } else {
+      out[field] = normalized;
+    }
+  }
+  if (errors.length > 0) {
+    throw new BadRequestException({ message: 'Secret data validation failed', details: { errors } });
+  }
+  return out;
+}
+
+/**
  * The origins to store for `data` of a secret of `type`: derived for a Credential (an empty array
  * clears them), `undefined` for every other type (the column stays `{}`).
  */
@@ -183,6 +216,20 @@ export function computeSecretOrigins(
   if (!isAgentAccessibleType(type)) return undefined;
   return originsFromCredential((data ?? {}) as { url?: unknown; additional_urls?: unknown });
 }
+
+/** Whether `type` is the `Service Key` system type (issue #241). */
+export function isServiceKeyType(type: { name?: string | null; isSystem?: boolean | null } | null | undefined): boolean {
+  return !!type && type.isSystem === true && type.name === SERVICE_KEY_TYPE_NAME;
+}
+
+/**
+ * The outcome of {@link SecretsService.readOpenedServiceKey}: the one opened key, `ambiguous` when
+ * more than one opened key has the service and name, or `null` when none has.
+ */
+export type OpenedServiceKeyResult =
+  | { kind: 'found'; secretId: string; secretName: string; value: string }
+  | { kind: 'ambiguous'; secretIds: string[] }
+  | null;
 
 /** An agent-accessible Credential matched by origin. Non-sensitive metadata only. */
 export interface CredentialOriginMatch {
@@ -339,6 +386,7 @@ export class SecretsService {
   ): Record<string, unknown> {
     this.validateDataAgainstType(data, type.fields as FieldDefinition[]);
     data = normalizeCountryFields(data, type.fields as FieldDefinition[]);
+    if (isServiceKeyType(type)) return normalizeServiceKeyData(data);
     if (!isAgentAccessibleType(type)) return data;
     const raw = data.totp;
     if (typeof raw !== 'string' || raw.trim() === '') return data;
@@ -995,6 +1043,8 @@ export class SecretsService {
       throw new ConflictException(`A secret named "${dto.name}" already exists`);
     }
 
+    if (isServiceKeyType(secretType)) await this.assertServiceKeyFree(userId, data);
+
     // Encrypt the data
     const plaintext = JSON.stringify(data);
     const { ciphertext, iv, authTag } = this.crypto.encrypt(plaintext);
@@ -1244,6 +1294,9 @@ export class SecretsService {
 
     if (dto.data !== undefined) {
       newData = this.prepareData(existingSecret.type, dto.data as Record<string, unknown>);
+      if (isServiceKeyType(existingSecret.type)) {
+        await this.assertServiceKeyFree(existingSecret.createdById!, newData, id);
+      }
 
       // A new version only when the data changed: identical values (key order
       // aside; arrays such as a `keyvalue` value compare entry by entry) keep
@@ -1322,7 +1375,7 @@ export class SecretsService {
     if (agentAccess === 'fill' && !isAgentOpenableType(existing.type)) {
       throw new UnprocessableEntityException({
         code: 'AGENT_ACCESS_UNSUPPORTED_TYPE',
-        message: 'Only a Credential, Card or Identity secret can be opened to agents',
+        message: 'Only a Credential, Card, Identity or Service Key secret can be opened to agents',
       });
     }
 
@@ -1400,6 +1453,97 @@ export class SecretsService {
       orderBy: { name: 'asc' },
       take: 100,
     });
+  }
+
+  /**
+   * The `Service Key` secrets of `ownerId` whose current `service` and `key_name` equal the given
+   * (normalized) ids, optionally only those opened to agents. Decrypts each candidate's current
+   * version once; the values never leave this method except through `onMatch`.
+   */
+  private async matchServiceKeys(
+    ownerId: string,
+    service: string,
+    keyName: string,
+    options: { openedOnly: boolean; exceptId?: string },
+    onMatch: (secret: { id: string; name: string }, values: Record<string, unknown>) => void,
+  ): Promise<void> {
+    const candidates = await this.prisma.secret.findMany({
+      where: {
+        createdById: ownerId,
+        type: { name: SERVICE_KEY_TYPE_NAME, isSystem: true },
+        ...(options.openedOnly ? { agentAccess: 'fill' } : {}),
+        ...(options.exceptId ? { NOT: { id: options.exceptId } } : {}),
+      },
+      select: {
+        id: true,
+        name: true,
+        versions: { where: { isCurrent: true }, take: 1, select: { encryptedData: true, iv: true, authTag: true } },
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 500,
+    });
+    for (const candidate of candidates as Array<{
+      id: string;
+      name: string;
+      versions?: Array<{ encryptedData: string; iv: string; authTag: string }>;
+    }>) {
+      const version = candidate.versions?.[0];
+      if (!version) continue;
+      let values: Record<string, unknown>;
+      try {
+        values = this.decryptVersionData(version);
+      } catch {
+        // A version that does not decrypt is not a match; the owner's own read reports it.
+        continue;
+      }
+      if (
+        normalizeServiceKeyId(values[SERVICE_KEY_SERVICE_FIELD]) === service &&
+        normalizeServiceKeyId(values[SERVICE_KEY_NAME_FIELD]) === keyName
+      ) {
+        onMatch({ id: candidate.id, name: candidate.name }, values);
+      }
+    }
+  }
+
+  /**
+   * 409 `SERVICE_KEY_EXISTS` when `ownerId` already has another `Service Key` with the `service` and
+   * `key_name` of `data` (already normalized by `prepareData`), opened or not. Keeps a release by
+   * service and name unambiguous.
+   */
+  private async assertServiceKeyFree(ownerId: string, data: Record<string, unknown>, exceptId?: string): Promise<void> {
+    const service = normalizeServiceKeyId(data[SERVICE_KEY_SERVICE_FIELD]);
+    const keyName = normalizeServiceKeyId(data[SERVICE_KEY_NAME_FIELD]);
+    if (!service || !keyName) return;
+    let taken = false;
+    await this.matchServiceKeys(ownerId, service, keyName, { openedOnly: false, exceptId }, () => {
+      taken = true;
+    });
+    if (taken) {
+      throw new ConflictException({
+        code: 'SERVICE_KEY_EXISTS',
+        message: 'You already have a service key with this service and key name',
+      });
+    }
+  }
+
+  /**
+   * The value of the one `Service Key` of `ownerId` opened to agents (`agentAccess = fill`) whose
+   * `service` and `key_name` equal `service` and `keyName` (issue #241). For the agent service-key
+   * release only, which has already applied the kill switch and the rate limit and audits its own
+   * call: no authorization and no audit here. `service` and `keyName` must be normalized
+   * (`normalizeServiceKeyId`). Returns `null` for no match (closed, foreign, missing and other-type
+   * secrets are indistinguishable) and `ambiguous` for more than one.
+   */
+  async readOpenedServiceKey(ownerId: string, service: string, keyName: string): Promise<OpenedServiceKeyResult> {
+    const matches: Array<{ id: string; name: string; value: unknown }> = [];
+    await this.matchServiceKeys(ownerId, service, keyName, { openedOnly: true }, (secret, values) => {
+      matches.push({ ...secret, value: values[SERVICE_KEY_VALUE_FIELD] });
+    });
+    if (matches.length === 0) return null;
+    if (matches.length > 1) return { kind: 'ambiguous', secretIds: matches.map((m) => m.id) };
+    const [match] = matches;
+    if (typeof match.value !== 'string' || match.value === '') return null;
+    return { kind: 'found', secretId: match.id, secretName: match.name, value: match.value };
   }
 
   /**

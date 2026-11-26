@@ -3,6 +3,7 @@ import { withResponseHeaders } from '@marinoscar/platform-api/core';
 import type { AuthCredentialInfo } from '@marinoscar/platform-api/identity';
 import {
   AGENT_ERROR_CODES,
+  AGENT_SERVICE_KEY_PER_MINUTE,
   resolveAgentAccessSettings,
   type AgentAccessSettings,
 } from '@marinoscar/vault-contract/agent';
@@ -32,7 +33,7 @@ export interface AgentCaller {
 export type AgentCallerKind = 'oauth' | 'pat' | 'embedded';
 
 /** The rate-limit buckets of the agent API. @stability experimental */
-export type AgentBucket = 'lookup' | 'fill' | 'totp' | 'write' | 'card_fill' | 'identity_fill';
+export type AgentBucket = 'lookup' | 'fill' | 'totp' | 'write' | 'card_fill' | 'identity_fill' | 'service_key';
 
 /** The extra kill switch a route sits behind, besides `agentAccess.enabled`. @stability experimental */
 export type AgentGate = 'cards' | 'identity';
@@ -72,6 +73,11 @@ export interface AgentRunOptions {
   action: string;
   bucket: AgentBucket;
   gate?: AgentGate;
+  /**
+   * What the bucket counts per, instead of the default (the token, grant or host label, and the
+   * user). The service-key bucket counts per owner and service, whoever calls (issue #241).
+   */
+  limitKey?: string;
 }
 
 const CODE_REASONS: Record<string, string> = {
@@ -87,6 +93,7 @@ const CODE_REASONS: Record<string, string> = {
   [AGENT_ERROR_CODES.CARD_PERIOD_LIMIT_REACHED]: 'period_limit',
   [AGENT_ERROR_CODES.CARD_DAILY_CAP_REACHED]: 'daily_cap',
   [AGENT_ERROR_CODES.CARD_GRANT_EXPIRED]: 'grant_expired',
+  [AGENT_ERROR_CODES.SERVICE_KEY_AMBIGUOUS]: 'ambiguous',
 };
 
 /**
@@ -120,6 +127,7 @@ const BUCKET_LIMIT: Record<AgentBucket, (s: AgentAccessSettings) => number> = {
   write: (s) => s.writePerMinute,
   card_fill: (s) => s.cards.fillPerMinute,
   identity_fill: (s) => s.identity.fillPerMinute,
+  service_key: () => AGENT_SERVICE_KEY_PER_MINUTE,
 };
 
 /** Throws a coded 403. @stability experimental */
@@ -241,7 +249,9 @@ export class AgentCallPipeline {
         throw agentForbidden(AGENT_ERROR_CODES.IDENTITY_ACCESS_DISABLED, 'Identity release to agents is switched off');
       }
       const decision = this.limiter.consume(
-        `${options.bucket}:${this.principalKey(caller)}:${caller.userId}`,
+        options.limitKey !== undefined
+          ? `${options.bucket}:${options.limitKey}`
+          : `${options.bucket}:${this.principalKey(caller)}:${caller.userId}`,
         BUCKET_LIMIT[options.bucket](settings),
       );
       if (!decision.allowed) {

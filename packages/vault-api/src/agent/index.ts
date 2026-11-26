@@ -12,6 +12,8 @@ export * from './agent-cards.service';
 export * from './agent-identity.service';
 export * from './agent-release.service';
 export * from './agent-cards.controller';
+export * from './agent-service-keys.service';
+export * from './agent-service-keys.controller';
 export * from './card-grant-store';
 export * from './card-grants.service';
 export * from './card-grants.controller';
