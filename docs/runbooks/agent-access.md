@@ -94,6 +94,21 @@ Closing a login or switching off the kill switch needs no deploy and no restart.
 | An MCP tool result is `REDACTION_BLOCKED` | The guard found a sensitive value in the result and withheld it | Report it as a bug; the value was not sent |
 | `update_secret` returns `FIELD_NOT_UPDATABLE` | `url` and `additional_urls` cannot be changed through MCP | The owner edits the website in Vault |
 
+## Service keys (#241)
+
+A **Service Key** holds the key of an outside service (for example a web search provider) that an app's **server** reads by service and key name. No website is involved.
+
+1. **Save (the owner).** New secret, type **Service Key**: the service (`web_search`), a key name (`provider_a`) and the key. One key per service and key name.
+2. **Open (the owner).** On its page switch on **Allow your apps to use this service key**.
+3. **Runtime scope.** The app asks for `vault:service_keys_read` (never granted by default) and calls `GET /api/agent/v1/service-keys/{service}/{name}`; an embedding host calls `SERVICE_KEY_RELEASE_PORT`. `agentAccess.enabled` must be on.
+4. **Watch.** Agent activity lists each read as **Service key read**, with the service and key name. Turn the switch off to stop it at once (`404` from then on).
+
+| Symptom | Cause |
+|---|---|
+| `404` | The key is not opened, not of type Service Key, or the service or key name differs |
+| `409 SERVICE_KEY_AMBIGUOUS` | Two opened keys have the same service and key name (for example after a restore): close or delete one |
+| `403 insufficient_scope` | The app's token has no `vault:service_keys_read`: reconnect it |
+
 ## Cards and identity (ADR-0003)
 
 Card and identity release have their own switches, both **off** by default, separate from `agentAccess.enabled` ([ADR-0003](../decisions/0003-agent-cards-identity.md)).

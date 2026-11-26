@@ -51,8 +51,8 @@ type Role = 'admin' | 'contributor' | 'viewer';
 // The oracle: what each role may do (today's seed, by hand)
 // ---------------------------------------------------------------------------
 
-/** ADR-0003: the card and identity agent permissions; held wherever secrets:read is. */
-const AGENT_RELEASE = ['agent_cards:read', 'agent_cards:fill', 'agent_identity:read', 'agent_identity:fill'];
+/** ADR-0003: the card and identity agent permissions, and #241 the service-key read; held wherever secrets:read is. */
+const AGENT_RELEASE = ['agent_cards:read', 'agent_cards:fill', 'agent_identity:read', 'agent_identity:fill', 'agent_service_keys:read'];
 
 const SECRETS_RW = [
   'secrets:read',
@@ -231,6 +231,8 @@ const ROUTES: readonly Route[] = [
   ['POST', `/api/agent/v1/cards/${ID}/grant-requests`, 'agent_cards:fill'],
   ['GET', '/api/agent/v1/identity', 'agent_identity:read'],
   ['POST', `/api/agent/v1/identity/${ID}/fill`, 'agent_identity:fill'],
+  // #241: service keys for a server process on the agent API
+  ['GET', '/api/agent/v1/service-keys/web_search/provider_a', 'agent_service_keys:read'],
   // E14.7: the owner's agent trail (session or PAT; an OAuth token is refused by the controller).
   ['GET', '/api/agent-activity', 'secrets:read'],
   // E14.8: the MCP endpoint (the `mcp` OAuth protected resource). Every route needs secrets:read; the tools check
@@ -552,6 +554,7 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
         'AgentController',
         'AgentActivityController',
         'AgentCardsController',
+        'AgentServiceKeysController',
         'CardGrantsController',
         'McpController',
         'OAuthConsentController',
@@ -612,7 +615,7 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
         }
       }
 
-      const normalised = (path: string) => path.split(ID).join(':id').replace(/\/by-name\/[^/]+/, '/by-name/:name').replace(/\/upload\/parts\/\d+$/, '/upload/parts/:partNumber');
+      const normalised = (path: string) => path.split(ID).join(':id').replace(/\/by-name\/[^/]+/, '/by-name/:name').replace(/\/upload\/parts\/\d+$/, '/upload/parts/:partNumber').replace(/\/service-keys\/[^/]+\/[^/]+$/, '/service-keys/:service/:name');
       const declared = new Map([...ROUTES, ...STREAM_ROUTES, ...KILL_SWITCH_ROUTES].map(([m, p, perm]) => [`${m} ${normalised(p)}`, perm] as const));
 
       // Compare shapes: parameter names differ (`:folderId`), so collapse every `:param`.

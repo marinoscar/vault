@@ -110,6 +110,9 @@ export const SCHEMA_ROLES: Record<string, SchemaRole> = {
   agentIdentitySummarySchema: 'response',
   agentIdentityLookupResponseSchema: 'response',
   agentIdentityFillRequestSchema: 'request',
+  // service keys (contract 1.4)
+  agentServiceKeyParamsSchema: 'request',
+  agentServiceKeyResponseSchema: 'response',
   // the owner's side and settings (read and written by the web app): both ways
   cardGrantPeriodLimitSchema: 'request',
   createCardGrantSchema: 'request',

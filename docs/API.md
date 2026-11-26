@@ -1413,9 +1413,9 @@ Allows or forbids AI agents to use a secret ([SECRETS.md](SECRETS.md#agent-acces
 { "agentAccess": "fill" }
 ```
 
-- `agentAccess`: `none` or `fill`. Only a `Credential` secret may be `fill`; `none` is always accepted. The current value again is a no-op.
+- `agentAccess`: `none` or `fill`. Only a `Credential`, `Card`, `Identity` or `Service Key` system secret may be `fill`; `none` is always accepted. The current value again is a no-op.
 - **Response:** `200 OK` with `{ "data": <secret detail> }` carrying `agentAccess` and `agentAccessChangedAt` (ISO string, `null` until first changed).
-- **Errors:** `400` invalid body, `403` the caller lacks access or authenticated with an OAuth (`oat_`) token (an agent cannot widen its own access), `404` unknown or foreign secret, `422 AGENT_ACCESS_UNSUPPORTED_TYPE` for a non-Credential secret set to `fill`.
+- **Errors:** `400` invalid body, `403` the caller lacks access or authenticated with an OAuth (`oat_`) token (an agent cannot widen its own access), `404` unknown or foreign secret, `422 AGENT_ACCESS_UNSUPPORTED_TYPE` for any other type set to `fill`.
 - Audited as `secret.agent_access.update` with `{ secretId, from, to }`.
 
 #### POST /secrets/:id/totp
@@ -2215,7 +2215,7 @@ The wire shapes are the provider contract an agent runtime codes against: `@mari
 
 #### GET /agent/v1/whoami
 
-Requires `secrets:read` (scope `vault:items_read` or wider). Returns `{ "data": { "userId", "scopes", "clientId", "contract": { "version", "features" } } }`; for a session JWT `scopes` is `[]` and `clientId` is `null`. `contract` (since contract 1.2, #196) is the agent contract version (`AGENT_CONTRACT_VERSION`) and the features on now: `logins` and `totp` always, `save_login` always from contract 1.3 (#233), then `cards` and `identity` while their switches are on. Subject to the kill switch. Stability promise and changelog: [agent-credential-api.md](agent-credential-api.md#9-stability).
+Requires `secrets:read` (scope `vault:items_read` or wider). Returns `{ "data": { "userId", "scopes", "clientId", "contract": { "version", "features" } } }`; for a session JWT `scopes` is `[]` and `clientId` is `null`. `contract` (since contract 1.2, #196) is the agent contract version (`AGENT_CONTRACT_VERSION`) and the features on now: `logins` and `totp` always, `save_login` always from contract 1.3 (#233), `service_keys` always from contract 1.4 (#241), then `cards` and `identity` while their switches are on. Subject to the kill switch. Stability promise and changelog: [agent-credential-api.md](agent-credential-api.md#9-stability).
 
 #### GET /agent/v1/credentials?origin=
 
@@ -2263,6 +2263,10 @@ Card fill refusals: `404` (missing, not yours, not opened, not a Card, or no liv
 | `POST /secrets/{id}/card-grant-requests/{requestId}/decline` | `409 CARD_GRANT_REQUEST_NOT_PENDING` when decided. Audited `secret.card_grant_request.decline` |
 
 `PATCH /secrets/{id}/agent-access` also opens a system `Card` or `Identity` (browser session only) and takes `allowedOrigins` (Identity only) for the sensitive identity fields; the detail carries `agentOrigins`.
+
+#### GET /agent/v1/service-keys/{service}/{name}
+
+Service keys for a server process (contract 1.4, [#241](https://github.com/marinoscar/vault/issues/241); guide: [agent-credential-api.md §11](agent-credential-api.md#11-service-keys)). Scope `vault:service_keys_read`, permission `agent_service_keys:read` (no login, card or identity scope reaches it). Returns `{ "data": { "value" } }`: the key of the caller's one `Service Key` secret opened to agents (`agentAccess = fill`) whose `service` and `key_name` equal the path, after trimming and lower-casing; no origin. Same rules as above (credential kind, `agentAccess.enabled`, no-store). `400` an id that is not lower-case letters, digits, `_` and `-` (at most 64); `404` missing, closed, not yours or another type (identical); `409 SERVICE_KEY_AMBIGUOUS` when two opened keys share the pair; `429 RATE_LIMITED` past 120 a minute per owner and service (a constant, `AGENT_SERVICE_KEY_PER_MINUTE`). Audited as `agent.service_key.read` with `{ result, credential, ..., secretId, service, keyName, purpose: "service_call" }`; never the value. An embedding host calls `ServiceKeyReleasePort` (`SERVICE_KEY_RELEASE_PORT`) and receives a `Buffer`.
 
 #### GET /agent-activity
 
@@ -2363,7 +2367,9 @@ Every tool declares a title, a scope, an effect and the MCP annotations (`readOn
 | `AGENT_ACCESS_DISABLED` | 403 | Agent API: the deployment switch `agentAccess.enabled` is off |
 | `AGENT_CREDENTIAL_REQUIRED` | 403 | Agent API: the request used a browser session instead of an `oat_` or `pat_` token |
 | `RATE_LIMITED` | 429 | Agent API: a per-minute limit was reached (`Retry-After` is set) |
-| `AGENT_ACCESS_UNSUPPORTED_TYPE` | 422 | Only a Credential secret can be set to agent access `fill`; this secret type cannot |
+| `AGENT_ACCESS_UNSUPPORTED_TYPE` | 422 | Only a Credential, Card, Identity or Service Key secret can be set to agent access `fill`; this secret type cannot |
+| `SERVICE_KEY_AMBIGUOUS` | 409 | Agent API: two opened service keys share the service and key name, so none was released |
+| `SERVICE_KEY_EXISTS` | 409 | The owner already has a Service Key with this service and key name (`POST`/`PUT /secrets`) |
 | `ATTACHMENT_ROLE_NOT_ALLOWED` | 422 | The attachment `role` is not an image slot of the secret's type (Card: `card_front`, `card_back`; Passport: `data_page`, `back`; ID Document: `front`, `back`; custom types: none) |
 | `AI_INVALID_IMAGE` | 400 | Card extraction body was not one or two acceptable base64 image data URLs |
 | `AI_EXTRACTION_FAILED` | 422 | Card extraction call succeeded but the model could not read the card, or its output failed schema validation |

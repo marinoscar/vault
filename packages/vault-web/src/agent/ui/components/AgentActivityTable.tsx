@@ -78,6 +78,12 @@ function SecretLink({ row }: { row: AgentActivityItem }) {
   );
 }
 
+/** `Service: web_search/provider_a` for a service key call; empty otherwise. */
+function serviceKeyLabel(row: AgentActivityItem): string {
+  if (!row.service) return '';
+  return `Service: ${row.service}${row.keyName ? `/${row.keyName}` : ''}`;
+}
+
 function TimeLabel({ iso }: { iso: string }) {
   return <time dateTime={iso}>{new Date(iso).toLocaleString()}</time>;
 }
@@ -123,8 +129,10 @@ const COLUMNS: DataTableColumn<AgentActivityItem>[] = [
     flex: 1,
     minWidth: 140,
     truncate: true,
-    value: (row) => row.origin ?? '',
-    render: (row) => (row.origin ? <span>{row.origin}</span> : <Dash />),
+    // A service key call (#241) has no website: the service and key name it read stand in.
+    value: (row) => row.origin ?? serviceKeyLabel(row),
+    render: (row) =>
+      row.origin ? <span>{row.origin}</span> : serviceKeyLabel(row) ? <span>{serviceKeyLabel(row)}</span> : <Dash />,
   },
   {
     id: 'amount',

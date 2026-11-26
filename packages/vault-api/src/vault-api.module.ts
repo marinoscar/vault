@@ -11,6 +11,8 @@ import { AgentCardsController } from './agent/agent-cards.controller';
 import { AgentCardsService } from './agent/agent-cards.service';
 import { AgentIdentityService } from './agent/agent-identity.service';
 import { AGENT_RELEASE_PORT, AgentReleaseService } from './agent/agent-release.service';
+import { AgentServiceKeysController } from './agent/agent-service-keys.controller';
+import { AgentServiceKeysService, SERVICE_KEY_RELEASE_PORT } from './agent/agent-service-keys.service';
 import { CardGrantStore, PrismaCardGrantStore } from './agent/card-grant-store';
 import { CardGrantsController } from './agent/card-grants.controller';
 import { CardGrantsService } from './agent/card-grants.service';
@@ -202,6 +204,7 @@ export class VaultApiModule {
         MyBackupsController,
         AgentController,
         AgentCardsController,
+        AgentServiceKeysController,
         CardGrantsController,
         AgentActivityController,
         McpController,
@@ -216,6 +219,8 @@ export class VaultApiModule {
         AgentIdentityService,
         AgentReleaseService,
         { provide: AGENT_RELEASE_PORT, useExisting: AgentReleaseService },
+        AgentServiceKeysService,
+        { provide: SERVICE_KEY_RELEASE_PORT, useExisting: AgentServiceKeysService },
         CardGrantsService,
         { provide: CardGrantStore, useClass: PrismaCardGrantStore },
         AgentActivityService,
@@ -264,6 +269,9 @@ export class VaultApiModule {
         // ADR-0003: the in-process agent release port for a host that embeds the packages (#194).
         AgentReleaseService,
         AGENT_RELEASE_PORT,
+        // Issue #241: the in-process service-key release for a host that embeds the packages.
+        AgentServiceKeysService,
+        SERVICE_KEY_RELEASE_PORT,
       ],
     };
   }

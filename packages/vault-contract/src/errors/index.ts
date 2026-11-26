@@ -54,7 +54,7 @@ export const VAULT_ERROR_CODES: readonly VaultErrorCodeDef[] = Object.freeze([
   { code: 'ENCRYPTION_UNAVAILABLE', status: 503, description: 'VAULT_ENCRYPTION_KEY is not configured, so a secret value could not be stored.' },
 
   // Agent access (E14.3).
-  { code: 'AGENT_ACCESS_UNSUPPORTED_TYPE', status: 422, description: 'Only a Credential, Card or Identity system secret can be opened to agents; this secret type cannot be set to fill.' },
+  { code: 'AGENT_ACCESS_UNSUPPORTED_TYPE', status: 422, description: 'Only a Credential, Card, Identity or Service Key system secret can be opened to agents; this secret type cannot be set to fill.' },
 
   // Agent credential API (E14.6). Contract: `@marinoscar/vault-contract/agent`.
   { code: 'ORIGIN_MISMATCH', status: 403, description: 'The origin sent by the agent is not exactly one of the credential origins, so nothing was filled.' },
@@ -75,6 +75,10 @@ export const VAULT_ERROR_CODES: readonly VaultErrorCodeDef[] = Object.freeze([
   { code: 'CARD_GRANT_EXISTS', status: 409, description: 'The card already has a live grant for this merchant; revoke it first.' },
   { code: 'CARD_GRANT_REQUEST_NOT_PENDING', status: 409, description: 'The grant request was already approved or declined.' },
   { code: 'OWNER_SESSION_REQUIRED', status: 403, description: 'Changing what agents may do needs the owner signed in to Vault; an OAuth access token or a personal access token cannot.' },
+
+  // Service keys (issue #241). Contract: `@marinoscar/vault-contract/agent` and `/secret-types`.
+  { code: 'SERVICE_KEY_AMBIGUOUS', status: 409, description: 'More than one service key opened to agents has this service and name, so none was released; keep one.' },
+  { code: 'SERVICE_KEY_EXISTS', status: 409, description: 'You already have a service key with this service and key name; change that one instead.' },
 
   // Document images (attachment roles).
   { code: 'ATTACHMENT_ROLE_NOT_ALLOWED', status: 422, description: "The attachment role is not one of the image slots of the secret's type (Card: card_front, card_back; Passport: data_page, back; ID Document: front, back; a custom type: none)." },

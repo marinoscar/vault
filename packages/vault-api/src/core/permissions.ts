@@ -85,6 +85,14 @@ export const VAULT_PERMISSIONS = {
     scope: 'org',
     defaultGrants: ['org_admin', 'contributor', 'viewer'],
   },
+  // Service keys for a server process (issue #241): what the vault:service_keys_read scope bundles.
+  // Separate from secrets:read/secrets:fill so a login token reads no service key.
+  AGENT_SERVICE_KEYS_READ: {
+    id: 'agent_service_keys:read',
+    description: 'Read the value of a service key opened to agents, by service and name, through the agent API',
+    scope: 'org',
+    defaultGrants: ['org_admin', 'contributor', 'viewer'],
+  },
   SECRETS_WRITE: {
     id: 'secrets:write',
     description: 'Create and update own secrets',

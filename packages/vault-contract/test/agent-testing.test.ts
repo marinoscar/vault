@@ -163,7 +163,7 @@ describe('agent-testing: the fake Vault', () => {
     const res = await get('/whoami');
     expect(res.status).toBe(200);
     const data = agentWhoamiResponseSchema.parse(res.body).data;
-    expect(data.contract).toEqual({ version: AGENT_CONTRACT_VERSION, features: ['logins', 'totp', 'save_login', 'cards', 'identity'] });
+    expect(data.contract).toEqual({ version: AGENT_CONTRACT_VERSION, features: ['logins', 'totp', 'save_login', 'service_keys', 'cards', 'identity'] });
     expect(res.headers.get('cache-control')).toBe('no-store');
     expect((await get('/credentials?origin=')).headers.get('cache-control')).toBe('no-store');
   });
@@ -213,6 +213,22 @@ describe('agent-testing: the fake Vault', () => {
     expect(found.map((r) => r.id)).toContain(created.body.data.id);
     const filled = await post(`/credentials/${created.body.data.id}/fill`, { field: 'password', origin, purpose: 'login' });
     expect(filled.body).toEqual({ data: { value: 'saved-pw-canary' } });
+  });
+
+  it('releases the seeded service key by service and name only, behind its own scope (contract 1.4)', async () => {
+    const key = fake.fixture.serviceKey!;
+    const res = await get(`/service-keys/${key.service}/${key.keyName}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ data: { value: key.value } });
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    // Ids are normalized (trimmed, lower-cased); another name is the identical 404; an invalid id is a 400.
+    expect((await get(`/service-keys/${key.service.toUpperCase()}/${key.keyName}`)).status).toBe(200);
+    expect((await get(`/service-keys/${key.service}/other_key`)).status).toBe(404);
+    expect((await get(`/service-keys/${key.service}/${encodeURIComponent('bad name!')}`)).status).toBe(400);
+    const loginsOnly = await fake.connect(['vault:items_read', 'vault:items_fill']);
+    const denied = await get(`/service-keys/${key.service}/${key.keyName}`, loginsOnly.accessToken);
+    expect(denied.status).toBe(403);
+    expect(denied.headers.get('www-authenticate')).toMatch(/vault:service_keys_read/);
   });
 
   it('enforces scopes with insufficient_scope, and a revoked or unknown token is 401', async () => {

@@ -7,7 +7,7 @@ import { agentContractInfoSchema } from './contract-version.js';
  * contract an external agent runtime (a browser fabric, an MCP host) codes against. A runtime finds
  * the login for the site on screen, asks for exactly ONE field at a time so it can type it without
  * showing it to a model, reads a one-time code, saves a new login with a generated password and
- * rotates a password.
+ * rotates a password. A server process reads a service key by service and name (contract 1.4).
  *
  * Request and response shapes only. Behaviour (origin binding, the kill switch, rate limits, audit)
  * is the API's; the error codes are in {@link AGENT_ERROR_CODES}. The path carries the version: an
@@ -46,6 +46,8 @@ export const AGENT_SCOPES = {
   IDENTITY_READ: 'vault:identity_read',
   /** Fill one field of an opened identity item. */
   IDENTITY_FILL: 'vault:identity_fill',
+  /** Read the value of a service key opened to agents, by service and name, for a server process (contract 1.4). */
+  SERVICE_KEYS_READ: 'vault:service_keys_read',
 } as const;
 
 /**
@@ -87,6 +89,8 @@ export const AGENT_ERROR_CODES = {
   CARD_GRANT_REQUEST_NOT_PENDING: 'CARD_GRANT_REQUEST_NOT_PENDING',
   /** 403: the route changes what agents may do and needs the owner's browser session, never a token. */
   OWNER_SESSION_REQUIRED: 'OWNER_SESSION_REQUIRED',
+  /** 409: more than one opened service key has this service and name; the owner keeps one (contract 1.4). */
+  SERVICE_KEY_AMBIGUOUS: 'SERVICE_KEY_AMBIGUOUS',
 } as const;
 
 /** @stability beta */
@@ -293,6 +297,7 @@ export const AGENT_AUDIT_ACTIONS = {
   CARD_GRANT_REQUEST: 'agent.card.grant_request',
   IDENTITY_LOOKUP: 'agent.identity.lookup',
   IDENTITY_FILL: 'agent.identity.fill',
+  SERVICE_KEY_READ: 'agent.service_key.read',
 } as const;
 
 /** @stability beta */
@@ -394,8 +399,8 @@ export const AGENT_ACTIVITY_PATH = '/api/agent-activity' as const;
 export const AGENT_ACCESS_TOGGLE_AUDIT_ACTION = 'secret.agent_access.update' as const;
 
 /**
- * The actions an activity item carries: the agent routes (logins, cards, identity), the owner's
- * toggle and the owner's grant decisions (`card_grant`: created, revoked, approved, declined).
+ * The actions an activity item carries: the agent routes (logins, cards, identity, service keys),
+ * the owner's toggle and the owner's grant decisions (`card_grant`: created, revoked, approved, declined).
  *
  * @stability beta
  */
@@ -412,6 +417,7 @@ export const agentActivityActionSchema = z.enum([
   'identity_lookup',
   'identity_fill',
   'card_grant',
+  'service_key',
 ]);
 
 /** @stability beta */
@@ -472,6 +478,10 @@ export const agentActivityItemSchema = z.object({
   amount: z.string().nullable().optional(),
   /** A card call's currency (ISO 4217); absent otherwise. */
   currency: z.string().nullable().optional(),
+  /** A service key call's `service` (contract 1.4); absent otherwise. */
+  service: z.string().nullable().optional(),
+  /** A service key call's key `name` (contract 1.4); absent otherwise. */
+  keyName: z.string().nullable().optional(),
 });
 
 /** @stability beta */
@@ -492,3 +502,4 @@ export type AgentActivityResponse = z.infer<typeof agentActivityResponseSchema>;
 
 export * from './cards-identity.js';
 export * from './contract-version.js';
+export * from './service-keys.js';

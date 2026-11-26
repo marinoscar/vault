@@ -18,8 +18,10 @@ import {
   agentIdentityLookupQuerySchema,
   agentLookupQuerySchema,
   agentRotatePasswordRequestSchema,
+  agentServiceKeyParamsSchema,
   agentTotpRequestSchema,
   AGENT_IDENTITY_FIELDS,
+  AGENT_SERVICE_KEY_PER_MINUTE,
   AGENT_CARD_FIELD_MAP,
   type AgentCardFillRequest,
   type AgentCreateCredentialRequest,
@@ -40,7 +42,7 @@ import {
 import { conformanceTotp } from './totp.js';
 
 /** The rate-limit buckets of the agent API (the fake has the same ones as Vault). @stability beta */
-export type AgentConformanceBucket = 'lookup' | 'fill' | 'totp' | 'write' | 'card_fill' | 'identity_fill';
+export type AgentConformanceBucket = 'lookup' | 'fill' | 'totp' | 'write' | 'card_fill' | 'identity_fill' | 'service_key';
 
 /** Tokens a connected client holds. @stability beta */
 export interface AgentTokens {
@@ -148,10 +150,12 @@ const DEFAULT_LIMITS: Record<AgentConformanceBucket, number> = {
   write: 10,
   card_fill: 10,
   identity_fill: 20,
+  service_key: AGENT_SERVICE_KEY_PER_MINUTE,
 };
 
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const ID_ROUTE = new RegExp(`^/(credentials|cards|identity)/([^/]+)/(fill|totp|password|grant-requests)$`);
+const SERVICE_KEY_ROUTE = /^\/service-keys\/([^/]+)\/([^/]+)$/;
 const IS_UUID = new RegExp(`^${UUID}$`, 'i');
 
 const IDENTITY_TYPE = SYSTEM_SECRET_TYPES.find((t) => t.name === 'Identity');
@@ -210,6 +214,7 @@ const SEED_IDS = {
   closed: '00000000-0000-4000-8000-00000000c004',
   card: '00000000-0000-4000-8000-00000000ca01',
   identity: '00000000-0000-4000-8000-000000001d01',
+  serviceKey: '00000000-0000-4000-8000-000000005e01',
 } as const;
 
 /**
@@ -300,6 +305,9 @@ export function createFakeVault(options: FakeVaultOptions = {}): FakeVault {
     values: { ...seed.identity.values },
     allowedOrigins: seed.identity.allowedOrigins.map((o) => normalizeOrigin(o)!),
   };
+  const serviceKey = seed.serviceKey
+    ? { id: SEED_IDS.serviceKey, service: seed.serviceKey.service, keyName: seed.serviceKey.keyName, value: seed.serviceKey.value, open: true }
+    : null;
   const fixture: ConformanceFixture = { ...seed, ids: { ...SEED_IDS } };
 
   // ---- tokens -----------------------------------------------------------------------------
@@ -412,7 +420,13 @@ export function createFakeVault(options: FakeVaultOptions = {}): FakeVault {
   });
 
   // ---- routes -----------------------------------------------------------------------------
-  type Handler = (ctx: { grant: Grant; query: URLSearchParams; body: unknown; id?: string }) => { status?: number; data: unknown };
+  type Handler = (ctx: {
+    grant: Grant;
+    query: URLSearchParams;
+    body: unknown;
+    id?: string;
+    params?: Record<string, string>;
+  }) => { status?: number; data: unknown };
   interface Route {
     scope: string;
     handler: Handler;
@@ -606,6 +620,17 @@ export function createFakeVault(options: FakeVaultOptions = {}): FakeVault {
         };
       },
     },
+    'GET /service-keys/:service/:name': {
+      scope: AGENT_SCOPES.SERVICE_KEYS_READ,
+      handler: ({ grant, params }) => {
+        pipeline(grant.id, 'service_key');
+        const p = parse(agentServiceKeyParamsSchema, params ?? {});
+        if (!serviceKey || !serviceKey.open || serviceKey.service !== p.service || serviceKey.keyName !== p.name) {
+          throw fail(404, 'Service key not found');
+        }
+        return { data: { value: serviceKey.value } };
+      },
+    },
     'POST /identity/:id/fill': {
       scope: AGENT_SCOPES.IDENTITY_FILL,
       handler: ({ grant, body, id }) => {
@@ -719,10 +744,19 @@ export function createFakeVault(options: FakeVaultOptions = {}): FakeVault {
       const sub = url.pathname.slice(AGENT_API_BASE_PATH.length);
       let key = `${method} ${sub}`;
       let id: string | undefined;
+      let params: Record<string, string> | undefined;
       const idMatch = ID_ROUTE.exec(sub);
+      const serviceKeyMatch = SERVICE_KEY_ROUTE.exec(sub);
       if (idMatch) {
         key = `${method} /${idMatch[1]}/:id/${idMatch[3]}`;
         id = idMatch[2];
+      } else if (serviceKeyMatch) {
+        key = `${method} /service-keys/:service/:name`;
+        try {
+          params = { service: decodeURIComponent(serviceKeyMatch[1]!), name: decodeURIComponent(serviceKeyMatch[2]!) };
+        } catch {
+          throw fail(400, 'Validation failed');
+        }
       }
       const route = routes[key];
       if (!route) throw fail(404, `Cannot ${method} ${url.pathname}`);
@@ -742,7 +776,7 @@ export function createFakeVault(options: FakeVaultOptions = {}): FakeVault {
           throw fail(400, 'Body is not JSON');
         }
       }
-      const out = route.handler({ grant, query: url.searchParams, body, id });
+      const out = route.handler({ grant, query: url.searchParams, body, id, params });
       entry.status = out.status ?? 200;
       send(res, entry.status, { data: out.data });
     } catch (error) {

@@ -106,7 +106,7 @@ describe('agent access switch', () => {
     const user = userEvent.setup();
     render(<SecretDetailPage />, { wrapperOptions: { user: WRITER } });
     await user.click(await screen.findByRole('switch', { name: SWITCH }));
-    expect(await screen.findByText(/Only a login, a card or an identity item/)).toBeInTheDocument();
+    expect(await screen.findByText(/Only a login, a card, an identity item or a service key/)).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: SWITCH })).not.toBeChecked();
   });
 });

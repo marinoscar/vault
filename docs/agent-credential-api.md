@@ -1,6 +1,6 @@
 # Agent credential API: guide for agent-runtime authors
 
-For people building an agent runtime (a browser-automation fabric, a desktop agent) that logs in to websites with a Vault user's logins. The runtime finds the login for the site on screen, asks for **one field at a time**, types it itself, and never shows it to a model. Reasoning: [ADR-0002](decisions/0002-agent-access.md); cards and identity: [ADR-0003](decisions/0003-agent-cards-identity.md) and [section 7](#7-cards-and-identity-adr-0003). Operator setup: [runbook](runbooks/agent-access.md). Threat model: [SECURITY-ARCHITECTURE.md §16](SECURITY-ARCHITECTURE.md#16-oauth-server-agent-access).
+For people building an agent runtime (a browser-automation fabric, a desktop agent) that logs in to websites with a Vault user's logins. The runtime finds the login for the site on screen, asks for **one field at a time**, types it itself, and never shows it to a model. Reasoning: [ADR-0002](decisions/0002-agent-access.md); cards and identity: [ADR-0003](decisions/0003-agent-cards-identity.md) and [section 7](#7-cards-and-identity-adr-0003); keys of outside services for your server: [section 11](#11-service-keys). Operator setup: [runbook](runbooks/agent-access.md). Threat model: [SECURITY-ARCHITECTURE.md §16](SECURITY-ARCHITECTURE.md#16-oauth-server-agent-access).
 
 All examples use invented values: `https://vault.example.test` is the Vault, `https://app.example.test` a website, "Agent runtime X" the runtime.
 
@@ -19,7 +19,7 @@ Vault is an OAuth 2.1 authorization server. The user must have an administrator 
 | Flow | Authorization code with PKCE (`S256`), run by your server for a confidential client |
 | Endpoints | `GET /api/oauth/authorize`, `POST /api/oauth/token`, `POST /api/oauth/revoke`; discovery at `GET /api/oauth/.well-known/authorization-server` and the protected-resource metadata under `/api/oauth/.well-known/protected-resource` |
 | Resource indicator | `resource=https://vault.example.test/api/agent/v1` (the Vault's `APP_URL` plus `/api/agent/v1`) on both the authorize and token requests |
-| Scopes | `vault:items_read` (lookup, `whoami`; default), `vault:items_fill` (fill, one-time code), `vault:items_write` (create, rotate), plus `offline_access` for a refresh token. Ask only for what you use |
+| Scopes | `vault:items_read` (lookup, `whoami`; default), `vault:items_fill` (fill, one-time code), `vault:items_write` (create, rotate), `vault:service_keys_read` (service keys, [section 11](#11-service-keys)), plus `offline_access` for a refresh token. Ask only for what you use |
 | Tokens | `oat_` access token (short-lived), `ort_` refresh token (rotates on use). Send `Authorization: Bearer oat_...` |
 | Consent | The user sees your client name and the scopes on `/oauth/consent` before a code is issued |
 
@@ -86,10 +86,10 @@ Scope `vault:items_read`. Returns `{ "data": { "userId", "scopes": [...], "clien
 
 ```json
 { "data": { "userId": "...", "scopes": ["vault:items_read", "vault:items_fill"], "clientId": "...",
-  "contract": { "version": "1.3", "features": ["logins", "totp", "save_login", "cards"] } } }
+  "contract": { "version": "1.4", "features": ["logins", "totp", "save_login", "service_keys", "cards"] } } }
 ```
 
-`contract.version` is the contract this Vault speaks (`<path major>.<minor>`, [section 8](#8-changes)); `features` lists what is on now: `logins` and `totp` always, `save_login` always from contract 1.3, then `cards` and `identity` only while their switches are on ([section 7](#7-cards-and-identity-adr-0003)), in that order. Ignore a feature id you do not know. A Vault older than contract 1.3 sends no `save_login`: it rejects the purpose `save_login` with a `400` validation error, so check that `save_login` is in `contract.features` before you offer "Save this login". A Vault older than contract 1.2 sends no `contract`: treat it as `1.0` with `logins` and `totp`.
+`contract.version` is the contract this Vault speaks (`<path major>.<minor>`, [section 8](#8-changes)); `features` lists what is on now: `logins` and `totp` always, `save_login` always from contract 1.3, `service_keys` always from contract 1.4, then `cards` and `identity` only while their switches are on ([section 7](#7-cards-and-identity-adr-0003)), in that order. Ignore a feature id you do not know. A Vault older than contract 1.3 sends no `save_login`: it rejects the purpose `save_login` with a `400` validation error, so check that `save_login` is in `contract.features` before you offer "Save this login". A Vault older than contract 1.2 sends no `contract`: treat it as `1.0` with `logins` and `totp`.
 
 ### GET /api/agent/v1/credentials?origin=
 
@@ -165,6 +165,7 @@ Scope `vault:items_write`. Rotates the password. Body `{ "origin", "purpose": "p
 | 403 | | Scope missing: `WWW-Authenticate` `insufficient_scope` |
 | 404 | | Login not found, not yours, not a Credential, or not opened (identical) |
 | 409 | | Name already taken (create) |
+| 409 | `SERVICE_KEY_AMBIGUOUS` | Two opened service keys share the service and name ([section 11](#11-service-keys)) |
 | 429 | `RATE_LIMITED` | See `Retry-After` |
 
 Do not branch on `message` text; it is static and may change.
@@ -275,11 +276,22 @@ Body `{ field, origin, purpose: "form" }`; `field` is one of `full_name`, `date_
 
 ### In-process hosts
 
-A host that embeds the Vault packages calls `AgentReleasePort` (`@marinoscar/vault-api/agent`, token `AGENT_RELEASE_PORT`) instead of HTTP: `lookup`, `fill`, `totp`, `cardsLookup`, `cardFill`, `cardGrantRequest`, `identityLookup`, `identityFill`, each taking `{ userId, clientLabel, ... }`. The same rules, switches, limits, audit and notifications apply; `clientLabel` is what the owner sees as the app.
+A host that embeds the Vault packages calls `AgentReleasePort` (`@marinoscar/vault-api/agent`, token `AGENT_RELEASE_PORT`) instead of HTTP: `lookup`, `fill`, `totp`, `cardsLookup`, `cardFill`, `cardGrantRequest`, `identityLookup`, `identityFill`, each taking `{ userId, clientLabel, ... }`. The same rules, switches, limits, audit and notifications apply; `clientLabel` is what the owner sees as the app. Service keys have their own port, `ServiceKeyReleasePort` ([section 11](#11-service-keys)).
 
 ## 8. Changes
 
 One entry per change to the contract of `/api/agent/v1` and `@marinoscar/vault-contract/agent`, newest first, marked **additive** or **breaking** ([section 9](#9-stability)). `AGENT_CONTRACT_VERSION` and `whoami`'s `contract.version` carry the newest entry's version. The package test `packages/vault-contract/test/agent-contract-snapshot.test.ts` reads this section: a breaking entry must say `ACCEPT_BREAKING` in its heading, and only a new path version may carry one.
+
+### 1.4 (additive)
+
+Issue #241. The contract is **beta**.
+
+- New route `GET /service-keys/{service}/{name}`: the value of a `Service Key` secret the owner opened to agents, for the calling server process ([section 11](#11-service-keys)). Schemas `agentServiceKeyParamsSchema` and `agentServiceKeyResponseSchema`; constants `AGENT_SERVICE_KEYS_PATH`, `AGENT_SERVICE_KEY_PER_MINUTE` (120) and `AGENT_SERVICE_KEY_PURPOSE` (`service_call`).
+- New scope `vault:service_keys_read` (`AGENT_SCOPES.SERVICE_KEYS_READ`), for the new route only. The login, card and identity scopes do not reach it, and it reaches nothing else.
+- New error code `SERVICE_KEY_AMBIGUOUS` (409), on the new route only.
+- `GET /whoami` `contract.features` gains the id `service_keys`, always present, after `save_login` and before `cards` and `identity`.
+- The audit action `agent.service_key.read`; the activity action `service_key`, and the optional `service` and `keyName` of an activity item.
+- No existing route, scope or error code changes.
 
 ### 1.3 (additive)
 
@@ -372,3 +384,44 @@ try {
 **What passing proves:** your runtime follows the rules of sections 2, 4 and 5 that can be seen from outside, against a Vault that behaves like Vault (the same list passes against Vault's real API in Vault's own tests): it fills only exact matches, sends the page's own origin, stops on a mismatch and on the kill switch, asks when there is a choice, fetches a code at the last moment, reconnects after a revocation, waits out a `429`, does not cache lookups, zeroes the byte buffers it types, and nothing it handed the canary scan holds a value.
 
 **What it does not prove:** that values stay out of places you did not hand to the scan (memory dumps, crash reports, a model provider's logs, telemetry exported elsewhere); that your browser input is trusted or reaches the right frame; that the origin you report really is the tab's top-level origin; the OAuth consent flow itself (the kit hands you tokens); behaviour under real network failures; card and identity flows (the fake serves them, the scenarios do not drive them yet). Passing the kit is necessary, not sufficient: keep your own review of section 4.
+
+## 11. Service keys
+
+Contract 1.4, issue #241. A **service key** is the key of an outside service (a web search provider's API key, for example) that the owner keeps in Vault for **your server** to call that service with. It is a `Service Key` secret: one secret value, the `service` it is for (`web_search`) and a `key_name` (`provider_a`). It has no website: it is never typed into a page, and no origin is sent or checked. (A host's item kind `api_key` maps to it.)
+
+### GET /api/agent/v1/service-keys/{service}/{name}
+
+Scope `vault:service_keys_read`. No body, no query. Response:
+
+```json
+{ "data": { "value": "..." } }
+```
+
+| Rule | Detail |
+|---|---|
+| Who calls | Your **server process** only. Never a browser, a tool a model drives, or a model. Choose `service` and `name` from your own configuration (which provider you call), never from model output or page text |
+| Ids | `service` and `name` are trimmed and lower-cased, then must be lower-case letters, digits, `_` and `-`, starting with a letter or a digit, at most 64 characters (`SERVICE_KEY_ID_PATTERN`); otherwise `400` |
+| Opt-in | Only a key the owner opened to agents in Vault (`agentAccess = fill`). A key that does not exist, is not opened, belongs to someone else or is another type is **one identical `404`** |
+| One key per pair | Vault refuses to save a second key with the same service and key name (`409 SERVICE_KEY_EXISTS` on `/api/secrets`). Should two opened keys still match (a restored backup), the release is `409 SERVICE_KEY_AMBIGUOUS` and nothing is released |
+| Kill switch | `agentAccess.enabled` off: `403 AGENT_ACCESS_DISABLED`, as every agent route |
+| Rate limit | 120 a minute **per owner and service** (`AGENT_SERVICE_KEY_PER_MINUTE`), whichever app calls; `429 RATE_LIMITED` with `Retry-After` |
+| Audit | One `agent.service_key.read` row per call, allowed or refused: the service, the key name, the secret, your client and the purpose `service_call`. Never the value. The owner sees it in Agent activity as "Service key read" |
+| Caching | `Cache-Control: no-store`, as every agent route. You may keep the value in memory for a short time (a minute) to save calls; wipe it on expiry |
+
+Hold the value as in [section 4](#4-holding-a-value): in memory only, never in a model's context, a log, a span, a trace or a response of your own, and wiped after use. Send it only to the service it is for.
+
+### In-process hosts
+
+A host that embeds the packages calls `ServiceKeyReleasePort` (`@marinoscar/vault-api/agent`, token `SERVICE_KEY_RELEASE_PORT`, class `AgentServiceKeysService`):
+
+```ts
+const { value } = await serviceKeys.releaseServiceKey({ userId, clientLabel: 'Agent runtime X', service: 'web_search', name: 'provider_a' });
+try {
+  await callTheService(value);
+} finally {
+  value.fill(0);
+}
+```
+
+`value` is a `Buffer` the host owns and wipes, on failure paths too. The kill switch, the opt-in, the identical `404`, `409 SERVICE_KEY_AMBIGUOUS`, the per-owner rate limit and the audit row (`credential: embedded`, `clientLabel`) are the route's. Vault decrypts the record through `VaultCryptoPort.decrypt`, which returns a string, so a transient string of the record exists inside Vault's service until it is garbage collected; no string of the value is handed to the host.
+

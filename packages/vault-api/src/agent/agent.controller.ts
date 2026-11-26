@@ -59,8 +59,8 @@ export class AgentController {
   @ApiOperation({
     summary: 'Who the agent token acts as, which scopes it carries and which contract this Vault speaks',
     description:
-      'Returns userId, scopes, clientId and contract { version, features } (contract 1.2; features: logins, totp, and ' +
-      'cards and identity while their switches are on). Answers 403 AGENT_ACCESS_DISABLED while the deployment switch ' +
+      'Returns userId, scopes, clientId and contract { version, features } (contract 1.4; features: logins, totp, ' +
+      'save_login, service_keys, and cards and identity while their switches are on). Answers 403 AGENT_ACCESS_DISABLED while the deployment switch ' +
       '`agentAccess.enabled` is off.',
   })
   @ApiResponse({ status: 200, description: 'The caller, its scopes, its OAuth client and the contract block' })
