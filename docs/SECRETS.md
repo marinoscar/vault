@@ -103,6 +103,7 @@ System types are created during database seeding (`seedSecretTypes()` in `apps/a
 | Identity | Badge | see [Cards and identity](#cards-and-identity-adr-0003) | No |
 | Passport | TravelExplore | see [Identity documents](#identity-documents-passport-and-id-document) | **Yes** |
 | ID Document | AssignmentInd | see [Identity documents](#identity-documents-passport-and-id-document) | **Yes** |
+| Service Key | Api | `service`, `key_name`, `key` (sensitive), `notes`; see [Service keys](#service-keys) | No |
 
 Fields marked as sensitive are masked in the UI and require a deliberate reveal action.
 
@@ -346,7 +347,7 @@ Agent access is a per-secret opt-in that decides whether an AI agent (an OAuth c
 |---|---|
 | Values | `none` (default) or `fill`. `fill` means an agent may have the fabric type the login into a matching site; the agent never reads the value |
 | Default | `none` for every secret, including every secret that existed before the column was added (migration `20261118164725_add_secret_agent_access`). Nothing is exposed to agents until the owner turns it on |
-| Which secrets | The system `Credential`, `Card` and `Identity` types may be set to `fill` (cards and identity since [ADR-0003](decisions/0003-agent-cards-identity.md)); any other type, the identity documents `Passport` and `ID Document` included ([ADR-0004](decisions/0004-identity-documents.md)), answers `422 AGENT_ACCESS_UNSUPPORTED_TYPE`. Setting `none` is always allowed. Opening a Card or an Identity, or changing an Identity's allowed origins, needs the owner's browser session (`403 OWNER_SESSION_REQUIRED` for a PAT) |
+| Which secrets | The system `Credential`, `Card`, `Identity` and `Service Key` types may be set to `fill` (cards and identity since [ADR-0003](decisions/0003-agent-cards-identity.md), service keys since #241); any other type, the identity documents `Passport` and `ID Document` included ([ADR-0004](decisions/0004-identity-documents.md)), answers `422 AGENT_ACCESS_UNSUPPORTED_TYPE`. Setting `none` is always allowed. Opening a Card or an Identity, or changing an Identity's allowed origins, needs the owner's browser session (`403 OWNER_SESSION_REQUIRED` for a PAT) |
 | Storage | `secrets.agent_access` (enum `secret_agent_access`, NOT NULL, default `none`) and `secrets.agent_access_changed_at` (timestamptz, null until first changed). It is a property of the secret, not of a version: rollback, renew and update do not change it |
 | Who can change it | `PATCH /api/secrets/:id/agent-access` with `secrets:write` and the same ownership rule as `PUT /api/secrets/:id` (own secrets, or `secrets:write_any`). An OAuth (`oat_`) credential is refused with 403, so an agent can never widen its own access. Setting the current value is a no-op (no write, no audit row) |
 | Audit | `secret.agent_access.update` with `{ secretId, from, to }`; see [Audit Trail](#audit-trail) |
@@ -358,6 +359,19 @@ Agent access is a per-secret opt-in that decides whether an AI agent (an OAuth c
 A card opened to agents is released only under a **merchant grant** the owner creates on the card's page (Agent access: Allow a shop) or by approving an agent's grant request; see [ADR-0003](decisions/0003-agent-cards-identity.md) and [API.md](API.md#cards-and-identity-adr-0003). Grants (`agent_card_grants`), requests (`agent_card_grant_requests`) and the release ledger (`agent_card_releases`) go with the card when it is deleted, and with the user in a user-data purge (category `secrets`); they are not in backups or exports.
 
 The system type **`Identity`** (fields `full_name`, `date_of_birth`, `id_type`, `id_number`, `id_issuing_country`, `address_line1`, `address_line2`, `city`, `region`, `postal_code`, `country`, `phone`, `email`, `notes`; `date_of_birth` and `id_number` sensitive) is seeded by `prisma/seed.ts` like the others. An opened Identity releases a non-sensitive field to any https form and a sensitive one only to its allowed origins (`secrets.agent_origins`). The `Card` type gains the optional `billing_postal_code` (append-only), released as `postalCode`.
+
+### Service keys
+
+Issue #241. A **`Service Key`** secret holds the key of an outside service (a web search provider's API key, for example) that the owner's apps call from **their server**. Fields: `service` (`web_search`) and `key_name` (`provider_a`), both required, then the sensitive `key` and optional `notes`. There is no website and no allowed-sites list: a service key is never typed into a page. A host's item kind `api_key` maps to this type; the general `API Key` type stays as it was and is never released.
+
+| Rule | Detail |
+|---|---|
+| Ids | `service` and `key_name` are trimmed and lower-cased on save and must be lower-case letters, digits, `_` and `-`, starting with a letter or a digit, at most 64 (`SERVICE_KEY_ID_PATTERN`); otherwise `400` naming the field |
+| One per pair | An owner has at most one `Service Key` per (`service`, `key_name`): a second one, opened or not, is `409 SERVICE_KEY_EXISTS` on create and update. The pair is inside the encrypted data, so the check decrypts the owner's other service keys once |
+| Opened | The same switch as a login ("Allow your apps to use this service key"); no browser session is needed beyond `secrets:write`, as for a login |
+| Release | `GET /api/agent/v1/service-keys/{service}/{name}` (scope `vault:service_keys_read`) or, in process, `ServiceKeyReleasePort`: [API.md](API.md#get-agentv1service-keysservicename), [agent-credential-api.md §11](agent-credential-api.md#11-service-keys). Audited `agent.service_key.read`; shown in Agent activity as "Service key read" |
+| MCP | Like any type other than `Credential`: never visible to `search_secrets`, `get_secret` or `update_secret`; `create_secret` may create one, closed, with the key hidden |
+| Backups and export | Like every secret (encrypted in the archive) |
 
 ## Agent activity and notifications
 

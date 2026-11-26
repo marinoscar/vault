@@ -1921,6 +1921,26 @@ A card works on any site, so the login rules (exact origin, per-item opt-in) are
 | **Leak through logs, spans, metrics, audit, notifications or errors** | No body is logged; audit rows and notification payloads have no field for a value (card notifications carry the card's name, the shop and the amount, never a number, last four or code); errors carry static text; `agent-release.spec.ts` and `agent-cards.db.spec.ts` plant a card number, a security code and an id number and scan responses, audit rows, notifications and every log line | A runtime that logs what it receives defeats this |
 | **Rate limits and the decline throttle in process memory** | One API instance today | A second instance needs a shared `AgentRateLimiter` |
 
+### Service keys for a server process ([#241](https://github.com/marinoscar/vault/issues/241))
+
+A `Service Key` secret (the key of an outside service, for example a web search provider) is released to the **calling server process** by `service` and `key_name`, not to a fabric that types it. It has no origin, so origin binding does not apply; the controls are the scope, the opt-in, the kill switch, the rate limit and the audit. Code: `packages/vault-api/src/agent/agent-service-keys.service.ts` (`AgentServiceKeysService`, the same `AgentCallPipeline`), behind `GET /api/agent/v1/service-keys/{service}/{name}` and `ServiceKeyReleasePort` for in-process hosts.
+
+| Control | Rule |
+|---|---|
+| Scope and permission | `vault:service_keys_read` (`agent_service_keys:read`), never default; no login, card or identity scope reaches the route, and this scope reaches nothing else |
+| Opt-in | Only a `Service Key` the owner opened (`agentAccess = fill`); missing, closed, foreign and other-type are one identical `404` |
+| Selection | By the caller's own configuration (`service`, `key_name`), never by a model or a page. One key per owner and pair (`409 SERVICE_KEY_EXISTS` on save); two matches are refused (`409 SERVICE_KEY_AMBIGUOUS`), never guessed |
+| Kill switch and limit | `agentAccess.enabled`; 120 a minute per owner and service (constant), counted before the lookup |
+| Audit | One `agent.service_key.read` row per call (service, key name, secret, caller, purpose `service_call`), allowed or refused, written before the value is returned; never the value. Shown in Agent activity. No bell or email |
+| Value handling | `Cache-Control: no-store`; the in-process port hands a `Buffer` the host wipes; Vault's own decrypt yields a transient string inside the service (#227, #229) |
+
+| Threat | Mitigation | Residual risk |
+|---|---|---|
+| **A prompt-injected model asks for a key** | The route is for the server process; the ids come from its configuration, the value never enters model context (guide §11) | A host that lets a model choose `service`/`name` or echoes the value defeats this |
+| **A key sent to the wrong service** | Selection by exact service and key name; MCP cannot reach or edit a Service Key | The owner can file a key under the wrong service |
+| **A login token reads service keys** | Separate scope and permission | A `pat_` carries the owner's full authority, as everywhere |
+| **Leak through logs, audit, notifications or errors** | No field holds the value; `agent-service-keys.spec.ts` and `service-keys.db.spec.ts` plant canaries and scan audit rows, notifications, error bodies and every log line | A host that logs what it receives defeats this |
+
 ---
 
 ## Conclusion
