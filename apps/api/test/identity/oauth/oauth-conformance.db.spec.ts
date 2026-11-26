@@ -200,7 +200,7 @@ describeWithDb('Vault agent OAuth (real Postgres, E14.2)', () => {
       scopes: ['vault:items_read', 'offline_access'],
       clientId: expect.any(String),
       // Contract 1.3 (#233): card and identity release are off by default, so only logins, totp and save_login.
-      contract: { version: '1.3', features: ['logins', 'totp', 'save_login'] },
+      contract: { version: '1.4', features: ['logins', 'totp', 'save_login', 'service_keys'] },
     });
 
     // Confinement: refused everywhere outside the resource.
