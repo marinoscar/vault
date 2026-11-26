@@ -53,6 +53,7 @@
     "secret-origins-db",
     "secret-origins",
     "secret-totp-api",
+    "service-keys",
     "totp-web",
     "vault-api-domain-package",
     "vault-web-ai-config",
