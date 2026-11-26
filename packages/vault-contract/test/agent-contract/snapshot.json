@@ -1,5 +1,5 @@
 {
-  "version": "1.3",
+  "version": "1.4",
   "schemas": {
     "agentAccessSettingsSchema": {
       "role": "both",
@@ -127,7 +127,8 @@
           "card_grant_request",
           "identity_lookup",
           "identity_fill",
-          "card_grant"
+          "card_grant",
+          "service_key"
         ]
       }
     },
@@ -185,7 +186,8 @@
                 "card_grant_request",
                 "identity_lookup",
                 "identity_fill",
-                "card_grant"
+                "card_grant",
+                "service_key"
               ]
             }
           },
@@ -292,6 +294,22 @@
               "type": "primitive",
               "name": "string"
             }
+          },
+          "service": {
+            "required": false,
+            "nullable": true,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "keyName": {
+            "required": false,
+            "nullable": true,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
           }
         }
       }
@@ -336,7 +354,8 @@
                 "card_grant_request",
                 "identity_lookup",
                 "identity_fill",
-                "card_grant"
+                "card_grant",
+                "service_key"
               ]
             }
           },
@@ -423,7 +442,8 @@
                         "card_grant_request",
                         "identity_lookup",
                         "identity_fill",
-                        "card_grant"
+                        "card_grant",
+                        "service_key"
                       ]
                     }
                   },
@@ -524,6 +544,22 @@
                     }
                   },
                   "currency": {
+                    "required": false,
+                    "nullable": true,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "service": {
+                    "required": false,
+                    "nullable": true,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "keyName": {
                     "required": false,
                     "nullable": true,
                     "shape": {
@@ -2023,6 +2059,59 @@
         }
       }
     },
+    "agentServiceKeyParamsSchema": {
+      "role": "request",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "service": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "name": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          }
+        }
+      }
+    },
+    "agentServiceKeyResponseSchema": {
+      "role": "response",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "data": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "object",
+              "fields": {
+                "value": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "agentTotpRequestSchema": {
       "role": "request",
       "required": true,
@@ -3007,7 +3096,8 @@
       "CARDS_READ": "vault:cards_read",
       "CARDS_FILL": "vault:cards_fill",
       "IDENTITY_READ": "vault:identity_read",
-      "IDENTITY_FILL": "vault:identity_fill"
+      "IDENTITY_FILL": "vault:identity_fill",
+      "SERVICE_KEYS_READ": "vault:service_keys_read"
     },
     "AGENT_ERROR_CODES": {
       "ORIGIN_MISMATCH": "ORIGIN_MISMATCH",
@@ -3025,12 +3115,14 @@
       "CARD_GRANT_EXPIRED": "CARD_GRANT_EXPIRED",
       "CARD_GRANT_EXISTS": "CARD_GRANT_EXISTS",
       "CARD_GRANT_REQUEST_NOT_PENDING": "CARD_GRANT_REQUEST_NOT_PENDING",
-      "OWNER_SESSION_REQUIRED": "OWNER_SESSION_REQUIRED"
+      "OWNER_SESSION_REQUIRED": "OWNER_SESSION_REQUIRED",
+      "SERVICE_KEY_AMBIGUOUS": "SERVICE_KEY_AMBIGUOUS"
     },
     "AGENT_CONTRACT_FEATURES": {
       "LOGINS": "logins",
       "TOTP": "totp",
       "SAVE_LOGIN": "save_login",
+      "SERVICE_KEYS": "service_keys",
       "CARDS": "cards",
       "IDENTITY": "identity"
     },

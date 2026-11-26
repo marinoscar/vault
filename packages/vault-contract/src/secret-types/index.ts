@@ -1,8 +1,10 @@
 import { z } from 'zod';
 
 import { ID_DOCUMENT_KINDS } from './id-documents.js';
+import { SERVICE_KEY_TYPE_NAME } from './service-keys.js';
 
 export * from './id-documents.js';
+export * from './service-keys.js';
 
 /**
  * Secret types: the field definitions, the create/update/query schemas and the
@@ -453,5 +455,19 @@ export const SYSTEM_SECRET_TYPES: SystemSecretType[] = [
       { name: 'notes', label: 'Notes', type: 'string', required: false, sensitive: false, format: 'multiline' },
     ],
     allowAttachments: true,
+  },
+  {
+    // Issue #241: a key of an outside service (a web search provider's API key) that a server process
+    // reads by `service` and `key_name` through the agent API. No website: it is never typed into a page.
+    name: SERVICE_KEY_TYPE_NAME,
+    description: 'A key of an outside service that your apps call for you, read by service and key name',
+    icon: 'Api',
+    fields: [
+      { name: 'service', label: 'Service (for example web_search)', type: 'string', required: true, sensitive: false },
+      { name: 'key_name', label: 'Key name (for example provider_a)', type: 'string', required: true, sensitive: false },
+      { name: 'key', label: 'Key', type: 'string', required: true, sensitive: true },
+      { name: 'notes', label: 'Notes', type: 'string', required: false, sensitive: false, format: 'multiline' },
+    ],
+    allowAttachments: false,
   },
 ];

@@ -63,20 +63,31 @@ export interface ConformanceIdentity {
   allowedOrigins: string[];
 }
 
+/** The seeded service key (contract 1.4; opened to agents, read by `service` and `keyName`). @stability beta */
+export interface ConformanceServiceKey {
+  name: string;
+  service: string;
+  keyName: string;
+  /** A canary. */
+  value: string;
+}
+
 /** Everything a conformance target seeds. @stability beta */
 export interface ConformanceSeed {
   origins: typeof CONFORMANCE_ORIGINS;
   logins: Record<ConformanceLoginKey, ConformanceLogin>;
   card: ConformanceCard;
   identity: ConformanceIdentity;
+  /** The service key (contract 1.4). Absent from a seed built before it; the fake then serves none. */
+  serviceKey?: ConformanceServiceKey;
   /** Every secret value of the seed, to scan for with `assertNoCanary`. */
   canaries: string[];
 }
 
 /** The seed plus the ids the target gave each item. @stability beta */
 export interface ConformanceFixture extends ConformanceSeed {
-  /** The login ids, plus the card's and the identity item's when the target seeded them. */
-  ids: Record<ConformanceLoginKey, string> & { card?: string; identity?: string };
+  /** The login ids, plus the card's, the identity item's and the service key's when the target seeded them. */
+  ids: Record<ConformanceLoginKey, string> & { card?: string; identity?: string; serviceKey?: string };
 }
 
 const BASE32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
@@ -141,10 +152,17 @@ export function createConformanceSeed(): ConformanceSeed {
     },
     allowedOrigins: [o.forms],
   };
+  const serviceKey: ConformanceServiceKey = {
+    name: 'Conformance service key A',
+    service: 'conformance',
+    keyName: 'key_a',
+    value: createCanary('servicekey'),
+  };
   const canaries = [
     ...Object.values(logins).flatMap((l) => [l.password, ...(l.totpSeed ? [l.totpSeed] : [])]),
     card.securityCode,
     identity.values.id_number!,
+    serviceKey.value,
   ];
-  return { origins: o, logins, card, identity, canaries };
+  return { origins: o, logins, card, identity, serviceKey, canaries };
 }

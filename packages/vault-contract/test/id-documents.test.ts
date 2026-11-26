@@ -141,7 +141,8 @@ describe('the document kind catalog (issue #209)', () => {
 describe('the Passport and ID Document system types (issue #209)', () => {
   it('appends both types after the existing ones', () => {
     const names = SYSTEM_SECRET_TYPES.map((type) => type.name);
-    expect(names.slice(-2)).toEqual(['Passport', 'ID Document']);
+    // Service Key (#241) was appended after them.
+    expect(names.slice(-3, -1)).toEqual(['Passport', 'ID Document']);
     expect(names.indexOf('Document')).toBeLessThan(names.indexOf('Passport'));
   });
 

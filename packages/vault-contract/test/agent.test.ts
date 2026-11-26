@@ -90,7 +90,7 @@ describe('agent activity (E14.7)', () => {
 
   it('an item has no key for a value, and AGENT_ACTIVITY_FORBIDDEN is a registered 403', () => {
     expect(Object.keys(agentActivityItemSchema.shape).sort()).toEqual(
-      ['action', 'amount', 'at', 'clientId', 'clientName', 'credentialKind', 'currency', 'field', 'id', 'origin', 'purpose', 'reason', 'result', 'secretId', 'secretName'],
+      ['action', 'amount', 'at', 'clientId', 'clientName', 'credentialKind', 'currency', 'field', 'id', 'keyName', 'origin', 'purpose', 'reason', 'result', 'secretId', 'secretName', 'service'],
     );
     expect(new Map(VAULT_ERROR_CODES.map((d) => [d.code, d.status])).get(AGENT_ERROR_CODES.AGENT_ACTIVITY_FORBIDDEN)).toBe(403);
   });
