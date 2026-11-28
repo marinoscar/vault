@@ -73,6 +73,7 @@ describe('/settings (per-user hub)', () => {
       'Download your data',
       'Notifications',
       'Agent activity',
+      'Broker tokens',
       'Delete my data',
     ]);
   });
@@ -88,6 +89,7 @@ describe('/settings (per-user hub)', () => {
       'Getting started',
       'Download your data',
       'Notifications',
+      'Broker tokens',
       'Delete my data',
     ]);
   });
@@ -97,7 +99,7 @@ describe('/settings (per-user hub)', () => {
     renderHub('user', { ...mockUser, permissions: [] });
 
     // Ownership-scoped cards carry no permission (E9.3 added Getting started, Download your data, Delete my data).
-    expect(cardTitles()).toEqual(['Access Tokens', 'Getting started', 'Download your data', 'Delete my data']);
+    expect(cardTitles()).toEqual(['Access Tokens', 'Getting started', 'Download your data', 'Broker tokens', 'Delete my data']);
   });
 
   it('navigates to the card route', async () => {

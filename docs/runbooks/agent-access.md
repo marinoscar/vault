@@ -63,6 +63,10 @@ Decision: [ADR-0005](../decisions/0005-assistant-reveal.md). By default an assis
 4. **Watch.** `/settings/agent-activity` shows each reveal as "Revealed to an assistant" with the secret and the field name, never the value. The secret list marks opted-in secrets with a "Revealed" chip.
 5. **Stop.** Switch the secret off (the next `reveal_secret` is a not-found at once), revoke the app, or an administrator turns Agent access off (`403 AGENT_ACCESS_DISABLED`). A value already revealed cannot be recalled: rotate it if it may have leaked.
 
+## Use a key without revealing it (the owner)
+
+To let an agent **call an API with a key** rather than read it, use the credential broker instead of revealing: the agent calls Vault with a `vbk_` broker token, Vault adds the key and forwards the request to origins you allowed, and the value never enters the agent's context. It has its own administrator switch (`agentAccess.broker.enabled`, on top of the Agent access switch above), its own per-secret opt-in and its own tokens. Full procedure, including Claude Code on the web: [credential broker runbook](credential-broker.md); decision: [ADR-0006](../decisions/0006-credential-broker.md). Its calls show in Agent activity as "Used through the broker".
+
 ## Read Agent activity (the owner)
 
 Open `/settings/agent-activity`. Each row shows the app, the login, the website, the field, the purpose and whether it was allowed or refused (with the reason). A reveal to an assistant is listed as "Revealed to an assistant" with the field name. Filter by action, login, app and date. No value, code or password is ever shown. The bell and email also report: a login an app created, a password it rotated, and the first use by a new app.

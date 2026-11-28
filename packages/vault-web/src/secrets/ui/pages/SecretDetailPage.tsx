@@ -44,6 +44,9 @@ import { SecretValueField } from '../components/SecretValueField.js';
 import { TotpCodeCard } from '../components/TotpCodeCard.js';
 import { CardAgentAccessPanel } from '../../../agent/ui/components/CardAgentAccessPanel.js';
 import { IdentityAgentAccessPanel } from '../../../agent/ui/components/IdentityAgentAccessPanel.js';
+import { brokerAccessErrorMessage, brokerSensitiveFields, isBrokerSupportedType } from '../../headless/brokerAccess.js';
+import { BrokerAccessPanel } from '../components/BrokerAccessPanel.js';
+import { BrokerAccessDialog } from '../components/BrokerAccessDialog.js';
 import { SecretVersionDrawer } from '../components/SecretVersionDrawer.js';
 import { DocumentExpiryBadge } from '../../../documents/ui/components/DocumentExpiryBadge.js';
 import { documentExpiryLeadDays, documentExpiryStatus, parseDocumentDate } from '@marinoscar/vault-contract/secrets';
@@ -96,11 +99,14 @@ export default function SecretDetailPage() {
   const { hasPermission } = usePermissions();
   const canWrite = hasPermission('secrets:write');
   const canDelete = hasPermission('secrets:delete');
-  const { secret, versions, isLoading, error, fetchSecret, fetchVersions, fetchVersion, rollback, setAgentAccess, setAssistantReveal } =
+  const { secret, versions, isLoading, error, fetchSecret, fetchVersions, fetchVersion, rollback, setAgentAccess, setAssistantReveal, setBrokerAccess } =
     useSecretDetail();
   const [savingAgentAccess, setSavingAgentAccess] = useState(false);
   const [savingReveal, setSavingReveal] = useState(false);
   const [confirmReveal, setConfirmReveal] = useState(false);
+  const [savingBroker, setSavingBroker] = useState(false);
+  const [brokerDialogOpen, setBrokerDialogOpen] = useState(false);
+  const [brokerError, setBrokerError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>('details');
   const [historyOpen, setHistoryOpen] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
@@ -186,6 +192,30 @@ export default function SecretDetailPage() {
       }
     },
     [id, setAssistantReveal],
+  );
+
+  /** "Allow use through the broker" (#246): ON goes through the dialog, OFF applies at once. */
+  const saveBroker = useCallback(
+    async (body: Parameters<typeof setBrokerAccess>[1]) => {
+      if (!id) return;
+      setSavingBroker(true);
+      setBrokerError(null);
+      try {
+        await setBrokerAccess(id, body);
+        setBrokerDialogOpen(false);
+        setToast({
+          severity: 'success',
+          message: body.enabled ? 'This secret can now be used through the broker' : 'This secret can no longer be used through the broker',
+        });
+      } catch (err) {
+        const message = brokerAccessErrorMessage(err);
+        if (body.enabled) setBrokerError(message);
+        else setToast({ severity: 'error', message });
+      } finally {
+        setSavingBroker(false);
+      }
+    },
+    [id, setBrokerAccess],
   );
 
   /** Identity (ADR-0003): the access and, when given, the websites its sensitive fields may go to. */
@@ -553,6 +583,25 @@ export default function SecretDetailPage() {
                 </Typography>
               </Paper>
             )}
+            {(isBrokerSupportedType(secret.type) || secret.brokerAccess === true) && (
+              <BrokerAccessPanel
+                secret={secret}
+                canWrite={canWrite}
+                saving={savingBroker}
+                onToggle={(enabled) => {
+                  if (enabled) {
+                    setBrokerError(null);
+                    setBrokerDialogOpen(true);
+                  } else {
+                    void saveBroker({ enabled: false });
+                  }
+                }}
+                onEdit={() => {
+                  setBrokerError(null);
+                  setBrokerDialogOpen(true);
+                }}
+              />
+            )}
             {isSystemType(secret.type, 'Service Key') && (
               <Paper variant="outlined" sx={{ borderRadius: 2, px: 2, py: 1.5, mt: 2 }}>
                 <FormControlLabel
@@ -634,6 +683,22 @@ export default function SecretDetailPage() {
         loadVersion={loadVersion}
         onRollback={canWrite ? handleRollback : undefined}
       />
+
+      {brokerDialogOpen && (
+        <BrokerAccessDialog
+          open
+          fields={brokerSensitiveFields(secret.type)}
+          initial={{
+            origins: secret.brokerOrigins ?? [],
+            injection: secret.brokerInjection ?? null,
+            field: secret.brokerField ?? null,
+          }}
+          saving={savingBroker}
+          error={brokerError}
+          onCancel={() => setBrokerDialogOpen(false)}
+          onSave={(body) => void saveBroker(body)}
+        />
+      )}
 
       <Dialog
         open={confirmReveal}

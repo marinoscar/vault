@@ -13,6 +13,7 @@ import {
 import { Logger } from '@nestjs/common';
 import fastifyCookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
+import { installBrokerRawBody } from '@marinoscar/vault-api/broker';
 import { OAUTH_PUBLIC_CORS_PATHS } from '@marinoscar/platform-api/identity';
 import { buildCorsOptions, registerPlatformDocs } from '@marinoscar/platform-api/host';
 import { verifyEncryptionKeyAtStartup } from '@marinoscar/platform-api/core';
@@ -22,6 +23,7 @@ import type { ResolvedStorageModuleOptions } from '@marinoscar/platform-api/stor
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from './prisma/prisma.service';
 import { AppModule } from './app.module';
+import { redactLogText } from './platform/log-redaction';
 import { APP_OPENAPI } from './openapi/document';
 
 async function bootstrap() {
@@ -35,7 +37,19 @@ async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter({
-      logger: true,
+      // Fastify's own request logger: same defaults as `logger: true`, but the logged
+      // URL carries no query values (stop-gap, docs/platform-adoption/local-exceptions.md).
+      logger: {
+        serializers: {
+          req: (req: { method?: string; url?: string; host?: string; ip?: string; socket?: { remotePort?: number } }) => ({
+            method: req.method,
+            url: redactLogText(req.url ?? ''),
+            host: req.host,
+            remoteAddress: req.ip,
+            remotePort: req.socket?.remotePort,
+          }),
+        },
+      },
       // Fastify defaults to a 1 MiB body limit, and the @fastify/multipart
       // limits below do NOT apply to application/json. POST
       // /api/secrets/cards/extract sends card photographs as base64 data URLs
@@ -52,6 +66,9 @@ async function bootstrap() {
   // plugin or route, so it runs ahead of every other onRequest hook; a no-op unless the SDK
   // is installed (`OTEL_ENABLED=true`). See `@marinoscar/platform-api/otel-core`.
   registerRequestSpanAttributes(app.getHttpAdapter().getInstance(), process.env.OTEL_ENABLED === 'true');
+
+  // The credential broker (#246) forwards request bodies untouched: its path reads the raw stream.
+  installBrokerRawBody(app.getHttpAdapter().getInstance());
 
   // SECRETS_ENCRYPTION_KEY (the platform credential store's key, not
   // VAULT_ENCRYPTION_KEY): validated before the port is bound. A malformed key

@@ -10,6 +10,7 @@ import {
   type AgentActivityQuery,
 } from '@marinoscar/vault-contract/agent';
 
+import { BROKER_FORWARD_AUDIT_ACTION } from '@marinoscar/vault-contract/broker';
 import { VAULT_PRISMA, type VaultPrismaClient } from '../ports';
 import { MCP_TOOL_CALL_AUDIT_ACTION } from '../mcp/mcp-dispatcher';
 
@@ -30,6 +31,8 @@ const AUDIT_ACTIONS: Record<AgentActivityAction, readonly string[]> = {
   service_key: [AGENT_AUDIT_ACTIONS.SERVICE_KEY_READ],
   // Only the `reveal_secret` rows of `mcp.tool.call` (filtered by meta.tool below); the other tools never show.
   mcp_reveal: [MCP_TOOL_CALL_AUDIT_ACTION],
+  // The credential broker (#246): one `broker.forward` row per call, allowed or refused.
+  broker_forward: [BROKER_FORWARD_AUDIT_ACTION],
 };
 const ACTION_OF = new Map<string, AgentActivityAction>(
   (Object.entries(AUDIT_ACTIONS) as Array<[AgentActivityAction, readonly string[]]>).flatMap(([action, audits]) =>
@@ -127,14 +130,14 @@ export class AgentActivityService {
       const kind = meta.credential;
       const credentialKind: AgentActivityCredentialKind | null = owner
         ? 'session'
-        : kind === 'oauth' || kind === 'pat' || kind === 'embedded'
+        : kind === 'oauth' || kind === 'pat' || kind === 'embedded' || kind === 'broker'
           ? kind
           : null;
       const field =
         action === 'agent_access' ? str(meta.to) : action === 'card_grant' ? (GRANT_DECISION[row.action] ?? null) : str(meta.field);
       const result = typeof meta.result === 'string' ? meta.result : 'ok';
       // An MCP row records `error:<code>` for a refusal (not found, field missing, ...): shown as denied.
-      const denied = action === 'mcp_reveal' ? result !== 'ok' : result.startsWith('denied');
+      const denied = action === 'mcp_reveal' || action === 'broker_forward' ? result !== 'ok' : result.startsWith('denied');
       const reason = denied ? result.split(':')[1] || 'denied' : undefined;
       return [
         {
@@ -156,6 +159,7 @@ export class AgentActivityService {
           amount: str(meta.amount),
           currency: str(meta.currency),
           ...(action === 'service_key' ? { service: str(meta.service), keyName: str(meta.keyName) } : {}),
+          ...(action === 'broker_forward' ? { method: str(meta.method), status: typeof meta.status === 'number' ? meta.status : null } : {}),
         },
       ];
     });

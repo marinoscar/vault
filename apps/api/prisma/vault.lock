@@ -60,6 +60,11 @@
       "installedDir": "20261128032220_add_secret_assistant_reveal",
       "originId": "vault:20261128032220_add_secret_assistant_reveal",
       "sha256": "7e12c1e6ca5532951ba9e87610b6e23150068306ac281274e61ee83d18f65cc8"
+    },
+    {
+      "installedDir": "20261128140804_add_credential_broker",
+      "originId": "vault:20261128140804_add_credential_broker",
+      "sha256": "f0a911eee8a45f3178ed95b7720f3df923fb4ceb9523f7e6f39ed2c56d1a5a71"
     }
   ],
   "vaultDbVersion": "0.1.0-next.7"

@@ -47,7 +47,7 @@ describe('AgentActivityService', () => {
       'agent.credential.create', 'agent.credential.rotate', 'secret.agent_access.update',
       'agent.card.lookup', 'agent.card.fill', 'agent.card.grant_request', 'agent.identity.lookup', 'agent.identity.fill',
       'secret.card_grant.create', 'secret.card_grant.revoke', 'secret.card_grant_request.approve', 'secret.card_grant_request.decline',
-      'agent.service_key.read',
+      'agent.service_key.read', 'broker.forward',
     ]);
     expect(args.orderBy).toEqual([{ createdAt: 'desc' }, { id: 'desc' }]);
     expect(prisma.auditEvent.count.mock.calls[0]![0].where.actorUserId).toBe(USER);

@@ -123,6 +123,7 @@ export const SCHEMA_ROLES: Record<string, SchemaRole> = {
   cardGrantRequestSchema: 'response',
   cardGrantRequestListResponseSchema: 'response',
   agentCardAccessSettingsSchema: 'both',
+  agentBrokerSettingsSchema: 'both',
   agentIdentityAccessSettingsSchema: 'both',
   agentAccessSettingsSchema: 'both',
   agentActivityActionSchema: 'response',

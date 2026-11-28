@@ -276,6 +276,7 @@ vault secrets list --search "aws"
 vault secrets list --type-id <uuid> --sort name --order asc
 vault secrets list --page 2 --page-size 10
 vault secrets list --assistant-reveal on     # only secrets revealed to assistants
+vault secrets list --broker on               # only secrets behind the credential broker
 ```
 
 | Option | Description | Default |
@@ -287,8 +288,9 @@ vault secrets list --assistant-reveal on     # only secrets revealed to assistan
 | `--sort <field>` | `createdAt`, `name`, `updatedAt` | `updatedAt` |
 | `--order <dir>` | `asc`, `desc` | `desc` |
 | `--assistant-reveal <on\|off>` | Only secrets revealed (`on`) or not revealed (`off`) to assistants | - |
+| `--broker <on\|off>` | Only secrets with the credential broker on or off | - |
 
-The `Reveal` column shows `on` for secrets the owner has opened to assistants.
+The `Reveal` column shows `on` for secrets the owner has opened to assistants; the `Broker` column shows `on` for secrets behind the credential broker.
 
 #### `secrets get <id-or-name>`
 
@@ -298,7 +300,7 @@ vault secrets get abc12345-...           # By UUID
 vault secrets get "AWS Production" --json | jq '.data.values.secret_key'
 ```
 
-Returns full secret detail with **decrypted data**, version info, and attachments, plus a `Reveal to assistants: on/off` line (`assistantReveal` in `--json`).
+Returns full secret detail with **decrypted data**, version info, and attachments, plus a `Reveal to assistants: on/off` line (`assistantReveal` in `--json`), and a `Broker` line (on/off, origins, injection, field; `brokerAccess`, `brokerOrigins`, `brokerInjection`, `brokerField` in `--json`).
 
 #### `secrets create`
 
@@ -345,11 +347,82 @@ vault secrets reveal-access api-key-example off --json
 
 Lets an assistant reveal this secret's value (`on`) or stops it (`off`). Owner only; with `on`, a revealed value enters the assistant's conversation and every read is recorded in Agent activity. Cards, passports, ID documents and types with a CVV cannot be revealed to assistants (the command fails with a clear message). `--json` returns the envelope with `assistantReveal` and `assistantRevealChangedAt` (no secret values).
 
+#### `secrets broker <id-or-name> <on|off>`
+
+```bash
+vault secrets broker api-key-example on --origin https://api.service-x.example
+vault secrets broker api-key-example on --origin https://api.service-x.example --header X-Api-Key --prefix none
+vault secrets broker api-key-example on --origin https://api.service-x.example --query api_key --field key
+vault secrets broker api-key-example off
+```
+
+Lets agents *use* this secret's key through the credential broker without ever seeing it: the agent calls Vault, Vault adds the key and forwards the request to an origin you allowed. Owner only. Works for API Key, Token and Service Key secrets and custom types with a sensitive field (cards, identity documents, logins and notes are refused with `BROKER_UNSUPPORTED_TYPE`). With `on`, the command prints the base URL for each origin.
+
+| Option | Description |
+|---|---|
+| `--origin <origin>` | Allowed upstream origin, an exact public HTTPS origin; repeatable. Replaces the stored list; required the first time |
+| `--header <name>` | Inject the key in this header (default `Authorization`). Without `--prefix` the prefix is `Bearer`; use `--prefix none` to send the bare key |
+| `--prefix <word>` | Header prefix: `Bearer` (default), `Token`, `Basic`, `Bot`, `ApiKey` or `none` |
+| `--query <name>` | Inject the key as this query parameter instead of a header (not with `--header`) |
+| `--field <name>` | The sensitive field to inject. Needed only when the type has several sensitive fields (default: the only one; `BROKER_FIELD_INVALID` otherwise) |
+
+Errors are explained: `BROKER_UNSUPPORTED_TYPE`, `BROKER_ORIGINS_REQUIRED`, `BROKER_ORIGIN_INVALID`, `BROKER_INJECTION_INVALID`, `BROKER_FIELD_INVALID` and 404. `--json` returns the envelope with `brokerAccess`, `brokerOrigins`, `brokerInjection`, `brokerField` and `baseUrls` (no secret values).
+
 #### `secrets delete <id-or-name>`
 
 ```bash
 vault secrets delete "Database Prod"
 vault secrets delete abc12345-...
+```
+
+---
+
+### `broker` — Credential Broker
+
+An agent uses a key stored in Vault without seeing it: it calls `<server>/api/broker/v1/<secretId>/<host>/...` with a **broker token** (`vbk_...`), Vault adds the key and forwards to the allowed origin. A broker token reaches nothing else and never returns a secret value. Turn a secret on with [`secrets broker`](#secrets-broker-id-or-name-onoff).
+
+#### `broker url <id-or-name>`
+
+```bash
+vault broker url api-key-example
+vault broker url api-key-example --origin https://api.service-x.example
+```
+
+Prints `<server>/api/broker/v1/<secretId>/<host>` for each allowed origin (or the one given with `--origin`): the base URL an SDK points at. Fails when the broker is off for the secret. Full procedure (administrator switches, Claude Code on the web, limits, troubleshooting): [credential broker runbook](../../docs/runbooks/credential-broker.md).
+
+#### `broker token create | list | revoke`
+
+```bash
+vault broker token create --name agent-ci --expires 90 --secret api-key-example
+vault broker token list
+vault broker token revoke <id> --yes
+```
+
+| Command | Description |
+|---|---|
+| `create --name <n> [--expires <days>] [--secret <id-or-name> ...]` | Create a token. `--expires` is 1 to 3650 days (default 90; `90` or `90d`). `--secret` (repeatable) restricts it to those broker-enabled secrets; without it, every broker-enabled secret you own. The token is **printed once**; copy it now (`--json` returns it in `data.token`, `-q` prints only it) |
+| `list` | Your tokens: id, name, prefix, secrets, expiry, status. Never the token |
+| `revoke <id> [--yes]` | Revoke a token. Asks for confirmation in a terminal; `--yes` is required otherwise |
+
+#### End to end
+
+```bash
+# 1. Allow the key of "api-key-example" to be used for one origin (Bearer in Authorization by default)
+vault secrets broker api-key-example on --origin https://api.service-x.example
+#   Base URL(s):
+#     https://vault.example.test/api/broker/v1/<secretId>/api.service-x.example
+
+# 2. Create a token for the agent, restricted to that secret
+vault broker token create --name agent-ci --secret api-key-example
+#   vbk_...   (shown once)
+
+# 3. The agent calls the base URL with the token; Vault injects the key
+curl -H "Authorization: Bearer vbk_..." \
+  https://vault.example.test/api/broker/v1/<secretId>/api.service-x.example/v1/items
+
+# 4. Stop it
+vault broker token revoke <token-id> --yes
+vault secrets broker api-key-example off
 ```
 
 ---

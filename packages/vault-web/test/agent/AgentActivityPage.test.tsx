@@ -64,6 +64,19 @@ describe('AgentActivityPage', () => {
     expect(screen.queryByText(/^password$/i)).not.toBeInTheDocument();
   });
 
+  it('shows the method and status of a broker forward', async () => {
+    handlers([
+      {
+        id: 'b1', at: '2026-03-01T12:00:00Z', action: 'broker_forward', result: 'ok', secretId: 's2', secretName: 'Service key',
+        field: null, origin: 'https://api.service-x.example', purpose: null, credentialKind: 'broker', clientId: null,
+        clientName: null, method: 'POST', status: 201,
+      },
+    ]);
+    renderPage();
+    expect(await screen.findByText('POST 201')).toBeInTheDocument();
+    expect(screen.getByText('Used through the broker')).toBeInTheDocument();
+  });
+
   it('links to Connected apps', async () => {
     handlers();
     renderPage();

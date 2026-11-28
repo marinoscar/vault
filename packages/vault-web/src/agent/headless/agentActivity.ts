@@ -15,10 +15,11 @@ export type AgentActivityAction =
   | 'identity_fill'
   | 'card_grant'
   | 'service_key'
-  | 'mcp_reveal';
+  | 'mcp_reveal'
+  | 'broker_forward';
 
 /** The credential an agent call authenticated with (`embedded`: a host that embeds Vault, by its label). */
-export type AgentCredentialKind = 'oauth' | 'pat' | 'session' | 'embedded';
+export type AgentCredentialKind = 'oauth' | 'pat' | 'session' | 'embedded' | 'broker';
 
 /**
  * One row of `GET /api/agent-activity`. Never carries a value, code or seed: only who, what, where and why.
@@ -51,6 +52,10 @@ export interface AgentActivityItem {
   service?: string | null;
   /** A service key call's key name; absent otherwise. */
   keyName?: string | null;
+  /** A broker forward's HTTP method; absent otherwise. */
+  method?: string | null;
+  /** A broker forward's upstream status (null when nothing was forwarded); absent otherwise. */
+  status?: number | null;
 }
 
 export const AGENT_ACTIVITY_ACTIONS: readonly AgentActivityAction[] = [
@@ -68,6 +73,7 @@ export const AGENT_ACTIVITY_ACTIONS: readonly AgentActivityAction[] = [
   'card_grant',
   'service_key',
   'mcp_reveal',
+  'broker_forward',
 ];
 
 export const AGENT_ACTION_LABELS: Record<AgentActivityAction, string> = {
@@ -85,6 +91,7 @@ export const AGENT_ACTION_LABELS: Record<AgentActivityAction, string> = {
   card_grant: 'Shop permission',
   service_key: 'Service key read',
   mcp_reveal: 'Revealed to an assistant',
+  broker_forward: 'Used through the broker',
 };
 
 export interface AgentActivityQuery {

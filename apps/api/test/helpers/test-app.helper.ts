@@ -4,6 +4,7 @@ import {
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
 import fastifyCookie from '@fastify/cookie';
+import { installBrokerRawBody } from '@marinoscar/vault-api/broker';
 import { AppModule } from '../../src/app.module';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { prismaMock } from '../mocks/prisma.mock';
@@ -67,6 +68,7 @@ export async function createTestApp(
     secret: 'test-secret',
   });
 
+  installBrokerRawBody(app.getHttpAdapter().getInstance());
   app.setGlobalPrefix('api');
   // Note: ZodValidationPipe is already registered globally via APP_PIPE in AppModule
   // Do NOT add a standard ValidationPipe here as it conflicts with Zod DTOs

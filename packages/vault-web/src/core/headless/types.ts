@@ -172,6 +172,15 @@ export interface AgentIdentityAccessSettings {
   fillPerMinute: number;
 }
 
+/** The `agentAccess.broker` block (ADR-0006): sizes in bytes, the timeout in milliseconds. */
+export interface AgentBrokerAccessSettings {
+  enabled: boolean;
+  forwardsPerMinute: number;
+  maxRequestBytes: number;
+  maxResponseBytes: number;
+  timeoutMs: number;
+}
+
 /** The `agentAccess` system settings namespace (same shape as `@marinoscar/vault-contract/agent`). */
 export interface AgentAccessSettings {
   enabled: boolean;
@@ -181,6 +190,8 @@ export interface AgentAccessSettings {
   writePerMinute: number;
   /** The MCP `reveal_secret` limit; absent from an older API (#244). */
   revealPerMinute?: number;
+  /** The credential broker (#246); absent from an older API. */
+  broker?: AgentBrokerAccessSettings;
   /** Absent from an API older than ADR-0003. */
   cards?: AgentCardAccessSettings;
   /** Absent from an API older than ADR-0003. */
@@ -195,6 +206,7 @@ export const AGENT_ACCESS_DEFAULTS: AgentAccessSettings = {
   totpPerMinute: 10,
   writePerMinute: 10,
   revealPerMinute: 10,
+  broker: { enabled: false, forwardsPerMinute: 60, maxRequestBytes: 10 * 1024 * 1024, maxResponseBytes: 25 * 1024 * 1024, timeoutMs: 30_000 },
   cards: { enabled: false, fillPerMinute: 10, releasesPerCardPerDay: 5 },
   identity: { enabled: false, fillPerMinute: 20 },
 };
@@ -258,6 +270,12 @@ export interface SecretListItem {
   /** Whether the owner revealed this secret's values to assistants (#244); absent from an older API. */
   assistantReveal?: boolean;
   assistantRevealChangedAt?: string | null;
+  /** The credential broker (#246): whether agents may use this secret's key through Vault; absent from an older API. */
+  brokerAccess?: boolean;
+  brokerOrigins?: string[];
+  brokerInjection?: import('@marinoscar/vault-contract/broker').BrokerInjection | null;
+  brokerField?: string | null;
+  brokerAccessChangedAt?: string | null;
   /** Identity only (ADR-0003): the exact origins its sensitive fields may be filled on. */
   agentOrigins?: string[];
 }

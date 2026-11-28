@@ -1430,6 +1430,24 @@ Lets a chat assistant read one field of this secret over MCP `reveal_secret`, or
 - **Errors:** `400` invalid body, `403` an OAuth (`oat_`) token, `404` unknown, foreign or not yours, `422 ASSISTANT_REVEAL_UNSUPPORTED_TYPE` for Card, Passport, ID Document and any type with a cvv-like field (switching off is always accepted).
 - Audited as `secret.assistant_reveal.update` with `{ secretId, from, to }`. `GET /secrets` accepts `?assistantReveal=true|false`; list items and details carry the flag.
 
+#### PATCH /secrets/:id/broker-access
+
+Lets the credential broker use this secret's key on behalf of an agent, or stops it ([ADR-0006](decisions/0006-credential-broker.md), [#246](https://github.com/marinoscar/vault/issues/246); procedure: [credential broker runbook](runbooks/credential-broker.md#opt-a-secret-in-the-owner)). Permission `secrets:write`; **owner only** (`secrets:write_any` does not apply). Session or `pat_`; an `oat_` token is refused.
+
+```json
+{
+  "enabled": true,
+  "origins": ["https://api.service-x.example"],
+  "injection": { "kind": "header", "name": "Authorization", "prefix": "Bearer" },
+  "field": "key"
+}
+```
+
+- `origins`: 1 to 20 exact public HTTPS origins (`https://host[:port]`, no path, wildcard, `localhost`, `.local`, `.internal` or private IP). `injection`: `{ "kind": "header", "name", "prefix"? }` (prefix `Bearer`, `Token`, `Basic`, `Bot`, `ApiKey` or empty) or `{ "kind": "query", "name" }`; unset means `Authorization: Bearer`. `field`: the sensitive field to inject, needed only when the type has several. Fields not sent keep their stored values; `enabled: false` is always accepted and keeps them.
+- **Response:** `200 OK` with `{ "data": <secret detail> }` carrying `brokerAccess` (default `false`), `brokerOrigins`, `brokerInjection` (`null` when unset), `brokerField` and `brokerAccessChangedAt` (`null` until first changed). The same state again is a no-op.
+- **Errors:** `400` invalid body, `403` an OAuth (`oat_`) token, `404` unknown, foreign or not yours, `422` `BROKER_UNSUPPORTED_TYPE` (only API Key, Token, Service Key and custom types with a sensitive field), `BROKER_ORIGINS_REQUIRED`, `BROKER_ORIGIN_INVALID`, `BROKER_INJECTION_INVALID`, `BROKER_FIELD_INVALID`.
+- Audited as `secret.broker_access.update` with `{ secretId, from, to, origins, injection: { kind, name }, field }`. `GET /secrets` accepts `?brokerAccess=true|false`; list items and details carry the broker fields.
+
 #### POST /secrets/:id/totp
 
 The current one-time code of a `Credential` ([SECRETS.md](SECRETS.md#authenticator-codes-totp)). Permission `secrets:read`; access follows `GET /secrets/:id`. No body.
@@ -2363,6 +2381,56 @@ Every tool declares a title, a scope, an effect and the MCP annotations (`readOn
 
 ---
 
+### Credential broker
+
+Lets an agent **use** a key stored in Vault without seeing it ([ADR-0006](decisions/0006-credential-broker.md), [#246](https://github.com/marinoscar/vault/issues/246)). Off until an administrator switches on `agentAccess.enabled` and `agentAccess.broker.enabled`, and a secret is opted in by its owner (`PATCH /secrets/:id/broker-access`). Procedure: [credential broker runbook](runbooks/credential-broker.md); controls: [SECURITY-ARCHITECTURE.md](SECURITY-ARCHITECTURE.md#credential-broker-adr-0006-246). Wire shapes and codes: `@marinoscar/vault-contract/broker` (`@stability experimental`). Live reference: `/api/docs`, tag `Broker`.
+
+#### ALL /broker/v1/:secretId/:upstreamHost/*
+
+Forwards the request to `https://{upstreamHost}/{rest}?{query}` with the secret's key added, and returns the upstream's response. The base URL an SDK points at is `https://vault.example.test/api/broker/v1/<secretId>/api.service-x.example`; `upstreamHost` is `host[:port]` and the origin `https://{upstreamHost}` must equal one of the secret's allowed origins exactly. `/broker/v1/:secretId/:upstreamHost` (no path) forwards to the upstream root.
+
+| Aspect | Rule |
+|---|---|
+| Authentication | `Authorization: Bearer vbk_...` (a broker token, valid only on this path) or `Bearer pat_...`. An `oat_` token, a session JWT or any other scheme is `403 BROKER_CREDENTIAL_REFUSED`; none, or an unknown, revoked or expired `vbk_` token, is `401`. The route is `@Public()` to the platform and authenticated by the broker's own guard |
+| Methods | `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`; others `405` |
+| Request | The body is streamed untouched (never parsed or buffered whole; `Content-Length` passed through, chunked stays chunked). The caller's `Authorization`, `Cookie`, `Host`, `Proxy-*`, `Forwarded`, `X-Forwarded-*`, `X-Real-IP`, `X-Vault-*`, hop-by-hop headers, `Expect` and `Accept-Encoding` are removed; the key is injected last (header, or query parameter that replaces a caller's of the same name) |
+| Response | **Raw, not the `{ data }` envelope** (permanent, like the export zip): the upstream's status, its headers minus `Set-Cookie`, hop-by-hop, `Content-Length` and `Content-Encoding`, and its body (a compressed body is decoded first), plus `X-Vault-Broker: 1`. Redirects are never followed: a `3xx` is returned with its `Location`. A response that contains the key is withheld whole (`502 BROKER_KEY_ECHO`). An upstream error status is passed through as is (it carries `X-Vault-Broker: 1`; a Vault refusal does not) |
+| Order of checks | credential, kill switches, rate limit, token restriction, the secret (one identical `404`), origin, announced size, DNS and blocked addresses, decrypt, send |
+| Limits | `agentAccess.broker`: `forwardsPerMinute` (default 60, per token and user), `maxRequestBytes` (10 MiB), `maxResponseBytes` (25 MiB), `timeoutMs` (30000) |
+| Audit | One `broker.forward` row per call that identifies a user, allowed or refused: secret id, token id and kind, origin, method, path without the query string, status, byte counts, duration, outcome. Never the key, body, query or headers. Agent activity shows it as `broker_forward` |
+
+Errors (`{ statusCode, code, message }`; a body returned by the upstream is never shaped like this and carries `X-Vault-Broker: 1`):
+
+| Status | Code | Meaning |
+|---|---|---|
+| 401 | | No credential, or an invalid, revoked or expired `vbk_` or `pat_` token |
+| 403 | `BROKER_CREDENTIAL_REFUSED` | An `oat_` token, a session or another credential kind |
+| 403 | `BROKER_DISABLED` | `agentAccess.enabled` or `agentAccess.broker.enabled` is off |
+| 403 | `BROKER_ORIGIN_MISMATCH` | The origin is not exactly one of the secret's allowed origins |
+| 403 | `BROKER_DESTINATION_BLOCKED` | The host resolves to a blocked (private, loopback, link-local, reserved) address; nothing was sent |
+| 404 | | The secret is missing, not the caller's, has the broker off, is an unsupported type or is outside the token's restriction (identical on purpose) |
+| 405 | `METHOD_NOT_ALLOWED` | A method the broker does not forward |
+| 413 | `BROKER_REQUEST_TOO_LARGE` | The request body is above `maxRequestBytes` |
+| 422 | `BROKER_KEY_MISSING` | The secret has no usable value in the injected field |
+| 429 | `RATE_LIMITED` | Over `forwardsPerMinute`; `Retry-After` is set |
+| 502 | `BROKER_UPSTREAM_ERROR` | Connection failure, or an undecodable response; no detail |
+| 502 | `BROKER_RESPONSE_TOO_LARGE` | The response (or its decoded size) is above `maxResponseBytes` |
+| 502 | `BROKER_KEY_ECHO` | The response contained the key and was withheld |
+| 504 | `BROKER_UPSTREAM_TIMEOUT` | No answer within `timeoutMs` |
+
+#### Broker tokens: /broker/tokens
+
+Authorization is a bare `@Auth()` (any signed-in user; ownership in the service), like the personal access tokens. A session or a `pat_` may call them; an `oat_` token is `403`, and a `vbk_` token is `401`, so a token cannot mint or revoke tokens. The web card is `/settings/broker-tokens`; the CLI is `vault broker token`.
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/broker/tokens` | Create. Body `{ name (1 to 100), expiresInDays? (1 to 3650, default 90), secretIds? (up to 100 UUIDs of your own broker-enabled secrets) }`. `201` with `{ data }` carrying the metadata and `token` (`vbk_` plus 40 characters): **the only time it is returned**; only its SHA-256 is stored. `422 BROKER_TOKEN_SECRET_INVALID` for a secret that is not yours with the broker on. Audited `broker.token.create` |
+| `GET` | `/broker/tokens` | Your tokens, newest first: `id`, `name`, `tokenPrefix` (first 12 characters), `secretIds`, `expiresAt`, `lastUsedAt` (updated at most once a minute), `revokedAt`, `createdAt`. Never the token or its hash |
+| `DELETE` | `/broker/tokens/:id` | Revoke (idempotent), `204`. `404` for an unknown or foreign id. Audited `broker.token.revoke` |
+| `POST` | `/broker/tokens/:id/revoke` | The same, for clients that cannot send `DELETE` |
+
+Settings (`agentAccess.broker`, edited at `/admin/settings/agent-access`, `system_settings:write`): [DOMAIN-REFERENCE.md](DOMAIN-REFERENCE.md#oauth-server-and-agent-api-e142-174).
+
 ## Error Codes
 
 | Code | HTTP Status | Description |
@@ -2381,6 +2449,22 @@ Every tool declares a title, a scope, an effect and the MCP annotations (`readOn
 | `AGENT_CREDENTIAL_REQUIRED` | 403 | Agent API: the request used a browser session instead of an `oat_` or `pat_` token |
 | `RATE_LIMITED` | 429 | Agent API: a per-minute limit was reached (`Retry-After` is set) |
 | `ASSISTANT_REVEAL_UNSUPPORTED_TYPE` | 422 | A Card, Passport, ID Document or cvv-bearing secret can never be revealed to an assistant, so "Reveal to assistants" cannot be switched on |
+| `BROKER_DISABLED` | 403 | Credential broker: `agentAccess.enabled` or `agentAccess.broker.enabled` is off |
+| `BROKER_CREDENTIAL_REFUSED` | 403 | Credential broker: the credential is not a `vbk_` or `pat_` token (an `oat_` token or a session) |
+| `BROKER_ORIGIN_MISMATCH` | 403 | Credential broker: the upstream origin is not exactly one of the secret's allowed origins |
+| `BROKER_DESTINATION_BLOCKED` | 403 | Credential broker: the upstream host resolves to a blocked (private, loopback, link-local or reserved) address; nothing was sent |
+| `BROKER_REQUEST_TOO_LARGE` | 413 | Credential broker: the request body is above `agentAccess.broker.maxRequestBytes` |
+| `BROKER_KEY_MISSING` | 422 | Credential broker: the secret has no usable value in the field the broker injects |
+| `BROKER_UNSUPPORTED_TYPE` | 422 | Credential broker: only an API Key, Token, Service Key or a custom type with a sensitive field can be used |
+| `BROKER_ORIGINS_REQUIRED` | 422 | Credential broker: enabling needs at least one allowed origin |
+| `BROKER_ORIGIN_INVALID` | 422 | Credential broker: an origin is not an exact public HTTPS origin |
+| `BROKER_INJECTION_INVALID` | 422 | Credential broker: the injection stored on the secret is no longer valid; send a new one |
+| `BROKER_FIELD_INVALID` | 422 | Credential broker: `field` is not a sensitive field of the secret type, or the type has several and none was named |
+| `BROKER_TOKEN_SECRET_INVALID` | 422 | Credential broker: a token restriction names a secret that is not the caller's own with the broker on |
+| `BROKER_UPSTREAM_ERROR` | 502 | Credential broker: the connection to the upstream failed, or its response could not be decoded; no detail |
+| `BROKER_RESPONSE_TOO_LARGE` | 502 | Credential broker: the upstream response is above `maxResponseBytes` and was withheld |
+| `BROKER_KEY_ECHO` | 502 | Credential broker: the upstream response contained the key and was withheld |
+| `BROKER_UPSTREAM_TIMEOUT` | 504 | Credential broker: no answer within `agentAccess.broker.timeoutMs` |
 | `AGENT_ACCESS_UNSUPPORTED_TYPE` | 422 | Only a Credential, Card, Identity or Service Key secret can be set to agent access `fill`; this secret type cannot |
 | `SERVICE_KEY_AMBIGUOUS` | 409 | Agent API: two opened service keys share the service and key name, so none was released |
 | `SERVICE_KEY_EXISTS` | 409 | The owner already has a Service Key with this service and key name (`POST`/`PUT /secrets`) |

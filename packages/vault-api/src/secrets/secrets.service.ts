@@ -37,6 +37,8 @@ import {
 } from '@marinoscar/vault-contract/secrets';
 import { generateTotp, TotpCode } from './totp';
 import { isMcpExcludedType } from './assistant-reveal-types';
+import { prepareBrokerEnable, sameInjection } from '../broker/broker-access';
+import { BROKER_ACCESS_TOGGLE_AUDIT_ACTION, type UpdateBrokerAccess } from '@marinoscar/vault-contract/broker';
 import { defaultOrgClient, runInDefaultOrg } from '../core/default-org';
 
 
@@ -1108,7 +1110,7 @@ export class SecretsService {
     userId: string,
     userPermissions: string[],
   ) {
-    const { page, pageSize, typeId, search, agentAccess, assistantReveal, sortBy, sortOrder } = query;
+    const { page, pageSize, typeId, search, agentAccess, assistantReveal, brokerAccess, sortBy, sortOrder } = query;
 
     const canReadAny = userPermissions.includes(PERMISSIONS.SECRETS_READ_ANY);
 
@@ -1118,6 +1120,7 @@ export class SecretsService {
       ...(typeId ? { typeId } : {}),
       ...(agentAccess ? { agentAccess } : {}),
       ...(assistantReveal !== undefined ? { assistantReveal } : {}),
+      ...(brokerAccess !== undefined ? { brokerAccess } : {}),
       ...(search
         ? { name: { contains: search, mode: 'insensitive' as const } }
         : {}),
@@ -1378,6 +1381,47 @@ export class SecretsService {
       );
       // Ids and the two states only: never a value.
       await this.createAuditEvent(userId, 'secret.assistant_reveal.update', id, { secretId: id, from, to: enabled });
+    }
+
+    return this.findOne(id, userId, userPermissions);
+  }
+
+  /**
+   * Switch the credential broker on or off for the caller's own secret, with its allowed origins,
+   * injection shape and key field (#246, ADR-0006). OWNER ONLY (`secrets:write_any` does not reach
+   * another user's secret; foreign and missing are both 404). Turning it OFF is always allowed. Turning
+   * it ON validates the type, the field and every origin (422 BROKER_*). Stamps
+   * `brokerAccessChangedAt` and audits `secret.broker_access.update` with the states, origins and the
+   * injection kind and name, never a value.
+   */
+  async updateBrokerAccess(id: string, dto: UpdateBrokerAccess, userId: string, userPermissions: string[]) {
+    const existing = await this.prisma.secret.findFirst({ where: { id, createdById: userId }, include: { type: true } });
+    if (!existing) throw new NotFoundException('Secret not found');
+
+    const from = existing.brokerAccess === true;
+    const patch = dto.enabled ? prepareBrokerEnable(existing as never, dto) : null;
+    const changed = patch
+      ? !from ||
+        patch.brokerOrigins.join('\n') !== (existing.brokerOrigins ?? []).join('\n') ||
+        !sameInjection(patch.brokerInjection, existing.brokerInjection) ||
+        patch.brokerField !== (existing.brokerField ?? null)
+      : from;
+
+    if (changed) {
+      const data = patch ?? { brokerAccess: false };
+      await runInDefaultOrg(this.prisma, async (tx: any) =>
+        tx.secret.update({ where: { id }, data: { ...data, brokerAccessChangedAt: new Date() } }),
+      );
+      const injection = (patch ? patch.brokerInjection : existing.brokerInjection) as { kind?: string; name?: string } | null;
+      // Ids, states, origins and the injection kind and name only: never a value.
+      await this.createAuditEvent(userId, BROKER_ACCESS_TOGGLE_AUDIT_ACTION, id, {
+        secretId: id,
+        from,
+        to: dto.enabled,
+        origins: patch ? patch.brokerOrigins : (existing.brokerOrigins ?? []),
+        injection: injection ? { kind: injection.kind ?? null, name: injection.name ?? null } : null,
+        field: patch ? patch.brokerField : (existing.brokerField ?? null),
+      });
     }
 
     return this.findOne(id, userId, userPermissions);

@@ -8,6 +8,7 @@ import {
   deleteSecret,
   setAssistantReveal,
 } from '../lib/api-client.js';
+import { buildInjection, describeInjection, setBrokerAccess, brokerBaseUrl, type BrokerAccessBody } from '../lib/broker.js';
 import { formatSecretTable, formatSecretDetail } from '../lib/formatters.js';
 import type { OutputMode, SecretListItem, PaginatedResponse } from '../utils/types.js';
 
@@ -16,6 +17,11 @@ function getOutput(cmd: Command): OutputManager {
   const mode: OutputMode = root.json ? 'json' : root.quiet ? 'quiet' : 'human';
   return new OutputManager(mode);
 }
+
+export const BROKER_NOTE =
+  'Agents call the base URL with a broker token; Vault adds the key and forwards to the allowed origin. The key is never returned.';
+
+const collectOption = (value: string, previous: string[] = []): string[] => [...previous, value];
 
 export const REVEAL_WARNING =
   "Warning: a revealed value enters the assistant's conversation, and every read is recorded in Agent activity.";
@@ -44,12 +50,18 @@ export function registerSecretCommands(program: Command): void {
     .option('--sort <field>', 'Sort by: createdAt, name, updatedAt', 'updatedAt')
     .option('--order <dir>', 'Sort order: asc, desc', 'desc')
     .option('--assistant-reveal <on|off>', 'Only secrets revealed (on) or not revealed (off) to assistants')
+    .option('--broker <on|off>', 'Only secrets with the credential broker on or off')
     .action(async (opts, cmd) => {
       const output = getOutput(cmd);
       try {
         const reveal = opts.assistantReveal === undefined ? undefined : parseOnOff(String(opts.assistantReveal));
         if (opts.assistantReveal !== undefined && reveal === undefined) {
           output.fail('Invalid --assistant-reveal value. Use "on" or "off".');
+          process.exit(1);
+        }
+        const brokerFilter = opts.broker === undefined ? undefined : parseOnOff(String(opts.broker));
+        if (opts.broker !== undefined && brokerFilter === undefined) {
+          output.fail('Invalid --broker value. Use "on" or "off".');
           process.exit(1);
         }
         const result = await listSecrets({
@@ -60,6 +72,7 @@ export function registerSecretCommands(program: Command): void {
           sortBy: opts.sort,
           sortOrder: opts.order,
           assistantReveal: reveal,
+          brokerAccess: brokerFilter,
         });
 
         output.result<PaginatedResponse<SecretListItem>>(
@@ -88,6 +101,10 @@ export function registerSecretCommands(program: Command): void {
           values: secret.values ?? {},
           assistantReveal: secret.assistantReveal ?? false,
           assistantRevealChangedAt: secret.assistantRevealChangedAt ?? null,
+          brokerAccess: secret.brokerAccess ?? false,
+          brokerOrigins: secret.brokerOrigins ?? [],
+          brokerInjection: secret.brokerInjection ?? null,
+          brokerField: secret.brokerField ?? null,
         };
 
         output.result(
@@ -213,6 +230,68 @@ export function registerSecretCommands(program: Command): void {
             if (r.assistantReveal) console.log(REVEAL_WARNING);
           },
           (r) => console.log(r.id),
+        );
+      } catch (err) {
+        output.fail(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+    });
+
+  // vault secrets broker <id-or-name> <on|off>
+  secrets
+    .command('broker <id-or-name> <state>')
+    .description('Let agents use this secret through the credential broker (on) or stop it (off); owner only')
+    .option('--origin <origin>', 'Allowed upstream HTTPS origin (repeatable; replaces the stored list)', collectOption)
+    .option('--header <name>', 'Inject the key in this header (default Authorization)')
+    .option('--prefix <word>', 'Header prefix: Bearer (default), Token, Basic, Bot, ApiKey or none')
+    .option('--query <name>', 'Inject the key as this query parameter instead of a header')
+    .option('--field <name>', 'The sensitive field to inject (default: the type\'s primary secret field)')
+    .action(async (idOrName, state, opts, cmd) => {
+      const output = getOutput(cmd);
+      try {
+        const enabled = parseOnOff(String(state));
+        if (enabled === undefined) {
+          output.fail('Invalid state. Use "on" or "off".');
+          process.exit(1);
+        }
+        const origins: string[] | undefined = opts.origin;
+        const body: BrokerAccessBody = { enabled };
+        if (enabled) {
+          const injection = buildInjection(opts);
+          if (origins) body.origins = origins;
+          if (injection) body.injection = injection;
+          if (opts.field !== undefined) body.field = String(opts.field);
+        }
+        const existing = await resolveSecret(idOrName);
+        if (enabled && !body.origins && !(existing.brokerOrigins && existing.brokerOrigins.length > 0)) {
+          throw new Error('Turning the broker on needs at least one origin. Pass --origin https://host.');
+        }
+        const secret = await setBrokerAccess(existing.id, body);
+        const on = secret.brokerAccess ?? enabled;
+        const allowed = secret.brokerOrigins ?? [];
+        const result = {
+          id: secret.id,
+          name: secret.name,
+          brokerAccess: on,
+          brokerOrigins: allowed,
+          brokerInjection: secret.brokerInjection ?? null,
+          brokerField: secret.brokerField ?? null,
+          brokerAccessChangedAt: secret.brokerAccessChangedAt ?? null,
+          baseUrls: on ? allowed.map((o) => brokerBaseUrl(secret.id, o)) : [],
+        };
+
+        output.result(
+          result,
+          (r) => {
+            console.log(`Broker: ${r.brokerAccess ? 'on' : 'off'} for "${r.name}"`);
+            if (r.brokerAccess) {
+              console.log(`Injection: ${describeInjection(r.brokerInjection)}`);
+              console.log(BROKER_NOTE);
+              console.log('Base URL(s):');
+              for (const u of r.baseUrls) console.log(`  ${u}`);
+            }
+          },
+          (r) => r.baseUrls.forEach((u) => console.log(u)),
         );
       } catch (err) {
         output.fail(err instanceof Error ? err.message : String(err));

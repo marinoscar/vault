@@ -113,6 +113,55 @@
                 }
               }
             }
+          },
+          "broker": {
+            "required": false,
+            "nullable": false,
+            "shape": {
+              "type": "object",
+              "fields": {
+                "enabled": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "boolean"
+                  }
+                },
+                "forwardsPerMinute": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "number"
+                  }
+                },
+                "maxRequestBytes": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "number"
+                  }
+                },
+                "maxResponseBytes": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "number"
+                  }
+                },
+                "timeoutMs": {
+                  "required": true,
+                  "nullable": false,
+                  "shape": {
+                    "type": "primitive",
+                    "name": "number"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -137,7 +186,8 @@
           "identity_fill",
           "card_grant",
           "service_key",
-          "mcp_reveal"
+          "mcp_reveal",
+          "broker_forward"
         ]
       }
     },
@@ -151,7 +201,8 @@
           "oauth",
           "pat",
           "session",
-          "embedded"
+          "embedded",
+          "broker"
         ]
       }
     },
@@ -197,7 +248,8 @@
                 "identity_fill",
                 "card_grant",
                 "service_key",
-                "mcp_reveal"
+                "mcp_reveal",
+                "broker_forward"
               ]
             }
           },
@@ -269,7 +321,8 @@
                 "oauth",
                 "pat",
                 "session",
-                "embedded"
+                "embedded",
+                "broker"
               ]
             }
           },
@@ -320,6 +373,22 @@
               "type": "primitive",
               "name": "string"
             }
+          },
+          "method": {
+            "required": false,
+            "nullable": true,
+            "shape": {
+              "type": "primitive",
+              "name": "string"
+            }
+          },
+          "status": {
+            "required": false,
+            "nullable": true,
+            "shape": {
+              "type": "primitive",
+              "name": "number"
+            }
           }
         }
       }
@@ -366,7 +435,8 @@
                 "identity_fill",
                 "card_grant",
                 "service_key",
-                "mcp_reveal"
+                "mcp_reveal",
+                "broker_forward"
               ]
             }
           },
@@ -455,7 +525,8 @@
                         "identity_fill",
                         "card_grant",
                         "service_key",
-                        "mcp_reveal"
+                        "mcp_reveal",
+                        "broker_forward"
                       ]
                     }
                   },
@@ -527,7 +598,8 @@
                         "oauth",
                         "pat",
                         "session",
-                        "embedded"
+                        "embedded",
+                        "broker"
                       ]
                     }
                   },
@@ -578,6 +650,22 @@
                       "type": "primitive",
                       "name": "string"
                     }
+                  },
+                  "method": {
+                    "required": false,
+                    "nullable": true,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "string"
+                    }
+                  },
+                  "status": {
+                    "required": false,
+                    "nullable": true,
+                    "shape": {
+                      "type": "primitive",
+                      "name": "number"
+                    }
                   }
                 }
               }
@@ -626,6 +714,56 @@
       "shape": {
         "type": "primitive",
         "name": "number"
+      }
+    },
+    "agentBrokerSettingsSchema": {
+      "role": "both",
+      "required": true,
+      "nullable": false,
+      "shape": {
+        "type": "object",
+        "fields": {
+          "enabled": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "boolean"
+            }
+          },
+          "forwardsPerMinute": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "number"
+            }
+          },
+          "maxRequestBytes": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "number"
+            }
+          },
+          "maxResponseBytes": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "number"
+            }
+          },
+          "timeoutMs": {
+            "required": true,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "number"
+            }
+          }
+        }
       }
     },
     "agentCardAccessSettingsSchema": {

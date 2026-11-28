@@ -92,6 +92,7 @@ export async function listSecrets(params: {
   sortBy?: string;
   sortOrder?: string;
   assistantReveal?: boolean;
+  brokerAccess?: boolean;
 }): Promise<PaginatedResponse<SecretListItem>> {
   const query = new URLSearchParams();
   if (params.page) query.set('page', String(params.page));
@@ -101,6 +102,7 @@ export async function listSecrets(params: {
   if (params.sortBy) query.set('sortBy', params.sortBy);
   if (params.sortOrder) query.set('sortOrder', params.sortOrder);
   if (params.assistantReveal !== undefined) query.set('assistantReveal', String(params.assistantReveal));
+  if (params.brokerAccess !== undefined) query.set('brokerAccess', String(params.brokerAccess));
 
   const qs = query.toString();
   const res = await apiRequest(`/secrets${qs ? '?' + qs : ''}`);

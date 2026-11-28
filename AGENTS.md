@@ -133,6 +133,7 @@ Guardrails: `test/ai-conformance.spec.ts` (`ai-kill-switch`, `ai-rbac-matrix`, `
 - **A backup archive is never buffered**: dumps stream into object storage and the upload and exit code are both awaited.
 - **There is no `*:read_any` bypass by accident**: `secrets:read_any`/`write_any`/`delete_any` and `storage:*_any` are Admin only; a no-access read answers 404 for foreign resources.
 - **Agent access** ([ADR-0002](docs/decisions/0002-agent-access.md)): the agent API returns at most one sensitive field per call; an `oat_` token never reaches `/api/secrets/*`; MCP returns a sensitive value only through `reveal_secret` (one field, a secret its owner opted in, [ADR-0005](docs/decisions/0005-assistant-reveal.md)) and never changes `url`; agent access is per-secret opt-in, default `none`, set only by the owner's session; `agentAccess.enabled` ships `false`.
+- **Credential broker** ([ADR-0006](docs/decisions/0006-credential-broker.md), [runbook](docs/runbooks/credential-broker.md)): it never returns a key (a response containing it is withheld whole, fail closed); a `vbk_` token works only on `/api/broker/v1` and never on a secret, token or opt-in route; upstreams are exact HTTPS origins whose resolved addresses all pass `isBlockedAddress`, resolved once and pinned, redirects never followed; per-secret opt-in, default off, owner only; the host calls `installBrokerRawBody`; both `agentAccess.enabled` and `agentAccess.broker.enabled` ship `false`.
 
 ## Architecture principles
 

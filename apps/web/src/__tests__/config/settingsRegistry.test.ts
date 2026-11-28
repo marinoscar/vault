@@ -142,6 +142,8 @@ const CONTROLLER_MIRROR: Record<string, string | undefined> = {
   '/settings/connected-apps': undefined,
   // E14.7 (#179): agent-activity.controller GET /api/agent-activity (secrets:read)
   '/settings/agent-activity': 'secrets:read',
+  // #246: broker-tokens.controller.ts bare @Auth() (ownership-scoped, like pat.controller.ts)
+  '/settings/broker-tokens': undefined,
   // system-settings.controller GET /api/system-settings (the agentAccess namespace)
   '/admin/settings/agent-access': 'system_settings:read',
 };
@@ -375,6 +377,7 @@ describe('the registries as a whole', () => {
       'Download your data',
       'Notifications',
       'Agent activity',
+      'Broker tokens',
       'Delete my data',
     ]);
   });
