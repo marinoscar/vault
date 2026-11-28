@@ -6,6 +6,8 @@ All examples use invented values: `https://vault.example.test` is the Vault, `ht
 
 Do not use MCP (`/api/mcp`) for secret values: it never returns one, by design. This API is the one for runtimes.
 
+**Calling an API with a key instead of logging in?** That is a different surface, the credential broker (`/api/broker/v1`, `vbk_` tokens): the caller never receives the key, Vault adds it to the request. It is not part of this API and shares none of its tokens, scopes or switches except the `agentAccess.enabled` kill switch. See the [credential broker runbook](runbooks/credential-broker.md) and [ADR-0006](decisions/0006-credential-broker.md).
+
 ## Contract package
 
 `@marinoscar/vault-contract/agent` exports the Zod schemas and types of every request and response below (`agentLookupQuerySchema`, `agentFillRequestSchema`, `agentFillResponseSchema`, `agentTotpRequestSchema`, `agentCreateCredentialRequestSchema`, `agentRotatePasswordRequestSchema`, `agentWhoamiResponseSchema`, ...), `AGENT_SCOPES`, `AGENT_ERROR_CODES`, `agentPurposeSchema`, `AGENT_API_BASE_PATH`, `AGENT_CONTRACT_VERSION` and `AGENT_CONTRACT_FEATURES`. Its stability is **beta** (`@stability beta`); the promise is in [section 9](#9-stability) and every change is listed in [section 8](#8-changes). `@marinoscar/vault-contract/agent-testing` is the conformance kit for your runtime's tests ([section 10](#10-conformance-kit)).

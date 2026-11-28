@@ -373,6 +373,19 @@ Issue #241. A **`Service Key`** secret holds the key of an outside service (a we
 | MCP | Like any type other than `Credential`: never visible to `search_secrets`, `get_secret` or `update_secret`; `create_secret` may create one, closed, with the key hidden |
 | Backups and export | Like every secret (encrypted in the archive) |
 
+### Credential broker
+
+Issue #246, [ADR-0006](decisions/0006-credential-broker.md). The broker lets an agent **use** a key without seeing it, so it is the opposite of reveal: the agent calls Vault and Vault adds the key to the request it forwards. Procedure: [credential broker runbook](runbooks/credential-broker.md).
+
+| Aspect | Rule |
+|---|---|
+| Which secrets | The system `API Key`, `Token` and `Service Key` types and custom types with a sensitive string field. Card, Passport, ID Document, Credential, Note and any type with a cvv-like field cannot |
+| Default | Off for every secret. `PATCH /api/secrets/:id/broker-access` by the owner (`secrets:write`, session or PAT, never `oat_` or `vbk_`) switches it on with 1 to 20 exact HTTPS origins, how the key is injected and the field |
+| Storage | `secrets.broker_access` (default `false`), `broker_origins`, `broker_injection`, `broker_field`, `broker_access_changed_at`: properties of the secret, not of a version. The key itself stays in `secret_versions`, decrypted only for a forward |
+| Rotation | Edit the secret (a new current version): the next forward injects it; no token or sandbox holds a copy |
+| Audit | `secret.broker_access.update` with `{ secretId, from, to, origins, injection, field }`; every use is `broker.forward` (never the key) |
+| Where it shows | List and detail carry `brokerAccess`, `brokerOrigins`, `brokerInjection`, `brokerField`, `brokerAccessChangedAt`; the list takes `?brokerAccess=true\|false`; the web form has "Allow use through the broker" and the list a "Broker" chip |
+
 ## Agent activity and notifications
 
 Every agent call is audited (`agent.credential.lookup|fill|totp|create|rotate`, plus the owner's `secret.agent_access.update`); the owner reads their own trail and is told about what matters (E14.7, [#179](https://github.com/marinoscar/vault/issues/179)).
@@ -778,6 +791,7 @@ All endpoints require a valid JWT Bearer token. Ownership checks are enforced at
 | `PUT` | `/secrets/:id` | `secrets:write` | Update a secret; creates a new version if data changed |
 | `PATCH` | `/secrets/:id/agent-access` | `secrets:write` | Allow or forbid agents to use a Credential secret (see [Agent access](#agent-access)) |
 | `PATCH` | `/secrets/:id/assistant-reveal` | `secrets:write` (owner only) | Let a chat assistant read one field over MCP, or stop it ([ADR-0005](decisions/0005-assistant-reveal.md)) |
+| `PATCH` | `/secrets/:id/broker-access` | `secrets:write` (owner only) | Let the credential broker inject this secret's key into requests it forwards to allowed HTTPS origins, without any caller seeing the key ([ADR-0006](decisions/0006-credential-broker.md), [runbook](runbooks/credential-broker.md)) |
 | `DELETE` | `/secrets/:id` | `secrets:delete` | Delete a secret and all its versions |
 | `POST` | `/secrets/export` | `secrets:read` | Download a password-protected zip of your own secrets (see [Backup and export](#backup-and-export)) |
 

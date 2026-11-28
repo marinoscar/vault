@@ -356,15 +356,15 @@ vault secrets broker api-key-example on --origin https://api.service-x.example -
 vault secrets broker api-key-example off
 ```
 
-Lets agents *use* this secret's key through the credential broker without ever seeing it: the agent calls Vault, Vault adds the key and forwards the request to an origin you allowed. Owner only. Not available for cards or identity documents. With `on`, the command prints the base URL for each origin.
+Lets agents *use* this secret's key through the credential broker without ever seeing it: the agent calls Vault, Vault adds the key and forwards the request to an origin you allowed. Owner only. Works for API Key, Token and Service Key secrets and custom types with a sensitive field (cards, identity documents, logins and notes are refused with `BROKER_UNSUPPORTED_TYPE`). With `on`, the command prints the base URL for each origin.
 
 | Option | Description |
 |---|---|
 | `--origin <origin>` | Allowed upstream origin, an exact public HTTPS origin; repeatable. Replaces the stored list; required the first time |
-| `--header <name>` | Inject the key in this header (default `Authorization`) |
+| `--header <name>` | Inject the key in this header (default `Authorization`). Without `--prefix` the prefix is `Bearer`; use `--prefix none` to send the bare key |
 | `--prefix <word>` | Header prefix: `Bearer` (default), `Token`, `Basic`, `Bot`, `ApiKey` or `none` |
 | `--query <name>` | Inject the key as this query parameter instead of a header (not with `--header`) |
-| `--field <name>` | The sensitive field to inject (default: the type's primary secret field) |
+| `--field <name>` | The sensitive field to inject. Needed only when the type has several sensitive fields (default: the only one; `BROKER_FIELD_INVALID` otherwise) |
 
 Errors are explained: `BROKER_UNSUPPORTED_TYPE`, `BROKER_ORIGINS_REQUIRED`, `BROKER_ORIGIN_INVALID`, `BROKER_FIELD_INVALID` and 404. `--json` returns the envelope with `brokerAccess`, `brokerOrigins`, `brokerInjection`, `brokerField` and `baseUrls` (no secret values).
 
@@ -388,7 +388,7 @@ vault broker url api-key-example
 vault broker url api-key-example --origin https://api.service-x.example
 ```
 
-Prints `<server>/api/broker/v1/<secretId>/<host>` for each allowed origin (or the one given with `--origin`): the base URL an SDK points at. Fails when the broker is off.
+Prints `<server>/api/broker/v1/<secretId>/<host>` for each allowed origin (or the one given with `--origin`): the base URL an SDK points at. Fails when the broker is off for the secret. Full procedure (administrator switches, Claude Code on the web, limits, troubleshooting): [credential broker runbook](../../docs/runbooks/credential-broker.md).
 
 #### `broker token create | list | revoke`
 

@@ -152,6 +152,7 @@ Tabs appear only inside one destination for parallel content (Users and Allowlis
 | | Access Tokens | `/settings/tokens` | none (the platform's `pat.controller.ts`, bare `@Auth()`) | packaged `UserTokensPage`; the card is `identityUserSettingsSections.security`, spread in place since E3.3 |
 | `USER_SETTINGS_SECTIONS`, Data | My backups | `/settings/backups` | `secrets:read` | `pages/settings/MyBackupsPage.tsx`: `DataBackup` with `BackupRunsTable` |
 | | Secret types | `/settings/secret-types` (`/new`, `/:id/edit`) | `secret_types:read` | the existing secret types pages, breadcrumbs rooted at Settings |
+| `USER_SETTINGS_SECTIONS`, Agents (appended last before Delete my data, #246) | Broker tokens | `/settings/broker-tokens` | none: ownership-scoped (`broker-tokens.controller.ts` bare `@Auth()`, like Access tokens) | `BrokerTokensPage` of `@marinoscar/vault-web/agent/ui`: create (name, expiry 1 to 3650 days, optional secrets), the `vbk_` token shown once, list with prefix, expiry and last use, revoke. See [credential broker runbook](../runbooks/credential-broker.md) |
 
 **As built (E7.2, follow-up to [#85](https://github.com/marinoscar/vault/issues/85)).** The platform email and notifications slices' web side. The cards are APPENDED as new sections (never inserted), each a packaged page, writes gated inside it:
 
