@@ -29,7 +29,8 @@ function unprocessable(code: string, message: string): UnprocessableEntityExcept
  * Validates an ENABLE request against the secret and returns the columns to write (ADR-0006
  * decision 3): a supported type and field (`BROKER_UNSUPPORTED_TYPE`, `BROKER_FIELD_INVALID`), at
  * least one origin (`BROKER_ORIGINS_REQUIRED`) and every origin an exact public HTTPS origin
- * (`BROKER_ORIGIN_INVALID`). Origins, injection and field not sent keep their stored values.
+ * (`BROKER_ORIGIN_INVALID`) and a valid injection (`BROKER_INJECTION_INVALID`). Origins, injection
+ * and field not sent keep their stored values.
  * Turning the broker OFF needs none of this and is not routed through here.
  */
 export function prepareBrokerEnable(existing: BrokerAccessSnapshot, dto: UpdateBrokerAccess): BrokerAccessEnable {
@@ -53,7 +54,7 @@ export function prepareBrokerEnable(existing: BrokerAccessSnapshot, dto: UpdateB
   const stored = dto.injection ?? existing.brokerInjection ?? null;
   if (stored !== null) {
     const parsed = brokerInjectionSchema.safeParse(stored);
-    if (!parsed.success) throw unprocessable(BROKER_ERROR_CODES.BROKER_ORIGIN_INVALID, 'The stored injection is not valid; send a new one');
+    if (!parsed.success) throw unprocessable(BROKER_ERROR_CODES.BROKER_INJECTION_INVALID, 'The stored injection is not valid; send a new one');
     injection = parsed.data;
   }
 

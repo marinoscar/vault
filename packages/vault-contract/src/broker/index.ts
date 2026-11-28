@@ -86,6 +86,8 @@ export const BROKER_ERROR_CODES = {
   BROKER_ORIGINS_REQUIRED: 'BROKER_ORIGINS_REQUIRED',
   /** 422: an origin is not an exact, public HTTPS origin. */
   BROKER_ORIGIN_INVALID: 'BROKER_ORIGIN_INVALID',
+  /** 422: the injection stored on the secret no longer validates; send a new one. */
+  BROKER_INJECTION_INVALID: 'BROKER_INJECTION_INVALID',
   /** 422: `field` is not a sensitive field of the secret's type. */
   BROKER_FIELD_INVALID: 'BROKER_FIELD_INVALID',
   /** 422: a token restriction names a secret that is not the caller's own broker-enabled secret. */

@@ -146,6 +146,14 @@ describe('SecretsService.updateBrokerAccess (#246, ADR-0006)', () => {
     expect(prisma.secret.update).not.toHaveBeenCalled();
   });
 
+  it('a stored injection that no longer validates answers 422 BROKER_INJECTION_INVALID', async () => {
+    prisma.secret.findFirst.mockResolvedValue(row({ brokerInjection: { kind: 'nonsense' } }) as any);
+    const error = await service.updateBrokerAccess(secretId, enable({ origins: ['https://ok.service-x.example'] }), userId, write).catch((e) => e);
+    expect(error).toBeInstanceOf(UnprocessableEntityException);
+    expect(error.getResponse().code).toBe('BROKER_INJECTION_INVALID');
+    expect(prisma.secret.update).not.toHaveBeenCalled();
+  });
+
   it('the list filter parses brokerAccess=true|false and findAll passes it to the query', async () => {
     expect(secretListQuerySchema.parse({}).brokerAccess).toBeUndefined();
     expect(secretListQuerySchema.parse({ brokerAccess: 'true' }).brokerAccess).toBe(true);

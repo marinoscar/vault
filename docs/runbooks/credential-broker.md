@@ -223,7 +223,8 @@ A refusal by Vault is a JSON error (`{ statusCode, code, message, ... }`) with *
 | `422 BROKER_KEY_MISSING` | The secret has no value in the injected field, or the value contains line breaks or a null character | Put the key in the field the broker uses (check the field in the opt-in dialog) |
 | `422 BROKER_UNSUPPORTED_TYPE` | (Opt-in) the type cannot be used: Card, Passport, ID Document, Credential, Note, or a custom type with no sensitive field | Store the key as an API Key, Token or Service Key secret |
 | `422 BROKER_ORIGINS_REQUIRED` | (Opt-in) enabling without an origin | Add at least one `https://host[:port]` |
-| `422 BROKER_ORIGIN_INVALID` | (Opt-in) an origin is not an exact public HTTPS origin, or the stored injection is invalid | Fix the origin ([rules](#opt-a-secret-in-the-owner)); re-send the injection |
+| `422 BROKER_ORIGIN_INVALID` | (Opt-in) an origin is not an exact public HTTPS origin, or more than 20 were sent | Fix the origin ([rules](#opt-a-secret-in-the-owner)) |
+| `422 BROKER_INJECTION_INVALID` | (Opt-in) the injection stored on the secret no longer validates | Send a new `injection` in the same request |
 | `422 BROKER_FIELD_INVALID` | (Opt-in) `field` is not a sensitive field of the type, or the type has several and none was named | Name one of the sensitive fields |
 | `422 BROKER_TOKEN_SECRET_INVALID` | (Token create) a restriction names a secret that is not your own with the broker on | Opt the secret in first, or drop it from the restriction |
 | `429 RATE_LIMITED` | More than `forwardsPerMinute` calls in a minute for this token | Wait for `Retry-After`; an administrator raises the limit if legitimate |

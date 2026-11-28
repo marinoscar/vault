@@ -1445,7 +1445,7 @@ Lets the credential broker use this secret's key on behalf of an agent, or stops
 
 - `origins`: 1 to 20 exact public HTTPS origins (`https://host[:port]`, no path, wildcard, `localhost`, `.local`, `.internal` or private IP). `injection`: `{ "kind": "header", "name", "prefix"? }` (prefix `Bearer`, `Token`, `Basic`, `Bot`, `ApiKey` or empty) or `{ "kind": "query", "name" }`; unset means `Authorization: Bearer`. `field`: the sensitive field to inject, needed only when the type has several. Fields not sent keep their stored values; `enabled: false` is always accepted and keeps them.
 - **Response:** `200 OK` with `{ "data": <secret detail> }` carrying `brokerAccess` (default `false`), `brokerOrigins`, `brokerInjection` (`null` when unset), `brokerField` and `brokerAccessChangedAt` (`null` until first changed). The same state again is a no-op.
-- **Errors:** `400` invalid body, `403` an OAuth (`oat_`) token, `404` unknown, foreign or not yours, `422` `BROKER_UNSUPPORTED_TYPE` (only API Key, Token, Service Key and custom types with a sensitive field), `BROKER_ORIGINS_REQUIRED`, `BROKER_ORIGIN_INVALID`, `BROKER_FIELD_INVALID`.
+- **Errors:** `400` invalid body, `403` an OAuth (`oat_`) token, `404` unknown, foreign or not yours, `422` `BROKER_UNSUPPORTED_TYPE` (only API Key, Token, Service Key and custom types with a sensitive field), `BROKER_ORIGINS_REQUIRED`, `BROKER_ORIGIN_INVALID`, `BROKER_INJECTION_INVALID`, `BROKER_FIELD_INVALID`.
 - Audited as `secret.broker_access.update` with `{ secretId, from, to, origins, injection: { kind, name }, field }`. `GET /secrets` accepts `?brokerAccess=true|false`; list items and details carry the broker fields.
 
 #### POST /secrets/:id/totp
@@ -2458,6 +2458,7 @@ Settings (`agentAccess.broker`, edited at `/admin/settings/agent-access`, `syste
 | `BROKER_UNSUPPORTED_TYPE` | 422 | Credential broker: only an API Key, Token, Service Key or a custom type with a sensitive field can be used |
 | `BROKER_ORIGINS_REQUIRED` | 422 | Credential broker: enabling needs at least one allowed origin |
 | `BROKER_ORIGIN_INVALID` | 422 | Credential broker: an origin is not an exact public HTTPS origin |
+| `BROKER_INJECTION_INVALID` | 422 | Credential broker: the injection stored on the secret is no longer valid; send a new one |
 | `BROKER_FIELD_INVALID` | 422 | Credential broker: `field` is not a sensitive field of the secret type, or the type has several and none was named |
 | `BROKER_TOKEN_SECRET_INVALID` | 422 | Credential broker: a token restriction names a secret that is not the caller's own with the broker on |
 | `BROKER_UPSTREAM_ERROR` | 502 | Credential broker: the connection to the upstream failed, or its response could not be decoded; no detail |

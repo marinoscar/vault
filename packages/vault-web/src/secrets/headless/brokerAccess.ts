@@ -107,6 +107,8 @@ export function brokerAccessErrorMessage(err: unknown): string {
       return 'Add at least one allowed origin.';
     case 'BROKER_ORIGIN_INVALID':
       return 'One of the origins is not allowed. Use public https://host addresses with no path.';
+    case 'BROKER_INJECTION_INVALID':
+      return 'The saved injection is no longer valid. Choose a new one.';
     case 'BROKER_FIELD_INVALID':
       return 'Choose which sensitive field holds the key.';
     default:
