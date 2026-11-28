@@ -336,6 +336,37 @@ export function isSystemType(type: { name: string; isSystem?: boolean } | null |
   return !!type && type.name === name && type.isSystem !== false;
 }
 
+const REVEAL_EXCLUDED_SYSTEM_TYPES = ['card', 'passport', 'id document'];
+
+/**
+ * True for the types an assistant can never be shown (#244, ADR-0005): the system types `Card`,
+ * `Passport` and `ID Document`, and any type with a cvv-like field. Mirrors
+ * `isMcpExcludedType` of `@marinoscar/vault-api`; the API is the authority (422).
+ */
+export function isAssistantRevealExcludedType(
+  type: { name: string; isSystem?: boolean; fields?: Array<{ name?: string }> } | null | undefined,
+): boolean {
+  if (!type) return true;
+  if (type.isSystem && REVEAL_EXCLUDED_SYSTEM_TYPES.includes(type.name.toLowerCase())) return true;
+  return (type.fields ?? []).some((f) => typeof f?.name === 'string' && /^(cvv|cvc|security_code(_\d+)?)$/i.test(f.name));
+}
+
+/** A friendly message for a failed "Reveal to assistants" change. */
+export function assistantRevealErrorMessage(err: unknown): string {
+  const code = (err as { code?: string } | null)?.code;
+  if (code === 'ASSISTANT_REVEAL_UNSUPPORTED_TYPE') {
+    return 'This kind of secret can never be revealed to an assistant.';
+  }
+  if (code === 'OWNER_SESSION_REQUIRED') {
+    return 'Sign in to Vault to change what assistants may read.';
+  }
+  const status = (err as { status?: number } | null)?.status;
+  if (status === 403 || status === 404) {
+    return 'Only the owner of this secret can change whether assistants may read it.';
+  }
+  return err instanceof Error ? err.message : 'Failed to update reveal to assistants';
+}
+
 /** A friendly message for a failed agent-access change. */
 export function agentAccessErrorMessage(err: unknown): string {
   const code = (err as { code?: string } | null)?.code;

@@ -44,11 +44,15 @@ describe('AgentAccessSettingsPage', () => {
     const fill = screen.getByLabelText('Fills per minute');
     await userEvent.clear(fill);
     await userEvent.type(fill, '45');
+    expect(screen.getByLabelText('Reveals per minute')).toHaveValue(10);
+    const reveal = screen.getByLabelText('Reveals per minute');
+    await userEvent.clear(reveal);
+    await userEvent.type(reveal, '2500');
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(patches).toHaveLength(1));
     expect(patches[0]).toEqual({
       agentAccess: {
-        enabled: true, lookupPerMinute: 60, fillPerMinute: 45, totpPerMinute: 10, writePerMinute: 10,
+        enabled: true, lookupPerMinute: 60, fillPerMinute: 45, totpPerMinute: 10, writePerMinute: 10, revealPerMinute: 2500,
         cards: { enabled: false, fillPerMinute: 10, releasesPerCardPerDay: 5 },
         identity: { enabled: false, fillPerMinute: 20 },
       },

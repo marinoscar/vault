@@ -289,6 +289,11 @@ export async function updateSecretAgentAccess(
   });
 }
 
+/** Switches "Reveal to assistants" on or off for one secret (owner only, #244); returns the updated detail. */
+export async function updateSecretAssistantReveal(id: string, enabled: boolean): Promise<SecretDetail> {
+  return api.patch<SecretDetail>(`/secrets/${id}/assistant-reveal`, { enabled });
+}
+
 export async function deleteSecret(id: string): Promise<void> {
   await api.delete<void>(`/secrets/${id}`);
 }
