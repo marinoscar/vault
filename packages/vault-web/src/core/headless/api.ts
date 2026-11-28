@@ -19,6 +19,7 @@ import type { PlatformHttpBlobWithHeaders, PlatformHttpRequestOptions } from '@m
 
 import type { DocumentSummaryResponse, ScanTargets } from '@marinoscar/vault-contract/secrets';
 
+import type { BrokerInjection } from '@marinoscar/vault-contract/broker';
 import { api } from './http.js';
 import type { ExtractDocumentRequest, ExtractDocumentResponse } from '@marinoscar/vault-contract/secrets';
 
@@ -201,6 +202,7 @@ export async function getSecrets(params?: {
   sortBy?: string;
   sortOrder?: string;
   agentAccess?: SecretAgentAccess;
+  brokerAccess?: boolean;
 }): Promise<SecretsResponse> {
   const searchParams = new URLSearchParams();
   if (params?.page) searchParams.set('page', String(params.page));
@@ -210,6 +212,7 @@ export async function getSecrets(params?: {
   if (params?.sortBy) searchParams.set('sortBy', params.sortBy);
   if (params?.sortOrder) searchParams.set('sortOrder', params.sortOrder);
   if (params?.agentAccess) searchParams.set('agentAccess', params.agentAccess);
+  if (params?.brokerAccess !== undefined) searchParams.set('brokerAccess', String(params.brokerAccess));
   return api.get<SecretsResponse>(`/secrets?${searchParams}`);
 }
 
@@ -292,6 +295,17 @@ export async function updateSecretAgentAccess(
 /** Switches "Reveal to assistants" on or off for one secret (owner only, #244); returns the updated detail. */
 export async function updateSecretAssistantReveal(id: string, enabled: boolean): Promise<SecretDetail> {
   return api.patch<SecretDetail>(`/secrets/${id}/assistant-reveal`, { enabled });
+}
+
+/**
+ * Switches "Allow use through the broker" for one secret (owner only, #246); `origins`, `injection`
+ * and `field` replace the stored values when sent. Returns the updated detail.
+ */
+export async function updateSecretBrokerAccess(
+  id: string,
+  body: { enabled: boolean; origins?: string[]; injection?: BrokerInjection; field?: string },
+): Promise<SecretDetail> {
+  return api.patch<SecretDetail>(`/secrets/${id}/broker-access`, body);
 }
 
 export async function deleteSecret(id: string): Promise<void> {

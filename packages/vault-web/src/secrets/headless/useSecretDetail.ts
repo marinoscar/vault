@@ -14,6 +14,7 @@ import {
   rollbackSecretVersion as rollbackApi,
   updateSecretAgentAccess as updateAgentAccessApi,
   updateSecretAssistantReveal as updateAssistantRevealApi,
+  updateSecretBrokerAccess as updateBrokerAccessApi,
 } from '../../core/headless/api.js';
 
 /**
@@ -46,6 +47,11 @@ interface UseSecretDetailResult {
   /** Throws on failure (the caller shows it); does not set the hook's `error`. */
   /** `allowedOrigins`: Identity only (ADR-0003); omit to keep them. */
   setAssistantReveal: (id: string, enabled: boolean) => Promise<void>;
+  /** Throws on failure; `origins`, `injection` and `field` replace the stored ones when sent. */
+  setBrokerAccess: (
+    id: string,
+    body: Parameters<typeof updateBrokerAccessApi>[1],
+  ) => Promise<void>;
   setAgentAccess: (id: string, agentAccess: SecretAgentAccess, allowedOrigins?: string[]) => Promise<void>;
 }
 
@@ -150,8 +156,25 @@ export function useSecretDetail(): UseSecretDetailResult {
     );
   }, []);
 
+  const setBrokerAccess = useCallback(async (id: string, body: Parameters<typeof updateBrokerAccessApi>[1]) => {
+    const result = await updateBrokerAccessApi(id, body);
+    // Only the broker fields change; keep the loaded values and attachments.
+    setSecret((prev) =>
+      prev
+        ? {
+            ...prev,
+            brokerAccess: result.brokerAccess ?? body.enabled,
+            brokerOrigins: result.brokerOrigins ?? body.origins ?? prev.brokerOrigins,
+            brokerInjection: result.brokerInjection ?? body.injection ?? prev.brokerInjection,
+            brokerField: result.brokerField ?? body.field ?? prev.brokerField,
+            brokerAccessChangedAt: result.brokerAccessChangedAt ?? prev.brokerAccessChangedAt,
+          }
+        : result,
+    );
+  }, []);
+
   return {
     secret, versions, isLoading, error,
-    fetchSecret, updateSecret, fetchVersions, fetchVersion, rollback, setAgentAccess, setAssistantReveal,
+    fetchSecret, updateSecret, fetchVersions, fetchVersion, rollback, setAgentAccess, setAssistantReveal, setBrokerAccess,
   };
 }

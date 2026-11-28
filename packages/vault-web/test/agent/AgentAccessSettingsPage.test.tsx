@@ -34,6 +34,38 @@ function handlers() {
 }
 
 describe('AgentAccessSettingsPage', () => {
+  it('saves the credential broker block as bytes and milliseconds (off by default)', async () => {
+    const patches = handlers();
+    render(<AgentAccessSettingsPage />, { wrapperOptions: { user: WRITER } });
+    const sw = await screen.findByRole('switch', { name: 'Allow the credential broker' });
+    expect(sw).not.toBeChecked();
+    expect(screen.getByLabelText('Forwards per minute')).toHaveValue(60);
+    expect(screen.getByLabelText('Largest request (MB)')).toHaveValue(10);
+    expect(screen.getByLabelText('Largest response (MB)')).toHaveValue(25);
+    expect(screen.getByLabelText('Timeout (seconds)')).toHaveValue(30);
+    await userEvent.click(sw);
+    for (const [label, value] of [['Forwards per minute', '120'], ['Largest request (MB)', '5'], ['Largest response (MB)', '40'], ['Timeout (seconds)', '45']]) {
+      const input = screen.getByLabelText(label);
+      await userEvent.clear(input);
+      await userEvent.type(input, value);
+    }
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(patches).toHaveLength(1));
+    expect((patches[0] as { agentAccess: { broker: unknown } }).agentAccess.broker).toEqual({
+      enabled: true, forwardsPerMinute: 120, maxRequestBytes: 5 * 1048576, maxResponseBytes: 40 * 1048576, timeoutMs: 45000,
+    });
+  });
+
+  it('refuses an out of range broker limit', async () => {
+    handlers();
+    render(<AgentAccessSettingsPage />, { wrapperOptions: { user: WRITER } });
+    const t = await screen.findByLabelText('Timeout (seconds)');
+    await userEvent.clear(t);
+    await userEvent.type(t, '500');
+    expect(screen.getByText('Enter a number from 1 to 120.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+  });
+
   it('reads the namespace and saves the switch and limits', async () => {
     const patches = handlers();
     render(<AgentAccessSettingsPage />, { wrapperOptions: { user: WRITER } });
@@ -55,6 +87,7 @@ describe('AgentAccessSettingsPage', () => {
         enabled: true, lookupPerMinute: 60, fillPerMinute: 45, totpPerMinute: 10, writePerMinute: 10, revealPerMinute: 2500,
         cards: { enabled: false, fillPerMinute: 10, releasesPerCardPerDay: 5 },
         identity: { enabled: false, fillPerMinute: 20 },
+        broker: { enabled: false, forwardsPerMinute: 60, maxRequestBytes: 10485760, maxResponseBytes: 26214400, timeoutMs: 30000 },
       },
     });
   });

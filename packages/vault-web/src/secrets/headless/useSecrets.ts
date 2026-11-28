@@ -22,6 +22,7 @@ interface UseSecretsResult {
     sortBy?: string;
     sortOrder?: string;
     agentAccess?: SecretAgentAccess;
+    brokerAccess?: boolean;
   }) => Promise<void>;
   createSecret: (data: Parameters<typeof createSecretApi>[0]) => Promise<void>;
   deleteSecret: (id: string) => Promise<void>;
@@ -44,6 +45,7 @@ export function useSecrets(): UseSecretsResult {
     sortBy?: string;
     sortOrder?: string;
     agentAccess?: SecretAgentAccess;
+    brokerAccess?: boolean;
   }) => {
     setIsLoading(true);
     setError(null);

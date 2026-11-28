@@ -63,6 +63,7 @@ const UserSettingsHubPage = lazy(() => import('./pages/UserSettingsHubPage'));
 const ProfileSettingsPage = lazy(() => import('@marinoscar/vault-web/settings/ui').then((m) => ({ default: m.ProfileSettingsPage })));
 const AppearanceSettingsPage = lazy(() => import('@marinoscar/vault-web/settings/ui').then((m) => ({ default: m.AppearanceSettingsPage })));
 const AgentActivityPage = lazy(() => import('@marinoscar/vault-web/agent/ui').then((m) => ({ default: m.AgentActivityPage })));
+const BrokerTokensPage = lazy(() => import('@marinoscar/vault-web/agent/ui').then((m) => ({ default: m.BrokerTokensPage })));
 const AgentAccessSettingsPage = lazy(() => import('@marinoscar/vault-web/agent/ui').then((m) => ({ default: m.AgentAccessSettingsPage })));
 const MyBackupsPage = lazy(() => import('@marinoscar/vault-web/backups/ui').then((m) => ({ default: m.MyBackupsPage })));
 const AdminSettingsHubPage = lazy(() => import('./pages/admin/AdminSettingsHubPage'));
@@ -207,6 +208,8 @@ function AppRoutes() {
                 path="/settings/agent-activity"
                 element={<RequirePermission permission="secrets:read" fallback={TO_SETTINGS}><AgentActivityPage /></RequirePermission>}
               />
+              {/* #246: broker.controller bare @Auth() (ownership-scoped, like Access tokens): no gate. */}
+              <Route path="/settings/broker-tokens" element={<BrokerTokensPage />} />
               <Route
                 path="/settings/backups"
                 element={<RequirePermission permission="secrets:read" fallback={TO_SETTINGS}><MyBackupsPage /></RequirePermission>}

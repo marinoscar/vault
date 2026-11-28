@@ -9,3 +9,4 @@ export * from './useSecretDetail.js';
 export * from './useSecretTypes.js';
 export * from './useSecrets.js';
 export * from './useTotpCode.js';
+export * from './brokerAccess.js';

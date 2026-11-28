@@ -84,6 +84,12 @@ function serviceKeyLabel(row: AgentActivityItem): string {
   return `Service: ${row.service}${row.keyName ? `/${row.keyName}` : ''}`;
 }
 
+/** `POST 200` for a broker forward (a nothing-forwarded call shows the method alone); empty otherwise. */
+function requestLabel(row: AgentActivityItem): string {
+  if (!row.method && row.status == null) return '';
+  return [row.method, row.status ?? ''].filter((p) => p !== '').join(' ');
+}
+
 function TimeLabel({ iso }: { iso: string }) {
   return <time dateTime={iso}>{new Date(iso).toLocaleString()}</time>;
 }
@@ -151,6 +157,14 @@ const COLUMNS: DataTableColumn<AgentActivityItem>[] = [
     truncate: true,
     value: (row) => row.purpose ?? '',
     render: (row) => (row.purpose ? <span>{row.purpose}</span> : <Dash />),
+  },
+  {
+    id: 'request',
+    label: 'Request',
+    priority: 'detail',
+    width: 110,
+    value: (row) => requestLabel(row),
+    render: (row) => (requestLabel(row) ? <span>{requestLabel(row)}</span> : <Dash />),
   },
   {
     id: 'result',

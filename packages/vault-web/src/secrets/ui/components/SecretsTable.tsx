@@ -117,6 +117,15 @@ function RevealChip({ row }: { row: SecretListItem }) {
   );
 }
 
+function BrokerChip({ row }: { row: SecretListItem }) {
+  if (!row.brokerAccess) return null;
+  return (
+    <Tooltip title="Agents can use this key through the broker without seeing it">
+      <Chip label="Broker" size="small" color="info" variant="outlined" />
+    </Tooltip>
+  );
+}
+
 function UpdatedLabel({ iso }: { iso: string }) {
   return (
     <Tooltip title={new Date(iso).toLocaleString()}>
@@ -190,6 +199,7 @@ const GRID_COLUMNS: DataTableColumn<SecretListItem>[] = [
         <TypeChip row={row} />
         <AgentsChip row={row} />
         <RevealChip row={row} />
+        <BrokerChip row={row} />
       </Box>
     ),
   },
@@ -252,6 +262,7 @@ const CARD_COLUMNS: DataTableColumn<SecretListItem>[] = [
         <TypeChip row={row} />
         <AgentsChip row={row} />
         <RevealChip row={row} />
+        <BrokerChip row={row} />
         <span>
           Updated <UpdatedLabel iso={row.updatedAt} /> · v{row.currentVersion}
         </span>

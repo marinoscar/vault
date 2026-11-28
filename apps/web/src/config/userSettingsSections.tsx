@@ -18,6 +18,7 @@ import PaletteIcon from '@mui/icons-material/PaletteOutlined';
 import BackupIcon from '@mui/icons-material/BackupOutlined';
 import CategoryIcon from '@mui/icons-material/CategoryOutlined';
 import NotificationsIcon from '@mui/icons-material/NotificationsOutlined';
+import KeyIcon from '@mui/icons-material/VpnKeyOutlined';
 import AgentIcon from '@mui/icons-material/SmartToyOutlined';
 import { dataExportSettingsPage } from '@marinoscar/platform-web/exports/ui';
 import { DANGER_ZONE_GROUP_LABEL } from '@marinoscar/platform-web/user-data/headless';
@@ -123,6 +124,13 @@ export const USER_SETTINGS_SECTIONS: SettingsSectionDef[] = [
         path: '/settings/agent-activity',
         // GET /api/agent-activity (agent-activity.controller.ts in @marinoscar/vault-api): secrets:read.
         permission: 'secrets:read',
+      },
+      {
+        title: 'Broker tokens',
+        description: 'Tokens that let an agent call a service through Vault without seeing the key.',
+        Icon: KeyIcon,
+        path: '/settings/broker-tokens',
+        // #246: broker-tokens.controller.ts, bare `@Auth()` (ownership-scoped), like Access Tokens: no permission.
       },
     ],
   },

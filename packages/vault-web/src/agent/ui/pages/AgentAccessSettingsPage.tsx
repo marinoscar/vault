@@ -5,7 +5,7 @@ import { usePermissions } from '@marinoscar/platform-web/identity/headless';
 import { useSystemSettings } from '../../../core/headless/useSystemSettings.js';
 import { LoadingSpinner } from '../../../core/ui/LoadingSpinner.js';
 import { SettingsPageFrame } from '../../../core/ui/SettingsPageFrame.js';
-import { AGENT_ACCESS_DEFAULTS, type AgentAccessSettings } from '../../../core/headless/types.js';
+import { AGENT_ACCESS_DEFAULTS, type AgentAccessSettings, type AgentBrokerAccessSettings } from '../../../core/headless/types.js';
 
 type LimitKey =
   | 'lookupPerMinute'
@@ -41,6 +41,30 @@ const IDENTITY_LIMITS: LimitDef[] = [
 const ALL_LIMITS = [...LOGIN_LIMITS, ...CARD_LIMITS, ...IDENTITY_LIMITS];
 
 const MIN = 1;
+const MIB = 1024 * 1024;
+
+/** The broker block's text fields: sizes in MB and the timeout in seconds on screen, bytes and ms on the wire. */
+type BrokerKey = 'forwardsPerMinute' | 'maxRequestMb' | 'maxResponseMb' | 'timeoutSeconds';
+const BROKER_FIELDS: Array<{ key: BrokerKey; label: string; help: string; min: number; max: number }> = [
+  { key: 'forwardsPerMinute', label: 'Forwards per minute', help: 'Calls forwarded through the broker, per token.', min: 1, max: 10000 },
+  { key: 'maxRequestMb', label: 'Largest request (MB)', help: 'A bigger request body is refused.', min: 1, max: 100 },
+  { key: 'maxResponseMb', label: 'Largest response (MB)', help: 'A bigger upstream response is withheld.', min: 1, max: 100 },
+  { key: 'timeoutSeconds', label: 'Timeout (seconds)', help: 'How long Vault waits for the service.', min: 1, max: 120 },
+];
+const validBroker = (text: string, min: number, max: number) => /^\d+(\.\d+)?$/.test(text) && Number(text) >= min && Number(text) <= max;
+
+function brokerOf(s: AgentAccessSettings): AgentBrokerAccessSettings {
+  return { ...AGENT_ACCESS_DEFAULTS.broker!, ...(s.broker ?? {}) };
+}
+
+function brokerToText(b: AgentBrokerAccessSettings): Record<BrokerKey, string> {
+  return {
+    forwardsPerMinute: String(b.forwardsPerMinute),
+    maxRequestMb: String(Math.round((b.maxRequestBytes / MIB) * 100) / 100),
+    maxResponseMb: String(Math.round((b.maxResponseBytes / MIB) * 100) / 100),
+    timeoutSeconds: String(Math.round((b.timeoutMs / 1000) * 100) / 100),
+  };
+}
 
 const validLimit = (text: string, max: number) => /^\d+$/.test(text) && Number(text) >= MIN && Number(text) <= max;
 
@@ -51,6 +75,7 @@ function resolve(s: AgentAccessSettings): Required<AgentAccessSettings> {
     ...s,
     cards: { ...AGENT_ACCESS_DEFAULTS.cards!, ...(s.cards ?? {}) },
     identity: { ...AGENT_ACCESS_DEFAULTS.identity!, ...(s.identity ?? {}) },
+    broker: brokerOf(s),
   } as Required<AgentAccessSettings>;
 }
 
@@ -81,6 +106,8 @@ export default function AgentAccessSettingsPage() {
   const [enabled, setEnabled] = useState(current.enabled);
   const [cardsEnabled, setCardsEnabled] = useState(current.cards.enabled);
   const [identityEnabled, setIdentityEnabled] = useState(current.identity.enabled);
+  const [brokerEnabled, setBrokerEnabled] = useState(current.broker.enabled);
+  const [broker, setBroker] = useState<Record<BrokerKey, string>>(() => brokerToText(current.broker));
   const [limits, setLimits] = useState<Record<LimitKey, string>>(() => toText(current));
   const [success, setSuccess] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -90,6 +117,8 @@ export default function AgentAccessSettingsPage() {
     setCardsEnabled(current.cards.enabled);
     setIdentityEnabled(current.identity.enabled);
     setLimits(toText(current));
+    setBrokerEnabled(current.broker.enabled);
+    setBroker(brokerToText(current.broker));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings?.version]);
 
@@ -97,12 +126,15 @@ export default function AgentAccessSettingsPage() {
   const canWrite = hasPermission('system_settings:write');
   if (isLoading) return <LoadingSpinner />;
 
-  const allValid = ALL_LIMITS.every(({ key, max }) => validLimit(limits[key], max));
+  const brokerValid = BROKER_FIELDS.every(({ key, min, max }) => validBroker(broker[key], min, max));
+  const allValid = brokerValid && ALL_LIMITS.every(({ key, max }) => validLimit(limits[key], max));
   const saved = toText(current);
   const dirty =
     enabled !== current.enabled ||
     cardsEnabled !== current.cards.enabled ||
     identityEnabled !== current.identity.enabled ||
+    brokerEnabled !== current.broker.enabled ||
+    BROKER_FIELDS.some(({ key }) => Number(broker[key]) !== Number(brokerToText(current.broker)[key])) ||
     ALL_LIMITS.some(({ key }) => Number(limits[key]) !== Number(saved[key]));
 
   const save = async () => {
@@ -120,6 +152,13 @@ export default function AgentAccessSettingsPage() {
           releasesPerCardPerDay: Number(limits.cardReleasesPerDay),
         },
         identity: { enabled: identityEnabled, fillPerMinute: Number(limits.identityFillPerMinute) },
+        broker: {
+          enabled: brokerEnabled,
+          forwardsPerMinute: Number(broker.forwardsPerMinute),
+          maxRequestBytes: Math.round(Number(broker.maxRequestMb) * MIB),
+          maxResponseBytes: Math.round(Number(broker.maxResponseMb) * MIB),
+          timeoutMs: Math.round(Number(broker.timeoutSeconds) * 1000),
+        },
       };
       await updateSettings({ agentAccess: next });
       setSuccess('Settings saved');
@@ -203,6 +242,32 @@ export default function AgentAccessSettingsPage() {
           'Off by default. When on, an agent can fill the identity details a person opened; the date of birth and id number only on websites they allowed.',
         )}
         {limitFields(IDENTITY_LIMITS)}
+
+        <Divider sx={{ my: 3 }} />
+        <Typography variant="subtitle1" component="h2" sx={{ fontWeight: 600, mb: 1 }}>
+          Credential broker
+        </Typography>
+        {toggle(
+          brokerEnabled,
+          setBrokerEnabled,
+          'Allow the credential broker',
+          'Off by default. When on, an agent can call a service with a key an owner allowed on the secret page, without ever seeing the key: Vault adds it and forwards only to the origins the owner listed. Needs the switch at the top too.',
+        )}
+        <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' } }}>
+          {BROKER_FIELDS.map(({ key, label, help, min, max }) => (
+            <TextField
+              key={key}
+              label={label}
+              value={broker[key]}
+              onChange={(e) => setBroker((b) => ({ ...b, [key]: e.target.value }))}
+              disabled={!canWrite || isSaving}
+              error={!validBroker(broker[key], min, max)}
+              helperText={validBroker(broker[key], min, max) ? help : `Enter a number from ${min} to ${max}.`}
+              slotProps={{ htmlInput: { inputMode: 'decimal', min, max } }}
+              type="number"
+            />
+          ))}
+        </Box>
 
         {canWrite && (
           <Button variant="contained" sx={{ mt: 3 }} onClick={save} disabled={!dirty || !allValid || isSaving}>
