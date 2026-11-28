@@ -45,6 +45,8 @@ export interface Secret {
   type?: SecretType;
   values?: Record<string, unknown> | null;
   attachments?: SecretAttachment[];
+  assistantReveal?: boolean;
+  assistantRevealChangedAt?: string | null;
 }
 
 export interface SecretListItem {
@@ -56,6 +58,8 @@ export interface SecretListItem {
   updatedAt: string;
   currentVersion: number | null;
   type?: SecretType;
+  assistantReveal?: boolean;
+  assistantRevealChangedAt?: string | null;
 }
 
 export interface SecretVersion {

@@ -1,6 +1,6 @@
 {
   "name": "cli",
-  "version": "2.1.2",
+  "version": "2.2.0",
   "private": true,
   "description": "The vault command-line client, built on @marinoscar/platform-cli. Replaces tools/vaultcli and tools/app.",
   "type": "module",

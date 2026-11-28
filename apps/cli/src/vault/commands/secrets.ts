@@ -6,6 +6,7 @@ import {
   createSecret,
   updateSecret,
   deleteSecret,
+  setAssistantReveal,
 } from '../lib/api-client.js';
 import { formatSecretTable, formatSecretDetail } from '../lib/formatters.js';
 import type { OutputMode, SecretListItem, PaginatedResponse } from '../utils/types.js';
@@ -14,6 +15,17 @@ function getOutput(cmd: Command): OutputManager {
   const root = cmd.optsWithGlobals();
   const mode: OutputMode = root.json ? 'json' : root.quiet ? 'quiet' : 'human';
   return new OutputManager(mode);
+}
+
+export const REVEAL_WARNING =
+  "Warning: a revealed value enters the assistant's conversation, and every read is recorded in Agent activity.";
+
+/** `on`/`off` (case-insensitive) to a boolean; anything else is undefined. */
+export function parseOnOff(value: string): boolean | undefined {
+  const v = value.trim().toLowerCase();
+  if (v === 'on') return true;
+  if (v === 'off') return false;
+  return undefined;
 }
 
 export function registerSecretCommands(program: Command): void {
@@ -31,9 +43,15 @@ export function registerSecretCommands(program: Command): void {
     .option('--page-size <n>', 'Items per page', '20')
     .option('--sort <field>', 'Sort by: createdAt, name, updatedAt', 'updatedAt')
     .option('--order <dir>', 'Sort order: asc, desc', 'desc')
+    .option('--assistant-reveal <on|off>', 'Only secrets revealed (on) or not revealed (off) to assistants')
     .action(async (opts, cmd) => {
       const output = getOutput(cmd);
       try {
+        const reveal = opts.assistantReveal === undefined ? undefined : parseOnOff(String(opts.assistantReveal));
+        if (opts.assistantReveal !== undefined && reveal === undefined) {
+          output.fail('Invalid --assistant-reveal value. Use "on" or "off".');
+          process.exit(1);
+        }
         const result = await listSecrets({
           page: parseInt(opts.page, 10),
           pageSize: parseInt(opts.pageSize, 10),
@@ -41,6 +59,7 @@ export function registerSecretCommands(program: Command): void {
           search: opts.search,
           sortBy: opts.sort,
           sortOrder: opts.order,
+          assistantReveal: reveal,
         });
 
         output.result<PaginatedResponse<SecretListItem>>(
@@ -62,7 +81,14 @@ export function registerSecretCommands(program: Command): void {
       const output = getOutput(cmd);
       try {
         const secret = await resolveSecret(idOrName);
-        const slim = { id: secret.id, name: secret.name, updatedAt: secret.updatedAt, values: secret.values ?? {} };
+        const slim = {
+          id: secret.id,
+          name: secret.name,
+          updatedAt: secret.updatedAt,
+          values: secret.values ?? {},
+          assistantReveal: secret.assistantReveal ?? false,
+          assistantRevealChangedAt: secret.assistantRevealChangedAt ?? null,
+        };
 
         output.result(
           slim,
@@ -152,6 +178,41 @@ export function registerSecretCommands(program: Command): void {
           slim,
           () => formatSecretDetail(secret),
           () => console.log(secret.id),
+        );
+      } catch (err) {
+        output.fail(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+    });
+
+  // vault secrets reveal-access <id-or-name> <on|off>
+  secrets
+    .command('reveal-access <id-or-name> <state>')
+    .description('Allow (on) or stop (off) revealing a secret value to assistants (owner only)')
+    .action(async (idOrName, state, _opts, cmd) => {
+      const output = getOutput(cmd);
+      try {
+        const enabled = parseOnOff(String(state));
+        if (enabled === undefined) {
+          output.fail('Invalid state. Use "on" or "off".');
+          process.exit(1);
+        }
+        const existing = await resolveSecret(idOrName);
+        const secret = await setAssistantReveal(existing.id, enabled);
+        const result = {
+          id: secret.id,
+          name: secret.name,
+          assistantReveal: secret.assistantReveal ?? enabled,
+          assistantRevealChangedAt: secret.assistantRevealChangedAt ?? null,
+        };
+
+        output.result(
+          result,
+          (r) => {
+            console.log(`Reveal to assistants: ${r.assistantReveal ? 'on' : 'off'} for "${r.name}"`);
+            if (r.assistantReveal) console.log(REVEAL_WARNING);
+          },
+          (r) => console.log(r.id),
         );
       } catch (err) {
         output.fail(err instanceof Error ? err.message : String(err));

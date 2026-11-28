@@ -87,7 +87,7 @@ describe('the command surface', () => {
   });
 
   it('keeps the vaultcli secrets commands', () => {
-    expect(subcommands(['secrets']).sort()).toEqual(['create', 'delete', 'get', 'list', 'update']);
+    expect(subcommands(['secrets']).sort()).toEqual(['create', 'delete', 'get', 'list', 'reveal-access', 'update']);
   });
 
   it('keeps the vaultcli versions and types commands', () => {

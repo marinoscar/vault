@@ -275,6 +275,7 @@ vault secrets list
 vault secrets list --search "aws"
 vault secrets list --type-id <uuid> --sort name --order asc
 vault secrets list --page 2 --page-size 10
+vault secrets list --assistant-reveal on     # only secrets revealed to assistants
 ```
 
 | Option | Description | Default |
@@ -285,6 +286,9 @@ vault secrets list --page 2 --page-size 10
 | `--page-size <n>` | Items per page | `20` |
 | `--sort <field>` | `createdAt`, `name`, `updatedAt` | `updatedAt` |
 | `--order <dir>` | `asc`, `desc` | `desc` |
+| `--assistant-reveal <on\|off>` | Only secrets revealed (`on`) or not revealed (`off`) to assistants | - |
+
+The `Reveal` column shows `on` for secrets the owner has opened to assistants.
 
 #### `secrets get <id-or-name>`
 
@@ -294,7 +298,7 @@ vault secrets get abc12345-...           # By UUID
 vault secrets get "AWS Production" --json | jq '.data.values.secret_key'
 ```
 
-Returns full secret detail with **decrypted data**, version info, and attachments.
+Returns full secret detail with **decrypted data**, version info, and attachments, plus a `Reveal to assistants: on/off` line (`assistantReveal` in `--json`).
 
 #### `secrets create`
 
@@ -331,6 +335,15 @@ vault secrets update "Database Prod" --name "DB Production"
 | `--name <name>` | New name |
 | `--description <text>` | New description (use `""` to clear) |
 | `--data <json>` | New data (creates a new version) |
+
+#### `secrets reveal-access <id-or-name> <on|off>`
+
+```bash
+vault secrets reveal-access api-key-example on
+vault secrets reveal-access api-key-example off --json
+```
+
+Lets an assistant reveal this secret's value (`on`) or stops it (`off`). Owner only; with `on`, a revealed value enters the assistant's conversation and every read is recorded in Agent activity. Cards, passports, ID documents and types with a CVV cannot be revealed to assistants (the command fails with a clear message). `--json` returns the envelope with `assistantReveal` and `assistantRevealChangedAt` (no secret values).
 
 #### `secrets delete <id-or-name>`
 
