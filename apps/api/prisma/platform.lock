@@ -10,7 +10,8 @@
     "20261103090000_attachments_composite_fk_media_rls",
     "20261118164725_add_secret_agent_access",
     "20261118171757_add_secret_origins",
-    "20261119005617_add_agent_card_grants"
+    "20261119005617_add_agent_card_grants",
+    "20261128032220_add_secret_assistant_reveal"
   ],
   "deviations": [
     {
