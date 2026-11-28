@@ -46,11 +46,14 @@ describe('broker routes are all accounted for', () => {
   const controllers = discoverControllers(AppModule) as Ctor[];
   const matrix = readFileSync(join(__dirname, '..', 'rbac', 'vault-rbac-matrix.integration.spec.ts'), 'utf8');
 
-  it('the forwarding controller has exactly the two forwarding routes, both behind BrokerAuthGuard', () => {
+  it('the forwarding controller has exactly the two forwarding shapes, per forwarded method,, both behind BrokerAuthGuard', () => {
     const controller = controllers.find((c) => c.name === 'BrokerController')!;
     expect(controller as unknown).toBe(BrokerController);
     const routes = routesOf(controller);
-    expect(routes.map((r) => r.route)).toEqual(['ALL /api/broker/v1/:secretId/:upstreamHost', 'ALL /api/broker/v1/:secretId/:upstreamHost/*']);
+    // One handler per forwarded method (not `@All`, which emits a non-OpenAPI `search` operation); HEAD is Fastify's, exposed from GET.
+    const shapes = ['/api/broker/v1/:secretId/:upstreamHost', '/api/broker/v1/:secretId/:upstreamHost/*'];
+    const methods = ['DELETE', 'GET', 'OPTIONS', 'PATCH', 'POST', 'PUT'];
+    expect(routes.map((r) => r.route).sort()).toEqual(shapes.flatMap((shape) => methods.map((m) => `${m} ${shape}`)).sort());
     const guards = (Reflect.getMetadata(GUARDS_METADATA, controller) ?? []) as unknown[];
     expect(guards).toContain(BrokerAuthGuard);
     for (const { handler } of routes) expect(Reflect.getMetadata(PERMISSIONS_KEY, handler)).toBeUndefined();

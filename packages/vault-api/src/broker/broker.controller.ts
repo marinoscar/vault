@@ -1,4 +1,4 @@
-import { All, Controller, ForbiddenException, Param, Req, Res, UseGuards } from '@nestjs/common';
+import { applyDecorators, Controller, Delete, ForbiddenException, Get, Options, Param, Patch, Post, Put, Req, Res, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Public } from '@marinoscar/platform-api/identity';
 import { BROKER_ERROR_CODES } from '@marinoscar/vault-contract/broker';
@@ -14,6 +14,46 @@ const FORWARDED_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEA
 
 /** `/<prefix>/broker/v1/<secretId>/<host>[/<rest>][?<query>]`, read from the raw URL so the path and query are forwarded as sent. */
 const FORWARD_URL = /\/broker\/v1\/[^/?]+\/[^/?]+(\/[^?]*)?(?:\?(.*))?$/;
+
+/** The OpenAPI documentation every forwarded method shares (one documented operation per method, never the all-methods expansion that emits a non-OAS `search`). */
+const FORWARD_DOCS = [
+  ApiOperation({
+    summary: 'Use a stored key against an allowed upstream (credential broker)',
+    description:
+      'Forwards the request to `https://{upstreamHost}/{rest}?{query}` with the secret\'s key added as the owner configured ' +
+      '(`Authorization: Bearer <key>` by default, any other header or a query parameter), and returns the upstream\'s response as is ' +
+      '(status, filtered headers, body; NOT the `{ data }` envelope) plus `X-Vault-Broker: 1`. The key is never returned: a response that contains it is withheld (502 BROKER_KEY_ECHO). ' +
+      'Authenticate with a broker token (`vbk_`, valid only on this path) or a personal access token (`pat_`); an OAuth token or a session is refused (403 BROKER_CREDENTIAL_REFUSED). ' +
+      'Checks, in order: credential, kill switches (403 BROKER_DISABLED), rate limit (429 RATE_LIMITED), token restriction, the secret is yours with the broker on (one identical 404), ' +
+      'the origin equals an allowed origin exactly (403 BROKER_ORIGIN_MISMATCH), request size (413), DNS (403 BROKER_DESTINATION_BLOCKED when any address is private), then the key is decrypted. ' +
+      'Redirects are never followed. Caps and the time limit come from the `agentAccess.broker` settings (502 BROKER_RESPONSE_TOO_LARGE, 504 BROKER_UPSTREAM_TIMEOUT, 502 BROKER_UPSTREAM_ERROR). ' +
+      'Every call is audited as broker.forward (never the key, body, query or headers). Methods GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS.',
+  }),
+  ApiParam({ name: 'secretId', type: String, format: 'uuid', description: 'The secret whose key is used' }),
+  ApiParam({ name: 'upstreamHost', type: String, description: 'The allowed upstream `host[:port]` (HTTPS only)' }),
+  ApiResponse({ status: 200, description: 'The upstream response, whatever its status, with X-Vault-Broker: 1' }),
+  ApiResponse({ status: 401, description: 'No or an invalid, revoked or expired broker or personal access token' }),
+  ApiResponse({ status: 403, description: 'BROKER_CREDENTIAL_REFUSED, BROKER_DISABLED, BROKER_ORIGIN_MISMATCH or BROKER_DESTINATION_BLOCKED' }),
+  ApiResponse({ status: 404, description: 'The secret is not yours, has the broker off, is not usable or is outside the token\'s restriction' }),
+  ApiResponse({ status: 413, description: 'BROKER_REQUEST_TOO_LARGE' }),
+  ApiResponse({ status: 422, description: 'BROKER_KEY_MISSING' }),
+  ApiResponse({ status: 429, description: 'RATE_LIMITED (see Retry-After)' }),
+  ApiResponse({ status: 502, description: 'BROKER_UPSTREAM_ERROR, BROKER_RESPONSE_TOO_LARGE or BROKER_KEY_ECHO' }),
+  ApiResponse({ status: 504, description: 'BROKER_UPSTREAM_TIMEOUT' }),
+];
+
+const WILDCARD_PARAM = ApiParam({ name: 'path', type: String, required: true, description: 'The rest of the upstream path (the URL remainder after the host; may be empty or contain slashes)' });
+
+/** The documentation of the wildcard route (`:secretId/:upstreamHost/*`). */
+const wildcardDocs = (): MethodDecorator => applyDecorators(...FORWARD_DOCS, WILDCARD_PARAM);
+/** The documentation of the root route (`:secretId/:upstreamHost`). */
+const rootDocs = (): MethodDecorator =>
+  applyDecorators(
+    ApiOperation({ summary: 'Use a stored key against the root of an allowed upstream', description: 'The same as `/api/broker/v1/:secretId/:upstreamHost/*` with an empty path.' }),
+    ApiParam({ name: 'secretId', type: String, format: 'uuid' }),
+    ApiParam({ name: 'upstreamHost', type: String }),
+    ApiResponse({ status: 200, description: 'The upstream response' }),
+  );
 
 /**
  * The credential broker's forwarding endpoint (issue #246, ADR-0006): `ALL
@@ -33,51 +73,77 @@ const FORWARD_URL = /\/broker\/v1\/[^/?]+\/[^/?]+(\/[^?]*)?(?:\?(.*))?$/;
 export class BrokerController {
   constructor(private readonly forwarder: BrokerForwardService) {}
 
-  @All(':secretId/:upstreamHost/*')
-  @ApiOperation({
-    summary: 'Use a stored key against an allowed upstream (credential broker)',
-    description:
-      'Forwards the request to `https://{upstreamHost}/{rest}?{query}` with the secret\'s key added as the owner configured ' +
-      '(`Authorization: Bearer <key>` by default, any other header or a query parameter), and returns the upstream\'s response as is ' +
-      '(status, filtered headers, body; NOT the `{ data }` envelope) plus `X-Vault-Broker: 1`. The key is never returned: a response that contains it is withheld (502 BROKER_KEY_ECHO). ' +
-      'Authenticate with a broker token (`vbk_`, valid only on this path) or a personal access token (`pat_`); an OAuth token or a session is refused (403 BROKER_CREDENTIAL_REFUSED). ' +
-      'Checks, in order: credential, kill switches (403 BROKER_DISABLED), rate limit (429 RATE_LIMITED), token restriction, the secret is yours with the broker on (one identical 404), ' +
-      'the origin equals an allowed origin exactly (403 BROKER_ORIGIN_MISMATCH), request size (413), DNS (403 BROKER_DESTINATION_BLOCKED when any address is private), then the key is decrypted. ' +
-      'Redirects are never followed. Caps and the time limit come from the `agentAccess.broker` settings (502 BROKER_RESPONSE_TOO_LARGE, 504 BROKER_UPSTREAM_TIMEOUT, 502 BROKER_UPSTREAM_ERROR). ' +
-      'Every call is audited as broker.forward (never the key, body, query or headers). Methods GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS.',
-  })
-  @ApiParam({ name: 'secretId', type: String, format: 'uuid', description: 'The secret whose key is used' })
-  @ApiParam({ name: 'upstreamHost', type: String, description: 'The allowed upstream `host[:port]` (HTTPS only)' })
-  @ApiResponse({ status: 200, description: 'The upstream response, whatever its status, with X-Vault-Broker: 1' })
-  @ApiResponse({ status: 401, description: 'No or an invalid, revoked or expired broker or personal access token' })
-  @ApiResponse({ status: 403, description: 'BROKER_CREDENTIAL_REFUSED, BROKER_DISABLED, BROKER_ORIGIN_MISMATCH or BROKER_DESTINATION_BLOCKED' })
-  @ApiResponse({ status: 404, description: 'The secret is not yours, has the broker off, is not usable or is outside the token\'s restriction' })
-  @ApiResponse({ status: 413, description: 'BROKER_REQUEST_TOO_LARGE' })
-  @ApiResponse({ status: 422, description: 'BROKER_KEY_MISSING' })
-  @ApiResponse({ status: 429, description: 'RATE_LIMITED (see Retry-After)' })
-  @ApiResponse({ status: 502, description: 'BROKER_UPSTREAM_ERROR, BROKER_RESPONSE_TOO_LARGE or BROKER_KEY_ECHO' })
-  @ApiResponse({ status: 504, description: 'BROKER_UPSTREAM_TIMEOUT' })
-  async forward(
-    @Req() req: BrokerRequest,
-    @Res() reply: FastifyReply,
-    @Param('secretId') secretId: string,
-    @Param('upstreamHost') upstreamHost: string,
-  ): Promise<void> {
+  // One handler per forwarded method (not `@All`): `@All` makes the OpenAPI generator emit a non-standard `search`
+  // operation, and these are the methods `handle` forwards. HEAD is not declared: Fastify exposes it from each GET route and `handle` still sees `HEAD`.
+  @Get(':secretId/:upstreamHost/*')
+  @wildcardDocs()
+  async forwardGet(@Req() req: BrokerRequest, @Res() reply: FastifyReply, @Param('secretId') secretId: string, @Param('upstreamHost') upstreamHost: string): Promise<void> {
     return this.handle(req, reply, secretId, upstreamHost);
   }
 
-  /** The base URL itself (`/broker/v1/<id>/<host>` with no path): the upstream root. */
-  @All(':secretId/:upstreamHost')
-  @ApiOperation({ summary: 'Use a stored key against the root of an allowed upstream', description: 'The same as `/api/broker/v1/:secretId/:upstreamHost/*` with an empty path.' })
-  @ApiParam({ name: 'secretId', type: String, format: 'uuid' })
-  @ApiParam({ name: 'upstreamHost', type: String })
-  @ApiResponse({ status: 200, description: 'The upstream response' })
-  async forwardRoot(
-    @Req() req: BrokerRequest,
-    @Res() reply: FastifyReply,
-    @Param('secretId') secretId: string,
-    @Param('upstreamHost') upstreamHost: string,
-  ): Promise<void> {
+  @Get(':secretId/:upstreamHost')
+  @rootDocs()
+  async forwardRootGet(@Req() req: BrokerRequest, @Res() reply: FastifyReply, @Param('secretId') secretId: string, @Param('upstreamHost') upstreamHost: string): Promise<void> {
+    return this.handle(req, reply, secretId, upstreamHost);
+  }
+
+  @Post(':secretId/:upstreamHost/*')
+  @wildcardDocs()
+  async forwardPost(@Req() req: BrokerRequest, @Res() reply: FastifyReply, @Param('secretId') secretId: string, @Param('upstreamHost') upstreamHost: string): Promise<void> {
+    return this.handle(req, reply, secretId, upstreamHost);
+  }
+
+  @Post(':secretId/:upstreamHost')
+  @rootDocs()
+  async forwardRootPost(@Req() req: BrokerRequest, @Res() reply: FastifyReply, @Param('secretId') secretId: string, @Param('upstreamHost') upstreamHost: string): Promise<void> {
+    return this.handle(req, reply, secretId, upstreamHost);
+  }
+
+  @Put(':secretId/:upstreamHost/*')
+  @wildcardDocs()
+  async forwardPut(@Req() req: BrokerRequest, @Res() reply: FastifyReply, @Param('secretId') secretId: string, @Param('upstreamHost') upstreamHost: string): Promise<void> {
+    return this.handle(req, reply, secretId, upstreamHost);
+  }
+
+  @Put(':secretId/:upstreamHost')
+  @rootDocs()
+  async forwardRootPut(@Req() req: BrokerRequest, @Res() reply: FastifyReply, @Param('secretId') secretId: string, @Param('upstreamHost') upstreamHost: string): Promise<void> {
+    return this.handle(req, reply, secretId, upstreamHost);
+  }
+
+  @Patch(':secretId/:upstreamHost/*')
+  @wildcardDocs()
+  async forwardPatch(@Req() req: BrokerRequest, @Res() reply: FastifyReply, @Param('secretId') secretId: string, @Param('upstreamHost') upstreamHost: string): Promise<void> {
+    return this.handle(req, reply, secretId, upstreamHost);
+  }
+
+  @Patch(':secretId/:upstreamHost')
+  @rootDocs()
+  async forwardRootPatch(@Req() req: BrokerRequest, @Res() reply: FastifyReply, @Param('secretId') secretId: string, @Param('upstreamHost') upstreamHost: string): Promise<void> {
+    return this.handle(req, reply, secretId, upstreamHost);
+  }
+
+  @Delete(':secretId/:upstreamHost/*')
+  @wildcardDocs()
+  async forwardDelete(@Req() req: BrokerRequest, @Res() reply: FastifyReply, @Param('secretId') secretId: string, @Param('upstreamHost') upstreamHost: string): Promise<void> {
+    return this.handle(req, reply, secretId, upstreamHost);
+  }
+
+  @Delete(':secretId/:upstreamHost')
+  @rootDocs()
+  async forwardRootDelete(@Req() req: BrokerRequest, @Res() reply: FastifyReply, @Param('secretId') secretId: string, @Param('upstreamHost') upstreamHost: string): Promise<void> {
+    return this.handle(req, reply, secretId, upstreamHost);
+  }
+
+  @Options(':secretId/:upstreamHost/*')
+  @wildcardDocs()
+  async forwardOptions(@Req() req: BrokerRequest, @Res() reply: FastifyReply, @Param('secretId') secretId: string, @Param('upstreamHost') upstreamHost: string): Promise<void> {
+    return this.handle(req, reply, secretId, upstreamHost);
+  }
+
+  @Options(':secretId/:upstreamHost')
+  @rootDocs()
+  async forwardRootOptions(@Req() req: BrokerRequest, @Res() reply: FastifyReply, @Param('secretId') secretId: string, @Param('upstreamHost') upstreamHost: string): Promise<void> {
     return this.handle(req, reply, secretId, upstreamHost);
   }
 
