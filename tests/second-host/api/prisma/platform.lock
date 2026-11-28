@@ -10,7 +10,8 @@
     "20261103090000_vault_attachments_composite_fk_media_rls",
     "20261118164725_vault_add_secret_agent_access",
     "20261118171757_vault_add_secret_origins",
-    "20261119005617_vault_add_agent_card_grants"
+    "20261119005617_vault_add_agent_card_grants",
+    "20261128032220_vault_add_secret_assistant_reveal"
   ],
   "lockVersion": 1,
   "migrations": [

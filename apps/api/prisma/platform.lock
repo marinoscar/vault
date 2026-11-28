@@ -149,6 +149,13 @@
       ],
       "id": "vault:agent-card-grants",
       "reason": "Enums agent_card_grant_period and agent_card_grant_request_status, tables agent_card_grants, agent_card_grant_requests and agent_card_releases, and column secrets.agent_origins (app migration 20261119005617_add_agent_card_grants, #195, ADR-0003). The diff prints them, and secrets whole with the column, only once that migration is applied, i.e. in a dry run AFTER prisma:migrate; the pre-migration shape stays declared by vault:domain-schema, vault:secrets-agent-access and vault:secrets-origins."
+    },
+    {
+      "expectDiff": [
+        "CREATE TABLE \"secrets\" ( \"id\" UUID NOT NULL, \"name\" TEXT NOT NULL, \"description\" TEXT, \"type_id\" UUID NOT NULL, \"created_by_id\" UUID, \"created_at\" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP, \"updated_at\" TIMESTAMPTZ(6) NOT NULL, \"agent_access\" \"secret_agent_access\" NOT NULL DEFAULT 'none', \"agent_access_changed_at\" TIMESTAMPTZ(6), \"origins\" TEXT[] DEFAULT ARRAY[]::TEXT[], \"agent_origins\" TEXT[] DEFAULT ARRAY[]::TEXT[], \"assistant_reveal\" BOOLEAN NOT NULL DEFAULT false, \"assistant_reveal_changed_at\" TIMESTAMPTZ(6), CONSTRAINT \"secrets_pkey\" PRIMARY KEY (\"id\") );"
+      ],
+      "id": "vault:secrets-assistant-reveal",
+      "reason": "Columns secrets.assistant_reveal and secrets.assistant_reveal_changed_at (app migration 20261128032220_add_secret_assistant_reveal, #244, ADR-0005). The diff prints secrets whole with the columns only once that migration is applied, i.e. in a dry run AFTER prisma:migrate; the pre-migration shape stays declared by vault:domain-schema, vault:secrets-agent-access, vault:secrets-origins and vault:agent-card-grants."
     }
   ],
   "lockVersion": 1,
