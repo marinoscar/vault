@@ -41,6 +41,8 @@ import {
 //                     deleting the uploader deletes it.
 //   AgentCardGrant,   DELETED inline (category `secrets`, ADR-0003): the owner's merchant grants and the
 //   AgentCardGrantRequest  requests agents made; their release ledger (`agent_card_releases`) cascades.
+//   BrokerToken       DELETED inline (category `secrets`, ADR-0006): the owner's broker tokens (hashes only); they
+//                     also cascade with the user.
 //   MediaFolder       DELETED inline (category `media`); the `media_folder_files` link rows cascade, and
 //                     the files are `storage_objects` of the `files` category.
 //   BackupRun         DELEGATED (category `backups`): a user's "My backups" runs, archive bytes first,
@@ -111,6 +113,7 @@ registerUserDataModels<Prisma.ModelName>([
   // they also go with the card (ON DELETE CASCADE) and their release ledger with the grant.
   { model: 'AgentCardGrant', category: SECRETS },
   { model: 'AgentCardGrantRequest', category: SECRETS },
+  { model: 'BrokerToken', category: SECRETS },
   { model: 'MediaFolder', category: MEDIA },
   { model: 'BackupRun', category: BACKUPS, delegate: purgeDelegate },
   { model: 'SecretType', category: SECRET_TYPES, delegate: purgeDelegate },

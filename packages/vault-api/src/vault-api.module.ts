@@ -22,6 +22,12 @@ import { VAULT_MCP_OPTIONS } from './mcp/mcp-options';
 import { McpSecretsService } from './mcp/mcp-secrets.service';
 import { VaultMcpToolsBootstrap } from './mcp/vault-mcp-tools';
 import { McpToolRegistry } from './mcp/protocol/mcp-tool';
+import { BrokerAuthGuard } from './broker/broker-auth.guard';
+import { BrokerController } from './broker/broker.controller';
+import { BrokerForwardService } from './broker/broker-forward.service';
+import { BrokerTokensController } from './broker/broker-tokens.controller';
+import { BrokerTokensService } from './broker/broker-tokens.service';
+import { BrokerResolver, BrokerUpstream, NodeHttpsBrokerUpstream, SystemBrokerResolver } from './broker/broker-upstream';
 import { assertSupportedPlatform } from './core/platform-compat';
 import { CardExtractController } from './ai/card-extract.controller';
 import { CardExtractService } from './ai/card-extract.service';
@@ -208,6 +214,8 @@ export class VaultApiModule {
         CardGrantsController,
         AgentActivityController,
         McpController,
+        BrokerController,
+        BrokerTokensController,
       ],
       providers: [
         ...ports,
@@ -257,6 +265,13 @@ export class VaultApiModule {
         McpDispatcher,
         McpOriginGuard,
         VaultMcpToolsBootstrap,
+        // The credential broker (#246, ADR-0006). The resolver and the upstream connector are ports with
+        // production defaults; a test provides others (neither can weaken the SSRF checks of the forward).
+        BrokerAuthGuard,
+        BrokerTokensService,
+        BrokerForwardService,
+        { provide: BrokerResolver, useClass: SystemBrokerResolver },
+        { provide: BrokerUpstream, useFactory: () => new NodeHttpsBrokerUpstream() },
       ],
       exports: [
         ...TOKENS.filter(([key]) => options.bindings[key]).map(([, token]) => token),

@@ -59,6 +59,23 @@ export const VAULT_ERROR_CODES: readonly VaultErrorCodeDef[] = Object.freeze([
   // Reveal to assistants (#244, ADR-0005).
   { code: 'ASSISTANT_REVEAL_UNSUPPORTED_TYPE', status: 422, description: 'A Card (or identity document) secret can never be revealed to an assistant; assistantReveal cannot be switched on for this secret type.' },
 
+  // Credential broker (#246, ADR-0006). Contract: `@marinoscar/vault-contract/broker`.
+  { code: 'BROKER_DISABLED', status: 403, description: 'The credential broker is switched off for this deployment (agentAccess.enabled and agentAccess.broker.enabled).' },
+  { code: 'BROKER_CREDENTIAL_REFUSED', status: 403, description: 'The broker accepts only a broker token (vbk_) or a personal access token (pat_), not an OAuth access token or a browser session; broker tokens and the opt-in are managed with a session or a personal access token.' },
+  { code: 'BROKER_ORIGIN_MISMATCH', status: 403, description: 'The upstream origin is not exactly one of the origins the owner allowed for this secret, so nothing was sent.' },
+  { code: 'BROKER_DESTINATION_BLOCKED', status: 403, description: 'The upstream host resolves to a private, loopback, link-local or otherwise blocked address, so nothing was sent.' },
+  { code: 'BROKER_REQUEST_TOO_LARGE', status: 413, description: 'The request body is above the broker request size limit (agentAccess.broker.maxRequestBytes).' },
+  { code: 'BROKER_RESPONSE_TOO_LARGE', status: 502, description: 'The upstream response is above the broker response size limit (agentAccess.broker.maxResponseBytes) and was withheld.' },
+  { code: 'BROKER_UPSTREAM_TIMEOUT', status: 504, description: 'The upstream did not answer within the broker time limit (agentAccess.broker.timeoutMs).' },
+  { code: 'BROKER_UPSTREAM_ERROR', status: 502, description: 'The connection to the upstream failed; no further detail is returned.' },
+  { code: 'BROKER_KEY_ECHO', status: 502, description: 'The upstream response contained the key (as is, base64 or percent-encoded) and was withheld.' },
+  { code: 'BROKER_KEY_MISSING', status: 422, description: 'The secret has no value in the field the broker injects.' },
+  { code: 'BROKER_UNSUPPORTED_TYPE', status: 422, description: 'Only an API Key, Token or Service Key secret, or a custom type with one sensitive field, can be used through the broker.' },
+  { code: 'BROKER_ORIGINS_REQUIRED', status: 422, description: 'Enabling the broker for a secret needs at least one allowed origin.' },
+  { code: 'BROKER_ORIGIN_INVALID', status: 422, description: 'An origin must be an exact public HTTPS origin (https://host[:port]): no userinfo, path or query, and not localhost, .local, .internal or a private IP address.' },
+  { code: 'BROKER_FIELD_INVALID', status: 422, description: 'The broker field must name a sensitive field of the secret type.' },
+  { code: 'BROKER_TOKEN_SECRET_INVALID', status: 422, description: 'A broker token can be restricted only to the caller\'s own secrets that have the broker switched on.' },
+
   // Agent credential API (E14.6). Contract: `@marinoscar/vault-contract/agent`.
   { code: 'ORIGIN_MISMATCH', status: 403, description: 'The origin sent by the agent is not exactly one of the credential origins, so nothing was filled.' },
   { code: 'AGENT_ACCESS_DISABLED', status: 403, description: 'Agent access is switched off for this deployment.' },

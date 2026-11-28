@@ -2,8 +2,11 @@
 
 exports[`vault-api conformance (fake ports) exposes exactly the routes the API always had 1`] = `
 [
+  "ALL /broker/v1/:secretId/:upstreamHost",
+  "ALL /broker/v1/:secretId/:upstreamHost/*",
   "DELETE /admin/backups/:id",
   "DELETE /backups/me/:id",
+  "DELETE /broker/tokens/:id",
   "DELETE /mcp",
   "DELETE /media/folders/:folderId",
   "DELETE /media/folders/:folderId/files/:fileId",
@@ -22,6 +25,7 @@ exports[`vault-api conformance (fake ports) exposes exactly the routes the API a
   "GET /backups/me",
   "GET /backups/me/:id/download",
   "GET /backups/me/config",
+  "GET /broker/tokens",
   "GET /mcp",
   "GET /media/folders",
   "GET /media/folders/:folderId",
@@ -44,6 +48,7 @@ exports[`vault-api conformance (fake ports) exposes exactly the routes the API a
   "PATCH /media/folders/:folderId/files/:fileId",
   "PATCH /secrets/:id/agent-access",
   "PATCH /secrets/:id/assistant-reveal",
+  "PATCH /secrets/:id/broker-access",
   "POST /admin/backups/export",
   "POST /admin/backups/run",
   "POST /agent/v1/cards/:id/fill",
@@ -54,6 +59,8 @@ exports[`vault-api conformance (fake ports) exposes exactly the routes the API a
   "POST /agent/v1/credentials/:id/totp",
   "POST /agent/v1/identity/:id/fill",
   "POST /backups/me",
+  "POST /broker/tokens",
+  "POST /broker/tokens/:id/revoke",
   "POST /mcp",
   "POST /media/folders",
   "POST /media/folders/:folderId/files",

@@ -196,6 +196,12 @@ const ROUTES: readonly Route[] = [
   ['PUT', `/api/secrets/${ID}`, 'secrets:write'],
   ['PATCH', `/api/secrets/${ID}/agent-access`, 'secrets:write'],
   ['PATCH', `/api/secrets/${ID}/assistant-reveal`, 'secrets:write'],
+  // #246 (ADR-0006): the credential broker opt-in, and the broker tokens (bare `@Auth()` like the personal access tokens: any signed-in user, ownership in the service)
+  ['PATCH', `/api/secrets/${ID}/broker-access`, 'secrets:write'],
+  ['POST', '/api/broker/tokens', null],
+  ['GET', '/api/broker/tokens', null],
+  ['DELETE', `/api/broker/tokens/${ID}`, null],
+  ['POST', `/api/broker/tokens/${ID}/revoke`, null],
   // ADR-0003: the owner's merchant grants and grant requests (writes also need a browser session)
   ['GET', `/api/secrets/${ID}/card-grants`, 'secrets:read'],
   ['POST', `/api/secrets/${ID}/card-grants`, 'secrets:write'],
@@ -558,6 +564,7 @@ describe('Vault RBAC matrix (platform identity guards over the full app)', () =>
         'AgentServiceKeysController',
         'CardGrantsController',
         'McpController',
+        'BrokerTokensController',
         'OAuthConsentController',
         'OAuthGrantsController',
         'OAuthClientsAdminController',

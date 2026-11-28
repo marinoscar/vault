@@ -21,6 +21,7 @@ import {
   vaultPermissionDeclarations,
 } from '../src/core';
 import { McpController } from '../src/mcp';
+import { BrokerController, BrokerTokensController } from '../src/broker';
 import { VAULT_MCP_RESOURCES, VAULT_MCP_SCOPE_DEFINITIONS } from '../src/mcp/mcp-oauth';
 import { MediaController } from '../src/media';
 import { SecretTypesController } from '../src/secret-types';
@@ -52,6 +53,8 @@ const CONTROLLERS = [
   AgentController,
   AgentActivityController,
   McpController,
+  BrokerController,
+  BrokerTokensController,
 ];
 
 /** Every non-test TypeScript file under `dir`. */

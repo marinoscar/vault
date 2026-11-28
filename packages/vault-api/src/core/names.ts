@@ -33,7 +33,7 @@ export const VAULT_NAMESPACE = 'vault';
  */
 export const VAULT_RESERVED_NAMES = {
   /** Every route the packages serve starts with one of these (then `/` or the end). */
-  routePrefixes: ['/secrets', '/secret-types', '/media', '/backups/me', '/admin/backups', '/agent/v1', '/agent-activity', '/mcp'],
+  routePrefixes: ['/secrets', '/secret-types', '/media', '/backups/me', '/admin/backups', '/agent/v1', '/agent-activity', '/mcp', '/broker'],
   /** The `<resource>` part of every permission id the packages declare (`secrets:read`, ...). */
   permissionResources: ['secrets', 'secret_types', 'media', 'agent_cards', 'agent_identity', 'agent_service_keys'],
   /** The system-settings namespaces the packages read and a host registers for them (`ai` is the platform's). */
@@ -49,9 +49,9 @@ export const VAULT_RESERVED_NAMES = {
   /** The OAuth protected resources the packages register. */
   oauthResources: ['agent', 'mcp'],
   /** Every audit action the packages write starts with one of these. */
-  auditActionPrefixes: ['secret.', 'secret_type.', 'secrets.', 'backups.', 'agent.credential.', 'agent.card.', 'agent.identity.', 'agent.service_key.', 'mcp.', 'vault.'],
+  auditActionPrefixes: ['secret.', 'secret_type.', 'secrets.', 'backups.', 'agent.credential.', 'agent.card.', 'agent.identity.', 'agent.service_key.', 'mcp.', 'broker.', 'vault.'],
   /** The OpenAPI tags the controllers carry. */
-  openApiTags: ['Secrets', 'Secret Types', 'Media', 'Backups', 'Agent', 'MCP'],
+  openApiTags: ['Secrets', 'Secret Types', 'Media', 'Backups', 'Agent', 'MCP', 'Broker'],
   /**
    * Metric names: none. The packages emit through `VAULT_METRICS` (`VaultMetricsPort`) and the HOST
    * names the instruments; Vault names them `app.vault.*`, and a host should keep a `vault` segment.

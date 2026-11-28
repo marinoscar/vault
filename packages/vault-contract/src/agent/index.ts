@@ -333,6 +333,39 @@ export const agentIdentityAccessSettingsSchema = z.object({
 export type AgentIdentityAccessSettings = z.infer<typeof agentIdentityAccessSettingsSchema>;
 
 /**
+ * The credential broker part of the `agentAccess` settings (#246, ADR-0006): its own kill switch
+ * (default off, and `agentAccess.enabled` must be on too), the per-minute limit of forwards and the
+ * caps of one forwarded call. Optional on the wire so the agent contract stays additive: a row
+ * stored before the broker resolves to the defaults.
+ *
+ * @stability experimental
+ */
+export const agentBrokerSettingsSchema = z.object({
+  enabled: z.boolean(),
+  forwardsPerMinute: z.number().int().min(1).max(10_000),
+  maxRequestBytes: z.number().int().min(1).max(100 * 1024 * 1024),
+  maxResponseBytes: z.number().int().min(1).max(100 * 1024 * 1024),
+  timeoutMs: z.number().int().min(1_000).max(120_000),
+});
+
+/** @stability experimental */
+export type AgentBrokerSettings = z.infer<typeof agentBrokerSettingsSchema>;
+
+/**
+ * Defaults of {@link agentBrokerSettingsSchema}: off, 60 forwards per minute, 10 MiB request, 25 MiB
+ * response, 30 s.
+ *
+ * @stability experimental
+ */
+export const AGENT_BROKER_SETTINGS_DEFAULTS: AgentBrokerSettings = Object.freeze({
+  enabled: false,
+  forwardsPerMinute: 60,
+  maxRequestBytes: 10 * 1024 * 1024,
+  maxResponseBytes: 25 * 1024 * 1024,
+  timeoutMs: 30_000,
+}) as AgentBrokerSettings;
+
+/**
  * The `agentAccess` system settings namespace: the kill switch and the per-minute limits of the
  * agent API (and `revealPerMinute`, the MCP `reveal_secret` limit). `enabled` defaults to `false`: until an administrator switches it on, every agent
  * route answers `403 AGENT_ACCESS_DISABLED`. Each limit counts per token (or OAuth grant) and user.
@@ -353,6 +386,8 @@ export const agentAccessSettingsSchema = z.object({
   revealPerMinute: z.number().int().min(1).max(10_000).optional(),
   cards: agentCardAccessSettingsSchema,
   identity: agentIdentityAccessSettingsSchema,
+  /** The credential broker (#246). Optional on the wire; {@link resolveAgentAccessSettings} always fills it. */
+  broker: agentBrokerSettingsSchema.optional(),
 });
 
 /** @stability beta */
@@ -374,6 +409,7 @@ export const AGENT_ACCESS_SETTINGS_DEFAULTS: AgentAccessSettings = Object.freeze
   revealPerMinute: 10,
   cards: Object.freeze({ enabled: false, fillPerMinute: 10, releasesPerCardPerDay: 5 }),
   identity: Object.freeze({ enabled: false, fillPerMinute: 20 }),
+  broker: AGENT_BROKER_SETTINGS_DEFAULTS,
 }) as AgentAccessSettings;
 
 /**
@@ -391,6 +427,7 @@ export function resolveAgentAccessSettings(stored: unknown): AgentAccessSettings
     ...source,
     cards: { ...AGENT_ACCESS_SETTINGS_DEFAULTS.cards, ...block(source.cards) },
     identity: { ...AGENT_ACCESS_SETTINGS_DEFAULTS.identity, ...block(source.identity) },
+    broker: { ...AGENT_BROKER_SETTINGS_DEFAULTS, ...block(source.broker) },
   } as AgentAccessSettings;
 }
 
@@ -431,13 +468,15 @@ export const agentActivityActionSchema = z.enum([
   'card_grant',
   'service_key',
   'mcp_reveal',
+  /** A call forwarded (or refused) by the credential broker (#246). */
+  'broker_forward',
 ]);
 
 /** @stability beta */
 export type AgentActivityAction = z.infer<typeof agentActivityActionSchema>;
 
 /** The kind of credential a call authenticated with. @stability beta */
-export const agentActivityCredentialKindSchema = z.enum(['oauth', 'pat', 'session', 'embedded']);
+export const agentActivityCredentialKindSchema = z.enum(['oauth', 'pat', 'session', 'embedded', 'broker']);
 
 /** @stability beta */
 export type AgentActivityCredentialKind = z.infer<typeof agentActivityCredentialKindSchema>;
@@ -495,6 +534,10 @@ export const agentActivityItemSchema = z.object({
   service: z.string().nullable().optional(),
   /** A service key call's key `name` (contract 1.4); absent otherwise. */
   keyName: z.string().nullable().optional(),
+  /** A broker forward's HTTP method (#246); absent otherwise. */
+  method: z.string().nullable().optional(),
+  /** A broker forward's upstream status (#246); null when nothing was forwarded; absent otherwise. */
+  status: z.number().int().nullable().optional(),
 });
 
 /** @stability beta */

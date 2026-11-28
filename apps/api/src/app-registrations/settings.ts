@@ -26,6 +26,7 @@ import { z } from 'zod';
 import {
   AGENT_ACCESS_SETTINGS_DEFAULTS,
   agentAccessSettingsSchema,
+  agentBrokerSettingsSchema,
   agentCardAccessSettingsSchema,
   agentIdentityAccessSettingsSchema,
   resolveAgentAccessSettings,
@@ -178,6 +179,8 @@ export const agentAccessSettingsPatchSchema = agentAccessSettingsSchema
   .extend({
     cards: agentCardAccessSettingsSchema.partial(),
     identity: agentIdentityAccessSettingsSchema.partial(),
+    // The credential broker block (#246) is patched field by field too.
+    broker: agentBrokerSettingsSchema.partial(),
   })
   .partial();
 export type AgentAccessSettingsPatch = z.infer<typeof agentAccessSettingsPatchSchema>;
@@ -185,7 +188,7 @@ export type AgentAccessSettingsPatch = z.infer<typeof agentAccessSettingsPatchSc
 export const VAULT_AGENT_ACCESS_SYSTEM_SETTINGS = {
   key: 'agentAccess',
   description:
-    'The agent credential API (/api/agent/v1): the deployment kill switch (off by default), the per-minute limits of lookup, fill, totp and write calls, and the card and identity release switches (both off by default) with their own limits (ADR-0003).',
+    'The agent credential API (/api/agent/v1): the deployment kill switch (off by default), the per-minute limits of lookup, fill, totp and write calls, and the card and identity release switches (both off by default) with their own limits (ADR-0003), and the credential broker block `broker` (off by default, forwards per minute, size and time caps; ADR-0006).',
   storedSchema: agentAccessSettingsSchema,
   patchSchema: agentAccessSettingsPatchSchema,
   putSchema: agentAccessSettingsPatchSchema,
@@ -201,6 +204,7 @@ export const VAULT_AGENT_ACCESS_SYSTEM_SETTINGS = {
       ...(patch ?? {}),
       cards: { ...current.cards, ...(patch?.cards ?? {}) },
       identity: { ...current.identity, ...(patch?.identity ?? {}) },
+      broker: { ...current.broker, ...(patch?.broker ?? {}) },
     }),
 } satisfies SystemSettingsNamespace<'agentAccess', AgentAccessSettings, AgentAccessSettingsPatch>;
 

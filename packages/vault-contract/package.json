@@ -91,6 +91,16 @@
         "default": "./dist/cjs/agent-testing/index.js"
       }
     },
+    "./broker": {
+      "import": {
+        "types": "./dist/esm/broker/index.d.ts",
+        "default": "./dist/esm/broker/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/broker/index.d.ts",
+        "default": "./dist/cjs/broker/index.js"
+      }
+    },
     "./errors": {
       "import": {
         "types": "./dist/esm/errors/index.d.ts",

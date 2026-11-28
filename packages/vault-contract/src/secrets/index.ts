@@ -109,6 +109,8 @@ export const secretListQuerySchema = z.object({
   agentAccess: secretAgentAccessSchema.optional(),
   /** Only secrets revealed (`true`) or not revealed (`false`) to assistants (#244). */
   assistantReveal: z.enum(['true', 'false']).transform((v) => v === 'true').optional(),
+  /** Only secrets usable (`true`) or not usable (`false`) through the credential broker (#246). */
+  brokerAccess: z.enum(['true', 'false']).transform((v) => v === 'true').optional(),
   sortBy: z.enum(['createdAt', 'name', 'updatedAt']).default('updatedAt'),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
 });

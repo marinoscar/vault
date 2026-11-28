@@ -51,6 +51,7 @@ import { CreateSecretDto } from './dto/create-secret.dto';
 import { UpdateSecretDto } from './dto/update-secret.dto';
 import { UpdateAgentAccessDto } from './dto/update-agent-access.dto';
 import { UpdateAssistantRevealDto } from './dto/update-assistant-reveal.dto';
+import { UpdateBrokerAccessDto } from '../broker/dto';
 import { RenewSecretDto } from './dto/renew-secret.dto';
 import {
   SecretListQueryDto,
@@ -348,6 +349,36 @@ export class SecretsController {
   ) {
     refuseOAuthCredential(credential);
     const result = await this.secretsService.updateAssistantReveal(id, dto.enabled, user.id, user.permissions);
+    return { data: result };
+  }
+
+  @Patch(':id/broker-access')
+  @Auth({ permissions: [PERMISSIONS.SECRETS_WRITE] })
+  @ApiOperation({
+    summary: 'Allow the credential broker to use a key, or stop',
+    description:
+      'Switches "Use through the broker" on or off (#246, ADR-0006): with it on, a broker token (`vbk_`) or personal access token may have Vault ' +
+      'add this secret\'s key to requests it forwards to the allowed origins through `/api/broker/v1/*`; the key is never returned. ' +
+      '`origins` are exact HTTPS origins (`https://host[:port]`, 1 to 20; no path, no localhost, `.local`, `.internal` or private IP), ' +
+      '`injection` is `{ kind: "header", name, prefix? }` or `{ kind: "query", name }` (default `Authorization: Bearer`), `field` names the sensitive field when the type has several. ' +
+      'Omitted `origins`, `injection` and `field` keep their stored values; turning it off is always allowed. ' +
+      'Supported types: API Key, Token, Service Key and custom types with a sensitive field (422 BROKER_UNSUPPORTED_TYPE, BROKER_FIELD_INVALID, BROKER_ORIGINS_REQUIRED, BROKER_ORIGIN_INVALID otherwise). ' +
+      'Owner only: `secrets:write_any` does not open another user\'s secret (404). Refused (403) for an OAuth credential. A browser session or a personal access token may call it. ' +
+      'Audited as secret.broker_access.update. Requires secrets:write.',
+  })
+  @ApiParam({ name: 'id', type: String, format: 'uuid', description: 'Secret ID' })
+  @ApiResponse({ status: 200, description: 'Secret detail with the new brokerAccess, brokerOrigins, brokerInjection, brokerField' })
+  @ApiResponse({ status: 403, description: 'Access denied, or an OAuth credential' })
+  @ApiResponse({ status: 404, description: 'Secret not found (or not yours)' })
+  @ApiResponse({ status: 422, description: 'BROKER_UNSUPPORTED_TYPE, BROKER_ORIGINS_REQUIRED, BROKER_ORIGIN_INVALID or BROKER_FIELD_INVALID' })
+  async updateBrokerAccess(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateBrokerAccessDto,
+    @CurrentUser() user: RequestUser,
+    @AuthCredential() credential: AuthCredentialInfo | null,
+  ) {
+    refuseOAuthCredential(credential);
+    const result = await this.secretsService.updateBrokerAccess(id, dto, user.id, user.permissions);
     return { data: result };
   }
 

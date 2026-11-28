@@ -25,6 +25,7 @@ import {
   SERVICE_KEY_RELEASE_PORT,
 } from '../src/agent';
 import { McpController } from '../src/mcp';
+import { BrokerAuthGuard, BrokerController, BrokerTokensController } from '../src/broker';
 import { CardExpiryScanHandler, CARD_EXPIRY_SCAN_JOB_TYPE } from '../src/card-expiry';
 import { DocumentExpiryScanHandler, DOCUMENT_EXPIRY_SCAN_JOB_TYPE } from '../src/document-expiry';
 import { CardExtractController, DocumentExtractController } from '../src/ai';
@@ -87,6 +88,9 @@ const CONTROLLERS = [
   CardGrantsController,
   AgentActivityController,
   McpController,
+  BrokerTokensController,
+  // The forwarding endpoint authenticates with its own guard (`@Public()` to the platform): the next test pins it.
+  BrokerController,
 ];
 
 function routesOf(controller: new (...args: never[]) => unknown): string[] {
@@ -191,7 +195,7 @@ describe('vault-api conformance (fake ports)', () => {
   });
 
   it('puts the JWT guard on every controller (security by default: no public domain route)', () => {
-    for (const controller of CONTROLLERS) {
+    for (const controller of CONTROLLERS.filter((c) => c !== BrokerController)) {
       const classGuards: unknown[] = Reflect.getMetadata('__guards__', controller) ?? [];
       const proto = controller.prototype as unknown as Record<string, unknown>;
       const routes = Object.getOwnPropertyNames(proto).filter(
@@ -205,6 +209,12 @@ describe('vault-api conformance (fake ports)', () => {
         });
       }
     }
+  });
+
+  it('the broker forwarding endpoint is public to the platform and guarded by BrokerAuthGuard alone (vbk_ is accepted nowhere else)', () => {
+    const guards: unknown[] = Reflect.getMetadata('__guards__', BrokerController) ?? [];
+    expect(guards).toEqual([BrokerAuthGuard]);
+    expect(Reflect.getMetadata('isPublic', BrokerController)).toBe(true);
   });
 
   it('refuses to boot when a required port is not bound, naming the token', async () => {
