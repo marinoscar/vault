@@ -1,5 +1,12 @@
 # @marinoscar/vault-db
 
+## 0.1.0-next.8
+
+### Minor Changes
+
+- dccdf9f: Add `secrets.assistant_reveal` (boolean, default false) and `secrets.assistant_reveal_changed_at`: the owner's per-secret opt-in that lets an MCP client holding `vault:mcp_reveal` read the secret's field values (issue #244). Migration `20261128032220_add_secret_assistant_reveal`.
+- 7e0f39e: Add the credential broker data (issue #246, ADR-0006): `secrets.broker_access`, `broker_origins`, `broker_injection`, `broker_field` and `broker_access_changed_at` (the owner's per-secret opt-in to use the key through the broker, never to read it) and the `broker_tokens` table (hashed `vbk_` tokens with an optional secret restriction, expiry, last use and revocation). Migration `20261128140804_add_credential_broker`.
+
 ## 0.1.0-next.7
 
 ## 0.1.0-next.6
