@@ -55,7 +55,11 @@
     "secret-totp-api",
     "service-keys",
     "totp-web",
+    "vault-api-credential-broker",
     "vault-api-domain-package",
+    "vault-contract-credential-broker",
+    "vault-db-assistant-reveal",
+    "vault-db-credential-broker",
     "vault-web-ai-config",
     "vault-web-package"
   ]
