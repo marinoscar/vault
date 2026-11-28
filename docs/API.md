@@ -1418,6 +1418,18 @@ Allows or forbids AI agents to use a secret ([SECRETS.md](SECRETS.md#agent-acces
 - **Errors:** `400` invalid body, `403` the caller lacks access or authenticated with an OAuth (`oat_`) token (an agent cannot widen its own access), `404` unknown or foreign secret, `422 AGENT_ACCESS_UNSUPPORTED_TYPE` for any other type set to `fill`.
 - Audited as `secret.agent_access.update` with `{ secretId, from, to }`.
 
+#### PATCH /secrets/:id/assistant-reveal
+
+Lets a chat assistant read one field of this secret over MCP `reveal_secret`, or stops it ([ADR-0005](decisions/0005-assistant-reveal.md), [#244](https://github.com/marinoscar/vault/issues/244)). Permission `secrets:write`; **owner only** (`secrets:write_any` does not apply). Session or `pat_`; an `oat_` token is refused.
+
+```json
+{ "enabled": true }
+```
+
+- **Response:** `200 OK` with `{ "data": <secret detail> }` carrying `assistantReveal` (default `false`) and `assistantRevealChangedAt` (`null` until first changed). The same value again is a no-op.
+- **Errors:** `400` invalid body, `403` an OAuth (`oat_`) token, `404` unknown, foreign or not yours, `422 ASSISTANT_REVEAL_UNSUPPORTED_TYPE` for Card, Passport, ID Document and any type with a cvv-like field (switching off is always accepted).
+- Audited as `secret.assistant_reveal.update` with `{ secretId, from, to }`. `GET /secrets` accepts `?assistantReveal=true|false`; list items and details carry the flag.
+
 #### POST /secrets/:id/totp
 
 The current one-time code of a `Credential` ([SECRETS.md](SECRETS.md#authenticator-codes-totp)). Permission `secrets:read`; access follows `GET /secrets/:id`. No body.
@@ -2302,7 +2314,7 @@ Wire shapes: `agentActivityQuerySchema`, `agentActivityItemSchema`, `agentActivi
 
 ### MCP (Model Context Protocol)
 
-`POST /api/mcp` (E14.8, [#180](https://github.com/marinoscar/vault/issues/180)) lets chat assistants and coding agents (Claude, ChatGPT, Claude Code, the MCP Inspector) find, create and update secrets. It is the `mcp` OAuth protected resource (scopes `vault:mcp_read` and `vault:mcp_write`; an `oat_` token is accepted only under `/api/mcp`, and an `agent` token is refused there). **No tool ever returns a secret value**: [SECURITY-ARCHITECTURE.md §16](SECURITY-ARCHITECTURE.md#mcp-no-plaintext-over-the-model-context-e148-180). Reference: the live OpenAPI at `/api/docs` (tag `MCP`).
+`POST /api/mcp` (E14.8, [#180](https://github.com/marinoscar/vault/issues/180)) lets chat assistants and coding agents (Claude, ChatGPT, Claude Code, the MCP Inspector) find, create and update secrets. It is the `mcp` OAuth protected resource (scopes `vault:mcp_read`, `vault:mcp_write` and `vault:mcp_reveal`; an `oat_` token is accepted only under `/api/mcp`, and an `agent` token is refused there). **No tool returns a secret value except `reveal_secret`** (one field of a secret its owner opted in, [ADR-0005](decisions/0005-assistant-reveal.md)): [SECURITY-ARCHITECTURE.md §16](SECURITY-ARCHITECTURE.md#mcp-no-plaintext-over-the-model-context-e148-180). Reference: the live OpenAPI at `/api/docs` (tag `MCP`).
 
 - **Transport.** JSON-RPC 2.0 over Streamable HTTP, stateless: one request per `POST`, one JSON answer (`200`), `202` with no body for a notification (`notifications/initialized`). No session and no SSE stream: `GET /api/mcp` and `DELETE /api/mcp` answer `405` with `Allow: POST`. A batch (a JSON array) is `400 -32600` on every revision. The body is the JSON-RPC message itself, **not** the `{ data }` envelope.
 - **Methods.** `initialize`, `notifications/initialized`, `ping`, `tools/list`, `tools/call`; `server/discover` on 2026-07-28. Anything else is `-32601`.
@@ -2311,14 +2323,15 @@ Wire shapes: `agentActivityQuerySchema`, `agentActivityItemSchema`, `agentActivi
 - **Credentials.** An OAuth `oat_` token for the `mcp` resource, a personal access token (`pat_`) or a session bearer; the route needs `secrets:read`. A session or PAT carries the user's own permissions; an `oat_` token only what its scopes grant.
 - **Kill switch.** The deployment setting `agentAccess.enabled` (default off, shared with the [agent API](#agent-api-oauth-protected)). While off, **every `tools/call`** answers HTTP `403` with a JSON-RPC error `-32030` whose `data.code` is `AGENT_ACCESS_DISABLED`; `initialize` and `tools/list` keep working so a client can connect and show the tools.
 - **Step-up.** A `tools/call` whose tool needs a scope the `oat_` token lacks (a read-only token calling `create_secret`) is HTTP `403` with `WWW-Authenticate: Bearer error="insufficient_scope", scope="..."` naming `vault:mcp_write`, before anything runs, so the client starts re-consent. If the user's own account lacks the permission, it is a plain `403`.
-- **Rate limit.** 60 `tools/call` per minute per OAuth grant (or PAT) and user (the `mcp` bucket of the agent rate limiter; a constant, not a setting). Over it: `429` with `Retry-After` and a JSON-RPC error `-32029` (`data.code` `RATE_LIMITED`). `initialize`, `ping` and `tools/list` are not counted.
-- **Audit.** Every `tools/call` that reaches the pipeline writes `mcp.tool.call` with `{ tool, result, credential, clientId and grantId or patId, secretId }` (`result`: `ok`, `denied:disabled`, `denied:rate_limited`, `error:<code>`). Never an argument or a value. A successful call is audited before its result is returned: if the trail cannot be written, the result is withheld.
-- **Visibility.** The tools see only the caller's own `Credential` secrets with `agentAccess = fill` (opened by their owner, [SECRETS.md](SECRETS.md#agent-access)). A closed, foreign, card or missing secret is one identical `NOT_FOUND` tool error. A secret created through MCP is visible to MCP afterwards only if it was created with `allowAgents: true`.
+- **Rate limit.** 60 `tools/call` per minute per OAuth grant (or PAT) and user (the `mcp` bucket of the agent rate limiter; a constant, not a setting). `reveal_secret` has its own bucket, `agentAccess.revealPerMinute` (default 10, counted before the lookup). Over it: `429` with `Retry-After` and a JSON-RPC error `-32029` (`data.code` `RATE_LIMITED`). `initialize`, `ping` and `tools/list` are not counted.
+- **Audit.** Every `tools/call` that reaches the pipeline writes `mcp.tool.call` with `{ tool, result, credential, clientId and grantId or patId, secretId }` (and `field`, the field name, for `reveal_secret`) (`result`: `ok`, `denied:disabled`, `denied:rate_limited`, `error:<code>`). Never an argument or a value; Agent activity shows a reveal as `mcp_reveal`. A successful call is audited before its result is returned: if the trail cannot be written, the result is withheld.
+- **Visibility.** The tools see only the caller's own secrets that are opened to agents (`Credential` with `agentAccess = fill`, [SECRETS.md](SECRETS.md#agent-access)) or that the owner switched "Reveal to assistants" on for (`assistantReveal`, `PATCH /secrets/:id/assistant-reveal`; every type except Card, Passport, ID Document and cvv-bearing types). A closed, foreign, card or missing secret is one identical `NOT_FOUND` tool error. A secret created through MCP is visible to MCP afterwards only if it was created with `allowAgents: true`.
 
 | Tool | Scope | Effect | Arguments | Returns |
 |---|---|---|---|---|
-| `search_secrets` | `vault:mcp_read` | read | `query?`, `type?`, `origin?`, `limit?` (1..50, default 20) | `items`: id, name, type, origins, agentAccess, version, updatedAt, `fields` (non-sensitive values only) |
+| `search_secrets` | `vault:mcp_read` | read | `query?`, `type?`, `origin?`, `limit?` (1..50, default 20) | `items`: id, name, type, origins, agentAccess, assistantReveal, version, updatedAt, `fields` (non-sensitive values only) |
 | `get_secret` | `vault:mcp_read` | read | `id` | `secret`: the same plus sensitive fields as `"[hidden]"` |
+| `reveal_secret` | `vault:mcp_reveal` | read | `id`, `field` | `id`, `name`, `type`, `field`, `value`: one field of an opted-in secret. Not found (identical) for a missing, foreign, closed or excluded secret; `FIELD_NOT_FOUND` and `FIELD_EMPTY` only after the secret is proven revealable. The only tool whose result may hold a value, and only in its top-level `value` key |
 | `list_secret_types` | `vault:mcp_read` | read | none | `types`: name, description, `canOpenToAgents`, fields (name, label, type, required, sensitive). Card, Passport and ID Document types are not listed |
 | `create_secret` | `vault:mcp_write` | write | `type`, `name`, `fields`, `generatePassword?` `{ length?, symbols? }`, `allowAgents?` | id, name, type, origins, agentAccess, version, and (with `generatePassword`) `passwordGenerated: true, passwordReturned: false`. A card, Passport or ID Document type is refused (`TYPE_NOT_SUPPORTED`) |
 | `update_secret` | `vault:mcp_write` | write | `id`, `fields` | `id`, `version` (new), `changed`, `updatedFields`. Only the given fields change; `""` clears one; `url` and `additional_urls` are refused (`FIELD_NOT_UPDATABLE`) |
@@ -2327,7 +2340,7 @@ Every tool declares a title, a scope, an effect and the MCP annotations (`readOn
 
 **Connecting a client** (high level; the administrator enables the OAuth server and `agentAccess` first, see [SECURITY-ARCHITECTURE.md §16](SECURITY-ARCHITECTURE.md#16-oauth-server-agent-access)):
 
-- **Claude and ChatGPT** (hosted): add a custom connector with the URL `https://<your-vault>/api/mcp`. The client discovers the authorization server from the `401` challenge (`/.well-known/oauth-protected-resource/api/mcp`), registers itself (client ID metadata document or dynamic registration, per the OAuth server's host allowlist), and shows the consent page: `vault:mcp_read` is pre-selected, `vault:mcp_write` is an extra tick.
+- **Claude and ChatGPT** (hosted): add a custom connector with the URL `https://<your-vault>/api/mcp`. The client discovers the authorization server from the `401` challenge (`/.well-known/oauth-protected-resource/api/mcp`), registers itself (client ID metadata document or dynamic registration, per the OAuth server's host allowlist), and shows the consent page: `vault:mcp_read` is pre-selected, `vault:mcp_write` and `vault:mcp_reveal` (high risk) are extra ticks.
 - **Claude Code:** `claude mcp add --transport http vault https://<your-vault>/api/mcp`, then `/mcp` to sign in; or pass a personal access token as `--header "Authorization: Bearer pat_..."`.
 - **MCP Inspector:** transport "Streamable HTTP", URL `https://<your-vault>/api/mcp`, then the OAuth flow of the Inspector (or an `Authorization: Bearer` header with a PAT); `tools/list`, then call each tool.
 
@@ -2367,6 +2380,7 @@ Every tool declares a title, a scope, an effect and the MCP annotations (`readOn
 | `AGENT_ACCESS_DISABLED` | 403 | Agent API: the deployment switch `agentAccess.enabled` is off |
 | `AGENT_CREDENTIAL_REQUIRED` | 403 | Agent API: the request used a browser session instead of an `oat_` or `pat_` token |
 | `RATE_LIMITED` | 429 | Agent API: a per-minute limit was reached (`Retry-After` is set) |
+| `ASSISTANT_REVEAL_UNSUPPORTED_TYPE` | 422 | A Card, Passport, ID Document or cvv-bearing secret can never be revealed to an assistant, so "Reveal to assistants" cannot be switched on |
 | `AGENT_ACCESS_UNSUPPORTED_TYPE` | 422 | Only a Credential, Card, Identity or Service Key secret can be set to agent access `fill`; this secret type cannot |
 | `SERVICE_KEY_AMBIGUOUS` | 409 | Agent API: two opened service keys share the service and key name, so none was released |
 | `SERVICE_KEY_EXISTS` | 409 | The owner already has a Service Key with this service and key name (`POST`/`PUT /secrets`) |

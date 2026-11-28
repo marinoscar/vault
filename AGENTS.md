@@ -132,7 +132,7 @@ Guardrails: `test/ai-conformance.spec.ts` (`ai-kill-switch`, `ai-rbac-matrix`, `
 - **RLS (TARGET from E2):** the API connects as an ordinary `NOSUPERUSER NOBYPASSRLS` role that owns the tables; `app.org_id` and friends are set only with `set_config(..., true)` as the first statement of a transaction; every dump and restore carries `--enable-row-security` and `PGOPTIONS=-c app.rls_bypass=on`.
 - **A backup archive is never buffered**: dumps stream into object storage and the upload and exit code are both awaited.
 - **There is no `*:read_any` bypass by accident**: `secrets:read_any`/`write_any`/`delete_any` and `storage:*_any` are Admin only; a no-access read answers 404 for foreign resources.
-- **Agent access** ([ADR-0002](docs/decisions/0002-agent-access.md)): the agent API returns at most one sensitive field per call; an `oat_` token never reaches `/api/secrets/*`; MCP never returns a sensitive field value or changes `url`; agent access is per-secret opt-in, default `none`, set only by the owner's session; `agentAccess.enabled` ships `false`.
+- **Agent access** ([ADR-0002](docs/decisions/0002-agent-access.md)): the agent API returns at most one sensitive field per call; an `oat_` token never reaches `/api/secrets/*`; MCP returns a sensitive value only through `reveal_secret` (one field, a secret its owner opted in, [ADR-0005](docs/decisions/0005-assistant-reveal.md)) and never changes `url`; agent access is per-secret opt-in, default `none`, set only by the owner's session; `agentAccess.enabled` ships `false`.
 
 ## Architecture principles
 
