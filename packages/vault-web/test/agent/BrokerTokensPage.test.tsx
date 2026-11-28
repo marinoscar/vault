@@ -10,13 +10,18 @@ import { brokerTokenStatus } from '../../src/agent/headless/brokerTokens.js';
 const API_BASE = '*/api';
 const TOKEN = `vbk_${'A'.repeat(40)}`;
 
-const row = (over: Record<string, unknown> = {}) => ({
+interface TokenRow {
+  id: string; name: string; tokenPrefix: string; secretIds: string[]; expiresAt: string;
+  lastUsedAt: string | null; revokedAt: string | null; createdAt: string;
+}
+
+const row = (over: Partial<TokenRow> = {}): TokenRow => ({
   id: 't1', name: 'Cloud agent', tokenPrefix: 'vbk_AAAAAAAA', secretIds: [], expiresAt: '2099-01-01T00:00:00Z',
   lastUsedAt: null, revokedAt: null, createdAt: '2026-03-01T00:00:00Z', ...over,
 });
 
-function handlers(initial = [row()]) {
-  let tokens = initial;
+function handlers(initial: TokenRow[] = [row()]) {
+  let tokens: TokenRow[] = initial;
   const created: unknown[] = [];
   const revoked: string[] = [];
   server.use(
