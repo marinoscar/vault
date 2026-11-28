@@ -50,6 +50,7 @@ import {
 import { CreateSecretDto } from './dto/create-secret.dto';
 import { UpdateSecretDto } from './dto/update-secret.dto';
 import { UpdateAgentAccessDto } from './dto/update-agent-access.dto';
+import { UpdateAssistantRevealDto } from './dto/update-assistant-reveal.dto';
 import { RenewSecretDto } from './dto/renew-secret.dto';
 import {
   SecretListQueryDto,
@@ -319,6 +320,34 @@ export class SecretsController {
       dto.allowedOrigins,
       credential?.kind === 'jwt',
     );
+    return { data: result };
+  }
+
+  @Patch(':id/assistant-reveal')
+  @Auth({ permissions: [PERMISSIONS.SECRETS_WRITE] })
+  @ApiOperation({
+    summary: 'Reveal a secret to assistants, or stop',
+    description:
+      'Switches "Reveal to assistants" on or off (#244, ADR-0005): with it on, an MCP assistant that holds the ' +
+      '`vault:mcp_reveal` scope may read ONE field value per request through `reveal_secret`, each read recorded. ' +
+      'Owner only: `secrets:write_any` does not open another user\'s secret (404). A Card, Passport or ID Document ' +
+      'secret cannot be revealed (422 ASSISTANT_REVEAL_UNSUPPORTED_TYPE). Refused (403) for an OAuth credential: ' +
+      'an agent cannot widen its own access. A browser session or a personal access token may call it. ' +
+      'Audited as secret.assistant_reveal.update. Requires secrets:write.',
+  })
+  @ApiParam({ name: 'id', type: String, format: 'uuid', description: 'Secret ID' })
+  @ApiResponse({ status: 200, description: 'Secret detail with the new assistantReveal' })
+  @ApiResponse({ status: 403, description: 'Access denied, or an OAuth credential' })
+  @ApiResponse({ status: 404, description: 'Secret not found (or not yours)' })
+  @ApiResponse({ status: 422, description: 'ASSISTANT_REVEAL_UNSUPPORTED_TYPE' })
+  async updateAssistantReveal(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateAssistantRevealDto,
+    @CurrentUser() user: RequestUser,
+    @AuthCredential() credential: AuthCredentialInfo | null,
+  ) {
+    refuseOAuthCredential(credential);
+    const result = await this.secretsService.updateAssistantReveal(id, dto.enabled, user.id, user.permissions);
     return { data: result };
   }
 

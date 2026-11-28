@@ -106,7 +106,7 @@ function invalid(msg: unknown): RpcResponse | null {
 
 /**
  * The Model Context Protocol endpoint of Vault. Contract: docs/API.md ("MCP"). The tools are
- * `vault-mcp-tools.ts`; no tool returns a secret value.
+ * `vault-mcp-tools.ts`; only `reveal_secret` (scope `vault:mcp_reveal`, #244) returns a secret value: one field of a secret the owner opted in.
  *
  * @stability experimental
  */
@@ -126,10 +126,10 @@ export class McpController {
     description:
       'One JSON-RPC request per POST: initialize, notifications/initialized (202), ping, tools/list, tools/call. ' +
       'Batches are refused (400). Protocol revisions 2024-11-05 to 2026-07-28 (MCP-Protocol-Version). ' +
-      'Authenticate with an OAuth `oat_` token for the `mcp` resource (scopes vault:mcp_read, vault:mcp_write), a `pat_` token or a session bearer. ' +
+      'Authenticate with an OAuth `oat_` token for the `mcp` resource (scopes vault:mcp_read, vault:mcp_write, vault:mcp_reveal), a `pat_` token or a session bearer. ' +
       'A tools/call whose scope the token lacks answers 403 insufficient_scope (step-up); with agentAccess.enabled off, 403 AGENT_ACCESS_DISABLED; ' +
-      'over 60 calls per minute per grant, 429 with Retry-After. Tools: search_secrets, get_secret, list_secret_types, create_secret, update_secret. ' +
-      'No tool ever returns a secret value. The response is the JSON-RPC body, not the `{ data }` envelope.',
+      'over 60 calls per minute per grant (reveal_secret: agentAccess.revealPerMinute, default 10), 429 with Retry-After. Tools: search_secrets, get_secret, list_secret_types, create_secret, update_secret, reveal_secret. ' +
+      'Only reveal_secret returns a secret value (one field of a secret the owner switched "Reveal to assistants" on for; every read is audited). The response is the JSON-RPC body, not the `{ data }` envelope.',
   })
   @ApiResponse({ status: 200, description: 'A JSON-RPC response (result or error)' })
   @ApiResponse({ status: 202, description: 'A notification was accepted' })

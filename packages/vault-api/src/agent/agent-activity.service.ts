@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   AGENT_ACCESS_TOGGLE_AUDIT_ACTION,
   AGENT_AUDIT_ACTIONS,
+  MCP_REVEAL_TOOL_NAME,
   CARD_GRANT_AUDIT_ACTIONS,
   type AgentActivityAction,
   type AgentActivityCredentialKind,
@@ -10,6 +11,7 @@ import {
 } from '@marinoscar/vault-contract/agent';
 
 import { VAULT_PRISMA, type VaultPrismaClient } from '../ports';
+import { MCP_TOOL_CALL_AUDIT_ACTION } from '../mcp/mcp-dispatcher';
 
 /** Audit action names of each activity action (`card_grant` folds the owner's four grant decisions). */
 const AUDIT_ACTIONS: Record<AgentActivityAction, readonly string[]> = {
@@ -26,13 +28,17 @@ const AUDIT_ACTIONS: Record<AgentActivityAction, readonly string[]> = {
   identity_fill: [AGENT_AUDIT_ACTIONS.IDENTITY_FILL],
   card_grant: Object.values(CARD_GRANT_AUDIT_ACTIONS),
   service_key: [AGENT_AUDIT_ACTIONS.SERVICE_KEY_READ],
+  // Only the `reveal_secret` rows of `mcp.tool.call` (filtered by meta.tool below); the other tools never show.
+  mcp_reveal: [MCP_TOOL_CALL_AUDIT_ACTION],
 };
 const ACTION_OF = new Map<string, AgentActivityAction>(
   (Object.entries(AUDIT_ACTIONS) as Array<[AgentActivityAction, readonly string[]]>).flatMap(([action, audits]) =>
     audits.map((audit) => [audit, action] as [string, AgentActivityAction]),
   ),
 );
-const ALL_AUDIT_ACTIONS = Object.values(AUDIT_ACTIONS).flat();
+const ALL_AUDIT_ACTIONS = Object.values(AUDIT_ACTIONS).flat().filter((a) => a !== MCP_TOOL_CALL_AUDIT_ACTION);
+/** `mcp.tool.call` rows of the reveal tool: the one MCP row the owner's trail shows. */
+const REVEAL_ROWS = { action: MCP_TOOL_CALL_AUDIT_ACTION, AND: [{ meta: { path: ['tool'], equals: MCP_REVEAL_TOOL_NAME } }] };
 
 /** The field an owner's grant decision shows: what happened to the grant. */
 const GRANT_DECISION: Record<string, string> = {
@@ -70,9 +76,15 @@ export class AgentActivityService {
       ...(query.from ? { gte: new Date(query.from) } : {}),
       ...(query.to ? { lte: new Date(query.to) } : {}),
     };
+    const which =
+      query.action === 'mcp_reveal'
+        ? REVEAL_ROWS
+        : query.action
+          ? { action: { in: [...AUDIT_ACTIONS[query.action]] } }
+          : { OR: [{ action: { in: ALL_AUDIT_ACTIONS } }, REVEAL_ROWS] };
     const where = {
       actorUserId: userId,
-      action: { in: query.action ? [...AUDIT_ACTIONS[query.action]] : ALL_AUDIT_ACTIONS },
+      ...which,
       ...(Object.keys(createdAt).length > 0 ? { createdAt } : {}),
       ...(query.secretId ? { targetType: 'secret', targetId: query.secretId } : {}),
       ...(query.clientId ? { meta: { path: ['clientId'], equals: query.clientId } } : {}),
@@ -121,7 +133,8 @@ export class AgentActivityService {
       const field =
         action === 'agent_access' ? str(meta.to) : action === 'card_grant' ? (GRANT_DECISION[row.action] ?? null) : str(meta.field);
       const result = typeof meta.result === 'string' ? meta.result : 'ok';
-      const denied = result.startsWith('denied');
+      // An MCP row records `error:<code>` for a refusal (not found, field missing, ...): shown as denied.
+      const denied = action === 'mcp_reveal' ? result !== 'ok' : result.startsWith('denied');
       const reason = denied ? result.split(':')[1] || 'denied' : undefined;
       return [
         {

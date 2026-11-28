@@ -334,7 +334,7 @@ export type AgentIdentityAccessSettings = z.infer<typeof agentIdentityAccessSett
 
 /**
  * The `agentAccess` system settings namespace: the kill switch and the per-minute limits of the
- * agent API. `enabled` defaults to `false`: until an administrator switches it on, every agent
+ * agent API (and `revealPerMinute`, the MCP `reveal_secret` limit). `enabled` defaults to `false`: until an administrator switches it on, every agent
  * route answers `403 AGENT_ACCESS_DISABLED`. Each limit counts per token (or OAuth grant) and user.
  * `cards` and `identity` are separate switches (default off) for card and identity release.
  *
@@ -346,6 +346,11 @@ export const agentAccessSettingsSchema = z.object({
   fillPerMinute: z.number().int().min(1).max(10_000),
   totpPerMinute: z.number().int().min(1).max(10_000),
   writePerMinute: z.number().int().min(1).max(10_000),
+  /**
+   * `reveal_secret` calls per minute over MCP (#244; default 10). Optional on the wire so the agent
+   * contract stays additive: a row stored before it resolves to the default.
+   */
+  revealPerMinute: z.number().int().min(1).max(10_000).optional(),
   cards: agentCardAccessSettingsSchema,
   identity: agentIdentityAccessSettingsSchema,
 });
@@ -366,6 +371,7 @@ export const AGENT_ACCESS_SETTINGS_DEFAULTS: AgentAccessSettings = Object.freeze
   fillPerMinute: 30,
   totpPerMinute: 10,
   writePerMinute: 10,
+  revealPerMinute: 10,
   cards: Object.freeze({ enabled: false, fillPerMinute: 10, releasesPerCardPerDay: 5 }),
   identity: Object.freeze({ enabled: false, fillPerMinute: 20 }),
 }) as AgentAccessSettings;
@@ -398,6 +404,12 @@ export const AGENT_ACTIVITY_PATH = '/api/agent-activity' as const;
 /** The audit action of the per-secret agent access toggle (`secret.agent_access.update`). @stability beta */
 export const AGENT_ACCESS_TOGGLE_AUDIT_ACTION = 'secret.agent_access.update' as const;
 
+/** The audit action of the owner's "Reveal to assistants" toggle (#244). @stability experimental */
+export const ASSISTANT_REVEAL_TOGGLE_AUDIT_ACTION = 'secret.assistant_reveal.update' as const;
+
+/** The MCP tool whose `mcp.tool.call` audit rows the activity list shows as `mcp_reveal` (#244). @stability experimental */
+export const MCP_REVEAL_TOOL_NAME = 'reveal_secret' as const;
+
 /**
  * The actions an activity item carries: the agent routes (logins, cards, identity, service keys),
  * the owner's toggle and the owner's grant decisions (`card_grant`: created, revoked, approved, declined).
@@ -418,6 +430,7 @@ export const agentActivityActionSchema = z.enum([
   'identity_fill',
   'card_grant',
   'service_key',
+  'mcp_reveal',
 ]);
 
 /** @stability beta */

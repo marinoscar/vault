@@ -31,6 +31,8 @@ export interface McpToolOutput {
   summary?: string;
   /** The secret the call touched, for the audit row (an id, never a name or a value). */
   secretId?: string;
+  /** The NAME of the one field a reveal returned, for the audit row (never the value). */
+  field?: string;
   /**
    * Every sensitive value the handler saw (decrypted fields, generated passwords, values the model
    * sent). The dispatcher refuses to return a result in which any of them appears: fail closed.
@@ -69,6 +71,12 @@ export interface McpToolDefinition<I extends z.ZodType = z.ZodType> {
   idempotent?: boolean;
   /** The tool may overwrite or remove data (`destructiveHint`; write tools only). */
   destructive?: boolean;
+  /**
+   * ONLY `reveal_secret` sets this (#244, ADR-0005): the one tool whose result carries a secret value.
+   * The dispatcher then skips the redaction guard for the `value` key of the result and for nothing else
+   * (`assertNoSensitiveValues`' `exempt`). A tool that does not declare it can never return a value.
+   */
+  revealsField?: boolean;
   /** Runs the tool. Receives the parsed arguments. */
   handler(args: z.infer<I>, ctx: McpToolContext): Promise<McpToolOutput>;
 }
@@ -168,10 +176,16 @@ function leaves(value: unknown, out: string[] = []): string[] {
  * @throws McpRedactionError when a sensitive value is present.
  * @stability experimental
  */
-export function assertNoSensitiveValues(result: unknown, sensitive: readonly string[]): void {
+export function assertNoSensitiveValues(result: unknown, sensitive: readonly string[], exempt?: { key: string }): void {
   const values = [...new Set(sensitive.filter((s) => typeof s === 'string' && s.length > 0))];
   if (values.length === 0) return;
-  const strings = leaves(result);
+  // `reveal_secret` only (#244): the one top-level `value` key is the revealed field; every other
+  // string of the result is still checked against it.
+  const checked =
+    exempt && result !== null && typeof result === 'object' && !Array.isArray(result)
+      ? Object.fromEntries(Object.entries(result as Record<string, unknown>).filter(([k]) => k !== exempt.key))
+      : result;
+  const strings = leaves(checked);
   for (const v of values) {
     for (const s of strings) {
       if (s === v || (v.length >= 6 && s.includes(v))) throw new McpRedactionError();

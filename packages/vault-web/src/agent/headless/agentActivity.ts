@@ -14,7 +14,8 @@ export type AgentActivityAction =
   | 'identity_lookup'
   | 'identity_fill'
   | 'card_grant'
-  | 'service_key';
+  | 'service_key'
+  | 'mcp_reveal';
 
 /** The credential an agent call authenticated with (`embedded`: a host that embeds Vault, by its label). */
 export type AgentCredentialKind = 'oauth' | 'pat' | 'session' | 'embedded';
@@ -66,6 +67,7 @@ export const AGENT_ACTIVITY_ACTIONS: readonly AgentActivityAction[] = [
   'identity_fill',
   'card_grant',
   'service_key',
+  'mcp_reveal',
 ];
 
 export const AGENT_ACTION_LABELS: Record<AgentActivityAction, string> = {
@@ -82,6 +84,7 @@ export const AGENT_ACTION_LABELS: Record<AgentActivityAction, string> = {
   identity_fill: 'Identity filled',
   card_grant: 'Shop permission',
   service_key: 'Service key read',
+  mcp_reveal: 'Revealed to an assistant',
 };
 
 export interface AgentActivityQuery {

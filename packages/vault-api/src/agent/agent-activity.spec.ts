@@ -40,7 +40,9 @@ describe('AgentActivityService', () => {
     await service.list(USER, query());
     const args = prisma.auditEvent.findMany.mock.calls[0]![0];
     expect(args.where.actorUserId).toBe(USER);
-    expect(args.where.action.in).toEqual([
+    const [agentRows, revealRows] = args.where.OR;
+    expect(revealRows).toEqual({ action: 'mcp.tool.call', AND: [{ meta: { path: ['tool'], equals: 'reveal_secret' } }] });
+    expect(agentRows.action.in).toEqual([
       'agent.credential.lookup', 'agent.credential.fill', 'agent.credential.totp',
       'agent.credential.create', 'agent.credential.rotate', 'secret.agent_access.update',
       'agent.card.lookup', 'agent.card.fill', 'agent.card.grant_request', 'agent.identity.lookup', 'agent.identity.fill',
@@ -82,6 +84,19 @@ describe('AgentActivityService', () => {
     const { service } = build([row({ action: 'secret.agent_access.update', meta: { secretId: SECRET, from: 'none', to: 'fill' } })]);
     const { data } = await service.list(USER, query());
     expect(data[0]).toMatchObject({ action: 'agent_access', result: 'ok', secretId: SECRET, field: 'fill', credentialKind: 'session', clientId: null });
+  });
+
+  it('shows a reveal_secret call as mcp_reveal with the field NAME, and a refusal as denied', async () => {
+    const { service, prisma } = build([
+      row({ id: 'r1', action: 'mcp.tool.call', meta: { tool: 'reveal_secret', result: 'ok', credential: 'oauth', clientId: 'client-1', secretId: SECRET, field: 'password' } }),
+      row({ id: 'r2', action: 'mcp.tool.call', meta: { tool: 'reveal_secret', result: 'error:not_found', credential: 'oauth', clientId: 'client-1', secretId: null } }),
+    ]);
+    const { data } = await service.list(USER, query({ action: 'mcp_reveal' }));
+    expect(prisma.auditEvent.findMany.mock.calls[0]![0].where).toMatchObject({
+      actorUserId: USER, action: 'mcp.tool.call', AND: [{ meta: { path: ['tool'], equals: 'reveal_secret' } }],
+    });
+    expect(data[0]).toMatchObject({ action: 'mcp_reveal', result: 'ok', secretId: SECRET, secretName: 'Shop login', field: 'password', credentialKind: 'oauth', clientName: 'Agent App A' });
+    expect(data[1]).toMatchObject({ action: 'mcp_reveal', result: 'denied', reason: 'not_found', field: null });
   });
 
   it('applies the filters: action, secret, client and the date range; and paginates', async () => {

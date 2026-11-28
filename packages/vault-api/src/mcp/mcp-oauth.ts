@@ -25,6 +25,8 @@ import { VAULT_PERMISSIONS } from '../core/permissions';
 export const VAULT_MCP_SCOPES = {
   READ: 'vault:mcp_read',
   WRITE: 'vault:mcp_write',
+  /** #244, ADR-0005: reads ONE field value of a secret the owner switched "Reveal to assistants" on. */
+  REVEAL: 'vault:mcp_reveal',
 } as const;
 
 /** The MCP resource's id and path. */
@@ -46,6 +48,15 @@ export const VAULT_MCP_SCOPE_DEFINITIONS: readonly OAuthScopeDefinition[] = [
     description: 'Create secrets (with a password Vault generates and keeps hidden) and change fields of the logins you opened to agents.',
     permissions: [VAULT_PERMISSIONS.SECRETS_READ.id, VAULT_PERMISSIONS.SECRETS_WRITE.id],
     risk: 'elevated',
+  },
+  {
+    id: VAULT_MCP_SCOPES.REVEAL,
+    title: 'Read the values of secrets you chose to reveal',
+    description:
+      'Read the value of one field at a time (for example a password) of the secrets you switched "Reveal to assistants" on for. ' +
+      'Nothing else is readable, cards are never included, and every read is recorded in your agent activity.',
+    permissions: [VAULT_PERMISSIONS.SECRETS_READ.id],
+    risk: 'high',
   },
 ];
 

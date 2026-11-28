@@ -28,6 +28,7 @@ import { normalizeOrigin } from '@marinoscar/vault-contract/secrets';
 
 import { generatePassword, type GeneratePasswordOptions } from '../agent/password-generator';
 import { VAULT_PRISMA, type VaultPrismaClient } from '../ports';
+import { isMcpExcludedType } from '../secrets/assistant-reveal-types';
 import { SecretsService } from '../secrets/secrets.service';
 import { McpToolError } from './protocol/mcp-tool';
 
@@ -57,6 +58,16 @@ interface TypeRow {
   description?: string | null;
   fields: unknown;
 }
+
+/**
+ * What MCP can see of the caller's own secrets (#244): a Credential opened to agents, or any secret
+ * the owner switched "Reveal to assistants" on for. The type exclusion (Card, identity documents) is
+ * applied on top in code.
+ */
+const VISIBLE_TO_MCP: Array<Record<string, unknown>> = [
+  { agentAccess: 'fill', type: { name: 'Credential', isSystem: true } },
+  { assistantReveal: true },
+];
 
 /** Fields the MCP update refuses (see the header). */
 const NOT_UPDATABLE = new Set(['url', 'additional_urls']);
@@ -117,18 +128,7 @@ function sensitiveValuesOf(field: TypeField, value: unknown): string[] {
   return isSensitive(field) ? [asText(value)] : [];
 }
 
-/** The system types MCP never handles (ADR-0004 adds the identity documents to the card). */
-const MCP_EXCLUDED_SYSTEM_TYPES: readonly string[] = ['card', 'passport', 'id document'];
-
-/**
- * Types never handled through MCP: no creation, no listing, and a get or update answers as for a
- * missing secret. The system types `Card`, `Passport` and `ID Document`, and any type with a
- * cvv-like field.
- */
-export function isMcpExcludedType(type: { name: string; isSystem?: boolean; fields: unknown }): boolean {
-  if (type.isSystem && MCP_EXCLUDED_SYSTEM_TYPES.includes(type.name.toLowerCase())) return true;
-  return fieldsOf(type).some((f) => /^(cvv|cvc|security_code(_\d+)?)$/i.test(f.name));
-}
+export { isMcpExcludedType };
 
 const asText = (v: unknown): string => (typeof v === 'string' ? v : String(v));
 const present = (v: unknown): boolean => v !== undefined && v !== null && v !== '';
@@ -140,6 +140,8 @@ export interface McpSecretView {
   type: string;
   origins: string[];
   agentAccess: string;
+  /** The owner switched "Reveal to assistants" on: `reveal_secret` can read one field of it (#244). */
+  assistantReveal: boolean;
   version?: number | null;
   updatedAt: string;
   /** Non-sensitive field values (and, for `get_secret`, `"[hidden]"` for the sensitive fields that are set). */
@@ -172,7 +174,7 @@ export class McpSecretsService {
 
   /** Builds the allow-listed view of one secret from its decrypted values. */
   private buildView(
-    row: { id: string; name: string; origins?: string[] | null; agentAccess?: string | null; updatedAt: Date | string; type: TypeRow; versions?: Array<{ version: number }> },
+    row: { id: string; name: string; origins?: string[] | null; agentAccess?: string | null; assistantReveal?: boolean | null; updatedAt: Date | string; type: TypeRow; versions?: Array<{ version: number }> },
     values: Record<string, unknown>,
     mode: 'search' | 'detail',
   ): ViewResult {
@@ -195,6 +197,7 @@ export class McpSecretsService {
         type: row.type.name,
         origins: row.origins ?? [],
         agentAccess: row.agentAccess ?? 'none',
+        assistantReveal: row.assistantReveal === true,
         ...(row.versions ? { version: row.versions[0]?.version ?? null } : {}),
         updatedAt: new Date(row.updatedAt).toISOString(),
         fields,
@@ -209,8 +212,8 @@ export class McpSecretsService {
     input: { query?: string; type?: string; origin?: string; limit?: number },
   ): Promise<{ items: McpSecretView[]; sensitive: string[] }> {
     const limit = Math.min(Math.max(input.limit ?? 20, 1), MCP_SEARCH_MAX_LIMIT);
-    // MCP serves Credentials only; cards and identity items (ADR-0003) are never visible over MCP.
-    if (input.type && input.type.trim().toLowerCase() !== 'credential') return { items: [], sensitive: [] };
+    // MCP serves the Credentials opened to agents and any non-excluded secret the owner opted in to
+    // "Reveal to assistants" (#244); cards and identity items (ADR-0003) are never visible over MCP.
 
     let ids: string[] | undefined;
     if (input.origin) {
@@ -223,8 +226,8 @@ export class McpSecretsService {
     const rows = await this.prisma.secret.findMany({
       where: {
         createdById: actor.userId,
-        agentAccess: 'fill',
-        type: { name: 'Credential', isSystem: true },
+        OR: VISIBLE_TO_MCP as never,
+        ...(input.type ? { type: { name: { equals: input.type.trim(), mode: 'insensitive' as const } } } : {}),
         ...(ids ? { id: { in: ids } } : {}),
         ...(input.query ? { name: { contains: input.query, mode: 'insensitive' as const } } : {}),
       },
@@ -256,11 +259,65 @@ export class McpSecretsService {
   /** The caller's secret `id` when it is open to agents; the same 404 as a missing one otherwise. */
   private async visible(userId: string, id: string) {
     const row = await this.prisma.secret.findFirst({
+      where: { id, createdById: userId, OR: VISIBLE_TO_MCP as never },
+      include: { type: true, versions: { where: { isCurrent: true }, select: { version: true } } },
+    });
+    if (!row || isMcpExcludedType(row.type)) throw new NotFoundException('Secret not found');
+    return row;
+  }
+
+  /** `update_secret`'s narrower visibility: a Credential opened to agents only (writes are not broadened, #244). */
+  private async writable(userId: string, id: string) {
+    const row = await this.prisma.secret.findFirst({
       where: { id, createdById: userId, agentAccess: 'fill', type: { name: 'Credential', isSystem: true } },
       include: { type: true, versions: { where: { isCurrent: true }, select: { version: true } } },
     });
     if (!row || isMcpExcludedType(row.type)) throw new NotFoundException('Secret not found');
     return row;
+  }
+
+  /**
+   * The value of ONE field of the caller's own secret that the owner switched "Reveal to assistants"
+   * on for (#244, ADR-0005), decrypted from the current version. Not yours, not opted in, a Card or
+   * identity document, missing: all the same 404 (no oracle). Only once the secret is proven revealable
+   * does an unknown or empty field answer with its own message (field names are not secret).
+   * `sensitive` holds every value decrypted, the revealed one included, so the guard still blocks it
+   * anywhere in the result except the one `value` key.
+   */
+  async reveal(
+    actor: McpActor,
+    input: { id: string; field: string },
+  ): Promise<{ result: Record<string, unknown>; secretId: string; field: string; sensitive: string[] }> {
+    const row = await this.prisma.secret.findFirst({
+      where: { id: input.id, createdById: actor.userId, assistantReveal: true },
+      include: { type: true },
+    });
+    if (!row || isMcpExcludedType(row.type)) throw new NotFoundException('Secret not found');
+
+    const defs = fieldsOf(row.type);
+    const def = defs.find((f) => f.name === input.field);
+    if (!def) {
+      throw new McpToolError(
+        `This secret has no field named "${input.field.slice(0, 100)}". Its fields: ${defs.map((f) => f.name).join(', ') || '(none)'}.`,
+        'FIELD_NOT_FOUND',
+        input.id,
+      );
+    }
+    const values = await this.secrets.readCurrentValues(row.id);
+    const raw = values[def.name];
+    if (!present(raw)) {
+      throw new McpToolError(`The field "${def.name}" has no value.`, 'FIELD_EMPTY', input.id);
+    }
+    const value = typeof raw === 'string' ? raw : typeof raw === 'number' ? String(raw) : JSON.stringify(raw);
+
+    const sensitive: string[] = [value];
+    for (const d of defs) sensitive.push(...sensitiveValuesOf(d, values[d.name]));
+    return {
+      secretId: row.id,
+      field: def.name,
+      sensitive,
+      result: { id: row.id, name: row.name, type: row.type.name, field: def.name, value },
+    };
   }
 
   /** The types a model may use: names and field definitions. Card and identity-document types are not listed. */
@@ -376,7 +433,7 @@ export class McpSecretsService {
       );
     }
 
-    const row = await this.visible(actor.userId, input.id);
+    const row = await this.writable(actor.userId, input.id);
     const current = await this.secrets.readCurrentValues(input.id);
     const merged: Record<string, unknown> = { ...current };
     for (const [name, value] of Object.entries(input.fields)) {

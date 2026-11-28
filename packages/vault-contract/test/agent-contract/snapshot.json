@@ -48,6 +48,14 @@
               "name": "number"
             }
           },
+          "revealPerMinute": {
+            "required": false,
+            "nullable": false,
+            "shape": {
+              "type": "primitive",
+              "name": "number"
+            }
+          },
           "cards": {
             "required": true,
             "nullable": false,
@@ -128,7 +136,8 @@
           "identity_lookup",
           "identity_fill",
           "card_grant",
-          "service_key"
+          "service_key",
+          "mcp_reveal"
         ]
       }
     },
@@ -187,7 +196,8 @@
                 "identity_lookup",
                 "identity_fill",
                 "card_grant",
-                "service_key"
+                "service_key",
+                "mcp_reveal"
               ]
             }
           },
@@ -355,7 +365,8 @@
                 "identity_lookup",
                 "identity_fill",
                 "card_grant",
-                "service_key"
+                "service_key",
+                "mcp_reveal"
               ]
             }
           },
@@ -443,7 +454,8 @@
                         "identity_lookup",
                         "identity_fill",
                         "card_grant",
-                        "service_key"
+                        "service_key",
+                        "mcp_reveal"
                       ]
                     }
                   },

@@ -64,7 +64,7 @@ describe('agent contract', () => {
 
   it('the settings defaults are off and satisfy the schema', () => {
     expect(agentAccessSettingsSchema.parse(AGENT_ACCESS_SETTINGS_DEFAULTS)).toEqual({
-      enabled: false, lookupPerMinute: 60, fillPerMinute: 30, totpPerMinute: 10, writePerMinute: 10,
+      enabled: false, lookupPerMinute: 60, fillPerMinute: 30, totpPerMinute: 10, writePerMinute: 10, revealPerMinute: 10,
       cards: { enabled: false, fillPerMinute: 10, releasesPerCardPerDay: 5 },
       identity: { enabled: false, fillPerMinute: 20 },
     });

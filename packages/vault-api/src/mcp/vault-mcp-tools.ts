@@ -2,10 +2,12 @@
 // The Vault MCP tools (issue #180, E14.8, epic #172)
 // =============================================================================
 //
-// Five tools for chat assistants. None returns a secret value: results come from an allow-list of
+// Six tools for chat assistants. Five never return a secret value: results come from an allow-list of
 // non-sensitive fields (`McpSecretsService`) and pass a fail-closed guard in the dispatcher.
-// There is deliberately no `reveal_secret`: that needs its own decision (a separate scope, per-call
-// user approval through elicitation, a short-lived audit flag, no card support).
+// The sixth, `reveal_secret` (#244, ADR-0005), returns ONE field value of a secret the owner switched
+// "Reveal to assistants" on for, behind its own scope `vault:mcp_reveal`, a stricter rate limit and an
+// audit row naming the field. It is the only tool that declares `revealsField`, and the dispatcher's
+// guard is skipped for its `value` key alone. Cards and identity documents are never revealable.
 //
 //   tool             scope            effect  returns
 //   search_secrets   vault:mcp_read   read    id, name, type, origins, agentAccess, non-sensitive fields
@@ -13,6 +15,7 @@
 //   list_secret_types vault:mcp_read  read    type names and field definitions
 //   create_secret    vault:mcp_write  write   id and metadata (a generated password is NOT returned)
 //   update_secret    vault:mcp_write  write   the new version number
+//   reveal_secret    vault:mcp_reveal read    id, name, type, field and the ONE field's value
 // =============================================================================
 
 import { Injectable, OnModuleInit } from '@nestjs/common';
@@ -33,7 +36,7 @@ const fieldValue = z.union([z.string().max(10_000), z.number()]);
 /** `search_secrets` arguments. */
 export const searchSecretsInput = z.object({
   query: z.string().trim().min(1).max(200).optional().describe('Part of the secret name to look for.'),
-  type: z.string().trim().min(1).max(100).optional().describe('A secret type name (see list_secret_types). Only Credential secrets are visible here.'),
+  type: z.string().trim().min(1).max(100).optional().describe('A secret type name (see list_secret_types). Only logins opened to agents and secrets the user chose to reveal are visible here.'),
   origin: z.string().trim().min(1).max(2048).optional().describe('A website origin such as https://app.example.test; matches logins for that site.'),
   limit: z.number().int().min(1).max(MCP_SEARCH_MAX_LIMIT).optional().describe(`How many results to return (default 20, at most ${MCP_SEARCH_MAX_LIMIT}).`),
 });
@@ -66,7 +69,13 @@ export const updateSecretInput = z.object({
   fields: z.record(z.string().max(100), fieldValue).describe('The fields to change, by name. Other fields keep their values; an empty string clears an optional field. url and additional_urls cannot be changed here.'),
 });
 
-/** The five tool definitions over a service. */
+/** `reveal_secret` arguments. */
+export const revealSecretInput = z.object({
+  id: z.string().uuid().describe('The secret id from search_secrets.'),
+  field: z.string().trim().min(1).max(100).describe('The name of the one field to read, for example password (see get_secret or list_secret_types).'),
+});
+
+/** The six tool definitions over a service. */
 export function vaultMcpTools(service: McpSecretsService): McpToolDefinition[] {
   const read = { scope: VAULT_MCP_SCOPES.READ, permission: VAULT_PERMISSIONS.SECRETS_READ.id, effect: 'read' as const };
   const write = { scope: VAULT_MCP_SCOPES.WRITE, permission: VAULT_PERMISSIONS.SECRETS_WRITE.id, effect: 'write' as const };
@@ -133,7 +142,25 @@ export function vaultMcpTools(service: McpSecretsService): McpToolDefinition[] {
     },
   };
 
-  return [searchSecrets, getSecret, listSecretTypes, createSecret, updateSecret] as unknown as McpToolDefinition[];
+  const revealSecret: McpToolDefinition<typeof revealSecretInput> = {
+    scope: VAULT_MCP_SCOPES.REVEAL,
+    permission: VAULT_PERMISSIONS.SECRETS_READ.id,
+    effect: 'read' as const,
+    name: 'reveal_secret',
+    title: 'Reveal one field of a secret',
+    description:
+      'Read the value of ONE field of a secret the user switched "Reveal to assistants" on for. Returns id, name, type, field and value. ' +
+      'Only that secret and field are returned, one per call; every read is recorded for the user. Cards and identity documents are never available. ' +
+      'Answers "not found" for a secret that is missing or not opened for revealing. Do not repeat the value to the user unless they asked for it.',
+    input: revealSecretInput,
+    revealsField: true,
+    handler: async (args, ctx) => {
+      const out = await service.reveal(ctx, args);
+      return { data: out.result, secretId: out.secretId, field: out.field, sensitive: out.sensitive };
+    },
+  };
+
+  return [searchSecrets, getSecret, listSecretTypes, createSecret, updateSecret, revealSecret] as unknown as McpToolDefinition[];
 }
 
 /** Registers the Vault tools with the registry at start-up. */

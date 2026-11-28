@@ -48,14 +48,17 @@ import {
 /** The audit action of every tool call. */
 export const MCP_TOOL_CALL_AUDIT_ACTION = 'mcp.tool.call' as const;
 
+/** The `reveal_secret` limit when the setting holds none (`agentAccess.revealPerMinute`). */
+const REVEAL_RATE_PER_MINUTE = 10;
+
 /** What the server calls itself. */
 export const MCP_SERVER_INFO = { name: 'vault', title: 'Vault', version: '0.1.0' } as const;
 
 /** What the model is told on `initialize`. */
 export const MCP_INSTRUCTIONS =
-  'Vault stores secrets. This server lets you find, create and update them for the user, and it never ' +
-  'returns a secret value: passwords, API keys, one-time-code seeds and card data are shown as "[hidden]" ' +
-  'or not at all. To create a login with a strong password, call create_secret with generatePassword: Vault ' +
+  'Vault stores secrets. This server lets you find, create and update them for the user. It shows ' +
+  'passwords, API keys, one-time-code seeds and card data as "[hidden]" or not at all; the one exception ' +
+  'is reveal_secret, which returns a single field of a secret the user chose to reveal to assistants. To create a login with a strong password, call create_secret with generatePassword: Vault ' +
   'generates the password and keeps it hidden; the user reads it in Vault. You only see logins the user ' +
   'opened to agents.';
 
@@ -179,7 +182,15 @@ export class McpDispatcher {
    * The audit row of one call: who, which tool, the secret id and the outcome. Never an argument or a
    * result. `required` (a success) fails the call closed when the trail cannot be written.
    */
-  private async record(caller: McpCaller, rctx: McpRequestContext, tool: string, secretId: string | undefined, result: string, required: boolean): Promise<void> {
+  private async record(
+    caller: McpCaller,
+    rctx: McpRequestContext,
+    tool: string,
+    secretId: string | undefined,
+    result: string,
+    required: boolean,
+    field?: string,
+  ): Promise<void> {
     try {
       await this.audit.record({
         actorUserId: caller.userId,
@@ -191,6 +202,8 @@ export class McpDispatcher {
           result,
           ...credentialMeta(caller.credential),
           secretId: secretId ?? null,
+          // The NAME of the field a reveal returned (never its value).
+          ...(field ? { field } : {}),
           ...(rctx.clientInfo ? { mcpClient: rctx.clientInfo.name } : {}),
         },
       });
@@ -224,7 +237,10 @@ export class McpDispatcher {
       };
     }
 
-    const decision = this.limiter.consume(`mcp:${principalKey(caller.credential)}:${caller.userId}`, this.options?.ratePerMinute ?? MCP_RATE_PER_MINUTE);
+    // `reveal_secret` has its own, stricter bucket (`agentAccess.revealPerMinute`), counted before the lookup.
+    const bucket = tool.revealsField ? 'reveal' : 'mcp';
+    const perMinute = tool.revealsField ? (settings.revealPerMinute ?? REVEAL_RATE_PER_MINUTE) : (this.options?.ratePerMinute ?? MCP_RATE_PER_MINUTE);
+    const decision = this.limiter.consume(`${bucket}:${principalKey(caller.credential)}:${caller.userId}`, perMinute);
     if (!decision.allowed) {
       await this.record(caller, rctx, tool.name, undefined, 'denied:rate_limited', false);
       return {
@@ -245,12 +261,15 @@ export class McpDispatcher {
 
     let result: McpToolResult;
     let secretId: string | undefined;
+    let field: string | undefined;
     let outcome = 'ok';
     try {
       const out = await tool.handler(parsed.data, { userId: caller.userId, permissions: caller.permissions });
       secretId = out.secretId;
-      // Fail closed: a result that carries a value it must not is withheld whole.
-      assertNoSensitiveValues(out.data, out.sensitive ?? []);
+      field = out.field;
+      // Fail closed: a result that carries a value it must not is withheld whole. Only a tool that
+      // declares `revealsField` is let off, and only for the one `value` key of its result (#244).
+      assertNoSensitiveValues(out.data, out.sensitive ?? [], tool.revealsField ? { key: 'value' } : undefined);
       result = structuredResult(out.data, out.summary);
     } catch (error) {
       if (error instanceof McpRedactionError) {
@@ -276,7 +295,7 @@ export class McpDispatcher {
     }
 
     try {
-      await this.record(caller, rctx, tool.name, secretId, outcome, outcome === 'ok');
+      await this.record(caller, rctx, tool.name, secretId, outcome, outcome === 'ok', field);
     } catch {
       return ok({ ...this.finalize(errorResult('The call could not be recorded in the audit trail, so its result was withheld.', 'AUDIT_UNAVAILABLE'), rctx) });
     }

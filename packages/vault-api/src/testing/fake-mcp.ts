@@ -24,6 +24,7 @@ interface Row {
   name: string;
   createdById: string;
   agentAccess: 'none' | 'fill';
+  assistantReveal: boolean;
   origins: string[];
   updatedAt: Date;
   type: { id: string; name: string; isSystem: boolean; description: string; fields: unknown };
@@ -34,11 +35,12 @@ interface Row {
 export interface McpHarnessOptions {
   enabled?: boolean;
   ratePerMinute?: number;
+  revealPerMinute?: number;
 }
 
 /**
  * In-memory secrets, secret types, settings and audit behind the real `McpSecretsService`,
- * `McpDispatcher` and the five tools. For specs: no database, no Nest container.
+ * `McpDispatcher` and the six tools. For specs: no database, no Nest container.
  *
  * @stability experimental
  */
@@ -55,7 +57,10 @@ export function buildMcpHarness(options: McpHarnessOptions = {}) {
     if (typeof where.id === 'string' && where.id !== row.id) return false;
     if (where.createdById && where.createdById !== row.createdById) return false;
     if (where.agentAccess && where.agentAccess !== row.agentAccess) return false;
-    if (where.type?.name && where.type.name !== row.type.name) return false;
+    if (where.assistantReveal !== undefined && where.assistantReveal !== row.assistantReveal) return false;
+    if (Array.isArray(where.OR) && !where.OR.some((w: Record<string, any>) => matches(row, w))) return false;
+    if (typeof where.type?.name === 'string' && where.type.name !== row.type.name) return false;
+    if (where.type?.name?.equals && String(where.type.name.equals).toLowerCase() !== row.type.name.toLowerCase()) return false;
     if (where.name?.contains && !row.name.toLowerCase().includes(String(where.name.contains).toLowerCase())) return false;
     return true;
   };
@@ -105,7 +110,7 @@ export function buildMcpHarness(options: McpHarnessOptions = {}) {
   } as unknown as SecretsService;
 
   /** Adds a secret directly (a fixture). */
-  function add(input: { userId: string; type: string; name: string; values: Record<string, unknown>; agentAccess?: 'none' | 'fill' }): Row {
+  function add(input: { userId: string; type: string; name: string; values: Record<string, unknown>; agentAccess?: 'none' | 'fill'; assistantReveal?: boolean }): Row {
     const type = typeNamed(input.type);
     const url = typeof input.values.url === 'string' ? normalizeOrigin(input.values.url) : null;
     const row: Row = {
@@ -113,6 +118,7 @@ export function buildMcpHarness(options: McpHarnessOptions = {}) {
       name: input.name,
       createdById: input.userId,
       agentAccess: input.agentAccess ?? 'none',
+      assistantReveal: input.assistantReveal ?? false,
       origins: url ? [url] : [],
       updatedAt: new Date('2030-01-01T00:00:00.000Z'),
       type,
@@ -123,7 +129,7 @@ export function buildMcpHarness(options: McpHarnessOptions = {}) {
     return row;
   }
 
-  const settings = new FakeSettings({ agentAccess: { enabled: options.enabled ?? true } });
+  const settings = new FakeSettings({ agentAccess: { enabled: options.enabled ?? true, ...(options.revealPerMinute ? { revealPerMinute: options.revealPerMinute } : {}) } });
   const audit = new InMemoryAudit();
   const limiter = new InMemoryAgentRateLimiter();
   const registry = new McpToolRegistry();
@@ -135,7 +141,7 @@ export function buildMcpHarness(options: McpHarnessOptions = {}) {
   const caller = (over: Partial<McpCaller> = {}): McpCaller => ({
     userId: 'user-aaa',
     permissions: ['secrets:read', 'secrets:write'],
-    credential: { kind: 'oauth', tokenId: 'tok-1', grantId: 'grant-1', clientId: 'client-1', resourceId: 'mcp', scopes: ['vault:mcp_read', 'vault:mcp_write'] } as never,
+    credential: { kind: 'oauth', tokenId: 'tok-1', grantId: 'grant-1', clientId: 'client-1', resourceId: 'mcp', scopes: ['vault:mcp_read', 'vault:mcp_write', 'vault:mcp_reveal'] } as never,
     authorize: () => undefined,
     ...over,
   });
