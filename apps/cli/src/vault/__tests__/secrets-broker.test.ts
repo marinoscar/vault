@@ -172,6 +172,7 @@ describe('secrets broker', () => {
     ['BROKER_ORIGINS_REQUIRED', 'at least one origin'],
     ['BROKER_ORIGIN_INVALID', 'exact, public HTTPS origin'],
     ['BROKER_FIELD_INVALID', 'not a sensitive field'],
+    ['BROKER_INJECTION_INVALID', 'stored injection setting is invalid'],
   ])('422 %s is mapped', async (code, text) => {
     responder = (_u, init) => (init.method === 'PATCH' ? json(422, { code, message: 'x' }) : json(200, { data: secret() }));
     expect(await run('secrets', 'broker', ID, 'on', '--origin', ORIGIN)).toBe(1);

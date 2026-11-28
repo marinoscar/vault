@@ -44,6 +44,8 @@ export const BROKER_ERROR_MESSAGES: Record<string, string> = {
   BROKER_ORIGIN_INVALID:
     'An origin is not valid. Use an exact, public HTTPS origin such as https://api.service-x.example (no path, no credentials).',
   BROKER_FIELD_INVALID: "--field is not a sensitive field of this secret's type.",
+  BROKER_INJECTION_INVALID:
+    'The stored injection setting is invalid; pass --header/--prefix or --query again.',
   BROKER_TOKEN_SECRET_INVALID:
     'A --secret is not one of your own secrets with the broker on. Enable it first: vault secrets broker <secret> on --origin <origin>.',
   BROKER_DISABLED: 'The credential broker is turned off on this server.',

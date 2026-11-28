@@ -366,7 +366,7 @@ Lets agents *use* this secret's key through the credential broker without ever s
 | `--query <name>` | Inject the key as this query parameter instead of a header (not with `--header`) |
 | `--field <name>` | The sensitive field to inject. Needed only when the type has several sensitive fields (default: the only one; `BROKER_FIELD_INVALID` otherwise) |
 
-Errors are explained: `BROKER_UNSUPPORTED_TYPE`, `BROKER_ORIGINS_REQUIRED`, `BROKER_ORIGIN_INVALID`, `BROKER_FIELD_INVALID` and 404. `--json` returns the envelope with `brokerAccess`, `brokerOrigins`, `brokerInjection`, `brokerField` and `baseUrls` (no secret values).
+Errors are explained: `BROKER_UNSUPPORTED_TYPE`, `BROKER_ORIGINS_REQUIRED`, `BROKER_ORIGIN_INVALID`, `BROKER_INJECTION_INVALID`, `BROKER_FIELD_INVALID` and 404. `--json` returns the envelope with `brokerAccess`, `brokerOrigins`, `brokerInjection`, `brokerField` and `baseUrls` (no secret values).
 
 #### `secrets delete <id-or-name>`
 

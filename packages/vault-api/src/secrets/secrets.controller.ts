@@ -362,7 +362,7 @@ export class SecretsController {
       '`origins` are exact HTTPS origins (`https://host[:port]`, 1 to 20; no path, no localhost, `.local`, `.internal` or private IP), ' +
       '`injection` is `{ kind: "header", name, prefix? }` or `{ kind: "query", name }` (default `Authorization: Bearer`), `field` names the sensitive field when the type has several. ' +
       'Omitted `origins`, `injection` and `field` keep their stored values; turning it off is always allowed. ' +
-      'Supported types: API Key, Token, Service Key and custom types with a sensitive field (422 BROKER_UNSUPPORTED_TYPE, BROKER_FIELD_INVALID, BROKER_ORIGINS_REQUIRED, BROKER_ORIGIN_INVALID otherwise). ' +
+      'Supported types: API Key, Token, Service Key and custom types with a sensitive field (422 BROKER_UNSUPPORTED_TYPE, BROKER_FIELD_INVALID, BROKER_ORIGINS_REQUIRED, BROKER_ORIGIN_INVALID, BROKER_INJECTION_INVALID for an invalid stored injection otherwise). ' +
       'Owner only: `secrets:write_any` does not open another user\'s secret (404). Refused (403) for an OAuth credential. A browser session or a personal access token may call it. ' +
       'Audited as secret.broker_access.update. Requires secrets:write.',
   })
@@ -370,7 +370,7 @@ export class SecretsController {
   @ApiResponse({ status: 200, description: 'Secret detail with the new brokerAccess, brokerOrigins, brokerInjection, brokerField' })
   @ApiResponse({ status: 403, description: 'Access denied, or an OAuth credential' })
   @ApiResponse({ status: 404, description: 'Secret not found (or not yours)' })
-  @ApiResponse({ status: 422, description: 'BROKER_UNSUPPORTED_TYPE, BROKER_ORIGINS_REQUIRED, BROKER_ORIGIN_INVALID or BROKER_FIELD_INVALID' })
+  @ApiResponse({ status: 422, description: 'BROKER_UNSUPPORTED_TYPE, BROKER_ORIGINS_REQUIRED, BROKER_ORIGIN_INVALID, BROKER_FIELD_INVALID or BROKER_INJECTION_INVALID (invalid stored injection)' })
   async updateBrokerAccess(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateBrokerAccessDto,
