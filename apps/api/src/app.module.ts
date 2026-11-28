@@ -4,6 +4,8 @@
 // Imported here too so a test that builds `AppModule` without `test/setup.ts`
 // still has them registered.
 import './app-registrations/registrations';
+// Masks query values and token-shaped strings in every Nest log line (stop-gap, local-exceptions.md).
+import './platform/log-redaction/install';
 
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';

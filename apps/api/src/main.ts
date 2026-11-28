@@ -23,6 +23,7 @@ import type { ResolvedStorageModuleOptions } from '@marinoscar/platform-api/stor
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from './prisma/prisma.service';
 import { AppModule } from './app.module';
+import { redactLogText } from './platform/log-redaction';
 import { APP_OPENAPI } from './openapi/document';
 
 async function bootstrap() {
@@ -36,7 +37,19 @@ async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter({
-      logger: true,
+      // Fastify's own request logger: same defaults as `logger: true`, but the logged
+      // URL carries no query values (stop-gap, docs/platform-adoption/local-exceptions.md).
+      logger: {
+        serializers: {
+          req: (req: { method?: string; url?: string; host?: string; ip?: string; socket?: { remotePort?: number } }) => ({
+            method: req.method,
+            url: redactLogText(req.url ?? ''),
+            host: req.host,
+            remoteAddress: req.ip,
+            remotePort: req.socket?.remotePort,
+          }),
+        },
+      },
       // Fastify defaults to a 1 MiB body limit, and the @fastify/multipart
       // limits below do NOT apply to application/json. POST
       // /api/secrets/cards/extract sends card photographs as base64 data URLs

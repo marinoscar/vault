@@ -1,5 +1,6 @@
 import pino from 'pino';
 
+import { redactLogText } from '../../platform/log-redaction/redact';
 import { resolveServiceName } from '../otel/telemetry-identity';
 
 export const pinoConfig: pino.LoggerOptions = {
@@ -11,6 +12,13 @@ export const pinoConfig: pino.LoggerOptions = {
       host: bindings.hostname,
       service: resolveServiceName(),
     }),
+  },
+  // Masks query values and token-shaped strings in the message of every line.
+  hooks: {
+    logMethod(args, method) {
+      const redacted = args.map((a) => (typeof a === 'string' ? redactLogText(a) : a));
+      return method.apply(this, redacted as unknown as Parameters<typeof method>);
+    },
   },
   timestamp: pino.stdTimeFunctions.isoTime,
   // Pretty print in development
