@@ -129,6 +129,7 @@ model User {
   mediaFolders MediaFolder[] @relation("UserMediaFolders")
 
   // composed from app:vault.secrets.prisma
+  brokerTokens BrokerToken[] @relation("UserBrokerTokens")
   secretTypes    SecretType[]    @relation("UserSecretTypes")
   secrets        Secret[]        @relation("UserSecrets")
   secretVersions SecretVersion[] @relation("UserSecretVersions")

@@ -43,7 +43,7 @@ describe('migrations/manifest.json', () => {
       expect(fragments.has(entry.slice), `${entry.id} slice ${entry.slice}`).toBe(true);
       for (const table of entry.requiresHostTables) expect(VAULT_HOST_TABLES).toContain(table);
     }
-    expect(ids).toHaveLength(12);
+    expect(ids).toHaveLength(13);
     expect(new Set(manifest.migrations.map((entry) => entry.slice))).toEqual(new Set(['secrets', 'media', 'backups']));
   });
 
