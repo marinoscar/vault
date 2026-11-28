@@ -47,6 +47,11 @@ export interface Secret {
   attachments?: SecretAttachment[];
   assistantReveal?: boolean;
   assistantRevealChangedAt?: string | null;
+  brokerAccess?: boolean;
+  brokerOrigins?: string[];
+  brokerInjection?: { kind: 'header'; name: string; prefix?: string } | { kind: 'query'; name: string } | null;
+  brokerField?: string | null;
+  brokerAccessChangedAt?: string | null;
 }
 
 export interface SecretListItem {
@@ -60,6 +65,11 @@ export interface SecretListItem {
   type?: SecretType;
   assistantReveal?: boolean;
   assistantRevealChangedAt?: string | null;
+  brokerAccess?: boolean;
+  brokerOrigins?: string[];
+  brokerInjection?: { kind: 'header'; name: string; prefix?: string } | { kind: 'query'; name: string } | null;
+  brokerField?: string | null;
+  brokerAccessChangedAt?: string | null;
 }
 
 export interface SecretVersion {

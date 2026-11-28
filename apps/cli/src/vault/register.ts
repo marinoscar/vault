@@ -4,6 +4,7 @@ import type { CliCommandRegistration } from '@marinoscar/platform-cli/core';
 
 import { registerAdminCommands } from './commands/admin-backups.js';
 import { registerAuthCommands } from './commands/auth.js';
+import { registerBrokerCommands } from './commands/broker.js';
 import { registerBackupCommands } from './commands/backup.js';
 import { registerHealthCommands } from './commands/health.js';
 import { registerSecretCommands } from './commands/secrets.js';
@@ -19,7 +20,7 @@ import { vaultEnvName } from './utils/config.js';
 // The platform CLI owns `init`, `login`, `api`, `config`, `node` and `deploy`
 // (and the TUI). These are what Vault adds:
 //
-//   auth, secrets, versions, types, health, sync, backup, admin, menu
+//   auth, secrets, broker, versions, types, health, sync, backup, admin, menu
 //
 // The platform program has no global output options, so each command group
 // carries the ones `vaultcli` had at the root (`--json`, `-q`, `--server`,
@@ -88,6 +89,7 @@ function registerMenuCommand(program: Command): void {
 export const VAULT_COMMAND_NAMES = [
   'auth',
   'secrets',
+  'broker',
   'versions',
   'types',
   'health',
@@ -100,6 +102,7 @@ export const VAULT_COMMAND_NAMES = [
 export const vaultCommands: readonly CliCommandRegistration[] = [
   withGlobalOptions(registerAuthCommands),
   withGlobalOptions(registerSecretCommands),
+  withGlobalOptions(registerBrokerCommands),
   withGlobalOptions(registerVersionCommands),
   withGlobalOptions(registerTypeCommands),
   withGlobalOptions(registerHealthCommands),

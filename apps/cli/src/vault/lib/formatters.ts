@@ -1,5 +1,6 @@
 import chalk from 'chalk';
 import { header, keyValue, tableHeader, tableRow, blank, statusBadge, section, dim } from '../utils/output.js';
+import { describeInjection } from './broker.js';
 import type {
   HealthResponse,
   KeyValueEntry,
@@ -56,9 +57,9 @@ export function shortId(id: string): string {
 // ---------------------------------------------------------------------------
 
 export function formatSecretTable(result: PaginatedResponse<SecretListItem>): void {
-  const widths = [10, 14, 30, 20, 5, 12, 7];
+  const widths = [10, 14, 30, 20, 5, 12, 7, 7];
   header(`Secrets (${result.meta.totalItems} total, page ${result.meta.page}/${result.meta.totalPages})`);
-  tableHeader(['ID', 'Type', 'Name', 'Description', 'Ver', 'Updated', 'Reveal'], widths);
+  tableHeader(['ID', 'Type', 'Name', 'Description', 'Ver', 'Updated', 'Reveal', 'Broker'], widths);
 
   for (const item of result.items) {
     tableRow(
@@ -70,6 +71,7 @@ export function formatSecretTable(result: PaginatedResponse<SecretListItem>): vo
         item.currentVersion != null ? String(item.currentVersion) : '-',
         shortDate(item.updatedAt),
         item.assistantReveal ? 'on' : '-',
+        item.brokerAccess ? 'on' : '-',
       ],
       widths,
     );
@@ -112,6 +114,12 @@ export function formatSecretDetail(secret: Secret): void {
   keyValue('Updated', formatDate(secret.updatedAt));
   keyValue('Version', secret.currentVersion != null ? String(secret.currentVersion) : '-');
   keyValue('Reveal to assistants', secret.assistantReveal ? 'on' : 'off');
+  keyValue('Broker', secret.brokerAccess ? 'on' : 'off');
+  if (secret.brokerAccess) {
+    keyValue('  Origins', (secret.brokerOrigins ?? []).join(', ') || '-');
+    keyValue('  Injection', describeInjection(secret.brokerInjection));
+    if (secret.brokerField) keyValue('  Field', secret.brokerField);
+  }
 
   if (secret.attachments && secret.attachments.length > 0) {
     keyValue('Attachments', String(secret.attachments.length));
