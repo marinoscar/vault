@@ -777,6 +777,7 @@ All endpoints require a valid JWT Bearer token. Ownership checks are enforced at
 | `GET` | `/secrets/:id` | `secrets:read` | Get a secret with the decrypted current version |
 | `PUT` | `/secrets/:id` | `secrets:write` | Update a secret; creates a new version if data changed |
 | `PATCH` | `/secrets/:id/agent-access` | `secrets:write` | Allow or forbid agents to use a Credential secret (see [Agent access](#agent-access)) |
+| `PATCH` | `/secrets/:id/assistant-reveal` | `secrets:write` (owner only) | Let a chat assistant read one field over MCP, or stop it ([ADR-0005](decisions/0005-assistant-reveal.md)) |
 | `DELETE` | `/secrets/:id` | `secrets:delete` | Delete a secret and all its versions |
 | `POST` | `/secrets/export` | `secrets:read` | Download a password-protected zip of your own secrets (see [Backup and export](#backup-and-export)) |
 

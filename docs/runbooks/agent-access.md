@@ -1,6 +1,6 @@
 # Runbook: agent access
 
-Operator and owner procedures for letting AI agents use Vault: enable it, connect an agent runtime or a chat assistant, open logins to agents, watch what they do, revoke an app, and turn everything off. Design and reasoning: [ADR-0002](../decisions/0002-agent-access.md), [ADR-0003](../decisions/0003-agent-cards-identity.md) (cards and identity, [below](#cards-and-identity-adr-0003)) and [SECURITY-ARCHITECTURE.md §16](../SECURITY-ARCHITECTURE.md#16-oauth-server-agent-access). Contract for runtime authors: [agent-credential-api.md](../agent-credential-api.md). The OAuth server itself is the platform's: its own runbook (hosts, reuse detection, failures) is [oauth-server.md in EnterpriseAppBase](https://github.com/marinoscar/EnterpriseAppBase/blob/main/docs/runbooks/oauth-server.md).
+Operator and owner procedures for letting AI agents use Vault: enable it, connect an agent runtime or a chat assistant, open logins to agents, watch what they do, revoke an app, and turn everything off. Design and reasoning: [ADR-0002](../decisions/0002-agent-access.md), [ADR-0005](../decisions/0005-assistant-reveal.md) (reveal to assistants), [ADR-0003](../decisions/0003-agent-cards-identity.md) (cards and identity, [below](#cards-and-identity-adr-0003)) and [SECURITY-ARCHITECTURE.md §16](../SECURITY-ARCHITECTURE.md#16-oauth-server-agent-access). Contract for runtime authors: [agent-credential-api.md](../agent-credential-api.md). The OAuth server itself is the platform's: its own runbook (hosts, reuse detection, failures) is [oauth-server.md in EnterpriseAppBase](https://github.com/marinoscar/EnterpriseAppBase/blob/main/docs/runbooks/oauth-server.md).
 
 Examples use invented names: `https://vault.example.test` (your Vault), `https://app.example.test` (a website), "Agent runtime X", `person-a@example.test`.
 
@@ -16,7 +16,7 @@ Even with both on, an agent reaches only logins their owner opened to agents (be
 ## Enable (administrator)
 
 1. Open `/admin/settings/oauth-clients` and switch the OAuth server on.
-2. Open `/admin/settings/agent-access`, switch "Allow agents to use opened logins" on, and review the per-minute limits (lookup 60, fill 30, one-time code 10, write 10 by default; each counts per app and person). Save.
+2. Open `/admin/settings/agent-access`, switch "Allow agents to use opened logins" on, and review the per-minute limits (lookup 60, fill 30, one-time code 10, write 10, reveal to assistants 10 by default; each counts per app and person). Save.
 3. Check the metadata: `curl -s https://vault.example.test/api/oauth/.well-known/authorization-server` returns JSON, and `curl -si https://vault.example.test/api/mcp -X POST` answers `401` with a `WWW-Authenticate` challenge.
 
 The kill switch can also be set by API: `PATCH /api/system-settings` with `{ "agentAccess": { "enabled": true } }` (`system_settings:write`).
@@ -34,15 +34,15 @@ Hosted assistants (Claude, ChatGPT) register themselves (client ID metadata docu
 
 ## Connect a chat assistant over MCP
 
-The MCP server is `https://vault.example.test/api/mcp` (Streamable HTTP, stateless). It searches, reads metadata, creates and updates secrets, and never returns a secret value. Agent access (above) must be on and the user must have opened the logins they want it to see.
+The MCP server is `https://vault.example.test/api/mcp` (Streamable HTTP, stateless). It searches, reads metadata, creates and updates secrets. It returns a secret value only through `reveal_secret`, one field at a time, for a secret its owner switched "Reveal to assistants" on for ([below](#reveal-values-to-an-assistant-the-owner)); every other tool shows sensitive fields as `[hidden]`. Agent access (above) must be on and the user must have opened the logins they want it to see (or chosen secrets to reveal).
 
 | Client | Steps |
 |---|---|
-| Claude, ChatGPT (hosted) | Add a custom connector with the URL. The client discovers the authorization server from the `401` challenge, registers, and shows the consent page: `vault:mcp_read` is preselected, `vault:mcp_write` is a separate tick |
+| Claude, ChatGPT (hosted) | Add a custom connector with the URL. The client discovers the authorization server from the `401` challenge, registers, and shows the consent page: `vault:mcp_read` is preselected, `vault:mcp_write` and `vault:mcp_reveal` (high risk) are separate ticks |
 | Claude Code | `claude mcp add --transport http vault https://vault.example.test/api/mcp`, then `/mcp` to sign in. A personal access token also works as `--header "Authorization: Bearer <token>"` (full authority: prefer OAuth) |
 | MCP Inspector | Transport "Streamable HTTP", the URL, then its OAuth flow; call `tools/list`, then each tool |
 
-Verify: `tools/list` returns `search_secrets`, `get_secret`, `list_secret_types`, `create_secret`, `update_secret`. No tool result ever contains a password or code. Tool reference: [API.md MCP](../API.md#mcp-model-context-protocol).
+Verify: `tools/list` returns `search_secrets`, `get_secret`, `list_secret_types`, `create_secret`, `update_secret`, `reveal_secret`. No tool result contains a password or code except a `reveal_secret` result for a secret the owner opted in. Tool reference: [API.md MCP](../API.md#mcp-model-context-protocol).
 
 ## Open a login to agents (the owner)
 
@@ -53,9 +53,19 @@ Agent access is per secret and starts at none.
 3. Optional one-time codes: fill the "Authenticator key (TOTP)" field with an `otpauth://totp/...` URI or the base32 secret. The agent can then ask for the current code; it never receives the seed.
 4. Turning the switch off closes the login to agents immediately (the next call is `404`).
 
+## Reveal values to an assistant (the owner)
+
+Decision: [ADR-0005](../decisions/0005-assistant-reveal.md). By default an assistant never sees a value. Use this only for a secret you accept putting into the assistant's context (provider logs, conversation history); prefer a scoped key you can rotate over a master password.
+
+1. **Switch on, per secret.** Open the secret in the web app, turn on "Reveal to assistants" and confirm the dialog. Or: `vault secrets reveal-access <id-or-name> on` (`off` to close; `vault secrets list --assistant-reveal on` lists the open ones). It needs `secrets:write` on your own secret; an administrator cannot open someone else's, and an assistant token is refused (`403`). Card, Passport, ID Document and any type with a security code cannot be opened (`422 ASSISTANT_REVEAL_UNSUPPORTED_TYPE`).
+2. **Consent to the scope.** When connecting the assistant, tick `vault:mcp_reveal` ("Read the values of secrets you chose to reveal") on the consent page. It is never preselected. An assistant already connected holds only the scopes it was granted: remove the connector's grant at `/settings/connected-apps` (or reconnect it) and tick the scope again.
+3. **What the assistant can do.** `search_secrets` and `get_secret` list the secret with `assistantReveal: true` and values `[hidden]`; `reveal_secret {id, field}` returns that one field. One field per call, at most 10 calls a minute per app and person (`agentAccess.revealPerMinute`, administrator setting).
+4. **Watch.** `/settings/agent-activity` shows each reveal as "Revealed to an assistant" with the secret and the field name, never the value. The secret list marks opted-in secrets with a "Revealed" chip.
+5. **Stop.** Switch the secret off (the next `reveal_secret` is a not-found at once), revoke the app, or an administrator turns Agent access off (`403 AGENT_ACCESS_DISABLED`). A value already revealed cannot be recalled: rotate it if it may have leaked.
+
 ## Read Agent activity (the owner)
 
-Open `/settings/agent-activity`. Each row shows the app, the login, the website, the field, the purpose and whether it was allowed or refused (with the reason). Filter by action, login, app and date. No value, code or password is ever shown. The bell and email also report: a login an app created, a password it rotated, and the first use by a new app.
+Open `/settings/agent-activity`. Each row shows the app, the login, the website, the field, the purpose and whether it was allowed or refused (with the reason). A reveal to an assistant is listed as "Revealed to an assistant" with the field name. Filter by action, login, app and date. No value, code or password is ever shown. The bell and email also report: a login an app created, a password it rotated, and the first use by a new app.
 
 ## Revoke an app
 
@@ -73,6 +83,8 @@ If a refresh token is replayed the platform revokes the whole grant (reuse detec
 | Stop all third-party OAuth access | OAuth server switch off. No new flows, existing `oat_` tokens stop working. PATs are unaffected |
 | Cut one app | Revoke its grant, or delete its client |
 | Close one login | The owner switches "Allow agents to use this login" off |
+| Stop reveals of one secret | The owner switches "Reveal to assistants" off |
+| Stop all reveals, keep the rest | No separate switch: Agent access off stops every MCP `tools/call`; or revoke the apps holding `vault:mcp_reveal`; or lower `Reveals per minute` |
 
 Closing a login or switching off the kill switch needs no deploy and no restart.
 
@@ -92,6 +104,11 @@ Closing a login or switching off the kill switch needs no deploy and no restart.
 | `/api/secrets/...` returns `401` or `403` to an agent token | Route confinement: an `oat_` token works only under its resource prefix | Expected. Use `/api/agent/v1` or `/api/mcp` |
 | Consent page never appears for a client | The client's host is not allowed, or the OAuth server is off | Check the client host allowlist and the OAuth server switch |
 | An MCP tool result is `REDACTION_BLOCKED` | The guard found a sensitive value in the result and withheld it | Report it as a bug; the value was not sent |
+| `403` `insufficient_scope` naming `vault:mcp_reveal` on `reveal_secret` | The connector was authorized without the reveal scope | Remove the app's grant at Connected apps, reconnect and tick `vault:mcp_reveal` |
+| `reveal_secret` answers not found | The secret is missing, not yours, an excluded type, or "Reveal to assistants" is off (all identical on purpose) | Owner switches it on (web app or `vault secrets reveal-access`) |
+| `FIELD_NOT_FOUND` or `FIELD_EMPTY` from `reveal_secret` | The secret is open but has no such field, or the field is empty | Use a field name from `get_secret` |
+| `422 ASSISTANT_REVEAL_UNSUPPORTED_TYPE` when switching on | Card, Passport, ID Document and types with a security code can never be revealed | Expected; none to fix |
+| `429 RATE_LIMITED` on `reveal_secret` | More than `revealPerMinute` reveals in a minute | Wait for `Retry-After`; raise "Reveals per minute" at Agent access if legitimate |
 | `update_secret` returns `FIELD_NOT_UPDATABLE` | `url` and `additional_urls` cannot be changed through MCP | The owner edits the website in Vault |
 
 ## Service keys (#241)

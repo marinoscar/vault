@@ -56,9 +56,9 @@ export function shortId(id: string): string {
 // ---------------------------------------------------------------------------
 
 export function formatSecretTable(result: PaginatedResponse<SecretListItem>): void {
-  const widths = [10, 14, 30, 20, 5, 12];
+  const widths = [10, 14, 30, 20, 5, 12, 7];
   header(`Secrets (${result.meta.totalItems} total, page ${result.meta.page}/${result.meta.totalPages})`);
-  tableHeader(['ID', 'Type', 'Name', 'Description', 'Ver', 'Updated'], widths);
+  tableHeader(['ID', 'Type', 'Name', 'Description', 'Ver', 'Updated', 'Reveal'], widths);
 
   for (const item of result.items) {
     tableRow(
@@ -69,6 +69,7 @@ export function formatSecretTable(result: PaginatedResponse<SecretListItem>): vo
         truncate(item.description ?? '-', 20),
         item.currentVersion != null ? String(item.currentVersion) : '-',
         shortDate(item.updatedAt),
+        item.assistantReveal ? 'on' : '-',
       ],
       widths,
     );
@@ -110,6 +111,7 @@ export function formatSecretDetail(secret: Secret): void {
   keyValue('Created', formatDate(secret.createdAt));
   keyValue('Updated', formatDate(secret.updatedAt));
   keyValue('Version', secret.currentVersion != null ? String(secret.currentVersion) : '-');
+  keyValue('Reveal to assistants', secret.assistantReveal ? 'on' : 'off');
 
   if (secret.attachments && secret.attachments.length > 0) {
     keyValue('Attachments', String(secret.attachments.length));

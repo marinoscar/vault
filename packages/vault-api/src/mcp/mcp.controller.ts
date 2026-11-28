@@ -41,6 +41,7 @@ import {
   InsufficientScopeException,
   authCredentialOf,
   oauthAccessDecision,
+  oauthGrantOf,
   principalOf,
   type RequestWithAuthCredential,
 } from '@marinoscar/platform-api/identity';
@@ -106,7 +107,7 @@ function invalid(msg: unknown): RpcResponse | null {
 
 /**
  * The Model Context Protocol endpoint of Vault. Contract: docs/API.md ("MCP"). The tools are
- * `vault-mcp-tools.ts`; no tool returns a secret value.
+ * `vault-mcp-tools.ts`; only `reveal_secret` (scope `vault:mcp_reveal`, #244) returns a secret value: one field of a secret the owner opted in.
  *
  * @stability experimental
  */
@@ -126,10 +127,10 @@ export class McpController {
     description:
       'One JSON-RPC request per POST: initialize, notifications/initialized (202), ping, tools/list, tools/call. ' +
       'Batches are refused (400). Protocol revisions 2024-11-05 to 2026-07-28 (MCP-Protocol-Version). ' +
-      'Authenticate with an OAuth `oat_` token for the `mcp` resource (scopes vault:mcp_read, vault:mcp_write), a `pat_` token or a session bearer. ' +
+      'Authenticate with an OAuth `oat_` token for the `mcp` resource (scopes vault:mcp_read, vault:mcp_write, vault:mcp_reveal), a `pat_` token or a session bearer. ' +
       'A tools/call whose scope the token lacks answers 403 insufficient_scope (step-up); with agentAccess.enabled off, 403 AGENT_ACCESS_DISABLED; ' +
-      'over 60 calls per minute per grant, 429 with Retry-After. Tools: search_secrets, get_secret, list_secret_types, create_secret, update_secret. ' +
-      'No tool ever returns a secret value. The response is the JSON-RPC body, not the `{ data }` envelope.',
+      'over 60 calls per minute per grant (reveal_secret: agentAccess.revealPerMinute, default 10), 429 with Retry-After. Tools: search_secrets, get_secret, list_secret_types, create_secret, update_secret, reveal_secret. ' +
+      'Only reveal_secret returns a secret value (one field of a secret the owner switched "Reveal to assistants" on for; every read is audited). The response is the JSON-RPC body, not the `{ data }` envelope.',
   })
   @ApiResponse({ status: 200, description: 'A JSON-RPC response (result or error)' })
   @ApiResponse({ status: 202, description: 'A notification was accepted' })
@@ -182,6 +183,13 @@ export class McpController {
       permissions: principal?.permissions ?? [],
       credential,
       authorize: (tool) => {
+        // An `oat_` token must carry the tool's own scope. The permission decision below cannot tell
+        // `vault:mcp_read` from `vault:mcp_reveal` (both map to `secrets:read`), so check it here (#244).
+        // A missing grant on an oauth credential fails closed. PAT and session callers carry no scopes.
+        if (credential?.kind === 'oauth') {
+          const scopes = oauthGrantOf(req as never)?.scopes ?? [];
+          if (!scopes.includes(tool.scope)) throw new InsufficientScopeException({ resourceId: VAULT_MCP_RESOURCE_ID, requiredScopes: [tool.scope] });
+        }
         const decision = oauthAccessDecision(req, tool.permission);
         // The token lacks the scope but the user holds the permission: re-consent can fix it (HTTP 403 + challenge).
         if (decision === 'step_up') throw new InsufficientScopeException({ resourceId: VAULT_MCP_RESOURCE_ID, requiredScopes: [tool.scope] });

@@ -91,6 +91,7 @@ export async function listSecrets(params: {
   search?: string;
   sortBy?: string;
   sortOrder?: string;
+  assistantReveal?: boolean;
 }): Promise<PaginatedResponse<SecretListItem>> {
   const query = new URLSearchParams();
   if (params.page) query.set('page', String(params.page));
@@ -99,6 +100,7 @@ export async function listSecrets(params: {
   if (params.search) query.set('search', params.search);
   if (params.sortBy) query.set('sortBy', params.sortBy);
   if (params.sortOrder) query.set('sortOrder', params.sortOrder);
+  if (params.assistantReveal !== undefined) query.set('assistantReveal', String(params.assistantReveal));
 
   const qs = query.toString();
   const res = await apiRequest(`/secrets${qs ? '?' + qs : ''}`);
@@ -162,6 +164,41 @@ export async function updateSecret(
   if (!res.ok) {
     const body = await res.text();
     throw new Error(`Failed to update secret: ${res.status} ${body}`);
+  }
+  const json = (await res.json()) as { data: Secret };
+  return json.data;
+}
+
+export const ASSISTANT_REVEAL_UNSUPPORTED_MESSAGE =
+  'This secret type cannot be revealed to assistants (cards and identity documents are excluded).';
+
+/** Map a failed assistant-reveal PATCH to the message the CLI prints. */
+export function assistantRevealErrorMessage(status: number, code: string | undefined, fallback: string): string {
+  if (status === 422 && (code === undefined || code === 'ASSISTANT_REVEAL_UNSUPPORTED_TYPE')) {
+    return ASSISTANT_REVEAL_UNSUPPORTED_MESSAGE;
+  }
+  if (status === 404) return 'Failed to get secret: 404';
+  return fallback;
+}
+
+/** PATCH /secrets/:id/assistant-reveal (owner only). */
+export async function setAssistantReveal(id: string, enabled: boolean): Promise<Secret> {
+  const res = await apiRequest(`/secrets/${encodeURIComponent(id)}/assistant-reveal`, {
+    method: 'PATCH',
+    body: JSON.stringify({ enabled }),
+  });
+  if (!res.ok) {
+    let code: string | undefined;
+    let raw = '';
+    try {
+      raw = await res.text();
+      const body = JSON.parse(raw) as { code?: unknown };
+      if (typeof body.code === 'string') code = body.code;
+    } catch {
+      // not JSON
+    }
+    const fallback = `Failed to update reveal access: ${res.status}${raw ? ' ' + raw : ''}`;
+    throw new Error(assistantRevealErrorMessage(res.status, code, fallback));
   }
   const json = (await res.json()) as { data: Secret };
   return json.data;

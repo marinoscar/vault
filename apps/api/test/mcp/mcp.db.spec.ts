@@ -257,7 +257,7 @@ describeWithDb('Vault MCP server (real Postgres, E14.8)', () => {
     expect(init.body).not.toHaveProperty('data');
     expect(init.body).toMatchObject({ jsonrpc: '2.0', result: { protocolVersion: '2025-06-18', serverInfo: { name: 'vault' } } });
     expect(init.body.result.capabilities.tools).toBeDefined();
-    expect(init.body.result.instructions).toMatch(/never returns a secret value/);
+    expect(init.body.result.instructions).toMatch(/the one exception is reveal_secret/);
 
     const note = await http().post('/api/mcp').set(bearer(oat)).set('mcp-protocol-version', '2025-06-18').send({ jsonrpc: '2.0', method: 'notifications/initialized' });
     expect(note.status).toBe(202);
@@ -280,10 +280,10 @@ describeWithDb('Vault MCP server (real Postgres, E14.8)', () => {
     expect((await tool(oat, 'list_secret_types')).res.status).toBe(200);
   });
 
-  it('tools/list: five tools, each with a title, an input schema, annotations and a scope', async () => {
+  it('tools/list: six tools, each with a title, an input schema, annotations and a scope', async () => {
     const res = await rpc(oat, 'tools/list');
     const tools = res.body.result.tools as Array<any>;
-    expect(tools.map((t) => t.name)).toEqual(['search_secrets', 'get_secret', 'list_secret_types', 'create_secret', 'update_secret']);
+    expect(tools.map((t) => t.name)).toEqual(['search_secrets', 'get_secret', 'list_secret_types', 'create_secret', 'update_secret', 'reveal_secret']);
     for (const t of tools) {
       expect(t.title).toBeTruthy();
       expect(t.inputSchema.type).toBe('object');
@@ -307,7 +307,7 @@ describeWithDb('Vault MCP server (real Postgres, E14.8)', () => {
     const all = await tool(oat, 'search_secrets');
     expect(all.res.status).toBe(200);
     expect(all.data.items).toEqual([
-      { id: shopId, name: 'Shop', type: 'Credential', origins: [ORIGIN], agentAccess: 'fill', version: 1, updatedAt: expect.any(String), fields: { username: CANARY_USERNAME, url: ORIGIN, notes: 'Shop login' } },
+      { id: shopId, name: 'Shop', type: 'Credential', origins: [ORIGIN], agentAccess: 'fill', assistantReveal: false, version: 1, updatedAt: expect.any(String), fields: { username: CANARY_USERNAME, url: ORIGIN, notes: 'Shop login' } },
     ]);
     expect((await tool(oat, 'search_secrets', { query: 'sho' })).data.count).toBe(1);
     expect((await tool(oat, 'search_secrets', { query: 'closed' })).data.count).toBe(0);

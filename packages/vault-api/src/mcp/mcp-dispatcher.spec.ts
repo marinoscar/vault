@@ -37,7 +37,7 @@ describe('McpDispatcher: methods', () => {
     expect(result.protocolVersion).toBe('2025-06-18');
     expect(result.serverInfo.name).toBe('vault');
     expect(result.capabilities.tools).toBeDefined();
-    expect(result.instructions).toMatch(/never returns a secret value/);
+    expect(result.instructions).toMatch(/reveal_secret, which returns a single field of a secret the user chose to reveal/);
   });
 
   it('a notification gets no answer (the transport answers 202)', async () => {
@@ -65,21 +65,21 @@ describe('McpDispatcher: methods', () => {
 
   it('tools/call of an unknown tool is -32602', async () => {
     const { call } = setup();
-    expect((await call('reveal_secret', {})).body.error?.code).toBe(-32602);
+    expect((await call('delete_secret', {})).body.error?.code).toBe(-32602);
   });
 });
 
 describe('McpDispatcher: tools/list metadata', () => {
-  it('lists exactly the five tools, each with a title, a scope, an effect hint and an input schema', async () => {
+  it('lists exactly the six tools, each with a title, a scope, an effect hint and an input schema', async () => {
     const { send, h } = setup();
     const out = await send({ id: 1, method: 'tools/list' }, {}, { protocolVersion: '2025-06-18' });
     const tools = (out!.body.result as { tools: Array<any> }).tools;
-    expect(tools.map((t) => t.name)).toEqual(['search_secrets', 'get_secret', 'list_secret_types', 'create_secret', 'update_secret']);
+    expect(tools.map((t) => t.name)).toEqual(['search_secrets', 'get_secret', 'list_secret_types', 'create_secret', 'update_secret', 'reveal_secret']);
     for (const t of tools) {
       expect(t.title).toBeTruthy();
       expect(t.description).toBeTruthy();
       expect(t.inputSchema.type).toBe('object');
-      expect(t.securitySchemes[0].scopes[0]).toMatch(/^vault:mcp_(read|write)$/);
+      expect(t.securitySchemes[0].scopes[0]).toMatch(/^vault:mcp_(read|write|reveal)$/);
       expect(typeof t.annotations.readOnlyHint).toBe('boolean');
       expect(typeof t.annotations.destructiveHint).toBe('boolean');
       expect(typeof t.annotations.idempotentHint).toBe('boolean');
@@ -93,6 +93,8 @@ describe('McpDispatcher: tools/list metadata', () => {
       expect(byName[write].annotations.readOnlyHint).toBe(false);
       expect(byName[write].securitySchemes[0].scopes).toEqual(['vault:mcp_write']);
     }
+    expect(byName.reveal_secret.annotations.readOnlyHint).toBe(true);
+    expect(byName.reveal_secret.securitySchemes[0].scopes).toEqual(['vault:mcp_reveal']);
     // Registry-level: every tool carries scope, permission, effect and title.
     for (const t of h.registry.all()) {
       expect([t.scope, t.permission, t.effect, t.title].every(Boolean)).toBe(true);
@@ -137,6 +139,13 @@ describe('McpDispatcher: gates', () => {
     };
     await expect(call('update_secret', { id: open.id, fields: { notes: 'n' } }, { authorize })).rejects.toBeInstanceOf(InsufficientScopeException);
     expect(h.state.updates).toBe(0);
+    expect(h.audit.events).toHaveLength(0);
+  });
+
+  it('reveal_secret is refused for an oauth caller without vault:mcp_reveal even when authorize allows it (#244)', async () => {
+    const { call, open, h } = setup();
+    const credential = { ...(h.caller().credential as object), scopes: ['vault:mcp_read'] } as never;
+    await expect(call('reveal_secret', { id: open.id, field: 'password' }, { credential, authorize: () => undefined })).rejects.toMatchObject({ requiredScopes: ['vault:mcp_reveal'] });
     expect(h.audit.events).toHaveLength(0);
   });
 

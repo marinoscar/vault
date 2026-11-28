@@ -108,6 +108,15 @@ function AgentsChip({ row }: { row: SecretListItem }) {
   );
 }
 
+function RevealChip({ row }: { row: SecretListItem }) {
+  if (!row.assistantReveal) return null;
+  return (
+    <Tooltip title="Revealed to assistants, one field at a time">
+      <Chip label="Revealed" size="small" color="warning" variant="outlined" />
+    </Tooltip>
+  );
+}
+
 function UpdatedLabel({ iso }: { iso: string }) {
   return (
     <Tooltip title={new Date(iso).toLocaleString()}>
@@ -180,6 +189,7 @@ const GRID_COLUMNS: DataTableColumn<SecretListItem>[] = [
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
         <TypeChip row={row} />
         <AgentsChip row={row} />
+        <RevealChip row={row} />
       </Box>
     ),
   },
@@ -241,6 +251,7 @@ const CARD_COLUMNS: DataTableColumn<SecretListItem>[] = [
       >
         <TypeChip row={row} />
         <AgentsChip row={row} />
+        <RevealChip row={row} />
         <span>
           Updated <UpdatedLabel iso={row.updatedAt} /> · v{row.currentVersion}
         </span>

@@ -284,6 +284,8 @@ One entry per change to the contract of `/api/agent/v1` and `@marinoscar/vault-c
 
 ### 1.4 (additive)
 
+Note, #244 (additive, no new version): the `agentAccess` settings gain the optional `revealPerMinute` (the MCP `reveal_secret` limit, default 10, [ADR-0005](decisions/0005-assistant-reveal.md)) and the activity action `mcp_reveal` is added. Neither touches `/api/agent/v1`; clients ignore both.
+
 Issue #241. The contract is **beta**.
 
 - New route `GET /service-keys/{service}/{name}`: the value of a `Service Key` secret the owner opened to agents, for the calling server process ([section 11](#11-service-keys)). Schemas `agentServiceKeyParamsSchema` and `agentServiceKeyResponseSchema`; constants `AGENT_SERVICE_KEYS_PATH`, `AGENT_SERVICE_KEY_PER_MINUTE` (120) and `AGENT_SERVICE_KEY_PURPOSE` (`service_call`).

@@ -53,6 +53,19 @@ export const updateAgentAccessSchema = z.object({
 export type UpdateAgentAccess = z.infer<typeof updateAgentAccessSchema>;
 
 /**
+ * Body of `PATCH /api/secrets/:id/assistant-reveal` (#244, ADR-0005): the owner's per-secret opt-in
+ * that lets an MCP assistant holding the `vault:mcp_reveal` scope read one field value at a time.
+ *
+ * @stability experimental
+ */
+export const updateAssistantRevealSchema = z.object({
+  enabled: z.boolean(),
+});
+
+/** @stability experimental */
+export type UpdateAssistantReveal = z.infer<typeof updateAssistantRevealSchema>;
+
+/**
  * The agent-access fields every secret list item and detail carries.
  * `agentAccessChangedAt` is an ISO string, or null until first changed.
  *
@@ -63,6 +76,10 @@ export const secretAgentAccessFieldsSchema = z.object({
   agentAccessChangedAt: z.string().nullable(),
   /** Identity only: the origins its sensitive fields may be filled on (exact match). Absent from an older API. */
   agentOrigins: z.array(z.string()).optional(),
+  /** The owner switched "Reveal to assistants" on (#244). Absent from an older API. */
+  assistantReveal: z.boolean().optional(),
+  /** ISO string, or null until first changed. Absent from an older API. */
+  assistantRevealChangedAt: z.string().nullable().optional(),
 });
 
 /** @stability experimental */
@@ -90,6 +107,8 @@ export const secretListQuerySchema = z.object({
   typeId: z.string().uuid().optional(),
   search: z.string().optional(),
   agentAccess: secretAgentAccessSchema.optional(),
+  /** Only secrets revealed (`true`) or not revealed (`false`) to assistants (#244). */
+  assistantReveal: z.enum(['true', 'false']).transform((v) => v === 'true').optional(),
   sortBy: z.enum(['createdAt', 'name', 'updatedAt']).default('updatedAt'),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
 });

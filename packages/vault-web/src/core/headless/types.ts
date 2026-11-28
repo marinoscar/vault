@@ -179,6 +179,8 @@ export interface AgentAccessSettings {
   fillPerMinute: number;
   totpPerMinute: number;
   writePerMinute: number;
+  /** The MCP `reveal_secret` limit; absent from an older API (#244). */
+  revealPerMinute?: number;
   /** Absent from an API older than ADR-0003. */
   cards?: AgentCardAccessSettings;
   /** Absent from an API older than ADR-0003. */
@@ -192,6 +194,7 @@ export const AGENT_ACCESS_DEFAULTS: AgentAccessSettings = {
   fillPerMinute: 30,
   totpPerMinute: 10,
   writePerMinute: 10,
+  revealPerMinute: 10,
   cards: { enabled: false, fillPerMinute: 10, releasesPerCardPerDay: 5 },
   identity: { enabled: false, fillPerMinute: 20 },
 };
@@ -252,6 +255,9 @@ export interface SecretListItem {
   /** Whether agents may use this secret (`none` by default). */
   agentAccess: SecretAgentAccess;
   agentAccessChangedAt: string | null;
+  /** Whether the owner revealed this secret's values to assistants (#244); absent from an older API. */
+  assistantReveal?: boolean;
+  assistantRevealChangedAt?: string | null;
   /** Identity only (ADR-0003): the exact origins its sensitive fields may be filled on. */
   agentOrigins?: string[];
 }

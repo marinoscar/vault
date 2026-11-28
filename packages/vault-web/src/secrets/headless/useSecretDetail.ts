@@ -13,6 +13,7 @@ import {
   getSecretVersion as fetchVersionApi,
   rollbackSecretVersion as rollbackApi,
   updateSecretAgentAccess as updateAgentAccessApi,
+  updateSecretAssistantReveal as updateAssistantRevealApi,
 } from '../../core/headless/api.js';
 
 /**
@@ -44,6 +45,7 @@ interface UseSecretDetailResult {
   rollback: (secretId: string, versionId: string) => Promise<void>;
   /** Throws on failure (the caller shows it); does not set the hook's `error`. */
   /** `allowedOrigins`: Identity only (ADR-0003); omit to keep them. */
+  setAssistantReveal: (id: string, enabled: boolean) => Promise<void>;
   setAgentAccess: (id: string, agentAccess: SecretAgentAccess, allowedOrigins?: string[]) => Promise<void>;
 }
 
@@ -134,8 +136,22 @@ export function useSecretDetail(): UseSecretDetailResult {
     );
   }, []);
 
+  const setAssistantReveal = useCallback(async (id: string, enabled: boolean) => {
+    const result = await updateAssistantRevealApi(id, enabled);
+    // Only the reveal fields change; keep the loaded values and attachments.
+    setSecret((prev) =>
+      prev
+        ? {
+            ...prev,
+            assistantReveal: result.assistantReveal ?? enabled,
+            assistantRevealChangedAt: result.assistantRevealChangedAt ?? prev.assistantRevealChangedAt,
+          }
+        : result,
+    );
+  }, []);
+
   return {
     secret, versions, isLoading, error,
-    fetchSecret, updateSecret, fetchVersions, fetchVersion, rollback, setAgentAccess,
+    fetchSecret, updateSecret, fetchVersions, fetchVersion, rollback, setAgentAccess, setAssistantReveal,
   };
 }

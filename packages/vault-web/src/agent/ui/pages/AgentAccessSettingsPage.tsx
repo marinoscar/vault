@@ -12,6 +12,7 @@ type LimitKey =
   | 'fillPerMinute'
   | 'totpPerMinute'
   | 'writePerMinute'
+  | 'revealPerMinute'
   | 'cardFillPerMinute'
   | 'cardReleasesPerDay'
   | 'identityFillPerMinute';
@@ -28,6 +29,7 @@ const LOGIN_LIMITS: LimitDef[] = [
   { key: 'fillPerMinute', label: 'Fills per minute', help: 'Handing a login to an agent.', max: 600 },
   { key: 'totpPerMinute', label: 'One-time codes per minute', help: 'Reading a one-time code.', max: 600 },
   { key: 'writePerMinute', label: 'Writes per minute', help: 'Creating or rotating a login, or asking for a shop.', max: 600 },
+  { key: 'revealPerMinute', label: 'Reveals per minute', help: "Reading a secret's value through reveal_secret.", max: 10000 },
 ];
 const CARD_LIMITS: LimitDef[] = [
   { key: 'cardFillPerMinute', label: 'Card fills per minute', help: 'Handing one card field to an agent.', max: 600 },
@@ -58,6 +60,7 @@ function toText(s: Required<AgentAccessSettings>): Record<LimitKey, string> {
     fillPerMinute: String(s.fillPerMinute),
     totpPerMinute: String(s.totpPerMinute),
     writePerMinute: String(s.writePerMinute),
+    revealPerMinute: String(s.revealPerMinute),
     cardFillPerMinute: String(s.cards.fillPerMinute),
     cardReleasesPerDay: String(s.cards.releasesPerCardPerDay),
     identityFillPerMinute: String(s.identity.fillPerMinute),
@@ -110,6 +113,7 @@ export default function AgentAccessSettingsPage() {
         fillPerMinute: Number(limits.fillPerMinute),
         totpPerMinute: Number(limits.totpPerMinute),
         writePerMinute: Number(limits.writePerMinute),
+        revealPerMinute: Number(limits.revealPerMinute),
         cards: {
           enabled: cardsEnabled,
           fillPerMinute: Number(limits.cardFillPerMinute),

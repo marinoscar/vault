@@ -195,6 +195,7 @@ const ROUTES: readonly Route[] = [
   ['POST', '/api/secrets', 'secrets:write'],
   ['PUT', `/api/secrets/${ID}`, 'secrets:write'],
   ['PATCH', `/api/secrets/${ID}/agent-access`, 'secrets:write'],
+  ['PATCH', `/api/secrets/${ID}/assistant-reveal`, 'secrets:write'],
   // ADR-0003: the owner's merchant grants and grant requests (writes also need a browser session)
   ['GET', `/api/secrets/${ID}/card-grants`, 'secrets:read'],
   ['POST', `/api/secrets/${ID}/card-grants`, 'secrets:write'],

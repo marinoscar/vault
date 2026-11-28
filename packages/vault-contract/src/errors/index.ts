@@ -56,6 +56,9 @@ export const VAULT_ERROR_CODES: readonly VaultErrorCodeDef[] = Object.freeze([
   // Agent access (E14.3).
   { code: 'AGENT_ACCESS_UNSUPPORTED_TYPE', status: 422, description: 'Only a Credential, Card, Identity or Service Key system secret can be opened to agents; this secret type cannot be set to fill.' },
 
+  // Reveal to assistants (#244, ADR-0005).
+  { code: 'ASSISTANT_REVEAL_UNSUPPORTED_TYPE', status: 422, description: 'A Card (or identity document) secret can never be revealed to an assistant; assistantReveal cannot be switched on for this secret type.' },
+
   // Agent credential API (E14.6). Contract: `@marinoscar/vault-contract/agent`.
   { code: 'ORIGIN_MISMATCH', status: 403, description: 'The origin sent by the agent is not exactly one of the credential origins, so nothing was filled.' },
   { code: 'AGENT_ACCESS_DISABLED', status: 403, description: 'Agent access is switched off for this deployment.' },

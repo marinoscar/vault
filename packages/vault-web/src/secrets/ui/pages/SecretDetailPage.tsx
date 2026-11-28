@@ -52,6 +52,8 @@ import { usePermissions } from '@marinoscar/platform-web/identity/headless';
 import { deleteSecret, unlinkSecretAttachment } from '../../../core/headless/api.js';
 import {
   agentAccessErrorMessage,
+  assistantRevealErrorMessage,
+  isAssistantRevealExcludedType,
   formatRelativeTime,
   isCardType,
   supportsAgentAccess,
@@ -94,9 +96,11 @@ export default function SecretDetailPage() {
   const { hasPermission } = usePermissions();
   const canWrite = hasPermission('secrets:write');
   const canDelete = hasPermission('secrets:delete');
-  const { secret, versions, isLoading, error, fetchSecret, fetchVersions, fetchVersion, rollback, setAgentAccess } =
+  const { secret, versions, isLoading, error, fetchSecret, fetchVersions, fetchVersion, rollback, setAgentAccess, setAssistantReveal } =
     useSecretDetail();
   const [savingAgentAccess, setSavingAgentAccess] = useState(false);
+  const [savingReveal, setSavingReveal] = useState(false);
+  const [confirmReveal, setConfirmReveal] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>('details');
   const [historyOpen, setHistoryOpen] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
@@ -161,6 +165,27 @@ export default function SecretDetailPage() {
       }
     },
     [id, setAgentAccess],
+  );
+
+  /** "Reveal to assistants" (#244): ON only after the owner confirmed, OFF applies at once. */
+  const changeReveal = useCallback(
+    async (enabled: boolean) => {
+      if (!id) return;
+      setSavingReveal(true);
+      try {
+        await setAssistantReveal(id, enabled);
+        setToast({
+          severity: 'success',
+          message: enabled ? 'Assistants can now read this secret' : 'Assistants can no longer read this secret',
+        });
+      } catch (err) {
+        setToast({ severity: 'error', message: assistantRevealErrorMessage(err) });
+      } finally {
+        setSavingReveal(false);
+        setConfirmReveal(false);
+      }
+    },
+    [id, setAssistantReveal],
   );
 
   /** Identity (ADR-0003): the access and, when given, the websites its sensitive fields may go to. */
@@ -498,6 +523,36 @@ export default function SecretDetailPage() {
                 </Typography>
               </Paper>
             )}
+            {(!isAssistantRevealExcludedType(secret.type) || secret.assistantReveal === true) && (
+              <Paper variant="outlined" sx={{ borderRadius: 2, px: 2, py: 1.5, mt: 2 }}>
+                <FormControlLabel
+                  sx={{ alignItems: 'flex-start', m: 0, gap: 1, minWidth: 0 }}
+                  control={
+                    <Switch
+                      checked={secret.assistantReveal === true}
+                      onChange={(e) => (e.target.checked ? setConfirmReveal(true) : void changeReveal(false))}
+                      disabled={!canWrite || savingReveal}
+                      slotProps={{ input: { 'aria-describedby': 'assistant-reveal-help' } }}
+                    />
+                  }
+                  label={
+                    <Typography variant="body2" sx={{ fontWeight: 600, pt: 0.75 }}>
+                      Reveal to assistants
+                    </Typography>
+                  }
+                />
+                <Typography
+                  id="assistant-reveal-help"
+                  variant="caption"
+                  component="p"
+                  sx={{ color: 'text.secondary', mt: 0.5 }}
+                >
+                  Lets an assistant you connected with the 'Read the values of secrets you chose to reveal'
+                  permission read this secret's values, one field at a time. Every read is recorded in Agent
+                  activity.
+                </Typography>
+              </Paper>
+            )}
             {isSystemType(secret.type, 'Service Key') && (
               <Paper variant="outlined" sx={{ borderRadius: 2, px: 2, py: 1.5, mt: 2 }}>
                 <FormControlLabel
@@ -579,6 +634,31 @@ export default function SecretDetailPage() {
         loadVersion={loadVersion}
         onRollback={canWrite ? handleRollback : undefined}
       />
+
+      <Dialog
+        open={confirmReveal}
+        onClose={() => !savingReveal && setConfirmReveal(false)}
+        maxWidth="xs"
+        fullWidth
+        aria-labelledby="reveal-confirm-title"
+      >
+        <DialogTitle id="reveal-confirm-title">Reveal this secret to assistants?</DialogTitle>
+        <DialogContent>
+          <Typography>
+            A value an assistant reads enters its conversation and cannot be taken back. Turn this on
+            only for secrets you are willing to share with the assistants you connected. You can turn it
+            off at any time, but that does not remove a value already read.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmReveal(false)} disabled={savingReveal}>
+            Cancel
+          </Button>
+          <Button variant="contained" onClick={() => void changeReveal(true)} disabled={savingReveal}>
+            Reveal to assistants
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={confirmDelete} onClose={() => !deleting && setConfirmDelete(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Delete secret?</DialogTitle>

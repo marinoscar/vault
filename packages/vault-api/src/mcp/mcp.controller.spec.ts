@@ -33,7 +33,7 @@ function fakeReply() {
 function fakeReq(headers: Record<string, string> = {}, extra: Record<string, unknown> = {}) {
   return {
     headers,
-    principal: { userId: 'user-aaa', permissions: ['secrets:read', 'secrets:write'] },
+    principal: { kind: 'user', userId: 'user-aaa', permissions: ['secrets:read', 'secrets:write'], oauth: { scopes: ['vault:mcp_read', 'vault:mcp_write', 'vault:mcp_reveal'] } },
     user: { id: 'user-aaa' },
     authCredential: { kind: 'oauth', tokenId: 't', grantId: 'g', clientId: 'c', resourceId: 'mcp', scopes: ['vault:mcp_read'] },
     ...extra,
@@ -200,5 +200,52 @@ describe('McpOriginGuard', () => {
     expect(() => guard.canActivate(ctx('https://evil.example.test'))).toThrow(ForbiddenException);
     expect(() => guard.canActivate(ctx('http://localhost:6274'))).toThrow(ForbiddenException);
     expect(() => new McpOriginGuard().canActivate(ctx(APP))).toThrow(ForbiddenException);
+  });
+});
+
+describe('McpController: tool scope on oat_ tokens (#244)', () => {
+  const rpc = (name: string, args: unknown) => ({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } });
+  const as = (kind: 'oauth' | 'pat' | 'session', scopes: string[]) => {
+    const h = buildMcpHarness();
+    const controller = new McpController(h.dispatcher);
+    const open = h.add({ userId: 'user-aaa', type: 'Credential', name: 'Shop', agentAccess: 'fill', assistantReveal: true, values: { username: 'u', password: 'pw-value-1' } });
+    const credential = kind === 'session' ? undefined : kind === 'pat' ? { kind: 'pat', tokenId: 'p' } : { kind: 'oauth', tokenId: 't', grantId: 'g', clientId: 'c', resourceId: 'mcp', scopes };
+    const req = {
+      headers: {},
+      principal: { kind: 'user', userId: 'user-aaa', permissions: ['secrets:read', 'secrets:write'], ...(kind === 'oauth' ? { oauth: { scopes } } : {}) },
+      user: { id: 'user-aaa' },
+      authCredential: credential,
+    } as never;
+    const post = (name: string, args: unknown) => controller.post(req, rpc(name, args), fakeReply() as never);
+    return { post, open };
+  };
+  const revealArgs = (id: string) => ({ id, field: 'password' });
+
+  it('a read-only oat_ token calling reveal_secret gets InsufficientScope naming vault:mcp_reveal', async () => {
+    const { post, open } = as('oauth', ['vault:mcp_read']);
+    await expect(post('reveal_secret', revealArgs(open.id))).rejects.toMatchObject({ requiredScopes: ['vault:mcp_reveal'], resourceId: 'mcp' });
+  });
+
+  it('a read-only oat_ token still uses the read tools', async () => {
+    const { post, open } = as('oauth', ['vault:mcp_read']);
+    for (const [name, args] of [['search_secrets', {}], ['get_secret', { id: open.id }], ['list_secret_types', {}]] as const) {
+      await expect(post(name, args)).resolves.toBeDefined();
+    }
+  });
+
+  it('write tools still require vault:mcp_write', async () => {
+    const { post, open } = as('oauth', ['vault:mcp_read', 'vault:mcp_reveal']);
+    await expect(post('create_secret', { type: 'Credential', name: 'X', fields: { username: 'u' } })).rejects.toMatchObject({ requiredScopes: ['vault:mcp_write'] });
+    await expect(post('update_secret', { id: open.id, fields: { notes: 'n' } })).rejects.toMatchObject({ requiredScopes: ['vault:mcp_write'] });
+  });
+
+  it('an oat_ token with vault:mcp_reveal may reveal', async () => {
+    const { post, open } = as('oauth', ['vault:mcp_read', 'vault:mcp_reveal']);
+    await expect(post('reveal_secret', revealArgs(open.id))).resolves.toBeDefined();
+  });
+
+  it('a PAT (owner opted in) may reveal', async () => {
+    const { post, open } = as('pat', []);
+    await expect(post('reveal_secret', revealArgs(open.id))).resolves.toBeDefined();
   });
 });

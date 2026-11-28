@@ -81,6 +81,12 @@
       ],
       "sha256": "219c4e43192e74ea8ea527a8605539e99c9c9c50b91fa17513c8f7603c008be7",
       "slice": "secrets"
+    },
+    {
+      "id": "20261128032220_add_secret_assistant_reveal",
+      "requiresHostTables": [],
+      "sha256": "7e12c1e6ca5532951ba9e87610b6e23150068306ac281274e61ee83d18f65cc8",
+      "slice": "secrets"
     }
   ]
 }

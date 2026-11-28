@@ -1852,7 +1852,7 @@ Rotation adds a version (the previous password stays available to the owner thro
 
 ### MCP: no plaintext over the model context (E14.8, [#180](https://github.com/marinoscar/vault/issues/180))
 
-`POST /api/mcp` serves the Model Context Protocol to chat assistants. **Why no tool returns a secret value:** an MCP tool result goes into the model's context, which the client sends to a model provider, may log, may keep in a conversation history and may echo into a tool call elsewhere. A value that entered that context has left Vault's control for good. The [agent credential API](API.md#agent-api-oauth-protected) is the opposite design on purpose: it returns one value to a runtime that types it into a page and never shows it to a model. So MCP never exposes that API's fill, and a `reveal_secret` tool is out of scope (it would need its own scope, per-call user approval through elicitation, a short-lived audit flag and no card or CVV support; a separate decision).
+`POST /api/mcp` serves the Model Context Protocol to chat assistants. **Why no tool returns a secret value** (apart from the opt-in `reveal_secret`, [below](#reveal-to-assistants-adr-0005-244)): an MCP tool result goes into the model's context, which the client sends to a model provider, may log, may keep in a conversation history and may echo into a tool call elsewhere. A value that entered that context has left Vault's control for good. The [agent credential API](API.md#agent-api-oauth-protected) is the opposite design on purpose: it returns one value to a runtime that types it into a page and never shows it to a model. So MCP never exposes that API's fill, and `reveal_secret` is the single, owner-opted exception ([ADR-0005](decisions/0005-assistant-reveal.md), amending ADR-0002 decision 6). Per-call approval through elicitation remains a possible future hardening.
 
 Controls, in the order a call meets them (`packages/vault-api/src/mcp/`):
 
@@ -1860,9 +1860,9 @@ Controls, in the order a call meets them (`packages/vault-api/src/mcp/`):
 |---|---|
 | Origin rule | A browser request whose `Origin` is not `APP_URL` is `403`, before authentication (DNS rebinding). No loopback exception |
 | Credential | `oat_` (resource `mcp`, confined to `/api/mcp`), `pat_` or a session bearer; `secrets:read` for the route. An `agent` token is refused here and an `mcp` token on `/api/agent/v1` |
-| Scope step-up | Per tool: `vault:mcp_read` for the read tools, `vault:mcp_write` for create and update. A token without it, whose user holds the permission, gets HTTP `403 insufficient_scope` with the platform challenge (never a `200` with an error result); a user without the permission gets a plain `403` |
+| Scope step-up | Per tool: `vault:mcp_read` for the read tools, `vault:mcp_write` for create and update, `vault:mcp_reveal` (high risk, never a default) for `reveal_secret`. A token without it, whose user holds the permission, gets HTTP `403 insufficient_scope` with the platform challenge (never a `200` with an error result); a user without the permission gets a plain `403` |
 | Kill switch | `agentAccess.enabled` (shared with the agent API, default **off**): `tools/call` is HTTP `403` `AGENT_ACCESS_DISABLED`; `initialize` and `tools/list` still work |
-| Rate limit | 60 `tools/call` per minute per grant (or PAT) and user (`AgentRateLimiter`, bucket `mcp`), `429` with `Retry-After` |
+| Rate limit | 60 `tools/call` per minute per grant (or PAT) and user (`AgentRateLimiter`, bucket `mcp`), `429` with `Retry-After`; `reveal_secret` has its own bucket, `agentAccess.revealPerMinute` (default 10) |
 | Visibility | Only the caller's own `Credential` secrets with `agentAccess = fill`. Closed, foreign, card and missing secrets are one identical `NOT_FOUND`. A secret created through MCP is visible afterwards only if created with `allowAgents: true`; one created with `false` (the default) is invisible to MCP until its owner opens it in Vault |
 | Allow-listed results | A result is built from the id, name, type, origins, agent access, timestamps and the values of fields the type marks **not** sensitive, plus a name deny-list (`password`, `totp`, `key`, `number`, `cvv`, ...) that counts as sensitive whatever a custom type says. A sensitive field is `"[hidden]"` or absent. Attachments, TOTP seeds and codes, card numbers and CVV never appear; card types are neither listed nor creatable |
 | Fail-closed redaction | Every sensitive value a tool decrypts, generates or receives is reported to the dispatcher, which withholds the whole result (`REDACTION_BLOCKED`, audited `error:redaction`) if any of them appears in it, as a string leaf, a key or (from 6 characters) inside text. Errors carry static text; a validation message names fields, never values |
@@ -1870,6 +1870,23 @@ Controls, in the order a call meets them (`packages/vault-api/src/mcp/`):
 | Website fields | `url` and `additional_urls` cannot be changed through MCP: pointing a login the owner opened to agents at another site would let a model redirect a later agent fill |
 | Audit | `mcp.tool.call` per call: tool, result, credential kind, client and grant (or PAT id), secret id. Never an argument or a value. A successful call is audited before its result is returned |
 | Egress | `apps/api/test/mcp/mcp.db.spec.ts` drives a real OAuth flow and checks every response, audit row, log line and console line for a canary password, model-sent values, a card number and CVV, and generated passwords; the package tests run the canary over every tool and argument shape |
+
+#### Reveal to assistants (ADR-0005, #244)
+
+`reveal_secret { id, field }` returns one field of a secret whose owner switched "Reveal to assistants" on. A revealed value enters the model's context and cannot be recalled; the controls bound who can ask and how much:
+
+| Control | Behaviour |
+|---|---|
+| Per-secret opt-in | `secrets.assistant_reveal`, default `false`, set by `PATCH /api/secrets/:id/assistant-reveal`: the owner only (`secrets:write`, `*_any` does not apply), session or PAT; an `oat_` token is `403`, so an assistant cannot open a secret for itself. Audited `secret.assistant_reveal.update` |
+| Excluded types | Card, Passport, ID Document and any type with a cvv-like field: the toggle is `422 ASSISTANT_REVEAL_UNSUPPORTED_TYPE` and the tools treat them as missing (`isMcpExcludedType`) |
+| Scope | `vault:mcp_reveal`, risk high, not default, permission `secrets:read`. `vault:mcp_read` never reveals |
+| No oracle | A missing, foreign, closed or excluded secret is one identical not-found. `FIELD_NOT_FOUND` and `FIELD_EMPTY` are answered only after the secret is proven the caller's and revealable |
+| One field | One field per call; the result is `{ id, name, type, field, value }` |
+| Redaction guard | Still fail-closed. The tool reports every value it decrypted; the guard is skipped only for this tool and only for its top-level `value` key, so the value anywhere else, or another field, still withholds the result |
+| Limits and kill switch | `agentAccess.revealPerMinute` (own bucket, counted before the lookup); `agentAccess.enabled` off answers `403 AGENT_ACCESS_DISABLED` |
+| Audit | `mcp.tool.call` with the field **name**, never the value; Agent activity action `mcp_reveal`. A successful call is audited before the result is returned |
+
+Residual risk: a prompt-injected model can read any opted-in secret within the rate limit; owners opt in rotatable, narrowly scoped secrets.
 
 The protocol layer is a local stop-gap for the platform MCP slice ([local-exceptions](platform-adoption/local-exceptions.md), marinoscar/EnterpriseAppBase#1201). The wider threat model is [below](#threat-model-agent-access).
 

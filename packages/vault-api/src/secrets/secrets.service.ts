@@ -36,6 +36,7 @@ import {
   isDocumentImageRole,
 } from '@marinoscar/vault-contract/secrets';
 import { generateTotp, TotpCode } from './totp';
+import { isMcpExcludedType } from './assistant-reveal-types';
 import { defaultOrgClient, runInDefaultOrg } from '../core/default-org';
 
 
@@ -1107,7 +1108,7 @@ export class SecretsService {
     userId: string,
     userPermissions: string[],
   ) {
-    const { page, pageSize, typeId, search, agentAccess, sortBy, sortOrder } = query;
+    const { page, pageSize, typeId, search, agentAccess, assistantReveal, sortBy, sortOrder } = query;
 
     const canReadAny = userPermissions.includes(PERMISSIONS.SECRETS_READ_ANY);
 
@@ -1116,6 +1117,7 @@ export class SecretsService {
       ...(canReadAny ? {} : { createdById: userId }),
       ...(typeId ? { typeId } : {}),
       ...(agentAccess ? { agentAccess } : {}),
+      ...(assistantReveal !== undefined ? { assistantReveal } : {}),
       ...(search
         ? { name: { contains: search, mode: 'insensitive' as const } }
         : {}),
@@ -1347,6 +1349,37 @@ export class SecretsService {
     this.logger.log(`Secret updated: ${id}`);
 
     // Return with decrypted current data
+    return this.findOne(id, userId, userPermissions);
+  }
+
+  /**
+   * Switch "Reveal to assistants" on or off for the caller's own secret (#244, ADR-0005). OWNER ONLY
+   * (`secrets:write_any` does not reach another user's secret; foreign and missing are both 404). Any
+   * type except Card, Passport and ID Document (422 ASSISTANT_REVEAL_UNSUPPORTED_TYPE). Stamps
+   * `assistantRevealChangedAt` and audits `secret.assistant_reveal.update` with the two states only.
+   */
+  async updateAssistantReveal(id: string, enabled: boolean, userId: string, userPermissions: string[]) {
+    // Owner only: `secrets:write_any` does not open another user's secret to assistants. A foreign
+    // or missing secret is a 404 (no oracle).
+    const existing = await this.prisma.secret.findFirst({ where: { id, createdById: userId }, include: { type: true } });
+    if (!existing) throw new NotFoundException('Secret not found');
+
+    if (enabled && isMcpExcludedType(existing.type as never)) {
+      throw new UnprocessableEntityException({
+        code: 'ASSISTANT_REVEAL_UNSUPPORTED_TYPE',
+        message: 'This secret type can never be revealed to an assistant',
+      });
+    }
+
+    const from = (existing as { assistantReveal?: boolean }).assistantReveal === true;
+    if (from !== enabled) {
+      await runInDefaultOrg(this.prisma, async (tx: any) =>
+        tx.secret.update({ where: { id }, data: { assistantReveal: enabled, assistantRevealChangedAt: new Date() } }),
+      );
+      // Ids and the two states only: never a value.
+      await this.createAuditEvent(userId, 'secret.assistant_reveal.update', id, { secretId: id, from, to: enabled });
+    }
+
     return this.findOne(id, userId, userPermissions);
   }
 
