@@ -41,6 +41,7 @@ import {
   InsufficientScopeException,
   authCredentialOf,
   oauthAccessDecision,
+  oauthGrantOf,
   principalOf,
   type RequestWithAuthCredential,
 } from '@marinoscar/platform-api/identity';
@@ -182,6 +183,13 @@ export class McpController {
       permissions: principal?.permissions ?? [],
       credential,
       authorize: (tool) => {
+        // An `oat_` token must carry the tool's own scope. The permission decision below cannot tell
+        // `vault:mcp_read` from `vault:mcp_reveal` (both map to `secrets:read`), so check it here (#244).
+        // A missing grant on an oauth credential fails closed. PAT and session callers carry no scopes.
+        if (credential?.kind === 'oauth') {
+          const scopes = oauthGrantOf(req as never)?.scopes ?? [];
+          if (!scopes.includes(tool.scope)) throw new InsufficientScopeException({ resourceId: VAULT_MCP_RESOURCE_ID, requiredScopes: [tool.scope] });
+        }
         const decision = oauthAccessDecision(req, tool.permission);
         // The token lacks the scope but the user holds the permission: re-consent can fix it (HTTP 403 + challenge).
         if (decision === 'step_up') throw new InsufficientScopeException({ resourceId: VAULT_MCP_RESOURCE_ID, requiredScopes: [tool.scope] });

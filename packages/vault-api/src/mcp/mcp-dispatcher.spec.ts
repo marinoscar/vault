@@ -142,6 +142,13 @@ describe('McpDispatcher: gates', () => {
     expect(h.audit.events).toHaveLength(0);
   });
 
+  it('reveal_secret is refused for an oauth caller without vault:mcp_reveal even when authorize allows it (#244)', async () => {
+    const { call, open, h } = setup();
+    const credential = { ...(h.caller().credential as object), scopes: ['vault:mcp_read'] } as never;
+    await expect(call('reveal_secret', { id: open.id, field: 'password' }, { credential, authorize: () => undefined })).rejects.toMatchObject({ requiredScopes: ['vault:mcp_reveal'] });
+    expect(h.audit.events).toHaveLength(0);
+  });
+
   it('a forbidden permission propagates as a 403 exception', async () => {
     const { call } = setup();
     const authorize = () => {

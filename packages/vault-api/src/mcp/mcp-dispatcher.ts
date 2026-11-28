@@ -16,7 +16,7 @@
 // =============================================================================
 
 import { HttpException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
-import type { AuthCredentialInfo } from '@marinoscar/platform-api/identity';
+import { InsufficientScopeException, type AuthCredentialInfo } from '@marinoscar/platform-api/identity';
 import {
   AGENT_ACCESS_SETTINGS_DEFAULTS,
   AGENT_ERROR_CODES,
@@ -50,6 +50,9 @@ export const MCP_TOOL_CALL_AUDIT_ACTION = 'mcp.tool.call' as const;
 
 /** The `reveal_secret` limit when the setting holds none (`agentAccess.revealPerMinute`). */
 const REVEAL_RATE_PER_MINUTE = 10;
+
+/** The OAuth scope that lets a token read a secret field. */
+const REVEAL_SCOPE = 'vault:mcp_reveal';
 
 /** What the server calls itself. */
 export const MCP_SERVER_INFO = { name: 'vault', title: 'Vault', version: '0.1.0' } as const;
@@ -227,6 +230,12 @@ export class McpDispatcher {
 
     // Who may call: a step-up or a refusal is an HTTP 403 thrown to the filter (never a result).
     caller.authorize(tool);
+
+    // Defense in depth (#244), independent of `authorize`: an `oat_` token reveals a field only with the
+    // reveal scope itself, whatever `authorize` decided.
+    if (tool.revealsField && caller.credential?.kind === 'oauth' && !caller.credential.scopes.includes(REVEAL_SCOPE)) {
+      throw new InsufficientScopeException({ resourceId: caller.credential.resourceId ?? 'mcp', requiredScopes: [REVEAL_SCOPE] });
+    }
 
     const settings = await this.agentAccess();
     if (!settings.enabled) {
